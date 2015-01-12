@@ -70,9 +70,10 @@ func (s *memdServer) hostname() string {
 type MemdAuthClient interface {
 	Address() string
 
-	ListMechs() ([]byte, error)
-	Auth(k, v []byte) ([]byte, error)
-	Step(k, v []byte) ([]byte, error)
+	SaslListMechs() ([]string, error)
+	SaslAuth(k, v []byte) ([]byte, error)
+	SaslStep(k, v []byte) ([]byte, error)
+	SelectBucket(b []byte) error
 }
 
 type memdAuthClient struct {
@@ -82,14 +83,17 @@ type memdAuthClient struct {
 func (s *memdAuthClient) Address() string {
 	return s.srv.address
 }
-func (s *memdAuthClient) ListMechs() ([]byte, error) {
+func (s *memdAuthClient) SaslListMechs() ([]string, error) {
 	return s.srv.DoSaslListMechs()
 }
-func (s *memdAuthClient) Auth(k, v []byte) ([]byte, error) {
+func (s *memdAuthClient) SaslAuth(k, v []byte) ([]byte, error) {
 	return s.srv.DoSaslAuth(k, v)
 }
-func (s *memdAuthClient) Step(k, v []byte) ([]byte, error) {
+func (s *memdAuthClient) SaslStep(k, v []byte) ([]byte, error) {
 	return s.srv.DoSaslStep(k, v)
+}
+func (s *memdAuthClient) SelectBucket(b []byte) error {
+	return s.srv.DoSelectBucket(b)
 }
 
 type routerFunc func(*memdRequest) *memdServer
@@ -254,7 +258,7 @@ func (s *memdServer) DoCccpRequest() ([]byte, error) {
 	return resp.Value, nil
 }
 
-func (s *memdServer) doSaslOp(cmd commandCode, k, v []byte) ([]byte, error) {
+func (s *memdServer) doBasicOp(cmd commandCode, k, v []byte) ([]byte, error) {
 	resp, err := s.doRequest(&memdRequest{
 		Magic:  reqMagic,
 		Opcode: cmd,
@@ -270,14 +274,22 @@ func (s *memdServer) doSaslOp(cmd commandCode, k, v []byte) ([]byte, error) {
 
 	return resp.Value, nil
 }
-func (s *memdServer) DoSaslListMechs() ([]byte, error) {
-	return s.doSaslOp(cmdSASLListMechs, nil, nil)
+func (s *memdServer) DoSaslListMechs() ([]string, error) {
+	bytes, err := s.doBasicOp(cmdSASLListMechs, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(string(bytes), " "), nil
 }
 func (s *memdServer) DoSaslAuth(k, v []byte) ([]byte, error) {
-	return s.doSaslOp(cmdSASLAuth, k, v)
+	return s.doBasicOp(cmdSASLAuth, k, v)
 }
 func (s *memdServer) DoSaslStep(k, v []byte) ([]byte, error) {
-	return s.doSaslOp(cmdSASLStep, k, v)
+	return s.doBasicOp(cmdSASLStep, k, v)
+}
+func (s *memdServer) DoSelectBucket(b []byte) error {
+	_, err := s.doBasicOp(cmdSelectBucket, nil, b)
+	return err
 }
 
 func (s *memdServer) readResponse() (*memdResponse, error) {

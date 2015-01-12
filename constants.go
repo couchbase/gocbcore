@@ -27,6 +27,7 @@ const (
 	cmdSASLAuth         = commandCode(0x21)
 	cmdSASLStep         = commandCode(0x22)
 	cmdGetReplica       = commandCode(0x83)
+	cmdSelectBucket     = commandCode(0x89)
 	cmdObserve          = commandCode(0x92)
 	cmdGetLocked        = commandCode(0x94)
 	cmdUnlockKey        = commandCode(0x95)
