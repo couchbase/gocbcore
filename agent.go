@@ -46,7 +46,7 @@ type memdRequest struct {
 	queuedWith unsafe.Pointer
 }
 
-type MemdServer struct {
+type memdServer struct {
 	address string
 	useSsl  bool
 
@@ -63,18 +63,39 @@ type MemdServer struct {
 	recvHdrBuf []byte
 }
 
-func (s *MemdServer) Address() string {
-	return s.address
-}
-
-func (s *MemdServer) Hostname() string {
+func (s *memdServer) hostname() string {
 	return strings.Split(s.address, ":")[0]
 }
 
-type routerFunc func(*memdRequest) *MemdServer
+type MemdAuthClient interface {
+	Address() string
+
+	ListMechs() ([]byte, error)
+	Auth(k, v []byte) ([]byte, error)
+	Step(k, v []byte) ([]byte, error)
+}
+
+type memdAuthClient struct {
+	srv *memdServer
+}
+
+func (s *memdAuthClient) Address() string {
+	return s.srv.address
+}
+func (s *memdAuthClient) ListMechs() ([]byte, error) {
+	return s.srv.DoSaslListMechs()
+}
+func (s *memdAuthClient) Auth(k, v []byte) ([]byte, error) {
+	return s.srv.DoSaslAuth(k, v)
+}
+func (s *memdAuthClient) Step(k, v []byte) ([]byte, error) {
+	return s.srv.DoSaslStep(k, v)
+}
+
+type routerFunc func(*memdRequest) *memdServer
 type routeData struct {
 	revId      uint
-	servers    []*MemdServer
+	servers    []*memdServer
 	routeFn    routerFunc
 	capiEpList []string
 	mgmtEpList []string
@@ -82,7 +103,7 @@ type routeData struct {
 	source *cfgBucket
 }
 
-type AuthFunc func(*MemdServer) error
+type AuthFunc func(MemdAuthClient) error
 
 type PendingOp interface {
 	Cancel() bool
@@ -110,7 +131,7 @@ type Agent struct {
 
 	configCh     chan *cfgBucket
 	configWaitCh chan *memdRequest
-	deadServerCh chan *MemdServer
+	deadServerCh chan *memdServer
 
 	operationTimeout time.Duration
 
@@ -133,9 +154,9 @@ func (c *Agent) KillTest() {
 	server.conn.Close()
 }
 
-// Creates a new MemdServer object for the specified address.
-func (c *Agent) createServer(addr string) *MemdServer {
-	return &MemdServer{
+// Creates a new memdServer object for the specified address.
+func (c *Agent) createServer(addr string) *memdServer {
+	return &memdServer{
 		address:    addr,
 		useSsl:     c.useSsl,
 		reqsCh:     make(chan *memdRequest),
@@ -181,8 +202,8 @@ func makeCccpRequest() *memdRequest {
 	}
 }
 
-// Dials and Authenticates a MemdServer object to the cluster.
-func (s *MemdServer) connect(authFn AuthFunc) error {
+// Dials and Authenticates a memdServer object to the cluster.
+func (s *memdServer) connect(authFn AuthFunc) error {
 	fmt.Printf("Dialing %s\n", s.address)
 
 	if !s.useSsl {
@@ -205,7 +226,7 @@ func (s *MemdServer) connect(authFn AuthFunc) error {
 		s.conn = conn
 	}
 
-	err := authFn(s)
+	err := authFn(&memdAuthClient{s})
 	if err != nil {
 		fmt.Printf("Server authentication failed!\n")
 		return agentError{"Authentication failure."}
@@ -215,7 +236,7 @@ func (s *MemdServer) connect(authFn AuthFunc) error {
 	return nil
 }
 
-func (s *MemdServer) doRequest(req *memdRequest) (*memdResponse, error) {
+func (s *memdServer) doRequest(req *memdRequest) (*memdResponse, error) {
 	err := s.writeRequest(req)
 	if err != nil {
 		return nil, err
@@ -224,7 +245,42 @@ func (s *MemdServer) doRequest(req *memdRequest) (*memdResponse, error) {
 	return s.readResponse()
 }
 
-func (s *MemdServer) readResponse() (*memdResponse, error) {
+func (s *memdServer) DoCccpRequest() ([]byte, error) {
+	resp, err := s.doRequest(makeCccpRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Value, nil
+}
+
+func (s *memdServer) doSaslOp(cmd commandCode, k, v []byte) ([]byte, error) {
+	resp, err := s.doRequest(&memdRequest{
+		Magic:  reqMagic,
+		Opcode: cmd,
+		Key:    k,
+		Value:  v,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// BUG(brett19): Need to convert the resp.Status to an error
+	//  here, otherwise errors arn't propagated.
+
+	return resp.Value, nil
+}
+func (s *memdServer) DoSaslListMechs() ([]byte, error) {
+	return s.doSaslOp(cmdSASLListMechs, nil, nil)
+}
+func (s *memdServer) DoSaslAuth(k, v []byte) ([]byte, error) {
+	return s.doSaslOp(cmdSASLAuth, k, v)
+}
+func (s *memdServer) DoSaslStep(k, v []byte) ([]byte, error) {
+	return s.doSaslOp(cmdSASLStep, k, v)
+}
+
+func (s *memdServer) readResponse() (*memdResponse, error) {
 	hdrBuf := s.recvHdrBuf
 
 	_, err := io.ReadFull(s.conn, hdrBuf)
@@ -256,7 +312,7 @@ func (s *MemdServer) readResponse() (*memdResponse, error) {
 	}, nil
 }
 
-func (s *MemdServer) writeRequest(req *memdRequest) error {
+func (s *memdServer) writeRequest(req *memdRequest) error {
 	extLen := len(req.Extras)
 	keyLen := len(req.Key)
 	valLen := len(req.Value)
@@ -281,7 +337,7 @@ func (s *MemdServer) writeRequest(req *memdRequest) error {
 	return err
 }
 
-func (c *Agent) serverConnectRun(s *MemdServer, authFn AuthFunc) {
+func (c *Agent) serverConnectRun(s *memdServer, authFn AuthFunc) {
 	atomic.AddUint64(&c.Stats.NumServerConnect, 1)
 	err := s.connect(authFn)
 	if err != nil {
@@ -292,7 +348,7 @@ func (c *Agent) serverConnectRun(s *MemdServer, authFn AuthFunc) {
 	c.serverRun(s)
 }
 
-func (c *Agent) serverRun(s *MemdServer) {
+func (c *Agent) serverRun(s *memdServer) {
 	killSig := make(chan bool)
 
 	// Reading
@@ -418,9 +474,9 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 	fmt.Printf("Gogo Server List: %v\n", kvServerList)
 
 	var newRouting *routeData
-	var oldServers []*MemdServer
-	var addServers []*MemdServer
-	var newServers []*MemdServer
+	var oldServers []*memdServer
+	var addServers []*memdServer
+	var newServers []*memdServer
 	for {
 		oldRouting := (*routeData)(atomic.LoadPointer(&c.routingInfo))
 
@@ -428,10 +484,10 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 		//   another config update has not preempted us to a higher revision!
 
 		oldServers = oldRouting.servers
-		newServers = []*MemdServer{}
+		newServers = []*memdServer{}
 
 		for _, hostPort := range kvServerList {
-			var newServer *MemdServer
+			var newServer *memdServer
 
 			// See if this server exists in the old routing data and is still alive
 			for _, oldServer := range oldServers {
@@ -455,7 +511,7 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 		}
 
 		// Build a new routing object
-		rt := func(req *memdRequest) *MemdServer {
+		rt := func(req *memdRequest) *memdServer {
 			vbId := cbCrc(req.Key) % uint32(len(bk.VBucketServerMap.VBucketMap))
 			req.vBucket = uint16(vbId)
 			srvIdx := bk.VBucketServerMap.VBucketMap[vbId][0]
@@ -519,7 +575,7 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 		httpCli:          &http.Client{},
 		configCh:         make(chan *cfgBucket, 0),
 		configWaitCh:     make(chan *memdRequest, 1),
-		deadServerCh:     make(chan *MemdServer, 1),
+		deadServerCh:     make(chan *memdServer, 1),
 		operationTimeout: 2500 * time.Millisecond,
 	}
 
@@ -545,7 +601,7 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 
 		fmt.Printf("Request processed %v\n", resp)
 
-		configStr := strings.Replace(string(resp.Value), "$HOST", srv.Hostname(), -1)
+		configStr := strings.Replace(string(resp.Value), "$HOST", srv.hostname(), -1)
 		bk := new(cfgBucket)
 		err = json.Unmarshal([]byte(configStr), bk)
 		fmt.Printf("DATA: %v %v\n", err, bk)
@@ -558,7 +614,7 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 		//   from this function until after the config update happens, meaning this
 		//   temporary routing data should not be able to be be used for any routing.
 		c.routingInfo = unsafe.Pointer(&routeData{
-			servers: []*MemdServer{srv},
+			servers: []*memdServer{srv},
 		})
 
 		firstConfig = bk
@@ -589,7 +645,7 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 // Drains all the requests out of the queue for this server.  This must be
 //   invoked only once this server no longer exists in the routing data or an
 //   infinite loop will likely occur.
-func (c *Agent) drainServer(s *MemdServer) {
+func (c *Agent) drainServer(s *memdServer) {
 	signal := make(chan bool)
 
 	go func() {
@@ -654,7 +710,7 @@ func (c *Agent) dispatchDirect(req *memdRequest) error {
 // This is used to dispatch a request to a server after being drained from another.
 // This function assumes the opMap of the source server will be destroyed and does
 //   not need to be cleaned up.
-func (c *Agent) redispatchDirect(origServer *MemdServer, req *memdRequest) {
+func (c *Agent) redispatchDirect(origServer *memdServer, req *memdRequest) {
 	if atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(origServer), nil) {
 		c.dispatchDirect(req)
 	}
@@ -662,7 +718,7 @@ func (c *Agent) redispatchDirect(origServer *MemdServer, req *memdRequest) {
 
 // This resolves a request using a response and its Opaque value along with the server
 //  which received the request.
-func (c *Agent) resolveRequest(s *MemdServer, resp *memdResponse) {
+func (c *Agent) resolveRequest(s *memdServer, resp *memdResponse) {
 	opIndex := resp.opaque
 
 	// Find the request that goes with this response
@@ -702,7 +758,7 @@ func (c *Agent) resolveRequest(s *MemdServer, resp *memdResponse) {
 //   invoked, should be used primarily for 'cancelling' a request, note that the operation
 //   may have been dispatched across the network regardless of cancellation.
 func (c *Agent) dequeueRequest(req *memdRequest) bool {
-	server := (*MemdServer)(atomic.SwapPointer(&req.queuedWith, nil))
+	server := (*memdServer)(atomic.SwapPointer(&req.queuedWith, nil))
 	if server == nil {
 		return false
 	}
