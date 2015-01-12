@@ -116,7 +116,7 @@ type Agent struct {
 func (c *Agent) KillTest() {
 	routingInfo := (*routeData)(atomic.LoadPointer(&c.routingInfo))
 	server := routingInfo.servers[rand.Intn(len(routingInfo.servers))]
-	fmt.Printf("Killing server %s\n", server.Address)
+	fmt.Printf("Killing server %s\n", server.address)
 	server.conn.Close()
 }
 
@@ -194,9 +194,11 @@ func (s *MemdServer) connect(authFn AuthFunc) error {
 
 	err := authFn(s)
 	if err != nil {
+		fmt.Printf("Server authentication failed!\n")
 		return agentError{"Authentication failure."}
 	}
 
+	fmt.Printf("Server connect success (%s)!\n", s.address)
 	return nil
 }
 
@@ -300,6 +302,20 @@ func (c *Agent) serverRun(s *MemdServer) {
 		case req := <-s.reqsCh:
 			err := s.writeRequest(req)
 			if err != nil {
+				fmt.Printf("Write failure occured for %v\n", req)
+
+				// Lock the server to write to it's queue, as used in dispatchRequest.
+				//   If the server has already been drained, this indicates that the routing
+				//   information is update, the servers opMap is thrown out and we are safe
+				//   to redispatch this operation like the drainer would.
+				s.lock.RLock()
+				if s.isDrained {
+					s.lock.RUnlock()
+					c.redispatchDirect(s, req)
+				} else {
+					s.reqsCh <- req
+					s.lock.RUnlock()
+				}
 				break
 			}
 		case <-killSig:
@@ -461,7 +477,7 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 
 	// Launch all the new servers
 	for _, addServer := range addServers {
-		fmt.Printf("Launching server %s\n", addServer.Address)
+		fmt.Printf("Launching server %s\n", addServer.address)
 		go c.serverConnectRun(addServer, c.authFn)
 	}
 
@@ -475,7 +491,7 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 			}
 		}
 		if !found {
-			fmt.Printf("Draining server %s\n", oldServer.Address)
+			fmt.Printf("Draining server %s\n", oldServer.address)
 			c.drainServer(oldServer)
 		}
 	}
