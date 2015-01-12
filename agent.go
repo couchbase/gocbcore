@@ -84,6 +84,19 @@ type routeData struct {
 
 type AuthFunc func(*MemdServer) error
 
+type PendingOp interface {
+	Cancel() bool
+}
+
+type memdPendingOp struct {
+	agent *Agent
+	req   *memdRequest
+}
+
+func (op memdPendingOp) Cancel() bool {
+	return op.agent.dequeueRequest(op.req)
+}
+
 // This class represents the base client handling connections to a Couchbase Server.
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
@@ -706,7 +719,15 @@ type RemoveCallback func(uint64, error)
 type StoreCallback func(uint64, error)
 type CounterCallback func(uint64, uint64, error)
 
-func (c *Agent) Get(key []byte, cb GetCallback) error {
+func (c *Agent) dispatchOp(req *memdRequest) (PendingOp, error) {
+	err := c.dispatchDirect(req)
+	if err != nil {
+		return nil, err
+	}
+	return memdPendingOp{c, req}, nil
+}
+
+func (c *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -725,10 +746,10 @@ func (c *Agent) Get(key []byte, cb GetCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) error {
+func (c *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -751,10 +772,10 @@ func (c *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) error {
+func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -777,10 +798,10 @@ func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) error {
+func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -800,17 +821,17 @@ func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) Touch(key []byte, expiry uint32, cb TouchCallback) error {
+func (c *Agent) Touch(key []byte, expiry uint32, cb TouchCallback) (PendingOp, error) {
 	// This seems odd, but this is how it's done in Node.js
 	return c.GetAndTouch(key, expiry, func(value []byte, flags uint32, cas uint64, err error) {
 		cb(cas, err)
 	})
 }
 
-func (c *Agent) Unlock(key []byte, cas uint64, cb UnlockCallback) error {
+func (c *Agent) Unlock(key []byte, cas uint64, cb UnlockCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(0, err)
@@ -829,10 +850,10 @@ func (c *Agent) Unlock(key []byte, cas uint64, cb UnlockCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) Remove(key []byte, cas uint64, cb RemoveCallback) error {
+func (c *Agent) Remove(key []byte, cas uint64, cb RemoveCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(0, err)
@@ -851,10 +872,10 @@ func (c *Agent) Remove(key []byte, cas uint64, cb RemoveCallback) error {
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) store(opcode commandCode, key, value []byte, flags uint32, cas uint64, expiry uint32, cb StoreCallback) error {
+func (c *Agent) store(opcode commandCode, key, value []byte, flags uint32, cas uint64, expiry uint32, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(0, err)
@@ -876,22 +897,22 @@ func (c *Agent) store(opcode commandCode, key, value []byte, flags uint32, cas u
 		Value:    value,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) Add(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) error {
+func (c *Agent) Add(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
 	return c.store(cmdAdd, key, value, flags, 0, expiry, cb)
 }
 
-func (c *Agent) Set(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) error {
+func (c *Agent) Set(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
 	return c.store(cmdSet, key, value, flags, 0, expiry, cb)
 }
 
-func (c *Agent) Replace(key, value []byte, flags uint32, cas uint64, expiry uint32, cb StoreCallback) error {
+func (c *Agent) Replace(key, value []byte, flags uint32, cas uint64, expiry uint32, cb StoreCallback) (PendingOp, error) {
 	return c.store(cmdReplace, key, value, flags, cas, expiry, cb)
 }
 
-func (c *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallback) error {
+func (c *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(0, err)
@@ -910,18 +931,18 @@ func (c *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallback) 
 		Value:    value,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) Append(key, value []byte, cb StoreCallback) error {
+func (c *Agent) Append(key, value []byte, cb StoreCallback) (PendingOp, error) {
 	return c.adjoin(cmdAppend, key, value, cb)
 }
 
-func (c *Agent) Prepend(key, value []byte, cb StoreCallback) error {
+func (c *Agent) Prepend(key, value []byte, cb StoreCallback) (PendingOp, error) {
 	return c.adjoin(cmdPrepend, key, value, cb)
 }
 
-func (c *Agent) counter(opcode commandCode, key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) error {
+func (c *Agent) counter(opcode commandCode, key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(0, 0, err)
@@ -952,14 +973,14 @@ func (c *Agent) counter(opcode commandCode, key []byte, delta, initial uint64, e
 		Value:    nil,
 		Callback: handler,
 	}
-	return c.dispatchDirect(req)
+	return c.dispatchOp(req)
 }
 
-func (c *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) error {
+func (c *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
 	return c.counter(cmdIncrement, key, delta, initial, expiry, cb)
 }
 
-func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) error {
+func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
 	return c.counter(cmdDecrement, key, delta, initial, expiry, cb)
 }
 
