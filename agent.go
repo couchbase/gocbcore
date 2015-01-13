@@ -30,19 +30,30 @@ type memdResponse struct {
 }
 type memdCallback func(*memdResponse, error)
 type memdRequest struct {
-	Magic    commandMagic
-	Opcode   commandCode
-	Datatype uint8
-	Cas      uint64
-	Key      []byte
-	Extras   []byte
-	Value    []byte
+	// These properties are not modified once dispatched
+	Magic      commandMagic
+	Opcode     commandCode
+	Datatype   uint8
+	Cas        uint64
+	Key        []byte
+	Extras     []byte
+	Value      []byte
+	ReplicaIdx int
+	Callback   memdCallback
 
-	Callback memdCallback
+	// The unique lookup id assigned to this request for mapping
+	//   responses from the server back to their requests.
+	opaque uint32
 
-	// Controlled internally by Agent
-	opaque     uint32
-	vBucket    uint16
+	// The target vBucket id for this request.  This is usually
+	//   updated by the routing function when a request is routed.
+	vBucket uint16
+
+	// This stores a pointer to the server that currently own
+	//   this request.  When a request is resolved or cancelled,
+	//   this is nulled out.  This property allows the request to
+	//   lookup who owns it during cancelling as well as prevents
+	//   callback after cancel, or cancel after callback.
 	queuedWith unsafe.Pointer
 }
 
@@ -381,6 +392,14 @@ func (c *Agent) serverRun(s *memdServer) {
 	for {
 		select {
 		case req := <-s.reqsCh:
+			// We do a cursory check of the server to avoid dispatching operations on the network
+			//   that have already knowingly been cancelled.  This doesn't prevent a cancelled
+			//   operation from being sent, but it does reduce network IO when possible.
+			server := (*memdServer)(atomic.LoadPointer(&req.queuedWith))
+			if server != s {
+				continue
+			}
+
 			err := s.writeRequest(req)
 			if err != nil {
 				fmt.Printf("Write failure occured for %v\n", req)
@@ -405,6 +424,93 @@ func (c *Agent) serverRun(s *memdServer) {
 	}
 }
 
+func (c *Agent) shotgunCccp() []byte {
+	var writtenReqs []*memdRequest
+	writtenOps := 0
+	respCh := make(chan *memdResponse)
+
+	for {
+		routingInfo := (*routeData)(atomic.LoadPointer(&c.routingInfo))
+
+		for _, srv := range routingInfo.servers {
+			req := makeCccpRequest()
+			req.Callback = func(resp *memdResponse, err error) {
+				if !err {
+					respCh <- resp
+				} else {
+					respCh <- nil
+				}
+			}
+			if !c.dispatchTo(srv, req) {
+				if writtenOps > 0 {
+					// If we've already written ops, we can't try again, so just keep
+					//   going as if this one didn't fail.
+					continue
+				} else {
+					// If no ops were written yet, then encountering a drained server
+					//   means we can just refresh our routing info and try again.
+					writtenOps = -1
+					break
+				}
+			}
+			writtenReqs = append(writtenReqs, req)
+			writtenOps++
+		}
+		if writtenOps == -1 {
+			continue
+		}
+
+		// Shotgun Success!
+		break
+	}
+
+	configCh := make(chan []byte)
+	cancelSig := make(chan bool)
+	go func() {
+		recvdOps := 0
+		for {
+			select {
+			case resp := <-respCh:
+				recvdOps++
+
+				if resp.Status != success {
+					if recvdOps == writtenOps {
+						// This is the last of the requests, and we are still
+						//   looping, so lets fail fast and let the reader know
+						//   that everyone is sucking...
+						configCh <- nil
+						break
+					} else {
+						// If there are requests left, just silently ignore.
+						continue
+					}
+				}
+
+				// Send back the received configuration!
+				configCh <- resp.Value
+				break
+			case <-cancelSig:
+				break
+			}
+		}
+
+		// Cancel the requests in case any are still pending, this is really
+		//   just an optimization as most of the requests probably were already
+		//   dispatched across the network...
+		for _, req := range writtenReqs {
+			c.dequeueRequest(req)
+		}
+	}()
+
+	select {
+	case configStr := <-configCh:
+		return configStr
+	case <-time.After(5 * time.Second):
+		cancelSig <- true
+		return nil
+	}
+}
+
 func (c *Agent) configRunner() {
 	// HTTP Polling
 	//  - run http polling
@@ -412,6 +518,41 @@ func (c *Agent) configRunner() {
 	//  c.globalRequestCh <- &memdRequest{
 	//    ReplicaIdx: -1 // No Specific Server
 	//  }
+
+	confSig := make(chan bool)
+	configCh := make(chan *cfgBucket)
+	lastConfig := time.Time{}
+	configMinWait := 1 * time.Second
+	configMaxWait := 120 * time.Second
+	lastCccpSrvIdx := 0
+
+	go func() {
+		for {
+			// Wait for an explicit configuration request, or for our explicit
+			//   max wait time to trip.
+			select {
+			case <-confSig:
+			case <-time.After(configMaxWait):
+			}
+
+			// Make sure if we receive multiple configuration requests quickly
+			//  that we don't spam the server with requests
+			configWait := time.Now().Sub(lastConfig)
+			if configWait < configMinWait {
+				continue
+			}
+
+			req := makeCccpRequest()
+			req.Callback = func(resp *memdResponse, err error) {
+
+			}
+
+			configCh <- nil
+		}
+	}()
+
+	confSig <- true
+
 }
 
 func (c *Agent) globalHandler() {
@@ -426,7 +567,7 @@ func (c *Agent) globalHandler() {
 
 			// Refresh the routing data with the existing configuration, this has
 			//   the effect of attempting to rebuild the dead server.
-			go c.updateConfig(nil)
+			c.updateConfig(nil)
 
 			// TODO(brett19): We probably should actually try other ways of resolving
 			//  the issue, like requesting a new configuration.
@@ -440,6 +581,7 @@ func (c *Agent) globalHandler() {
 
 // Accepts a cfgBucket object representing a cluster configuration and rebuilds the server list
 //  along with any routing information for the Client.  Passing no config will refresh the existing one.
+//  This method MUST NEVER BLOCK due to its use from various contention points.
 func (c *Agent) updateConfig(bk *cfgBucket) {
 	atomic.AddUint64(&c.Stats.NumConfigUpdate, 1)
 
@@ -524,9 +666,13 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 
 		// Build a new routing object
 		rt := func(req *memdRequest) *memdServer {
+			repId := req.ReplicaIdx
+			if repId < 0 {
+				repId = 0
+			}
 			vbId := cbCrc(req.Key) % uint32(len(bk.VBucketServerMap.VBucketMap))
 			req.vBucket = uint16(vbId)
-			srvIdx := bk.VBucketServerMap.VBucketMap[vbId][0]
+			srvIdx := bk.VBucketServerMap.VBucketMap[vbId][repId]
 
 			rand.Seed(time.Now().UnixNano())
 			if rand.Int31n(2) == 1 {
@@ -573,7 +719,7 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 		}
 		if !found {
 			fmt.Printf("Draining server %s\n", oldServer.address)
-			c.drainServer(oldServer)
+			go c.drainServer(oldServer)
 		}
 	}
 }
@@ -688,6 +834,28 @@ func (c *Agent) drainServer(s *memdServer) {
 	signal <- true
 }
 
+// Dispatch a request to a specific server instance, this operation will
+//   fail if the server you're dispatching to has been drained.  If this
+//   occurs, you should refresh your view of the routing information.
+func (c *Agent) dispatchTo(server *memdServer, req *memdRequest) bool {
+	server.lock.RLock()
+	if server.isDrained {
+		server.lock.RUnlock()
+		return false
+	}
+
+	server.mapLock.Lock()
+	server.opIndex++
+	req.opaque = server.opIndex
+	server.opMap[req.opaque] = req
+	atomic.StorePointer(&req.queuedWith, unsafe.Pointer(server))
+	server.mapLock.Unlock()
+
+	server.reqsCh <- req
+	server.lock.RUnlock()
+	return true
+}
+
 // This immediately dispatches a request to the appropriate server based on the
 //  currently applicable routing data.
 func (c *Agent) dispatchDirect(req *memdRequest) error {
@@ -699,21 +867,10 @@ func (c *Agent) dispatchDirect(req *memdRequest) error {
 		routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
 		server := routingInfo.routeFn(req)
 
-		server.lock.RLock()
-		if server.isDrained {
-			server.lock.RUnlock()
+		if !c.dispatchTo(server, req) {
 			continue
 		}
 
-		server.mapLock.Lock()
-		server.opIndex++
-		req.opaque = server.opIndex
-		server.opMap[req.opaque] = req
-		atomic.StorePointer(&req.queuedWith, unsafe.Pointer(server))
-		server.mapLock.Unlock()
-
-		server.reqsCh <- req
-		server.lock.RUnlock()
 		break
 	}
 	return nil
@@ -724,7 +881,14 @@ func (c *Agent) dispatchDirect(req *memdRequest) error {
 //   not need to be cleaned up.
 func (c *Agent) redispatchDirect(origServer *memdServer, req *memdRequest) {
 	if atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(origServer), nil) {
-		c.dispatchDirect(req)
+		if req.ReplicaIdx >= 0 {
+			// Reschedule the operation
+			c.dispatchDirect(req)
+		} else {
+			// Callback advising that a network failure caused this operation to
+			//   not be processed, nothing outside the agent should really see this.
+			req.Callback(nil, agentError{"Network failure"})
+		}
 	}
 }
 
@@ -1052,19 +1216,15 @@ func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb C
 	return c.counter(cmdDecrement, key, delta, initial, expiry, cb)
 }
 
-/*
-func (c *Agent) GetCapiEp() string {
-	usCapiEps := atomic.LoadPointer(&c.capiEps)
-	capiEps := *(*[]string)(usCapiEps)
-	return capiEps[rand.Intn(len(capiEps))]
+func (c *Agent) GetCapiEps() []string {
+	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
+	return routingInfo.capiEps
 }
 
-func (c *Agent) GetMgmtEp() string {
-	usMgmtEps := atomic.LoadPointer(&c.mgmtEps)
-	mgmtEps := *(*[]string)(usMgmtEps)
-	return mgmtEps[rand.Intn(len(mgmtEps))]
+func (c *Agent) GetMgmtEps() []string {
+	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
+	return routingInfo.mgmtEps
 }
-*/
 
 func (c *Agent) SetOperationTimeout(val time.Duration) {
 	c.operationTimeout = val
