@@ -224,6 +224,7 @@ func (s *memdServer) connect(authFn AuthFunc) error {
 	if !s.useSsl {
 		conn, err := net.Dial("tcp", s.address)
 		if err != nil {
+			fmt.Printf("Dial Error %v\n", err)
 			return err
 		}
 		fmt.Printf("Dial Complete\n")
@@ -234,6 +235,7 @@ func (s *memdServer) connect(authFn AuthFunc) error {
 			InsecureSkipVerify: true,
 		})
 		if err != nil {
+			fmt.Printf("SSL Dial Error %v\n", err)
 			return err
 		}
 		fmt.Printf("SSL Dial Complete\n")
@@ -435,7 +437,7 @@ func (c *Agent) shotgunCccp() []byte {
 		for _, srv := range routingInfo.servers {
 			req := makeCccpRequest()
 			req.Callback = func(resp *memdResponse, err error) {
-				if !err {
+				if err == nil {
 					respCh <- resp
 				} else {
 					respCh <- nil
@@ -524,7 +526,7 @@ func (c *Agent) configRunner() {
 	lastConfig := time.Time{}
 	configMinWait := 1 * time.Second
 	configMaxWait := 120 * time.Second
-	lastCccpSrvIdx := 0
+	//lastCccpSrvIdx := 0
 
 	go func() {
 		for {
@@ -1223,12 +1225,12 @@ func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb C
 
 func (c *Agent) GetCapiEps() []string {
 	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
-	return routingInfo.capiEps
+	return routingInfo.capiEpList
 }
 
 func (c *Agent) GetMgmtEps() []string {
 	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
-	return routingInfo.mgmtEps
+	return routingInfo.mgmtEpList
 }
 
 func (c *Agent) SetOperationTimeout(val time.Duration) {
