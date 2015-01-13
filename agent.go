@@ -1034,6 +1034,10 @@ func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (Pending
 }
 
 func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
+	if replicaIdx <= 0 {
+		panic("Replica number must be greater than 0")
+	}
+
 	handler := func(resp *memdResponse, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -1044,14 +1048,15 @@ func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingO
 	}
 
 	req := &memdRequest{
-		Magic:    reqMagic,
-		Opcode:   cmdGetReplica,
-		Datatype: 0,
-		Cas:      0,
-		Extras:   nil,
-		Key:      key,
-		Value:    nil,
-		Callback: handler,
+		Magic:      reqMagic,
+		Opcode:     cmdGetReplica,
+		Datatype:   0,
+		Cas:        0,
+		Extras:     nil,
+		Key:        key,
+		Value:      nil,
+		Callback:   handler,
+		ReplicaIdx: replicaIdx,
 	}
 	return c.dispatchOp(req)
 }
