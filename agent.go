@@ -157,13 +157,6 @@ type Agent struct {
 	}
 }
 
-func (c *Agent) KillTest() {
-	routingInfo := (*routeData)(atomic.LoadPointer(&c.routingInfo))
-	server := routingInfo.servers[rand.Intn(len(routingInfo.servers))]
-	fmt.Printf("Killing server %s\n", server.address)
-	server.conn.Close()
-}
-
 // Creates a new memdServer object for the specified address.
 func (c *Agent) createServer(addr string) *memdServer {
 	return &memdServer{
