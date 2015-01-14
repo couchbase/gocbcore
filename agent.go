@@ -6,7 +6,6 @@ import "encoding/binary"
 import "net"
 import "crypto/tls"
 import "strings"
-import "net/http"
 import "sync/atomic"
 import "encoding/json"
 import "time"
@@ -142,13 +141,9 @@ type Agent struct {
 
 	routingInfo unsafe.Pointer
 
-	httpCli *http.Client
-
 	configCh     chan *cfgBucket
 	configWaitCh chan *memdRequest
 	deadServerCh chan *memdServer
-
-	operationTimeout time.Duration
 
 	Stats struct {
 		NumConfigUpdate  uint64
@@ -730,13 +725,11 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 	fmt.Printf("ADDRs: %v\n", memdAddrs)
 
 	c := &Agent{
-		useSsl:           useSsl,
-		authFn:           authFn,
-		httpCli:          &http.Client{},
-		configCh:         make(chan *cfgBucket, 0),
-		configWaitCh:     make(chan *memdRequest, 1),
-		deadServerCh:     make(chan *memdServer, 1),
-		operationTimeout: 2500 * time.Millisecond,
+		useSsl:       useSsl,
+		authFn:       authFn,
+		configCh:     make(chan *cfgBucket, 0),
+		configWaitCh: make(chan *memdRequest, 1),
+		deadServerCh: make(chan *memdServer, 1),
 	}
 
 	var firstConfig *cfgBucket
@@ -1231,11 +1224,4 @@ func (c *Agent) GetCapiEps() []string {
 func (c *Agent) GetMgmtEps() []string {
 	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
 	return routingInfo.mgmtEpList
-}
-
-func (c *Agent) SetOperationTimeout(val time.Duration) {
-	c.operationTimeout = val
-}
-func (c *Agent) GetOperationTimeout() time.Duration {
-	return c.operationTimeout
 }
