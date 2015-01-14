@@ -1,6 +1,8 @@
 package gocouchbaseio
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type agentError struct {
 	message string

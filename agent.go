@@ -1,18 +1,20 @@
 package gocouchbaseio
 
-import "fmt"
-import "io"
-import "encoding/binary"
-import "net"
-import "crypto/tls"
-import "strings"
-import "sync/atomic"
-import "encoding/json"
-import "time"
-import "unsafe"
-import "sync"
-import "math/rand"
-import "strconv"
+import (
+	"crypto/tls"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
+)
 
 type memdResponse struct {
 	Magic    commandMagic
