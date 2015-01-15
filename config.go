@@ -65,6 +65,7 @@ type cfgVBucketServerMap struct {
 
 // Bucket is the primary entry point for most data operations.
 type cfgBucket struct {
+	SourceHostname      string
 	AuthType            string             `json:"authType"`
 	Capabilities        []string           `json:"bucketCapabilities"`
 	CapabilitiesVersion string             `json:"bucketCapabilitiesVer"`

@@ -193,6 +193,19 @@ func makePlainAuthRequest(bucket, password string) *memdRequest {
 	}
 }
 
+func parseConfig(source *memdServer, config []byte) (*cfgBucket, error) {
+	configStr := strings.Replace(string(config), "$HOST", source.hostname(), -1)
+
+	bk := new(cfgBucket)
+	err := json.Unmarshal([]byte(configStr), bk)
+	if err != nil {
+		return nil, err
+	}
+
+	bk.SourceHostname = source.hostname()
+	return bk, nil
+}
+
 // Creates a new memdRequest object to perform a configuration request.
 func makeCccpRequest() *memdRequest {
 	return &memdRequest{
@@ -582,6 +595,12 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 			} else {
 				kvPort = node.Services.KvSsl
 			}
+
+			// Hostname blank means to use the same one as was connected to
+			if node.Hostname == "" {
+				node.Hostname = bk.SourceHostname
+			}
+
 			kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", node.Hostname, kvPort))
 
 			if !c.useSsl {
@@ -719,9 +738,10 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 			continue
 		}
 
-		configStr := strings.Replace(string(resp.Value), "$HOST", srv.hostname(), -1)
-		bk := new(cfgBucket)
-		err = json.Unmarshal([]byte(configStr), bk)
+		bk, err := parseConfig(srv, resp.Value)
+		if err != nil {
+			continue
+		}
 
 		go c.serverRun(srv)
 
@@ -868,8 +888,7 @@ func (c *Agent) resolveRequest(s *memdServer, resp *memdResponse) {
 		// If this is a Not-My-VBucket, redispatch the request again after a config update.
 		if resp.Status == notMyVBucket {
 			// Try to parse the value as a bucket configuration
-			bk := new(cfgBucket)
-			err := json.Unmarshal(resp.Value, bk)
+			bk, err := parseConfig(s, resp.Value)
 			if err == nil {
 				c.updateConfig(bk)
 			}
