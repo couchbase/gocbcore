@@ -163,8 +163,8 @@ func (c *Agent) createServer(addr string) *memdServer {
 	return &memdServer{
 		address:    addr,
 		useSsl:     c.useSsl,
-		reqsCh:     make(chan *memdRequest),
-		opMap:      make(map[uint32]*memdRequest),
+		reqsCh:     make(chan *memdRequest, 1000),
+		opMap:      make(map[uint32]*memdRequest, 2000),
 		recvHdrBuf: make([]byte, 24),
 	}
 }
@@ -698,9 +698,9 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 	c := &Agent{
 		useSsl:       useSsl,
 		authFn:       authFn,
-		configCh:     make(chan *cfgBucket, 0),
-		configWaitCh: make(chan *memdRequest, 1),
-		deadServerCh: make(chan *memdServer, 1),
+		configCh:     make(chan *cfgBucket, 5),
+		configWaitCh: make(chan *memdRequest, 5),
+		deadServerCh: make(chan *memdServer, 5),
 	}
 
 	var firstConfig *cfgBucket
