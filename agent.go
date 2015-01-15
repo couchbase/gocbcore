@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -209,15 +208,11 @@ func makeCccpRequest() *memdRequest {
 
 // Dials and Authenticates a memdServer object to the cluster.
 func (s *memdServer) connect(authFn AuthFunc) error {
-	fmt.Printf("Dialing %s\n", s.address)
-
 	if !s.useSsl {
 		conn, err := net.Dial("tcp", s.address)
 		if err != nil {
-			fmt.Printf("Dial Error %v\n", err)
 			return err
 		}
-		fmt.Printf("Dial Complete\n")
 
 		s.conn = conn
 	} else {
@@ -225,21 +220,17 @@ func (s *memdServer) connect(authFn AuthFunc) error {
 			InsecureSkipVerify: true,
 		})
 		if err != nil {
-			fmt.Printf("SSL Dial Error %v\n", err)
 			return err
 		}
-		fmt.Printf("SSL Dial Complete\n")
 
 		s.conn = conn
 	}
 
 	err := authFn(&memdAuthClient{s})
 	if err != nil {
-		fmt.Printf("Server authentication failed!\n")
 		return agentError{"Authentication failure."}
 	}
 
-	fmt.Printf("Server connect success (%s)!\n", s.address)
 	return nil
 }
 
@@ -394,8 +385,6 @@ func (c *Agent) serverRun(s *memdServer) {
 
 			err := s.writeRequest(req)
 			if err != nil {
-				fmt.Printf("Write failure occured for %v\n", req)
-
 				// Lock the server to write to it's queue, as used in dispatchRequest.
 				//   If the server has already been drained, this indicates that the routing
 				//   information is update, the servers opMap is thrown out and we are safe
@@ -548,10 +537,7 @@ func (c *Agent) configRunner() {
 }
 
 func (c *Agent) globalHandler() {
-	fmt.Printf("Global Handler Running\n")
 	for {
-		fmt.Printf("Global Handler Loop\n")
-
 		select {
 		case deadSrv := <-c.deadServerCh:
 			// Mark the server as dead
@@ -616,8 +602,6 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 			mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s", node.Hostname))
 		}
 	}
-
-	fmt.Printf("Gogo Server List: %v\n", kvServerList)
 
 	var newRouting *routeData
 	var oldServers []*memdServer
@@ -690,7 +674,6 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 
 	// Launch all the new servers
 	for _, addServer := range addServers {
-		fmt.Printf("Launching server %s\n", addServer.address)
 		go c.serverConnectRun(addServer, c.authFn)
 	}
 
@@ -704,15 +687,12 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 			}
 		}
 		if !found {
-			fmt.Printf("Draining server %s\n", oldServer.address)
 			go c.drainServer(oldServer)
 		}
 	}
 }
 
 func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*Agent, error) {
-	fmt.Printf("ADDRs: %v\n", memdAddrs)
-
 	c := &Agent{
 		useSsl:       useSsl,
 		authFn:       authFn,
@@ -725,28 +705,21 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 	for _, thisHostPort := range memdAddrs {
 		srv := c.createServer(thisHostPort)
 
-		fmt.Printf("Time to connect new server %s\n", thisHostPort)
 		atomic.AddUint64(&c.Stats.NumServerConnect, 1)
 		err := srv.connect(authFn)
 
-		fmt.Printf("MConnect: %v, %v\n", srv, err)
 		if err != nil {
-			fmt.Printf("Connection to %s failed, continueing\n", thisHostPort)
 			continue
 		}
 
 		resp, err := srv.doRequest(makeCccpRequest())
 		if err != nil {
-			fmt.Printf("CCCP failed on %s, continueing\n", thisHostPort)
 			continue
 		}
-
-		fmt.Printf("Request processed %v\n", resp)
 
 		configStr := strings.Replace(string(resp.Value), "$HOST", srv.hostname(), -1)
 		bk := new(cfgBucket)
 		err = json.Unmarshal([]byte(configStr), bk)
-		fmt.Printf("DATA: %v %v\n", err, bk)
 
 		go c.serverRun(srv)
 
@@ -765,8 +738,6 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 	}
 
 	if firstConfig == nil {
-		fmt.Printf("Failed to get CCCP config, trying HTTP")
-
 		panic("HTTP configurations not yet supported")
 
 		//go httpConfigHandler()
@@ -898,8 +869,6 @@ func (c *Agent) resolveRequest(s *memdServer, resp *memdResponse) {
 			if err == nil {
 				c.updateConfig(bk)
 			}
-
-			fmt.Printf("NMV Redispatch!\n")
 
 			// Redirect it!  This may actually come back to this server, but I won't tell
 			//   if you don't ;)
