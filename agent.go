@@ -914,7 +914,11 @@ func (c *Agent) resolveRequest(s *memdServer, resp *memdResponse) {
 		} else {
 			// Check that the request is still linked to us, unlink it and dispatch its callback
 			if atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(s), nil) {
-				req.Callback(resp, nil)
+				if resp.Status == success {
+					req.Callback(resp, nil)
+				} else {
+					req.Callback(nil, &memdError{resp.Status})
+				}
 			}
 		}
 	}
