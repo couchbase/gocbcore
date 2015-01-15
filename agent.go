@@ -449,6 +449,8 @@ func (c *Agent) shotgunCccp() []byte {
 	cancelSig := make(chan bool)
 	go func() {
 		recvdOps := 0
+
+	RecvOrSignalLoop:
 		for {
 			select {
 			case resp := <-respCh:
@@ -460,7 +462,7 @@ func (c *Agent) shotgunCccp() []byte {
 						//   looping, so lets fail fast and let the reader know
 						//   that everyone is sucking...
 						configCh <- nil
-						break
+						break RecvOrSignalLoop
 					} else {
 						// If there are requests left, just silently ignore.
 						continue
@@ -469,9 +471,9 @@ func (c *Agent) shotgunCccp() []byte {
 
 				// Send back the received configuration!
 				configCh <- resp.Value
-				break
+				break RecvOrSignalLoop
 			case <-cancelSig:
-				break
+				break RecvOrSignalLoop
 			}
 		}
 
@@ -742,11 +744,11 @@ func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, authFn AuthFunc) (*
 
 		//go httpConfigHandler()
 		// Need to select here for timeouts
-		firstConfig := <-c.configCh
+		//firstConfig := <-c.configCh
 
-		if firstConfig == nil {
-			panic("Failed to retrieve first good configuration.")
-		}
+		//if firstConfig == nil {
+		//	panic("Failed to retrieve first good configuration.")
+		//}
 	}
 
 	c.updateConfig(firstConfig)
@@ -762,22 +764,24 @@ func (c *Agent) drainServer(s *memdServer) {
 	signal := make(chan bool)
 
 	go func() {
+		// We need to drain the queue while also waiting for the signal, as the
+		//   lock required before signalling can be held by other goroutines who
+		//   are trying to send to the queue which might be full.
 		for {
 			select {
 			case req := <-s.reqsCh:
 				c.redispatchDirect(s, req)
 			case <-signal:
-				break
-			}
-		}
-		// Signal means no more requests will be added to the queue, but we still
-		//  need to drain what was there.
-		for {
-			select {
-			case req := <-s.reqsCh:
-				c.redispatchDirect(s, req)
-			default:
-				break
+				// Signal means no more requests will be added to the queue, but we still
+				//  need to drain what was there.
+				for {
+					select {
+					case req := <-s.reqsCh:
+						c.redispatchDirect(s, req)
+					default:
+						return
+					}
+				}
 			}
 		}
 	}()
