@@ -666,12 +666,6 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 			req.vBucket = uint16(vbId)
 			srvIdx := bk.VBucketServerMap.VBucketMap[vbId][repId]
 
-			rand.Seed(time.Now().UnixNano())
-			if rand.Int31n(2) == 1 {
-				fmt.Printf("Randomly causing NMV for fun..\n")
-				srvIdx = int(rand.Int31n(int32(len(newServers))))
-			}
-
 			return newServers[srvIdx]
 		}
 		newRouting = &routeData{
