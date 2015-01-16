@@ -221,32 +221,32 @@ func makeCccpRequest() *memdRequest {
 
 // Dials and Authenticates a memdServer object to the cluster.
 func (s *memdServer) connect(authFn AuthFunc) error {
+	addr, err := net.ResolveTCPAddr("tcp", s.address)
+	if err != nil {
+		return err
+	}
+
+	conn, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		return err
+	}
+
+	conn.SetNoDelay(false)
+
 	if !s.useSsl {
-		addr, err := net.ResolveTCPAddr("tcp", s.address)
-		if err != nil {
-			return err
-		}
-
-		conn, err := net.DialTCP("tcp", nil, addr)
-		if err != nil {
-			return err
-		}
-
-		conn.SetNoDelay(false)
-
 		s.conn = conn
 	} else {
-		conn, err := tls.Dial("tcp", s.address, &tls.Config{
+		tlsConn := tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: true,
 		})
 		if err != nil {
 			return err
 		}
 
-		s.conn = conn
+		s.conn = tlsConn
 	}
 
-	err := authFn(&memdAuthClient{s})
+	err = authFn(&memdAuthClient{s})
 	if err != nil {
 		return agentError{"Authentication failure."}
 	}
