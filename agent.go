@@ -71,7 +71,7 @@ type memdServer struct {
 	opMap   map[uint32]*memdRequest
 	mapLock sync.Mutex
 
-	recvHdrBuf []byte
+	recvBuf []byte
 }
 
 func (s *memdServer) hostname() string {
@@ -161,11 +161,10 @@ type Agent struct {
 // Creates a new memdServer object for the specified address.
 func (c *Agent) createServer(addr string) *memdServer {
 	return &memdServer{
-		address:    addr,
-		useSsl:     c.useSsl,
-		reqsCh:     make(chan *memdRequest, 1000),
-		opMap:      make(map[uint32]*memdRequest, 2000),
-		recvHdrBuf: make([]byte, 24),
+		address: addr,
+		useSsl:  c.useSsl,
+		reqsCh:  make(chan *memdRequest, 1000),
+		opMap:   make(map[uint32]*memdRequest, 2000),
 	}
 }
 
@@ -306,18 +305,47 @@ func (s *memdServer) DoSelectBucket(b []byte) error {
 	return err
 }
 
-func (s *memdServer) readResponse() (*memdResponse, error) {
-	hdrBuf := s.recvHdrBuf
+func (s *memdServer) readBuffered(n int) ([]byte, error) {
+	// Make sure our buffer is big enough to hold all our data
+	if len(s.recvBuf) < n {
+		neededSize := 4096
+		if neededSize < n {
+			neededSize = n
+		}
+		newBuf := make([]byte, neededSize)
+		copy(newBuf[0:], s.recvBuf[0:])
+		s.recvBuf = newBuf[0:len(s.recvBuf)]
+	}
 
-	_, err := io.ReadFull(s.conn, hdrBuf)
+	// Loop till we encounter an error or have enough data...
+	for {
+		// Check if we already have enough data buffered
+		if n <= len(s.recvBuf) {
+			buf := s.recvBuf[0:n]
+			s.recvBuf = s.recvBuf[n:]
+			return buf, nil
+		}
+
+		// Read data up to the capacity
+		recvTgt := s.recvBuf[len(s.recvBuf):cap(s.recvBuf)]
+		n, err := s.conn.Read(recvTgt)
+		if n <= 0 {
+			return nil, err
+		}
+
+		// Update the len of our slice to encompass our new data
+		s.recvBuf = s.recvBuf[:len(s.recvBuf)+n]
+	}
+}
+
+func (s *memdServer) readResponse() (*memdResponse, error) {
+	hdrBuf, err := s.readBuffered(24)
 	if err != nil {
 		return nil, err
 	}
 
 	bodyLen := int(binary.BigEndian.Uint32(hdrBuf[8:]))
-
-	bodyBuf := make([]byte, bodyLen)
-	_, err = io.ReadFull(s.conn, bodyBuf)
+	bodyBuf, err := s.readBuffered(bodyLen)
 	if err != nil {
 		return nil, err
 	}
