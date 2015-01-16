@@ -222,10 +222,17 @@ func makeCccpRequest() *memdRequest {
 // Dials and Authenticates a memdServer object to the cluster.
 func (s *memdServer) connect(authFn AuthFunc) error {
 	if !s.useSsl {
-		conn, err := net.Dial("tcp", s.address)
+		addr, err := net.ResolveTCPAddr("tcp", s.address)
 		if err != nil {
 			return err
 		}
+
+		conn, err := net.DialTCP("tcp", nil, addr)
+		if err != nil {
+			return err
+		}
+
+		conn.SetNoDelay(false)
 
 		s.conn = conn
 	} else {
