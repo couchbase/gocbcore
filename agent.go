@@ -371,6 +371,10 @@ func (s *memdServer) writeRequest(req *memdRequest) error {
 	keyLen := len(req.Key)
 	valLen := len(req.Value)
 
+	// Go appears to do some clever things in regards to writing data
+	//   to the kernel for network dispatch.  Having a write buffer
+	//   per-server that is re-used actually hinders performance...
+	// For now, we will simply create a new buffer and let it be GC'd.
 	buffer := make([]byte, 24+keyLen+extLen+valLen)
 
 	buffer[0] = uint8(req.Magic)
