@@ -12,7 +12,7 @@ type routerFunc func(*memdRequest) *memdQueueConn
 type routeData struct {
 	revId      uint
 	servers    []*memdQueueConn
-	routeFn    routerFunc
+	vbMap      [][]int
 	capiEpList []string
 	mgmtEpList []string
 
@@ -188,25 +188,12 @@ func (c *Agent) updateConfig(bk *cfgBucket) {
 		}
 
 		// Build a new routing object
-		rt := func(req *memdRequest) *memdQueueConn {
-			if req.ReplicaIdx < 0 {
-				srvIdx := bk.VBucketServerMap.VBucketMap[req.Vbucket][0]
-				return newServers[srvIdx]
-			} else {
-				repId := req.ReplicaIdx
-				vbId := cbCrc(req.Key) % uint32(len(bk.VBucketServerMap.VBucketMap))
-				req.Vbucket = uint16(vbId)
-				srvIdx := bk.VBucketServerMap.VBucketMap[vbId][repId]
-
-				return newServers[srvIdx]
-			}
-		}
 		newRouting = &routeData{
 			revId:      0,
 			servers:    newServers,
 			capiEpList: capiEpList,
 			mgmtEpList: mgmtEpList,
-			routeFn:    rt,
+			vbMap:      bk.VBucketServerMap.VBucketMap,
 			source:     bk,
 		}
 
@@ -371,6 +358,20 @@ func (c *Agent) redispatchDirect(req *memdRequest) {
 	}
 }
 
+func (c *Agent) routeRequest(req *memdRequest) *memdQueueConn {
+	routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
+
+	repId := req.ReplicaIdx
+	if repId < 0 {
+		panic("Uhh ohh...")
+	} else {
+		vbId := cbCrc(req.Key) % uint32(len(routingInfo.vbMap))
+		req.Vbucket = uint16(vbId)
+		srvIdx := routingInfo.vbMap[vbId][repId]
+		return routingInfo.servers[srvIdx]
+	}
+}
+
 // This immediately dispatches a request to the appropriate server based on the
 //  currently available routing data.
 func (c *Agent) dispatchDirect(req *memdRequest) error {
@@ -380,8 +381,7 @@ func (c *Agent) dispatchDirect(req *memdRequest) error {
 	// if c.isShutDown { return "Shutting down" }
 
 	for {
-		routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
-		server := routingInfo.routeFn(req)
+		server := c.routeRequest(req)
 
 		if !server.DispatchRequest(req) {
 			continue
