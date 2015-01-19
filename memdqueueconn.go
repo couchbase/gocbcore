@@ -12,38 +12,10 @@ import (
 	"unsafe"
 )
 
+// Interface used by memdQueueConn to connect to a memcache server.
 type Dialer interface {
+	// Dials an address and returns a ReadWriteCloser for that connection.
 	Dial(address string, useSsl bool) (io.ReadWriteCloser, error)
-}
-
-type DefaultDialer struct {
-}
-
-func (d *DefaultDialer) Dial(address string, useSsl bool) (io.ReadWriteCloser, error) {
-	addr, err := net.ResolveTCPAddr("tcp", address)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := net.DialTCP("tcp", nil, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	conn.SetNoDelay(false)
-
-	if !useSsl {
-		return conn, nil
-	}
-
-	tlsConn := tls.Client(conn, &tls.Config{
-		InsecureSkipVerify: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return tlsConn, nil
 }
 
 type AuthClient interface {
@@ -55,6 +27,11 @@ type AuthClient interface {
 	SelectBucket(b []byte) error
 	OpenDcpStream(streamName string) error
 }
+
+type AuthFunc func(AuthClient) error
+
+type CloseHandler func(*memdQueueConn)
+type BadRouteHandler func(*memdQueueConn, *memdRequest, *memdResponse)
 
 type memdAuthClient struct {
 	srv *memdQueueConn
@@ -78,11 +55,6 @@ func (s *memdAuthClient) SelectBucket(b []byte) error {
 func (s *memdAuthClient) OpenDcpStream(streamName string) error {
 	return s.srv.DoOpenDcpStream(streamName)
 }
-
-type AuthFunc func(AuthClient) error
-
-type CloseHandler func(*memdQueueConn)
-type BadRouteHandler func(*memdQueueConn, *memdRequest, *memdResponse)
 
 type Callback func(*memdResponse, error)
 type memdRequest struct {
@@ -110,6 +82,9 @@ type memdRequest struct {
 	//   callback after cancel, or cancel after callback.
 	queuedWith unsafe.Pointer
 
+	// Holds the next item in the opList, this is used by the
+	//   memdOpQueue to avoid extra GC for a discreet list
+	//   element structure.
 	queueNext *memdRequest
 }
 
@@ -298,73 +273,6 @@ func (s *memdQueueConn) ExecRequest(req *memdRequest) (respOut *memdResponse, er
 		req.Cancel()
 		return nil, &generalError{"Operation timed out."}
 	}
-}
-
-func (s *memdQueueConn) DoCccpRequest() ([]byte, error) {
-	resp, err := s.ExecRequest(&memdRequest{
-		Magic:    ReqMagic,
-		Opcode:   CmdGetClusterConfig,
-		Datatype: 0,
-		Cas:      0,
-		Extras:   nil,
-		Key:      nil,
-		Value:    nil,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Value, nil
-}
-
-func (s *memdQueueConn) doBasicOp(cmd CommandCode, k, v []byte) ([]byte, error) {
-	resp, err := s.ExecRequest(&memdRequest{
-		Magic:  ReqMagic,
-		Opcode: cmd,
-		Key:    k,
-		Value:  v,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return resp.Value, nil
-}
-func (s *memdQueueConn) DoSaslListMechs() ([]string, error) {
-	bytes, err := s.doBasicOp(CmdSASLListMechs, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	return strings.Split(string(bytes), " "), nil
-}
-func (s *memdQueueConn) DoSaslAuth(k, v []byte) ([]byte, error) {
-	return s.doBasicOp(CmdSASLAuth, k, v)
-}
-func (s *memdQueueConn) DoSaslStep(k, v []byte) ([]byte, error) {
-	return s.doBasicOp(CmdSASLStep, k, v)
-}
-func (s *memdQueueConn) DoSelectBucket(b []byte) error {
-	_, err := s.doBasicOp(CmdSelectBucket, nil, b)
-	return err
-}
-
-func (s *memdQueueConn) DoOpenDcpStream(streamName string) error {
-	extraBuf := make([]byte, 8)
-	binary.BigEndian.PutUint32(extraBuf[0:], 0)
-	binary.BigEndian.PutUint32(extraBuf[4:], 1)
-
-	_, err := s.ExecRequest(&memdRequest{
-		Magic:    ReqMagic,
-		Opcode:   CmdDcpOpenConnection,
-		Datatype: 0,
-		Cas:      0,
-		Extras:   extraBuf,
-		Key:      []byte(streamName),
-		Value:    nil,
-	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *memdQueueConn) writeRequest(req *memdRequest) error {
@@ -667,4 +575,71 @@ func (s *memdQueueConn) CloseAndDrain(reqCb drainedReqCallback) {
 
 	// Signal our drain coroutine that it can stop now.
 	signal <- true
+}
+
+func (s *memdQueueConn) DoCccpRequest() ([]byte, error) {
+	resp, err := s.ExecRequest(&memdRequest{
+		Magic:    ReqMagic,
+		Opcode:   CmdGetClusterConfig,
+		Datatype: 0,
+		Cas:      0,
+		Extras:   nil,
+		Key:      nil,
+		Value:    nil,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Value, nil
+}
+
+func (s *memdQueueConn) doBasicOp(cmd CommandCode, k, v []byte) ([]byte, error) {
+	resp, err := s.ExecRequest(&memdRequest{
+		Magic:  ReqMagic,
+		Opcode: cmd,
+		Key:    k,
+		Value:  v,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Value, nil
+}
+func (s *memdQueueConn) DoSaslListMechs() ([]string, error) {
+	bytes, err := s.doBasicOp(CmdSASLListMechs, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(string(bytes), " "), nil
+}
+func (s *memdQueueConn) DoSaslAuth(k, v []byte) ([]byte, error) {
+	return s.doBasicOp(CmdSASLAuth, k, v)
+}
+func (s *memdQueueConn) DoSaslStep(k, v []byte) ([]byte, error) {
+	return s.doBasicOp(CmdSASLStep, k, v)
+}
+func (s *memdQueueConn) DoSelectBucket(b []byte) error {
+	_, err := s.doBasicOp(CmdSelectBucket, nil, b)
+	return err
+}
+
+func (s *memdQueueConn) DoOpenDcpStream(streamName string) error {
+	extraBuf := make([]byte, 8)
+	binary.BigEndian.PutUint32(extraBuf[0:], 0)
+	binary.BigEndian.PutUint32(extraBuf[4:], 1)
+
+	_, err := s.ExecRequest(&memdRequest{
+		Magic:    ReqMagic,
+		Opcode:   CmdDcpOpenConnection,
+		Datatype: 0,
+		Cas:      0,
+		Extras:   extraBuf,
+		Key:      []byte(streamName),
+		Value:    nil,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
