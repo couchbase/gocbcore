@@ -128,7 +128,6 @@ func (q *memdOpQueue) Add(r *memdRequest) {
 	}
 }
 
-// This function assumes there is in fact a node after this one...
 func (q *memdOpQueue) remove(prev *memdRequest, req *memdRequest) {
 	if prev == nil {
 		q.first = req.queueNext
@@ -467,13 +466,7 @@ func (s *memdQueueConn) DispatchRequest(req *memdRequest) bool {
 		return false
 	}
 
-	s.mapLock.Lock()
-	s.opIndex++
-	req.opaque = s.opIndex
-	s.opList.Add(req)
-	//s.opMap[req.opaque] = req
 	atomic.StorePointer(&req.queuedWith, unsafe.Pointer(s))
-	s.mapLock.Unlock()
 
 	s.reqsCh <- req
 	s.lock.RUnlock()
@@ -570,8 +563,18 @@ WriterLoop:
 				continue
 			}
 
+			s.mapLock.Lock()
+			s.opIndex++
+			req.opaque = s.opIndex
+			s.opList.Add(req)
+			s.mapLock.Unlock()
+
 			err := s.writeRequest(req)
 			if err != nil {
+				s.mapLock.Lock()
+				s.opList.Remove(req)
+				s.mapLock.Unlock()
+
 				// We can assume that the server is not fully drained yet, as the drainer blocks
 				//   waiting for the IO goroutines to finish first.
 				s.reqsCh <- req
