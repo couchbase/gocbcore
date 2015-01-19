@@ -1,5 +1,10 @@
 package gocouchbaseio
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // RestPool represents a single pool returned from the pools REST API.
 type cfgRestPool struct {
 	Name         string `json:"name"`
@@ -90,4 +95,17 @@ type cfgBucket struct {
 	VBucketServerMap cfgVBucketServerMap `json:"vBucketServerMap"`
 	Nodes            []cfgNode           `json:"nodes"`
 	NodesExt         []cfgNodeExt        `json:"nodesExt,omitempty"`
+}
+
+func parseConfig(config []byte, srcHost string) (*cfgBucket, error) {
+	configStr := strings.Replace(string(config), "$HOST", srcHost, -1)
+
+	bk := new(cfgBucket)
+	err := json.Unmarshal([]byte(configStr), bk)
+	if err != nil {
+		return nil, err
+	}
+
+	bk.SourceHostname = srcHost
+	return bk, nil
 }

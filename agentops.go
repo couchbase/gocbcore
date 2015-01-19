@@ -281,34 +281,3 @@ func (c *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb C
 func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
 	return c.counter(CmdDecrement, key, delta, initial, expiry, cb)
 }
-
-type DcpStreamReqCallback func(error)
-
-func (c *Agent) DcpStreamReq(vbId int, startSeqNo, endSeqNo, vbUuid uint64, cb DcpStreamReqCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, err error) {
-		cb(err)
-	}
-
-	extraBuf := make([]byte, 48)
-	binary.BigEndian.PutUint32(extraBuf[0:], 0)
-	binary.BigEndian.PutUint32(extraBuf[4:], 0)
-	binary.BigEndian.PutUint64(extraBuf[8:], startSeqNo)
-	binary.BigEndian.PutUint64(extraBuf[16:], endSeqNo)
-	binary.BigEndian.PutUint64(extraBuf[24:], vbUuid)
-	binary.BigEndian.PutUint64(extraBuf[32:], startSeqNo)
-	binary.BigEndian.PutUint64(extraBuf[40:], endSeqNo)
-
-	req := &memdRequest{
-		Magic:      ReqMagic,
-		Opcode:     CmdDcpStreamReq,
-		Datatype:   0,
-		Cas:        0,
-		Extras:     extraBuf,
-		Key:        nil,
-		Value:      nil,
-		Callback:   handler,
-		ReplicaIdx: -1,
-		Vbucket:    uint16(cbCrc([]byte("testkey")) % 1024),
-	}
-	return c.dispatchOp(req)
-}

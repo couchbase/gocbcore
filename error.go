@@ -12,6 +12,17 @@ func (e generalError) Error() string {
 	return e.message
 }
 
+type networkError struct {
+}
+
+func (e networkError) Error() string {
+	return "Network error."
+}
+
+func (e networkError) NetworkError() bool {
+	return true
+}
+
 type memdError struct {
 	code StatusCode
 }
