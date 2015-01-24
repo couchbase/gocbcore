@@ -28,15 +28,17 @@ type Callback func(*memdResponse, error)
 //   and can potentially be rerouted to multiple servers due to
 //   configuration changes.
 type memdRequest struct {
-	// These properties are not modified once dispatched
-	Magic      CommandMagic
-	Opcode     CommandCode
-	Datatype   uint8
-	Cas        uint64
-	Vbucket    uint16
-	Key        []byte
-	Extras     []byte
-	Value      []byte
+	// Static packet properties
+	Magic    CommandMagic
+	Opcode   CommandCode
+	Datatype uint8
+	Cas      uint64
+	Vbucket  uint16
+	Key      []byte
+	Extras   []byte
+	Value    []byte
+
+	// Static routing properties
 	ReplicaIdx int
 	Callback   Callback
 	Persistent bool

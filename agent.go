@@ -1,8 +1,14 @@
 package gocouchbaseio
 
 import (
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -25,6 +31,7 @@ type PendingOp interface {
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
+	bucket     string
 	useSsl     bool
 	memdDialer Dialer
 	initFn     memdInitFunc
@@ -36,6 +43,8 @@ type Agent struct {
 	configWaitCh chan *memdRequest
 	deadServerCh chan *memdQueueConn
 
+	httpCli *http.Client
+
 	Stats struct {
 		NumConfigUpdate  uint64
 		NumServerConnect uint64
@@ -45,6 +54,39 @@ type Agent struct {
 		NumOp            uint64
 		NumOpResp        uint64
 		NumOpTimeout     uint64
+	}
+}
+
+type configStreamBlock struct {
+	Bytes []byte
+}
+
+func (i *configStreamBlock) UnmarshalJSON(data []byte) error {
+	i.Bytes = make([]byte, len(data))
+	copy(i.Bytes, data)
+	return nil
+}
+
+func (c *Agent) httpConfigStream(address, hostname, bucket string) {
+	uri := fmt.Sprintf("%s/pools/default/bucketsStreaming/%s", address, bucket)
+	resp, err := c.httpCli.Get(uri)
+	if err != nil {
+		return
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	configBlock := new(configStreamBlock)
+	for {
+		err := dec.Decode(configBlock)
+		if err != nil {
+			resp.Body.Close()
+			return
+		}
+
+		bkCfg, err := parseConfig(configBlock.Bytes, hostname)
+		if err == nil {
+			c.updateConfig(bkCfg)
+		}
 	}
 }
 
@@ -237,7 +279,7 @@ type AuthClient interface {
 
 type AuthFunc func(AuthClient) error
 
-func CreateDcpAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, authFn AuthFunc, dcpStreamName string) (*Agent, error) {
+func CreateDcpAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, bucketName string, authFn AuthFunc, dcpStreamName string) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
 	dcpInitFn := func(c *memdQueueConn) error {
@@ -246,24 +288,29 @@ func CreateDcpAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Diale
 		}
 		return c.OpenDcpChannel(dcpStreamName)
 	}
-	return createAgent(memdAddrs, httpAddrs, useSsl, memdDialer, dcpInitFn)
+	return createAgent(memdAddrs, httpAddrs, useSsl, memdDialer, bucketName, dcpInitFn)
 }
 
-func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, authFn AuthFunc) (*Agent, error) {
+func CreateAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, bucketName string, authFn AuthFunc) (*Agent, error) {
 	initFn := func(s *memdQueueConn) error {
 		return authFn(s)
 	}
-	return createAgent(memdAddrs, httpAddrs, useSsl, memdDialer, initFn)
+	return createAgent(memdAddrs, httpAddrs, useSsl, memdDialer, bucketName, initFn)
 }
 
-func createAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, initFn memdInitFunc) (*Agent, error) {
+func createAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, bucketName string, initFn memdInitFunc) (*Agent, error) {
 	if memdDialer == nil {
 		memdDialer = &DefaultDialer{}
 	}
+	tlsc := &tls.Config{
+		InsecureSkipVerify: true,
+	}
 	c := &Agent{
+		bucket:       bucketName,
 		useSsl:       useSsl,
 		initFn:       initFn,
 		memdDialer:   memdDialer,
+		httpCli:      &http.Client{Transport: &http.Transport{TLSClientConfig: tlsc}},
 		configCh:     make(chan *cfgBucket, 5),
 		configWaitCh: make(chan *memdRequest, 5),
 		deadServerCh: make(chan *memdQueueConn, 5),
@@ -272,6 +319,110 @@ func createAgent(memdAddrs, httpAddrs []string, useSsl bool, memdDialer Dialer, 
 		return nil, err
 	}
 	return c, nil
+}
+
+func hostnameFromUri(uri string) string {
+	uriInfo, err := url.Parse(uri)
+	if err != nil {
+		panic("Failed to parse URI to hostname!")
+	}
+	return strings.Split(uriInfo.Host, ":")[0]
+}
+
+func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
+	waitPeriod := 20 * time.Second
+	maxConnPeriod := 10 * time.Second
+	var iterNum uint64 = 1
+	iterSawConfig := false
+	seenNodes := make(map[string]uint64)
+	isFirstTry := true
+	for {
+		routingInfo := *(*routeData)(atomic.LoadPointer(&c.routingInfo))
+
+		var pickedSrv string
+		for _, srv := range routingInfo.mgmtEpList {
+			if seenNodes[srv] >= iterNum {
+				continue
+			}
+			pickedSrv = srv
+			break
+		}
+
+		fmt.Printf("Http Picked: %s\n", pickedSrv)
+
+		if pickedSrv == "" {
+			// All servers have been visited during this iteration
+			if isFirstTry {
+				fmt.Printf("Pick Failed\n")
+				firstCfgFn(nil, &agentError{"Failed to connect to all specified hosts."})
+				return
+			} else {
+				if !iterSawConfig {
+					fmt.Printf("Looper waiting...\n")
+					// Wait for a period before trying again if there was a problem...
+					<-time.After(waitPeriod)
+				}
+				fmt.Printf("Looping again\n")
+				// Go to next iteration and try all servers again
+				iterNum++
+				iterSawConfig = false
+				continue
+			}
+		}
+
+		hostname := hostnameFromUri(pickedSrv)
+
+		fmt.Printf("HTTP Hostname: %s\n", pickedSrv)
+
+		// HTTP request time!
+		uri := fmt.Sprintf("%s/pools/default/bucketsStreaming/%s", pickedSrv, c.bucket)
+		resp, err := c.httpCli.Get(uri)
+		if err != nil {
+			return
+		}
+
+		fmt.Printf("Connected\n")
+
+		// Autodisconnect eventually
+		go func() {
+			<-time.After(maxConnPeriod)
+			fmt.Printf("Auto DC!\n")
+			resp.Body.Close()
+		}()
+
+		dec := json.NewDecoder(resp.Body)
+		configBlock := new(configStreamBlock)
+		for {
+			err := dec.Decode(configBlock)
+			if err != nil {
+				resp.Body.Close()
+				break
+			}
+
+			fmt.Printf("Got Block.\n")
+
+			bkCfg, err := parseConfig(configBlock.Bytes, hostname)
+			if err != nil {
+				resp.Body.Close()
+				break
+			}
+
+			fmt.Printf("Got Config\n")
+
+			iterSawConfig = true
+			if isFirstTry {
+				fmt.Printf("HTTP Config Init\n")
+				firstCfgFn(bkCfg, nil)
+				isFirstTry = false
+			} else {
+				fmt.Printf("HTTP Config Update\n")
+				c.updateConfig(bkCfg)
+			}
+		}
+
+		fmt.Printf("HTTP, Setting %s to iter %d\n", pickedSrv, iterNum)
+		seenNodes[pickedSrv] = iterNum
+	}
 }
 
 func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
@@ -298,6 +449,12 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 			continue
 		}
 
+		if !bk.supportsCccp() {
+			// No CCCP support, fall back to HTTP!
+			srv.Close()
+			break
+		}
+
 		// Build some fake routing data, this is used to essentially 'pass' the
 		//   server connection we already have over to the config update function.
 		//   It also gives it something to CAS against, note that we do not return
@@ -306,7 +463,6 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 		c.routingInfo = unsafe.Pointer(&routeData{
 			servers: []*memdQueueConn{srv},
 		})
-		c.numVbuckets = len(bk.VBucketServerMap.VBucketMap)
 
 		srv.SetHandlers(c.handleServerNmv, c.handleServerDeath)
 
@@ -316,17 +472,33 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 	}
 
 	if firstConfig == nil {
-		panic("HTTP configurations not yet supported")
+		signal := make(chan error, 1)
 
-		//go httpConfigHandler()
-		// Need to select here for timeouts
-		//firstConfig := <-c.configCh
+		var epList []string
+		for _, hostPort := range httpAddrs {
+			if !c.useSsl {
+				epList = append(epList, fmt.Sprintf("http://%s", hostPort))
+			} else {
+				epList = append(epList, fmt.Sprintf("https://%s", hostPort))
+			}
+		}
+		c.routingInfo = unsafe.Pointer(&routeData{
+			mgmtEpList: epList,
+		})
 
-		//if firstConfig == nil {
-		//	panic("Failed to retrieve first good configuration.")
-		//}
+		fmt.Printf("Starting HTTP looper! %v\n", epList)
+		go c.httpLooper(func(cfg *cfgBucket, err error) {
+			firstConfig = cfg
+			signal <- err
+		})
+
+		err := <-signal
+		if err != nil {
+			return err
+		}
 	}
 
+	c.numVbuckets = len(firstConfig.VBucketServerMap.VBucketMap)
 	c.updateConfig(firstConfig)
 	go c.globalHandler()
 

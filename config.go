@@ -87,14 +87,28 @@ type cfgBucket struct {
 	DDocs               struct {
 		URI string `json:"uri"`
 	} `json:"ddocs,omitempty"`
-	BasicStats  map[string]interface{} `json:"basicStats,omitempty"`
-	Controllers map[string]interface{} `json:"controllers,omitempty"`
+	BasicStats         map[string]interface{} `json:"basicStats,omitempty"`
+	Controllers        map[string]interface{} `json:"controllers,omitempty"`
+	BucketCapabilities []string               `json:"bucketCapabilities,omitempty"`
 
 	// These are used for JSON IO, but isn't used for processing
 	// since it needs to be swapped out safely.
 	VBucketServerMap cfgVBucketServerMap `json:"vBucketServerMap"`
 	Nodes            []cfgNode           `json:"nodes"`
 	NodesExt         []cfgNodeExt        `json:"nodesExt,omitempty"`
+}
+
+func (cfg *cfgBucket) supports(needleCap string) bool {
+	for _, cap := range cfg.BucketCapabilities {
+		if cap == needleCap {
+			return true
+		}
+	}
+	return false
+}
+
+func (cfg *cfgBucket) supportsCccp() bool {
+	return cfg.supports("cccp")
 }
 
 func parseConfig(config []byte, srcHost string) (*cfgBucket, error) {
