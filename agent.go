@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1147,11 +1146,7 @@ func (c *Agent) counter(opcode commandCode, key []byte, delta, initial uint64, e
 			return
 		}
 
-		intVal, perr := strconv.ParseUint(string(resp.Value), 10, 64)
-		if perr != nil {
-			cb(0, 0, agentError{"Failed to parse returned value"})
-			return
-		}
+		intVal := binary.BigEndian.Uint64(resp.Value)
 
 		cb(intVal, resp.Cas, nil)
 	}
