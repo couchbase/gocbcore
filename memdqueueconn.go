@@ -578,7 +578,9 @@ func (s *memdQueueConn) CloseAndDrain(reqCb drainedReqCallback) {
 			case req := <-s.initReqsCh:
 				req.Callback(nil, networkError{})
 			case req := <-s.reqsCh:
-				reqCb(req)
+				if atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(s), nil) {
+					reqCb(req)
+				}
 			case <-signal:
 				// Signal means no more requests will be added to the queue, but we still
 				//  need to drain what was there.
@@ -587,7 +589,9 @@ func (s *memdQueueConn) CloseAndDrain(reqCb drainedReqCallback) {
 					case req := <-s.initReqsCh:
 						req.Callback(nil, networkError{})
 					case req := <-s.reqsCh:
-						reqCb(req)
+						if atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(s), nil) {
+							reqCb(req)
+						}
 					default:
 						return
 					}
