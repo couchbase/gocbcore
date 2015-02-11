@@ -63,17 +63,19 @@ func (c *Agent) OpenStream(vbId uint16, vbUuid, startSeqNo, endSeqNo uint64, evt
 	binary.BigEndian.PutUint64(extraBuf[32:], startSeqNo)
 	binary.BigEndian.PutUint64(extraBuf[40:], endSeqNo)
 
-	req := &memdRequest{
-		Magic:      ReqMagic,
-		Opcode:     CmdDcpStreamReq,
-		Datatype:   0,
-		Cas:        0,
-		Extras:     extraBuf,
-		Key:        nil,
-		Value:      nil,
+	req := &memdQRequest{
+		memdRequest: memdRequest{
+			Magic:    ReqMagic,
+			Opcode:   CmdDcpStreamReq,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   extraBuf,
+			Key:      nil,
+			Value:    nil,
+			Vbucket:  vbId,
+		},
 		Callback:   handler,
 		ReplicaIdx: -1,
-		Vbucket:    vbId,
 		Persistent: true,
 	}
 	return c.dispatchOp(req)
@@ -84,17 +86,19 @@ func (c *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp, err
 		cb(err)
 	}
 
-	req := &memdRequest{
-		Magic:      ReqMagic,
-		Opcode:     CmdDcpCloseStream,
-		Datatype:   0,
-		Cas:        0,
-		Extras:     nil,
-		Key:        nil,
-		Value:      nil,
+	req := &memdQRequest{
+		memdRequest: memdRequest{
+			Magic:    ReqMagic,
+			Opcode:   CmdDcpCloseStream,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   nil,
+			Key:      nil,
+			Value:    nil,
+			Vbucket:  vbId,
+		},
 		Callback:   handler,
 		ReplicaIdx: -1,
-		Vbucket:    vbId,
 		Persistent: true,
 	}
 	return c.dispatchOp(req)

@@ -23,6 +23,13 @@ func (e networkError) NetworkError() bool {
 	return true
 }
 
+type overloadError struct {
+}
+
+func (e overloadError) Error() string {
+	return "Queue overflow."
+}
+
 type memdError struct {
 	code StatusCode
 }
