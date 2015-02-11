@@ -87,9 +87,8 @@ type cfgBucket struct {
 	DDocs               struct {
 		URI string `json:"uri"`
 	} `json:"ddocs,omitempty"`
-	BasicStats         map[string]interface{} `json:"basicStats,omitempty"`
-	Controllers        map[string]interface{} `json:"controllers,omitempty"`
-	BucketCapabilities []string               `json:"bucketCapabilities,omitempty"`
+	BasicStats  map[string]interface{} `json:"basicStats,omitempty"`
+	Controllers map[string]interface{} `json:"controllers,omitempty"`
 
 	// These are used for JSON IO, but isn't used for processing
 	// since it needs to be swapped out safely.
@@ -99,7 +98,7 @@ type cfgBucket struct {
 }
 
 func (cfg *cfgBucket) supports(needleCap string) bool {
-	for _, cap := range cfg.BucketCapabilities {
+	for _, cap := range cfg.Capabilities {
 		if cap == needleCap {
 			return true
 		}
