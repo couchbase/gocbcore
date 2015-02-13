@@ -48,7 +48,7 @@ func (c *Agent) connectPipeline(pipeline *memdPipeline) error {
 //   invoked only once this server no longer exists in the routing data or an
 //   infinite loop will likely occur.
 func (c *Agent) shutdownPipeline(s *memdPipeline) {
-	s.Shutdown(func(req *memdQRequest) {
+	s.Drain(func(req *memdQRequest) {
 		c.redispatchDirect(req)
 	})
 }
@@ -229,7 +229,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 			if !agent.activatePendingServer(newServer) {
 				// If this is no longer a valid pending server, we should shut
 				//   it down!
-				newServer.Shutdown(nil)
+				newServer.Close()
 			}
 		}()
 	}

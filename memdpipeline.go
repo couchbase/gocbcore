@@ -229,11 +229,15 @@ func (pipeline *memdPipeline) Run() {
 	if deathFn != nil {
 		deathFn(pipeline)
 	} else {
-		pipeline.Shutdown(nil)
+		pipeline.Drain(nil)
 	}
 }
 
-func (pipeline *memdPipeline) Shutdown(reqCb drainedReqCallback) {
+func (pipeline *memdPipeline) Close() {
+	pipeline.conn.Close()
+}
+
+func (pipeline *memdPipeline) Drain(reqCb drainedReqCallback) {
 	// If the user does no pass a drain callback, we handle the requests
 	//   by immediately failing them with a network error.
 	if reqCb == nil {

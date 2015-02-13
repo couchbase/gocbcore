@@ -77,19 +77,19 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 		cccpBytes, err := doCccpRequest(srv)
 		if err != nil {
 			logDebugf("Failed to retrieve CCCP config. %v", err)
-			srv.Shutdown(nil)
+			srv.Close()
 			continue
 		}
 
 		bk, err := parseConfig(cccpBytes, srv.Hostname())
 		if err != nil {
-			srv.Shutdown(nil)
+			srv.Close()
 			continue
 		}
 
 		if !bk.supportsCccp() {
 			// No CCCP support, fall back to HTTP!
-			srv.Shutdown(nil)
+			srv.Close()
 			break
 		}
 
@@ -147,7 +147,7 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 func (agent *Agent) CloseTest() {
 	routingInfo := agent.routingInfo.get()
 	for _, s := range routingInfo.servers {
-		s.Shutdown(nil)
+		s.Close()
 	}
 }
 
