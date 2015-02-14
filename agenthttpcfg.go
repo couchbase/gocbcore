@@ -101,7 +101,7 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 		resp, err := c.httpCli.Get(uri)
 		if err != nil {
 			logDebugf("Failed to connect to host.")
-			return
+			continue
 		}
 
 		logDebugf("Connected.")
