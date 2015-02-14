@@ -70,12 +70,11 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 			break
 		}
 
-		logDebugf("Http Picked: %s.", pickedSrv)
-
 		if pickedSrv == "" {
+			logDebugf("Pick Failed.")
 			// All servers have been visited during this iteration
 			if isFirstTry {
-				logDebugf("Pick Failed.")
+				logDebugf("Could not find any alive http hosts.")
 				firstCfgFn(nil, &agentError{"Failed to connect to all specified hosts."})
 				return
 			} else {
@@ -91,6 +90,8 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 				continue
 			}
 		}
+
+		logDebugf("Http Picked: %s.", pickedSrv)
 
 		seenNodes[pickedSrv] = iterNum
 

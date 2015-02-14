@@ -126,7 +126,7 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string) error {
 
 	var bk *cfgBucket
 
-	fmt.Printf("Starting HTTP looper! %v\n", epList)
+	logDebugf("Starting HTTP looper! %v", epList)
 	go c.httpLooper(func(cfg *cfgBucket, err error) {
 		bk = cfg
 		signal <- err
