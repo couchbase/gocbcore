@@ -92,6 +92,8 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 			}
 		}
 
+		seenNodes[pickedSrv] = iterNum
+
 		hostname := hostnameFromUri(pickedSrv)
 
 		logDebugf("HTTP Hostname: %s.", pickedSrv)
@@ -144,6 +146,5 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 		}
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)
-		seenNodes[pickedSrv] = iterNum
 	}
 }
