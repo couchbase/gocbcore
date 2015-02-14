@@ -56,6 +56,8 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 	iterSawConfig := false
 	seenNodes := make(map[string]uint64)
 	isFirstTry := true
+
+	logDebugf("HTTP Looper starting.")
 	for {
 		routingInfo := c.routingInfo.get()
 
@@ -68,21 +70,21 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 			break
 		}
 
-		fmt.Printf("Http Picked: %s\n", pickedSrv)
+		logDebugf("Http Picked: %s.", pickedSrv)
 
 		if pickedSrv == "" {
 			// All servers have been visited during this iteration
 			if isFirstTry {
-				fmt.Printf("Pick Failed\n")
+				logDebugf("Pick Failed.")
 				firstCfgFn(nil, &agentError{"Failed to connect to all specified hosts."})
 				return
 			} else {
 				if !iterSawConfig {
-					fmt.Printf("Looper waiting...\n")
+					logDebugf("Looper waiting...")
 					// Wait for a period before trying again if there was a problem...
 					<-time.After(waitPeriod)
 				}
-				fmt.Printf("Looping again\n")
+				logDebugf("Looping again.")
 				// Go to next iteration and try all servers again
 				iterNum++
 				iterSawConfig = false
@@ -92,21 +94,22 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 
 		hostname := hostnameFromUri(pickedSrv)
 
-		fmt.Printf("HTTP Hostname: %s\n", pickedSrv)
+		logDebugf("HTTP Hostname: %s.", pickedSrv)
 
 		// HTTP request time!
 		uri := fmt.Sprintf("%s/pools/default/bucketsStreaming/%s", pickedSrv, c.bucket)
 		resp, err := c.httpCli.Get(uri)
 		if err != nil {
+			logDebugf("Failed to connect to host.")
 			return
 		}
 
-		fmt.Printf("Connected\n")
+		logDebugf("Connected.")
 
 		// Autodisconnect eventually
 		go func() {
 			<-time.After(maxConnPeriod)
-			fmt.Printf("Auto DC!\n")
+			logDebugf("Auto DC!")
 			resp.Body.Close()
 		}()
 
@@ -119,7 +122,7 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 				break
 			}
 
-			fmt.Printf("Got Block.\n")
+			logDebugf("Got Block.")
 
 			bkCfg, err := parseConfig(configBlock.Bytes, hostname)
 			if err != nil {
@@ -127,20 +130,20 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error)) {
 				break
 			}
 
-			fmt.Printf("Got Config\n")
+			logDebugf("Got Config.")
 
 			iterSawConfig = true
 			if isFirstTry {
-				fmt.Printf("HTTP Config Init\n")
+				logDebugf("HTTP Config Init")
 				firstCfgFn(bkCfg, nil)
 				isFirstTry = false
 			} else {
-				fmt.Printf("HTTP Config Update\n")
+				logDebugf("HTTP Config Update")
 				c.updateConfig(bkCfg)
 			}
 		}
 
-		fmt.Printf("HTTP, Setting %s to iter %d\n", pickedSrv, iterNum)
+		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)
 		seenNodes[pickedSrv] = iterNum
 	}
 }
