@@ -8,9 +8,22 @@ type Logger interface {
 	Output(s string) error
 }
 
+type defaultLogger struct {
+}
+
+func (l *defaultLogger) Output(s string) error {
+	_, err := fmt.Println(s)
+	return err
+}
+
 var (
-	globalLogger Logger
+	globalDefaultLogger defaultLogger
+	globalLogger        Logger
 )
+
+func DefaultStdOutLogger() Logger {
+	return &globalDefaultLogger
+}
 
 func SetLogger(logger Logger) {
 	globalLogger = logger
