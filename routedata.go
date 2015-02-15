@@ -83,7 +83,8 @@ func (d *routeData) logDebug() {
 	for _, ep := range d.mgmtEpList {
 		logDebugf("    - %s", ep)
 	}
-	logDebugf("  Source Data: %v", d.source)
+
+	//logDebugf("  Source Data: %v", d.source)
 }
 
 type routeDataPtr struct {
