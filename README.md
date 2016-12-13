@@ -1,6 +1,5 @@
 # Couchbase Go Core
 
-This package has been moved to be a sub-package of the
-gocouchbase package (now called gocb).
-
-https://github.com/couchbaselabs/gocb
+This package provides the underlying Couchbase IO for the gocb project.
+If you are looking for the Couchbase Go SDK, you are probably looking for
+[gocb](https://github.com/couchbase/gocb).
