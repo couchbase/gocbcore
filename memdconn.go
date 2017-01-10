@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"bufio"
 	"crypto/tls"
 	"encoding/binary"
 	"io"
@@ -48,8 +49,9 @@ type memdReadWriteCloser interface {
 }
 
 type memdConn struct {
-	conn    io.ReadWriteCloser
-	recvBuf []byte
+	conn      io.ReadWriteCloser
+	reader    *bufio.Reader
+	headerBuf []byte
 }
 
 func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (*memdConn, error) {
@@ -79,7 +81,9 @@ func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (*m
 	}
 
 	return &memdConn{
-		conn: conn,
+		conn:      conn,
+		reader:    bufio.NewReader(conn),
+		headerBuf: make([]byte, 24),
 	}, nil
 }
 
@@ -116,60 +120,46 @@ func (s *memdConn) WritePacket(req *memdRequest) error {
 	return err
 }
 
-func (s *memdConn) readBuffered(n int) ([]byte, error) {
-	// Make sure our buffer is big enough to hold all our data
-	if len(s.recvBuf) < n {
-		neededSize := 4096
-		if neededSize < n {
-			neededSize = n
+func (s *memdConn) readFullBuffer(buf []byte) error {
+	for len(buf) > 0 {
+		r, err := s.reader.Read(buf)
+		if err != nil {
+			return err
 		}
-		newBuf := make([]byte, neededSize)
-		copy(newBuf[0:], s.recvBuf[0:])
-		s.recvBuf = newBuf[0:len(s.recvBuf)]
+
+		if r >= len(buf) {
+			break
+		}
+
+		buf = buf[r:]
 	}
 
-	// Loop till we encounter an error or have enough data...
-	for {
-		// Check if we already have enough data buffered
-		if n <= len(s.recvBuf) {
-			buf := s.recvBuf[0:n]
-			s.recvBuf = s.recvBuf[n:]
-			return buf, nil
-		}
-
-		// Read data up to the capacity
-		recvTgt := s.recvBuf[len(s.recvBuf):cap(s.recvBuf)]
-		n, err := s.conn.Read(recvTgt)
-		if n <= 0 {
-			return nil, err
-		}
-
-		// Update the len of our slice to encompass our new data
-		s.recvBuf = s.recvBuf[:len(s.recvBuf)+n]
-	}
+	return nil
 }
 
 func (s *memdConn) ReadPacket(resp *memdResponse) error {
-	hdrBuf, err := s.readBuffered(24)
+	err := s.readFullBuffer(s.headerBuf)
 	if err != nil {
 		return err
 	}
 
-	bodyLen := int(binary.BigEndian.Uint32(hdrBuf[8:]))
-	bodyBuf, err := s.readBuffered(bodyLen)
+	bodyLen := int(binary.BigEndian.Uint32(s.headerBuf[8:]))
+
+	bodyBuf := make([]byte, bodyLen)
+	err = s.readFullBuffer(bodyBuf)
 	if err != nil {
 		return err
 	}
 
-	keyLen := int(binary.BigEndian.Uint16(hdrBuf[2:]))
-	extLen := int(hdrBuf[4])
+	keyLen := int(binary.BigEndian.Uint16(s.headerBuf[2:]))
+	extLen := int(s.headerBuf[4])
 
-	resp.Magic = CommandMagic(hdrBuf[0])
-	resp.Opcode = CommandCode(hdrBuf[1])
-	resp.Datatype = hdrBuf[5]
-	resp.Status = StatusCode(binary.BigEndian.Uint16(hdrBuf[6:]))
-	resp.Opaque = binary.BigEndian.Uint32(hdrBuf[12:])
-	resp.Cas = binary.BigEndian.Uint64(hdrBuf[16:])
+	resp.Magic = CommandMagic(s.headerBuf[0])
+	resp.Opcode = CommandCode(s.headerBuf[1])
+	resp.Datatype = s.headerBuf[5]
+	resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
+	resp.Opaque = binary.BigEndian.Uint32(s.headerBuf[12:])
+	resp.Cas = binary.BigEndian.Uint64(s.headerBuf[16:])
 	resp.Extras = bodyBuf[:extLen]
 	resp.Key = bodyBuf[extLen : extLen+keyLen]
 	resp.Value = bodyBuf[extLen+keyLen:]
