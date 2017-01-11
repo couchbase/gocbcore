@@ -7,7 +7,7 @@ import (
 // **UNCOMMITTED**
 // Retrieves the value at a particular path within a JSON document.
 func (c *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, _ *memdRequest, err error) {
+	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, err)
 			return
@@ -23,7 +23,7 @@ func (c *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, err
 	extraBuf[2] = 0
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocGet,
 			Datatype: 0,
@@ -40,7 +40,7 @@ func (c *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, err
 // **UNCOMMITTED**
 // Returns whether a particular path exists within a document.
 func (c *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, _ *memdRequest, err error) {
+	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(0, err)
 			return
@@ -56,7 +56,7 @@ func (c *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingO
 	extraBuf[2] = 0
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocExists,
 			Datatype: 0,
@@ -71,7 +71,7 @@ func (c *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingO
 }
 
 func (c *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -111,7 +111,7 @@ func (c *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byt
 	}
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   opcode,
 			Datatype: 0,
@@ -174,7 +174,7 @@ func (c *Agent) AddUniqueIn(key []byte, path string, value []byte, createParents
 // **UNCOMMITTED**
 // Performs an arithmetic add or subtract on a value at a path in the document.
 func (c *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, MutationToken{}, err)
 			return
@@ -209,7 +209,7 @@ func (c *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry
 	}
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocCounter,
 			Datatype: 0,
@@ -226,7 +226,7 @@ func (c *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry
 // **UNCOMMITTED**
 // Removes the value at a path within the document.
 func (c *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -257,7 +257,7 @@ func (c *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb Rem
 	}
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocDelete,
 			Datatype: 0,
@@ -284,7 +284,7 @@ type SubDocOp struct {
 func (c *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
-	handler := func(resp *memdResponse, _ *memdRequest, err error) {
+	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil && err != ErrSubDocBadMulti {
 			cb(nil, 0, err)
 			return
@@ -343,7 +343,7 @@ func (c *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (P
 	}
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocMultiLookup,
 			Datatype: 0,
@@ -360,7 +360,7 @@ func (c *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (P
 func (c *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil && err != ErrSubDocBadMulti {
 			cb(nil, 0, MutationToken{}, err)
 			return
@@ -448,7 +448,7 @@ func (c *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32,
 	}
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSubDocMultiMutation,
 			Datatype: 0,

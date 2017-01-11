@@ -6,10 +6,10 @@ func TestOpMap(t *testing.T) {
 	var rd memdOpMap
 
 	testOp1 := &memdQRequest{
-		memdRequest: memdRequest{},
+		memdPacket: memdPacket{},
 	}
 	testOp2 := &memdQRequest{
-		memdRequest: memdRequest{},
+		memdPacket: memdPacket{},
 	}
 
 	// Single Remove

@@ -11,7 +11,7 @@ func (c *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pending
 		return nil, ErrNotSupported
 	}
 
-	handler := func(resp *memdResponse, _ *memdRequest, err error) {
+	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(0, 0, err)
 			return
@@ -41,7 +41,7 @@ func (c *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pending
 	copy(valueBuf[4:], key)
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdObserve,
 			Datatype: 0,
@@ -64,7 +64,7 @@ func (c *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb Obser
 		return nil, ErrNotSupported
 	}
 
-	handler := func(resp *memdResponse, _ *memdRequest, err error) {
+	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(0, 0, err)
 			return
@@ -118,7 +118,7 @@ func (c *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb Obser
 	binary.BigEndian.PutUint64(valueBuf[0:], uint64(vbUuid))
 
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdObserveSeqNo,
 			Datatype: 0,
