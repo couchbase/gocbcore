@@ -2,6 +2,11 @@ package gocbcore
 
 import "sync"
 
+type memdOpMapItem struct {
+	value *memdQRequest
+	next  *memdOpMapItem
+}
+
 // This is used to store operations while they are pending
 //   a response from the server to allow mapping of a response
 //   opaque back to the originating request.  This queue takes
@@ -12,24 +17,28 @@ type memdOpMap struct {
 	lock    sync.Mutex
 	opIndex uint32
 
-	first *memdQRequest
-	last  *memdQRequest
+	first *memdOpMapItem
+	last  *memdOpMapItem
 }
 
 // Add a new request to the bottom of the op queue.
-func (q *memdOpMap) Add(r *memdQRequest) {
+func (q *memdOpMap) Add(req *memdQRequest) {
 	q.lock.Lock()
 
 	q.opIndex++
-	r.Opaque = q.opIndex
-	r.queueNext = nil
+	req.Opaque = q.opIndex
+
+	item := &memdOpMapItem{
+		value: req,
+		next:  nil,
+	}
 
 	if q.last == nil {
-		q.first = r
-		q.last = r
+		q.first = item
+		q.last = item
 	} else {
-		q.last.queueNext = r
-		q.last = r
+		q.last.next = item
+		q.last = item
 	}
 
 	q.lock.Unlock()
@@ -38,16 +47,16 @@ func (q *memdOpMap) Add(r *memdQRequest) {
 // Removes a request from the op queue.  Expects to be passed
 //   the request to remove, along with the request that
 //   immediately preceeds it in the queue.
-func (q *memdOpMap) remove(prev *memdQRequest, req *memdQRequest) {
+func (q *memdOpMap) remove(prev *memdOpMapItem, req *memdOpMapItem) {
 	if prev == nil {
-		q.first = req.queueNext
+		q.first = req.next
 		if q.first == nil {
 			q.last = nil
 		}
 		return
 	}
-	prev.queueNext = req.queueNext
-	if prev.queueNext == nil {
+	prev.next = req.next
+	if prev.next == nil {
 		q.last = prev
 	}
 }
@@ -56,16 +65,16 @@ func (q *memdOpMap) remove(prev *memdQRequest, req *memdQRequest) {
 func (q *memdOpMap) Remove(req *memdQRequest) bool {
 	q.lock.Lock()
 
-	var cur *memdQRequest = q.first
-	var prev *memdQRequest
+	var cur *memdOpMapItem = q.first
+	var prev *memdOpMapItem
 	for cur != nil {
-		if cur == req {
+		if cur.value == req {
 			q.remove(prev, cur)
 			q.lock.Unlock()
 			return true
 		}
 		prev = cur
-		cur = cur.queueNext
+		cur = cur.next
 	}
 
 	q.lock.Unlock()
@@ -79,19 +88,19 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, alwaysRemove bool) *memdQRequest {
 	q.lock.Lock()
 
-	var cur *memdQRequest = q.first
-	var prev *memdQRequest
+	var cur *memdOpMapItem = q.first
+	var prev *memdOpMapItem
 	for cur != nil {
-		if cur.Opaque == opaque {
-			if !cur.Persistent || alwaysRemove {
+		if cur.value.Opaque == opaque {
+			if !cur.value.Persistent || alwaysRemove {
 				q.remove(prev, cur)
 			}
 
 			q.lock.Unlock()
-			return cur
+			return cur.value
 		}
 		prev = cur
-		cur = cur.queueNext
+		cur = cur.next
 	}
 
 	q.lock.Unlock()
@@ -101,8 +110,8 @@ func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, alwaysRemove bool) *memdQR
 // Clears the queue of all requests and calls the passed function
 //   once for each request found in the queue.
 func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
-	for cur := q.first; cur != nil; cur = cur.queueNext {
-		cb(cur)
+	for cur := q.first; cur != nil; cur = cur.next {
+		cb(cur.value)
 	}
 	q.first = nil
 	q.last = nil
