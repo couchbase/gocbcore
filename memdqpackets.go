@@ -22,11 +22,6 @@ type memdQRequest struct {
 	//   lookup who owns it during cancelling as well as prevents
 	//   callback after cancel, or cancel after callback.
 	queuedWith unsafe.Pointer
-
-	// Holds the next item in the opList, this is used by the
-	//   memdOpQueue to avoid extra GC for a discreet list
-	//   element structure.
-	queueNext *memdQRequest
 }
 
 func (req *memdQRequest) QueueOwner() *memdQueue {
