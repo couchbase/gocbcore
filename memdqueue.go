@@ -10,7 +10,7 @@ import (
 //   and can potentially be rerouted to multiple servers due to
 //   configuration changes.
 type memdQRequest struct {
-	memdRequest
+	memdPacket
 
 	// Static routing properties
 	ReplicaIdx int

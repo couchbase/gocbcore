@@ -24,7 +24,7 @@ func (client *authClient) Address() string {
 
 func (client *authClient) doBasicOp(cmd CommandCode, k, v []byte, deadline time.Time) ([]byte, error) {
 	resp, err := client.pipeline.ExecuteRequest(&memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:  ReqMagic,
 			Opcode: cmd,
 			Key:    k,

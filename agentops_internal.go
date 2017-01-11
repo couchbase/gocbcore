@@ -7,7 +7,7 @@ import (
 // **INTERNAL**
 // Stores a document along with setting some internal Couchbase meta-data.
 func (c *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -32,7 +32,7 @@ func (c *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32,
 	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(extra)))
 	copy(extraBuf[30:], extra)
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdSetMeta,
 			Datatype: 0,
@@ -49,7 +49,7 @@ func (c *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32,
 // **INTERNAL**
 // Deletes a document along with setting some internal Couchbase meta-data.
 func (c *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
-	handler := func(resp *memdResponse, req *memdRequest, err error) {
+	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -74,7 +74,7 @@ func (c *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas
 	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(extra)))
 	copy(extraBuf[30:], extra)
 	req := &memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdDelMeta,
 			Datatype: 0,

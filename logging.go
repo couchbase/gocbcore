@@ -104,3 +104,7 @@ func logDebugf(format string, v ...interface{}) {
 func logSchedf(format string, v ...interface{}) {
 	logExf(LogSched, 2, format, v...)
 }
+
+func logErrorf(format string, v ...interface{}) {
+	logExf(LogError, 2, format, v...)
+}

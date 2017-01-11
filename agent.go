@@ -410,7 +410,7 @@ func (agent *Agent) FtsEps() []string {
 
 func doCccpRequest(pipeline *memdPipeline, deadline time.Time) ([]byte, error) {
 	resp, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdGetClusterConfig,
 			Datatype: 0,
@@ -433,7 +433,7 @@ func doOpenDcpChannel(pipeline *memdPipeline, streamName string, deadline time.T
 	binary.BigEndian.PutUint32(extraBuf[4:], 1)
 
 	_, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:    ReqMagic,
 			Opcode:   CmdDcpOpenConnection,
 			Datatype: 0,

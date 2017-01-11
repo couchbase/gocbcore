@@ -9,28 +9,12 @@ import (
 	"time"
 )
 
-// The data for a request that can be queued with a memdqueueconn,
-//   and can potentially be rerouted to multiple servers due to
-//   configuration changes.
-type memdRequest struct {
-	Magic    CommandMagic
-	Opcode   CommandCode
-	Datatype uint8
-	Vbucket  uint16
-	Opaque   uint32
-	Cas      uint64
-	Key      []byte
-	Extras   []byte
-	Value    []byte
-}
-
-// The data returned from the server in relation to an executed
-//   request.
-type memdResponse struct {
+type memdPacket struct {
 	Magic    CommandMagic
 	Opcode   CommandCode
 	Datatype uint8
 	Status   StatusCode
+	Vbucket  uint16
 	Opaque   uint32
 	Cas      uint64
 	Key      []byte
@@ -43,8 +27,8 @@ type memdDialer interface {
 }
 
 type memdReadWriteCloser interface {
-	WritePacket(*memdRequest) error
-	ReadPacket(*memdResponse) error
+	WritePacket(*memdPacket) error
+	ReadPacket(*memdPacket) error
 	Close() error
 }
 
@@ -91,7 +75,7 @@ func (s *memdConn) Close() error {
 	return s.conn.Close()
 }
 
-func (s *memdConn) WritePacket(req *memdRequest) error {
+func (s *memdConn) WritePacket(req *memdPacket) error {
 	extLen := len(req.Extras)
 	keyLen := len(req.Key)
 	valLen := len(req.Value)
@@ -107,7 +91,11 @@ func (s *memdConn) WritePacket(req *memdRequest) error {
 	binary.BigEndian.PutUint16(buffer[2:], uint16(keyLen))
 	buffer[4] = byte(extLen)
 	buffer[5] = req.Datatype
-	binary.BigEndian.PutUint16(buffer[6:], uint16(req.Vbucket))
+	if req.Magic != ResMagic {
+		binary.BigEndian.PutUint16(buffer[6:], uint16(req.Vbucket))
+	} else {
+		binary.BigEndian.PutUint16(buffer[6:], uint16(req.Status))
+	}
 	binary.BigEndian.PutUint32(buffer[8:], uint32(len(buffer)-24))
 	binary.BigEndian.PutUint32(buffer[12:], req.Opaque)
 	binary.BigEndian.PutUint64(buffer[16:], req.Cas)
@@ -137,7 +125,7 @@ func (s *memdConn) readFullBuffer(buf []byte) error {
 	return nil
 }
 
-func (s *memdConn) ReadPacket(resp *memdResponse) error {
+func (s *memdConn) ReadPacket(resp *memdPacket) error {
 	err := s.readFullBuffer(s.headerBuf)
 	if err != nil {
 		return err
@@ -157,7 +145,11 @@ func (s *memdConn) ReadPacket(resp *memdResponse) error {
 	resp.Magic = CommandMagic(s.headerBuf[0])
 	resp.Opcode = CommandCode(s.headerBuf[1])
 	resp.Datatype = s.headerBuf[5]
-	resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
+	if resp.Magic == ResMagic {
+		resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
+	} else {
+		resp.Vbucket = binary.BigEndian.Uint16(s.headerBuf[6:])
+	}
 	resp.Opaque = binary.BigEndian.Uint32(s.headerBuf[12:])
 	resp.Cas = binary.BigEndian.Uint64(s.headerBuf[16:])
 	resp.Extras = bodyBuf[:extLen]

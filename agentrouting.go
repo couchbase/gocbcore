@@ -17,7 +17,7 @@ func (c *Agent) waitAndRetryOperation(req *memdQRequest) {
 	}
 }
 
-func (c *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdResponse) {
+func (c *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdPacket) {
 	// Try to parse the value as a bucket configuration
 	bk, err := parseConfig(resp.Value, s.Hostname())
 	if err == nil {
@@ -60,7 +60,7 @@ func (c *Agent) tryHello(pipeline *memdPipeline, deadline time.Time) error {
 	}
 
 	_, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdRequest: memdRequest{
+		memdPacket: memdPacket{
 			Magic:  ReqMagic,
 			Opcode: CmdHello,
 			Key:    []byte("gocb/" + GoCbCoreVersionStr),
