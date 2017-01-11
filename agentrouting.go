@@ -48,7 +48,7 @@ func (c *Agent) handleServerDeath(s *memdPipeline) {
 
 func appendFeatureCode(bytes []byte, feature HelloFeature) []byte {
 	bytes = append(bytes, 0, 0)
-	binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(FeatureSeqNo))
+	binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
 	return bytes
 }
 
