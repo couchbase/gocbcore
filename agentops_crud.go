@@ -6,7 +6,7 @@ import (
 )
 
 // Retrieves a document.
-func (c *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -27,11 +27,11 @@ func (c *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Retrieves a document and updates its expiry.
-func (c *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -56,11 +56,11 @@ func (c *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (PendingO
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Retrieves a document and locks it.
-func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, 0, err)
@@ -85,10 +85,10 @@ func (c *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (Pending
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
 	if replicaIdx <= 0 {
 		panic("Replica number must be greater than 0")
 	}
@@ -115,10 +115,10 @@ func (c *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (Pendi
 		Callback:   handler,
 		ReplicaIdx: replicaIdx,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
 	opRes := &multiPendingOp{}
 
 	var cbCalled uint32
@@ -132,9 +132,9 @@ func (c *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
 	}
 
 	// Dispatch a getReplica for each replica server
-	numReplicas := c.NumReplicas()
+	numReplicas := agent.NumReplicas()
 	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
-		op, err := c.getOneReplica(key, repIdx, handler)
+		op, err := agent.getOneReplica(key, repIdx, handler)
 		if err == nil {
 			opRes.ops = append(opRes.ops, op)
 		}
@@ -149,18 +149,18 @@ func (c *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
 }
 
 // Retrieves a document from a replica server.
-func (c *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
+func (agent *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
 	if replicaIdx > 0 {
-		return c.getOneReplica(key, replicaIdx, cb)
+		return agent.getOneReplica(key, replicaIdx, cb)
 	} else if replicaIdx == 0 {
-		return c.getAnyReplica(key, cb)
+		return agent.getAnyReplica(key, cb)
 	} else {
 		panic("Replica number must not be less than 0.")
 	}
 }
 
 // Touches a document, updating its expiry.
-func (c *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) (PendingOp, error) {
+func (agent *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -169,7 +169,7 @@ func (c *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) (Pen
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = c.KeyToVbucket(key)
+			mutToken.VbId = agent.KeyToVbucket(key)
 			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
@@ -192,11 +192,11 @@ func (c *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) (Pen
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Unlocks a locked document.
-func (c *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, error) {
+func (agent *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -225,11 +225,11 @@ func (c *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, error
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Removes a document.
-func (c *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, error) {
+func (agent *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -258,10 +258,10 @@ func (c *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, error
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) store(opcode CommandCode, key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
+func (agent *Agent) store(opcode CommandCode, key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -293,26 +293,26 @@ func (c *Agent) store(opcode CommandCode, key, value []byte, flags uint32, cas C
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Stores a document as long as it does not already exist.
-func (c *Agent) Add(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return c.store(CmdAdd, key, value, flags, 0, expiry, cb)
+func (agent *Agent) Add(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
+	return agent.store(CmdAdd, key, value, flags, 0, expiry, cb)
 }
 
 // Stores a document.
-func (c *Agent) Set(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return c.store(CmdSet, key, value, flags, 0, expiry, cb)
+func (agent *Agent) Set(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
+	return agent.store(CmdSet, key, value, flags, 0, expiry, cb)
 }
 
 // Replaces the value of a Couchbase document with another value.
-func (c *Agent) Replace(key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return c.store(CmdReplace, key, value, flags, cas, expiry, cb)
+func (agent *Agent) Replace(key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
+	return agent.store(CmdReplace, key, value, flags, cas, expiry, cb)
 }
 
 // Performs an adjoin operation.
-func (c *Agent) adjoin(opcode CommandCode, key, value []byte, cb StoreCallback) (PendingOp, error) {
+func (agent *Agent) adjoin(opcode CommandCode, key, value []byte, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -341,21 +341,21 @@ func (c *Agent) adjoin(opcode CommandCode, key, value []byte, cb StoreCallback) 
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Appends some bytes to a document.
-func (c *Agent) Append(key, value []byte, cb StoreCallback) (PendingOp, error) {
-	return c.adjoin(CmdAppend, key, value, cb)
+func (agent *Agent) Append(key, value []byte, cb StoreCallback) (PendingOp, error) {
+	return agent.adjoin(CmdAppend, key, value, cb)
 }
 
 // Prepends some bytes to a document.
-func (c *Agent) Prepend(key, value []byte, cb StoreCallback) (PendingOp, error) {
-	return c.adjoin(CmdPrepend, key, value, cb)
+func (agent *Agent) Prepend(key, value []byte, cb StoreCallback) (PendingOp, error) {
+	return agent.adjoin(CmdPrepend, key, value, cb)
 }
 
 // Performs a counter operation.
-func (c *Agent) counter(opcode CommandCode, key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
+func (agent *Agent) counter(opcode CommandCode, key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, 0, MutationToken{}, err)
@@ -405,22 +405,22 @@ func (c *Agent) counter(opcode CommandCode, key []byte, delta, initial uint64, e
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Increments the unsigned integer value in a document.
-func (c *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
-	return c.counter(CmdIncrement, key, delta, initial, expiry, cb)
+func (agent *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
+	return agent.counter(CmdIncrement, key, delta, initial, expiry, cb)
 }
 
 // Decrements the unsigned integer value in a document.
-func (c *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
-	return c.counter(CmdDecrement, key, delta, initial, expiry, cb)
+func (agent *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
+	return agent.counter(CmdDecrement, key, delta, initial, expiry, cb)
 }
 
 // *VOLATILE*
 // Returns the key and value of a random document stored within Couchbase Server.
-func (c *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
+func (agent *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(nil, nil, 0, 0, err)
@@ -441,11 +441,11 @@ func (c *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, error) {
-	config := c.routingInfo.get()
+func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, error) {
+	config := agent.routingInfo.get()
 	allOk := true
 	// Iterate over each of the configs
 
@@ -513,7 +513,7 @@ func (c *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, erro
 			Callback:   handler,
 		}
 
-		curOp, err := c.dispatchOp(req)
+		curOp, err := agent.dispatchOp(req)
 		if err != nil {
 			return nil, err
 		}

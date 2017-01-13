@@ -36,20 +36,20 @@ type Agent struct {
 }
 
 // The timeout for each server connection, including all authentication steps.
-func (c *Agent) ServerConnectTimeout() time.Duration {
-	return c.serverConnectTimeout
+func (agent *Agent) ServerConnectTimeout() time.Duration {
+	return agent.serverConnectTimeout
 }
 
 // Sets the timeout for each server connection.
-func (c *Agent) SetServerConnectTimeout(timeout time.Duration) {
-	c.serverConnectTimeout = timeout
+func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
+	agent.serverConnectTimeout = timeout
 }
 
 // Returns a pre-configured HTTP Client for communicating with
 // Couchbase Server.  You must still specify authentication
 // information for any dispatched requests.
-func (c *Agent) HttpClient() *http.Client {
-	return c.httpCli
+func (agent *Agent) HttpClient() *http.Client {
+	return agent.httpCli
 }
 
 type AuthFunc func(client AuthClient, deadline time.Time) error
@@ -115,7 +115,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	return c, nil
 }
 
-func (c *Agent) cccpLooper() {
+func (agent *Agent) cccpLooper() {
 	tickTime := time.Second * 10
 	maxWaitTime := time.Second * 3
 
@@ -125,7 +125,7 @@ func (c *Agent) cccpLooper() {
 		// Wait 10 seconds
 		time.Sleep(tickTime)
 
-		routingInfo := c.routingInfo.get()
+		routingInfo := agent.routingInfo.get()
 		if routingInfo == nil {
 			// If we have a blank routingInfo, it indicates the client is shut down.
 			break
@@ -154,17 +154,17 @@ func (c *Agent) cccpLooper() {
 		}
 
 		logDebugf("CCCPPOLL: Received new config")
-		c.updateConfig(bk)
+		agent.updateConfig(bk)
 	}
 }
 
-func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error {
+func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error {
 	logDebugf("Attempting to connect...")
 
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s", thisHostPort)
 
-		srvDeadlineTm := time.Now().Add(c.serverConnectTimeout)
+		srvDeadlineTm := time.Now().Add(agent.serverConnectTimeout)
 		if srvDeadlineTm.After(deadline) {
 			srvDeadlineTm = deadline
 		}
@@ -172,7 +172,7 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error
 		srv := CreateMemdPipeline(thisHostPort)
 
 		logDebugf("Trying to connect")
-		err := c.connectPipeline(srv, srvDeadlineTm)
+		err := agent.connectPipeline(srv, srvDeadlineTm)
 		if err != nil {
 			if err == ErrAuthError {
 				return err
@@ -201,7 +201,7 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error
 			break
 		}
 
-		routeCfg := buildRouteConfig(bk, c.IsSecure())
+		routeCfg := buildRouteConfig(bk, agent.IsSecure())
 		if !routeCfg.IsValid() {
 			// Something is invalid about this config, keep trying
 			srv.Close()
@@ -212,16 +212,16 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error
 
 		// Build some fake routing data, this is used to essentially 'pass' the
 		//   server connection we already have over to the config update function.
-		c.routingInfo.update(nil, &routeData{
+		agent.routingInfo.update(nil, &routeData{
 			servers: []*memdPipeline{srv},
 		})
 
-		c.numVbuckets = len(routeCfg.vbMap)
-		c.applyConfig(routeCfg)
+		agent.numVbuckets = len(routeCfg.vbMap)
+		agent.applyConfig(routeCfg)
 
-		srv.SetHandlers(c.handleServerNmv, c.handleServerDeath)
+		srv.SetHandlers(agent.handleServerNmv, agent.handleServerDeath)
 
-		go c.cccpLooper()
+		go agent.cccpLooper()
 
 		return nil
 	}
@@ -230,26 +230,26 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error
 
 	var epList []string
 	for _, hostPort := range httpAddrs {
-		if !c.IsSecure() {
+		if !agent.IsSecure() {
 			epList = append(epList, fmt.Sprintf("http://%s", hostPort))
 		} else {
 			epList = append(epList, fmt.Sprintf("https://%s", hostPort))
 		}
 	}
-	c.routingInfo.update(nil, &routeData{
+	agent.routingInfo.update(nil, &routeData{
 		mgmtEpList: epList,
 	})
 
 	var routeCfg *routeConfig
 
 	logDebugf("Starting HTTP looper! %v", epList)
-	go c.httpLooper(func(cfg *cfgBucket, err error) bool {
+	go agent.httpLooper(func(cfg *cfgBucket, err error) bool {
 		if err != nil {
 			signal <- err
 			return true
 		}
 
-		newRouteCfg := buildRouteConfig(cfg, c.IsSecure())
+		newRouteCfg := buildRouteConfig(cfg, agent.IsSecure())
 		if !newRouteCfg.IsValid() {
 			// Something is invalid about this config, keep trying
 			return false
@@ -265,8 +265,8 @@ func (c *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error
 		return err
 	}
 
-	c.numVbuckets = len(routeCfg.vbMap)
-	c.applyConfig(routeCfg)
+	agent.numVbuckets = len(routeCfg.vbMap)
+	agent.applyConfig(routeCfg)
 
 	return nil
 }
@@ -315,28 +315,28 @@ func (agent *Agent) Close() {
 }
 
 // Returns whether this client is connected via SSL.
-func (c *Agent) IsSecure() bool {
-	return c.tlsConfig != nil
+func (agent *Agent) IsSecure() bool {
+	return agent.tlsConfig != nil
 }
 
 // Translates a particular key to its assigned vbucket.
-func (c *Agent) KeyToVbucket(key []byte) uint16 {
-	if c.NumVbuckets() <= 0 {
+func (agent *Agent) KeyToVbucket(key []byte) uint16 {
+	if agent.NumVbuckets() <= 0 {
 		return 0xFFFF
 	}
-	return uint16(cbCrc(key) % uint32(c.NumVbuckets()))
+	return uint16(cbCrc(key) % uint32(agent.NumVbuckets()))
 }
 
 // Returns the number of VBuckets configured on the
 // connected cluster.
-func (c *Agent) NumVbuckets() int {
-	return c.numVbuckets
+func (agent *Agent) NumVbuckets() int {
+	return agent.numVbuckets
 }
 
 // Returns the number of replicas configured on the
 // connected cluster.
-func (c *Agent) NumReplicas() int {
-	routingInfo := c.routingInfo.get()
+func (agent *Agent) NumReplicas() int {
+	routingInfo := agent.routingInfo.get()
 	if routingInfo == nil {
 		return 0
 	}
@@ -344,8 +344,8 @@ func (c *Agent) NumReplicas() int {
 }
 
 // Returns number of servers accessible for K/V.
-func (c *Agent) NumServers() int {
-	routingInfo := c.routingInfo.get()
+func (agent *Agent) NumServers() int {
+	routingInfo := agent.routingInfo.get()
 	if routingInfo == nil {
 		return 0
 	}
@@ -353,9 +353,9 @@ func (c *Agent) NumServers() int {
 }
 
 // Returns list of VBuckets on the server.
-func (c *Agent) VbucketsOnServer(index int) []uint16 {
+func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	var vbuckets []uint16
-	routingInfo := c.routingInfo.get()
+	routingInfo := agent.routingInfo.get()
 	if routingInfo == nil {
 		return vbuckets
 	}

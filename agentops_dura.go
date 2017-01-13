@@ -5,9 +5,9 @@ import (
 )
 
 // Retrieves the current CAS and persistence state for a document.
-func (c *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (PendingOp, error) {
+func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (PendingOp, error) {
 	// TODO(mnunberg): Use bktType when implemented
-	if c.numVbuckets == 0 {
+	if agent.numVbuckets == 0 {
 		return nil, ErrNotSupported
 	}
 
@@ -33,7 +33,7 @@ func (c *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pending
 		cb(keyState, Cas(cas), nil)
 	}
 
-	vbId := c.KeyToVbucket(key)
+	vbId := agent.KeyToVbucket(key)
 
 	valueBuf := make([]byte, 2+2+len(key))
 	binary.BigEndian.PutUint16(valueBuf[0:], vbId)
@@ -54,13 +54,13 @@ func (c *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pending
 		ReplicaIdx: replicaIdx,
 		Callback:   handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // Retrieves the persistence state sequence numbers for a particular VBucket.
-func (c *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoCallback) (PendingOp, error) {
+func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoCallback) (PendingOp, error) {
 	// TODO(mnunberg): Use bktType when implemented
-	if c.numVbuckets == 0 {
+	if agent.numVbuckets == 0 {
 		return nil, ErrNotSupported
 	}
 
@@ -112,7 +112,7 @@ func (c *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb Obser
 		}
 	}
 
-	vbId := c.KeyToVbucket(key)
+	vbId := agent.KeyToVbucket(key)
 
 	valueBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(valueBuf[0:], uint64(vbUuid))
@@ -131,5 +131,5 @@ func (c *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb Obser
 		ReplicaIdx: replicaIdx,
 		Callback:   handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }

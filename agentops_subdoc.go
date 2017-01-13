@@ -6,7 +6,7 @@ import (
 
 // **UNCOMMITTED**
 // Retrieves the value at a particular path within a JSON document.
-func (c *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
+func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, err)
@@ -34,12 +34,12 @@ func (c *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, err
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **UNCOMMITTED**
 // Returns whether a particular path exists within a document.
-func (c *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
+func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(0, err)
@@ -67,10 +67,10 @@ func (c *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingO
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+func (agent *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -122,58 +122,58 @@ func (c *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byt
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **UNCOMMITTED**
 // Sets the value at a path within a document.
-func (c *Agent) SetIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocDictSet, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) SetIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocDictSet, key, path, value, createParents, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Adds a value at the path within a document.
 // This method works like SetIn, but only only succeeds
 // if the path does not currently exist.
-func (c *Agent) AddIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocDictAdd, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) AddIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocDictAdd, key, path, value, createParents, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Replaces the value at the path within a document.
 // This method works like SetIn, but only only succeeds
 // if the path currently exists.
-func (c *Agent) ReplaceIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocReplace, key, path, value, false, cas, expiry, cb)
+func (agent *Agent) ReplaceIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocReplace, key, path, value, false, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Pushes an entry to the front of an array at a path within a document.
-func (c *Agent) PushFrontIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocArrayPushFirst, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) PushFrontIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocArrayPushFirst, key, path, value, createParents, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Pushes an entry to the back of an array at a path within a document.
-func (c *Agent) PushBackIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocArrayPushLast, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) PushBackIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocArrayPushLast, key, path, value, createParents, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Inserts an entry to an array at a path within the document.
-func (c *Agent) ArrayInsertIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocArrayInsert, key, path, value, false, cas, expiry, cb)
+func (agent *Agent) ArrayInsertIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocArrayInsert, key, path, value, false, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Adds an entry to an array at a path but only if the value doesn't already exist in the array.
-func (c *Agent) AddUniqueIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return c.storeIn(CmdSubDocArrayAddUnique, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) AddUniqueIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(CmdSubDocArrayAddUnique, key, path, value, createParents, cas, expiry, cb)
 }
 
 // **UNCOMMITTED**
 // Performs an arithmetic add or subtract on a value at a path in the document.
-func (c *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
+func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(nil, 0, MutationToken{}, err)
@@ -220,12 +220,12 @@ func (c *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **UNCOMMITTED**
 // Removes the value at a path within the document.
-func (c *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
+func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -268,7 +268,7 @@ func (c *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb Rem
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **UNCOMMITTED**
@@ -281,7 +281,7 @@ type SubDocOp struct {
 	Value []byte
 }
 
-func (c *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
+func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
@@ -354,10 +354,10 @@ func (c *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (P
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
-func (c *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
+func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
@@ -459,5 +459,5 @@ func (c *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32,
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }

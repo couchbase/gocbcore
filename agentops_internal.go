@@ -6,7 +6,7 @@ import (
 
 // **INTERNAL**
 // Stores a document along with setting some internal Couchbase meta-data.
-func (c *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
+func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -43,12 +43,12 @@ func (c *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32,
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **INTERNAL**
 // Deletes a document along with setting some internal Couchbase meta-data.
-func (c *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
+func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, req *memdPacket, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -85,5 +85,5 @@ func (c *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas
 		},
 		Callback: handler,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
