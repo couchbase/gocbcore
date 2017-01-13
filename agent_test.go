@@ -12,16 +12,16 @@ import (
 // Gets a set of keys evenly distributed across all server nodes.
 // the result is an array of strings, each index representing an index
 // of a server
-func (a *Agent) makeDistKeys() (keys []string) {
+func (agent *Agent) makeDistKeys() (keys []string) {
 	// Get the routing information
-	cfg := a.routingInfo.get()
+	cfg := agent.routingInfo.get()
 	keys = make([]string, len(cfg.queues))
 	remaining := len(keys)
 
 	for i := 0; remaining > 0; i++ {
 		kTmp := fmt.Sprintf("DistKey_%d", i)
 		// Map the vBucket and server
-		vbid := a.KeyToVbucket([]byte(kTmp))
+		vbid := agent.KeyToVbucket([]byte(kTmp))
 		srvIx := cfg.vbMap[vbid][0]
 		if srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
 			continue

@@ -38,7 +38,7 @@ type GetVBucketSeqnosCallback func(uint16, SeqNo, error)
 
 // **INTERNAL**
 // Opens a DCP stream for a particular VBucket.
-func (c *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
+func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if resp.Magic == ResMagic {
@@ -125,12 +125,12 @@ func (c *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, sna
 		ReplicaIdx: 0,
 		Persistent: true,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **INTERNAL**
 // Shuts down an open stream for the specified VBucket.
-func (c *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp, error) {
+func (agent *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		cb(err)
 	}
@@ -150,13 +150,13 @@ func (c *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp, err
 		ReplicaIdx: 0,
 		Persistent: false,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **INTERNAL**
 // Retrieves the failover log for a particular VBucket.  This is used
 // to resume an interrupted stream after a node failover has occured.
-func (c *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (PendingOp, error) {
+func (agent *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -189,13 +189,13 @@ func (c *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (PendingO
 		ReplicaIdx: 0,
 		Persistent: false,
 	}
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }
 
 // **INTERNAL**
 // Returns the last checkpoint for a particular VBucket.  This is useful
 // for starting a DCP stream from wherever the server currently is.
-func (c *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback) (PendingOp, error) {
+func (agent *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdPacket, _ *memdPacket, err error) {
 		if err != nil {
 			cb(0, 0, err)
@@ -229,5 +229,5 @@ func (c *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback) (Pe
 		Persistent: false,
 	}
 
-	return c.dispatchOp(req)
+	return agent.dispatchOp(req)
 }

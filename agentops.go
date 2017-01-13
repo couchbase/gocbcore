@@ -50,8 +50,8 @@ func (mp *multiPendingOp) Cancel() bool {
 	return allCancelled
 }
 
-func (c *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
-	err := c.dispatchDirect(req)
+func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
+	err := agent.dispatchDirect(req)
 	if err != nil {
 		return nil, err
 	}

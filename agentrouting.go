@@ -7,40 +7,40 @@ import (
 	"time"
 )
 
-func (c *Agent) waitAndRetryOperation(req *memdQRequest) {
-	if c.nmvRetryDelay == 0 {
-		c.redispatchDirect(req)
+func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
+	if agent.nmvRetryDelay == 0 {
+		agent.redispatchDirect(req)
 	} else {
-		time.AfterFunc(c.nmvRetryDelay, func() {
-			c.redispatchDirect(req)
+		time.AfterFunc(agent.nmvRetryDelay, func() {
+			agent.redispatchDirect(req)
 		})
 	}
 }
 
-func (c *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdPacket) {
+func (agent *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdPacket) {
 	// Try to parse the value as a bucket configuration
 	bk, err := parseConfig(resp.Value, s.Hostname())
 	if err == nil {
-		c.updateConfig(bk)
+		agent.updateConfig(bk)
 	}
 
 	// Redirect it!  This may actually come back to this server, but I won't tell
 	//   if you don't ;)
-	c.waitAndRetryOperation(req)
+	agent.waitAndRetryOperation(req)
 }
 
-func (c *Agent) handleServerDeath(s *memdPipeline) {
+func (agent *Agent) handleServerDeath(s *memdPipeline) {
 	// Check if we are shutting down, if so, simply notify the shutdown
 	//   method that we are going away.
-	routeData := c.routingInfo.get()
+	routeData := agent.routingInfo.get()
 	if routeData == nil {
-		c.shutdownWaitCh <- s
+		agent.shutdownWaitCh <- s
 		return
 	}
 
 	// Refresh the routing data with the existing configuration, this has
 	//   the effect of attempting to rebuild the dead server.
-	c.updateConfig(nil)
+	agent.updateConfig(nil)
 
 	// TODO(brett19): We probably should actually try other ways of resolving
 	//  the issue, like requesting a new configuration.
@@ -52,10 +52,10 @@ func appendFeatureCode(bytes []byte, feature HelloFeature) []byte {
 	return bytes
 }
 
-func (c *Agent) tryHello(pipeline *memdPipeline, deadline time.Time) error {
+func (agent *Agent) tryHello(pipeline *memdPipeline, deadline time.Time) error {
 	var featuresBytes []byte
 
-	if c.useMutationTokens {
+	if agent.useMutationTokens {
 		featuresBytes = appendFeatureCode(featuresBytes, FeatureSeqNo)
 	}
 
@@ -110,17 +110,17 @@ func (agent *Agent) connectServer(server *memdPipeline) {
 	}
 }
 
-func (c *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) error {
+func (agent *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) error {
 	logDebugf("Attempting to connect pipeline to %s", pipeline.address)
 
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config = nil
-	if c.tlsConfig != nil {
+	if agent.tlsConfig != nil {
 		host, _, _ := net.SplitHostPort(pipeline.address)
 		tlsConfig = &tls.Config{
-			InsecureSkipVerify: c.tlsConfig.InsecureSkipVerify,
-			RootCAs:            c.tlsConfig.RootCAs,
+			InsecureSkipVerify: agent.tlsConfig.InsecureSkipVerify,
+			RootCAs:            agent.tlsConfig.RootCAs,
 			ServerName:         host,
 		}
 	}
@@ -139,14 +139,14 @@ func (c *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) erro
 	go pipeline.Run()
 
 	logDebugf("Authenticating...")
-	err = c.initFn(pipeline, deadline)
+	err = agent.initFn(pipeline, deadline)
 	if err != nil {
 		logDebugf("Failed to authenticate. %v", err)
 		memdConn.Close()
 		return err
 	}
 
-	c.tryHello(pipeline, deadline)
+	agent.tryHello(pipeline, deadline)
 
 	return nil
 }
@@ -154,9 +154,9 @@ func (c *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) erro
 // Drains all the requests out of the queue for this server.  This must be
 //   invoked only once this server no longer exists in the routing data or an
 //   infinite loop will likely occur.
-func (c *Agent) shutdownPipeline(s *memdPipeline) {
+func (agent *Agent) shutdownPipeline(s *memdPipeline) {
 	s.Drain(func(req *memdQRequest) {
-		c.redispatchDirect(req)
+		agent.redispatchDirect(req)
 	})
 
 	s.Close()
@@ -495,9 +495,9 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdQueue, error) {
 
 // This immediately dispatches a request to the appropriate server based on the
 //  currently available routing data.
-func (c *Agent) dispatchDirect(req *memdQRequest) error {
+func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 	for {
-		pipeline, err := c.routeRequest(req)
+		pipeline, err := agent.routeRequest(req)
 		if err != nil {
 			return err
 		}
@@ -519,9 +519,9 @@ func (c *Agent) dispatchDirect(req *memdQRequest) error {
 
 // This function is meant to be used when a memdRequest is internally shuffled
 //   around.  It currently simply calls dispatchDirect.
-func (c *Agent) redispatchDirect(req *memdQRequest) {
+func (agent *Agent) redispatchDirect(req *memdQRequest) {
 	// Reschedule the operation
-	err := c.dispatchDirect(req)
+	err := agent.dispatchDirect(req)
 	if err != nil {
 		panic("dispatchDirect errored during redispatch.")
 	}

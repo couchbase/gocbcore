@@ -27,7 +27,7 @@ func hostnameFromUri(uri string) string {
 	return strings.Split(uriInfo.Host, ":")[0]
 }
 
-func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
+func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 	waitPeriod := 20 * time.Second
 	maxConnPeriod := 10 * time.Second
 	var iterNum uint64 = 1
@@ -37,7 +37,7 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 
 	logDebugf("HTTP Looper starting.")
 	for {
-		routingInfo := c.routingInfo.get()
+		routingInfo := agent.routingInfo.get()
 		if routingInfo == nil {
 			// Shutdown the looper if the agent is shutdown
 			break
@@ -91,7 +91,7 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				streamPath = "bucketsStreaming"
 			}
 			// HTTP request time!
-			uri := fmt.Sprintf("%s/pools/default/%s/%s", pickedSrv, streamPath, c.bucket)
+			uri := fmt.Sprintf("%s/pools/default/%s/%s", pickedSrv, streamPath, agent.bucket)
 			logDebugf("Requesting config from: %s.", uri)
 
 			req, err := http.NewRequest("GET", uri, nil)
@@ -100,9 +100,9 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				return 0
 			}
 
-			req.SetBasicAuth(c.bucket, c.password)
+			req.SetBasicAuth(agent.bucket, agent.password)
 
-			resp, err = c.httpCli.Do(req)
+			resp, err = agent.httpCli.Do(req)
 			if err != nil {
 				logDebugf("Failed to connect to host. %v", err)
 				return 0
@@ -169,7 +169,7 @@ func (c *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				isFirstTry = false
 			} else {
 				logDebugf("HTTP Config Update")
-				c.updateConfig(bkCfg)
+				agent.updateConfig(bkCfg)
 			}
 		}
 
