@@ -22,10 +22,6 @@ type memdPacket struct {
 	Value    []byte
 }
 
-type memdDialer interface {
-	Dial(address string) (io.ReadWriteCloser, error)
-}
-
 type memdReadWriteCloser interface {
 	WritePacket(*memdPacket) error
 	ReadPacket(*memdPacket) error
