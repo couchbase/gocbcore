@@ -90,7 +90,7 @@ func (agent *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (Pen
 
 func (agent *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
 	if replicaIdx <= 0 {
-		panic("Replica number must be greater than 0")
+		return nil, ErrInvalidReplica
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -155,7 +155,7 @@ func (agent *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (Pend
 	} else if replicaIdx == 0 {
 		return agent.getAnyReplica(key, cb)
 	} else {
-		panic("Replica number must not be less than 0.")
+		return nil, ErrInvalidReplica
 	}
 }
 
