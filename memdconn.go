@@ -22,19 +22,23 @@ type memdPacket struct {
 	Value    []byte
 }
 
-type memdReadWriteCloser interface {
+type memdConn interface {
+	LocalAddr() string
+	RemoteAddr() string
 	WritePacket(*memdPacket) error
 	ReadPacket(*memdPacket) error
 	Close() error
 }
 
-type memdConn struct {
-	conn      io.ReadWriteCloser
-	reader    *bufio.Reader
-	headerBuf []byte
+type memdTcpConn struct {
+	conn       io.ReadWriteCloser
+	reader     *bufio.Reader
+	headerBuf  []byte
+	localAddr  string
+	remoteAddr string
 }
 
-func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (*memdConn, error) {
+func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {
 	d := net.Dialer{
 		Deadline: deadline,
 	}
@@ -60,18 +64,28 @@ func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (*m
 		conn = tlsConn
 	}
 
-	return &memdConn{
-		conn:      conn,
-		reader:    bufio.NewReader(conn),
-		headerBuf: make([]byte, 24),
+	return &memdTcpConn{
+		conn:       conn,
+		reader:     bufio.NewReader(conn),
+		headerBuf:  make([]byte, 24),
+		localAddr:  baseConn.LocalAddr().String(),
+		remoteAddr: address,
 	}, nil
 }
 
-func (s *memdConn) Close() error {
+func (s *memdTcpConn) LocalAddr() string {
+	return s.localAddr
+}
+
+func (s *memdTcpConn) RemoteAddr() string {
+	return s.remoteAddr
+}
+
+func (s *memdTcpConn) Close() error {
 	return s.conn.Close()
 }
 
-func (s *memdConn) WritePacket(req *memdPacket) error {
+func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 	extLen := len(req.Extras)
 	keyLen := len(req.Key)
 	valLen := len(req.Value)
@@ -104,7 +118,7 @@ func (s *memdConn) WritePacket(req *memdPacket) error {
 	return err
 }
 
-func (s *memdConn) readFullBuffer(buf []byte) error {
+func (s *memdTcpConn) readFullBuffer(buf []byte) error {
 	for len(buf) > 0 {
 		r, err := s.reader.Read(buf)
 		if err != nil {
@@ -121,7 +135,7 @@ func (s *memdConn) readFullBuffer(buf []byte) error {
 	return nil
 }
 
-func (s *memdConn) ReadPacket(resp *memdPacket) error {
+func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	err := s.readFullBuffer(s.headerBuf)
 	if err != nil {
 		return err
