@@ -41,7 +41,7 @@ type GetVBucketSeqnosCallback func(uint16, SeqNo, error)
 func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if resp.Magic == ResMagic {
+		if resp != nil && resp.Magic == ResMagic {
 			// This is the response to the open stream request.
 			if err != nil {
 				req.Cancel()
