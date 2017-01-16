@@ -7,7 +7,7 @@ import (
 // **UNCOMMITTED**
 // Retrieves the value at a particular path within a JSON document.
 func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, _ *memdPacket, err error) {
+	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, 0, err)
 			return
@@ -40,7 +40,7 @@ func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp,
 // **UNCOMMITTED**
 // Returns whether a particular path exists within a document.
 func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, _ *memdPacket, err error) {
+	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(0, err)
 			return
@@ -71,7 +71,7 @@ func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (Pend
 }
 
 func (agent *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -174,7 +174,7 @@ func (agent *Agent) AddUniqueIn(key []byte, path string, value []byte, createPar
 // **UNCOMMITTED**
 // Performs an arithmetic add or subtract on a value at a path in the document.
 func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, 0, MutationToken{}, err)
 			return
@@ -226,7 +226,7 @@ func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, ex
 // **UNCOMMITTED**
 // Removes the value at a path within the document.
 func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -284,7 +284,7 @@ type SubDocOp struct {
 func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
-	handler := func(resp *memdPacket, _ *memdPacket, err error) {
+	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil && err != ErrSubDocBadMulti {
 			cb(nil, 0, err)
 			return
@@ -360,7 +360,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil && err != ErrSubDocBadMulti {
 			cb(nil, 0, MutationToken{}, err)
 			return

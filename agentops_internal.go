@@ -7,7 +7,7 @@ import (
 // **INTERNAL**
 // Stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return
@@ -49,7 +49,7 @@ func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uin
 // **INTERNAL**
 // Deletes a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
-	handler := func(resp *memdPacket, req *memdPacket, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
 			return

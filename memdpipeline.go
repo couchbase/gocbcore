@@ -9,9 +9,9 @@ import (
 type memdInitFunc func(*memdPipeline, time.Time) error
 
 type CloseHandler func(*memdPipeline)
-type BadRouteHandler func(*memdPipeline, *memdQRequest, *memdPacket)
+type BadRouteHandler func(*memdPipeline, *memdQRequest, *memdQResponse)
 
-type Callback func(*memdPacket, *memdPacket, error)
+type Callback func(*memdQResponse, *memdQRequest, error)
 
 type memdPipeline struct {
 	lock sync.RWMutex
@@ -19,7 +19,7 @@ type memdPipeline struct {
 	queue *memdQueue
 
 	address  string
-	conn     memdReadWriteCloser
+	conn     memdConn
 	isClosed bool
 	ioDoneCh chan bool
 
@@ -67,14 +67,14 @@ func (s *memdPipeline) SetHandlers(badRouteFn BadRouteHandler, deathFn CloseHand
 	s.lock.Unlock()
 }
 
-func (pipeline *memdPipeline) ExecuteRequest(req *memdQRequest, deadline time.Time) (respOut *memdPacket, errOut error) {
+func (pipeline *memdPipeline) ExecuteRequest(req *memdQRequest, deadline time.Time) (respOut *memdQResponse, errOut error) {
 	if req.Callback != nil {
 		panic("Tried to synchronously dispatch an operation with an async handler.")
 	}
 
 	signal := make(chan bool)
 
-	req.Callback = func(resp *memdPacket, _ *memdPacket, err error) {
+	req.Callback = func(resp *memdQResponse, _ *memdQRequest, err error) {
 		respOut = resp
 		errOut = err
 		signal <- true
@@ -121,7 +121,7 @@ func (pipeline *memdPipeline) dispatchRequest(req *memdQRequest) error {
 	return nil
 }
 
-func (s *memdPipeline) resolveRequest(resp *memdPacket) {
+func (s *memdPipeline) resolveRequest(resp *memdQResponse) {
 	opIndex := resp.Opaque
 	isFailResp := resp.Magic == ResMagic && resp.Status != StatusSuccess
 
@@ -162,9 +162,9 @@ func (s *memdPipeline) resolveRequest(resp *memdPacket) {
 	// Call the requests callback handler...  Ignore Status field for incoming requests.
 	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
 	if resp.Magic == ReqMagic {
-		req.Callback(resp, &req.memdPacket, nil)
+		req.Callback(resp, req, nil)
 	} else {
-		req.Callback(resp, &req.memdPacket, getMemdError(resp.Status))
+		req.Callback(resp, req, getMemdError(resp.Status))
 	}
 }
 
@@ -175,8 +175,11 @@ func (pipeline *memdPipeline) ioLoop() {
 	go func() {
 		logDebugf("Reader loop starting...")
 		for {
-			resp := &memdPacket{}
-			err := pipeline.conn.ReadPacket(resp)
+			resp := &memdQResponse{
+				sourceAddr: pipeline.address,
+			}
+
+			err := pipeline.conn.ReadPacket(&resp.memdPacket)
 			if err != nil {
 				logDebugf("Server read error: %v", err)
 				killSig <- true

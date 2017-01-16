@@ -5,6 +5,15 @@ import (
 	"unsafe"
 )
 
+// The data for a response from a server.  This includes the
+//  packets data along with some useful meta-data related to
+//  the response.
+type memdQResponse struct {
+	memdPacket
+
+	sourceAddr string
+}
+
 // The data for a request that can be queued with a memdqueueconn,
 //   and can potentially be rerouted to multiple servers due to
 //   configuration changes.

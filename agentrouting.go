@@ -17,7 +17,7 @@ func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
 	}
 }
 
-func (agent *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdPacket) {
+func (agent *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdQResponse) {
 	// Try to parse the value as a bucket configuration
 	bk, err := parseConfig(resp.Value, s.Hostname())
 	if err == nil {
