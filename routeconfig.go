@@ -93,7 +93,8 @@ func (config *routeConfig) KetamaNode(hash uint32) uint32 {
 	var maxp = highp
 
 	if len(config.ketamaMap) <= 0 {
-		panic("0-length ketama map!")
+		logErrorf("0-length ketama map!  Mapping to node 0.")
+		return 0
 	}
 
 	// Copied from libcouchbase vbucket.c (map_ketama)
@@ -189,7 +190,8 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 		}
 	} else {
 		if useSsl {
-			panic("Received config without nodesExt while SSL is enabled.")
+			logErrorf("Received config without nodesExt while SSL is enabled.  Generating invalid config.")
+			return &routeConfig{}
 		}
 
 		if bktType == BktTypeCouchbase {
@@ -211,8 +213,10 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 				// Get the data port. No VBucketServerMap.
 				host, _, err := net.SplitHostPort(node.Hostname)
 				if err != nil {
-					panic(err)
+					logErrorf("Encountered invalid memcached host/port string. Ignoring node.")
+					continue
 				}
+
 				curKvHost := fmt.Sprintf("%s:%d", host, node.Ports["direct"])
 				kvServerList = append(kvServerList, curKvHost)
 			}

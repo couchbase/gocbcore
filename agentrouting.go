@@ -92,7 +92,8 @@ func (list memdQRequestSorter) Swap(i, j int) {
 func (agent *Agent) applyConfig(cfg *routeConfig) {
 	// Check some basic things to ensure consistency!
 	if len(cfg.vbMap) != agent.numVbuckets {
-		panic("Received a configuration with a different number of vbuckets.")
+		logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
+		return
 	}
 
 	// Only a single thing can modify the config at any time

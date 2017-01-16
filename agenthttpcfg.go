@@ -22,7 +22,7 @@ func (i *configStreamBlock) UnmarshalJSON(data []byte) error {
 func hostnameFromUri(uri string) string {
 	uriInfo, err := url.Parse(uri)
 	if err != nil {
-		panic("Failed to parse URI to hostname!")
+		return uri
 	}
 	return strings.Split(uriInfo.Host, ":")[0]
 }

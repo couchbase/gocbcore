@@ -75,14 +75,18 @@ func (ptr *routeDataPtr) get() *routeData {
 
 func (ptr *routeDataPtr) update(old, new *routeData) bool {
 	if new == nil {
-		panic("Attempted to update to nil routeData")
+		logErrorf("Attempted to update to nil routeData")
+		return false
 	}
+
 	if old != nil {
 		return atomic.CompareAndSwapPointer(&ptr.data, unsafe.Pointer(old), unsafe.Pointer(new))
 	} else {
 		if atomic.SwapPointer(&ptr.data, unsafe.Pointer(new)) != nil {
-			panic("Updated from nil attempted on initialized routeDataPtr")
+			logErrorf("Updated from nil attempted on initialized routeDataPtr")
+			return false
 		}
+
 		return true
 	}
 }
