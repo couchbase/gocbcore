@@ -242,6 +242,7 @@ var (
 	ErrBadHosts       = errors.New("Failed to connect to any of the specified hosts.")
 	ErrProtocol       = errors.New("Failed to parse server response.")
 	ErrNoReplicas     = errors.New("No replicas responded in time.")
+	ErrNoServer       = errors.New("No server available for this vbucket.")
 	ErrInvalidServer  = errors.New("The specific server index is invalid.")
 	ErrInvalidVBucket = errors.New("The specific vbucket index is invalid.")
 	ErrInvalidReplica = errors.New("The specific server index is invalid.")

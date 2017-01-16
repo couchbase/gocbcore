@@ -1,6 +1,10 @@
 package gocbcore
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 type memdOpMapItem struct {
 	value *memdQRequest
@@ -25,6 +29,18 @@ type memdOpMap struct {
 func (q *memdOpMap) Add(req *memdQRequest) {
 	q.lock.Lock()
 
+	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(q)) {
+		logDebugf("Attempted to put dispatched op in new opmap")
+		q.lock.Unlock()
+		return
+	}
+
+	if req.isCancelled() {
+		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(q), nil)
+		q.lock.Unlock()
+		return
+	}
+
 	q.opIndex++
 	req.Opaque = q.opIndex
 
@@ -48,6 +64,9 @@ func (q *memdOpMap) Add(req *memdQRequest) {
 //   the request to remove, along with the request that
 //   immediately preceeds it in the queue.
 func (q *memdOpMap) remove(prev *memdOpMapItem, req *memdOpMapItem) {
+	// TODO(brett19): Maybe should ensure this was meant to be in this opmap.
+	atomic.CompareAndSwapPointer(&req.value.waitingIn, unsafe.Pointer(q), nil)
+
 	if prev == nil {
 		q.first = req.next
 		if q.first == nil {
@@ -85,14 +104,14 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 //   the opaque value that was assigned to it when it was dispatched.
 //   It then removes the request from the queue if it is not persistent
 //   or if alwaysRemove is set to true.
-func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, alwaysRemove bool) *memdQRequest {
+func (q *memdOpMap) FindAndMaybeRemove(opaque uint32) *memdQRequest {
 	q.lock.Lock()
 
 	var cur *memdOpMapItem = q.first
 	var prev *memdOpMapItem
 	for cur != nil {
 		if cur.value.Opaque == opaque {
-			if !cur.value.Persistent || alwaysRemove {
+			if !cur.value.Persistent {
 				q.remove(prev, cur)
 			}
 
@@ -111,6 +130,8 @@ func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, alwaysRemove bool) *memdQR
 //   once for each request found in the queue.
 func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
 	for cur := q.first; cur != nil; cur = cur.next {
+		// TODO(brett19): Maybe should ensure this was meant to be in this opmap.
+		atomic.CompareAndSwapPointer(&cur.value.waitingIn, unsafe.Pointer(q), nil)
 		cb(cur.value)
 	}
 	q.first = nil

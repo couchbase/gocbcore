@@ -455,7 +455,7 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 		multiPendingOp
 		remaining int32
 	})
-	op.remaining = int32(len(config.servers))
+	op.remaining = int32(len(config.kvPipelines))
 
 	stats := make(map[string]SingleServerStats)
 
@@ -465,7 +465,7 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 		}
 	}()
 
-	for index, server := range config.servers {
+	for index, server := range config.kvPipelines {
 		var req *memdQRequest
 		serverName := server.Address()
 

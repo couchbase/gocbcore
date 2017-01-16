@@ -1,5 +1,10 @@
 package gocbcore
 
+import (
+	"net"
+	"time"
+)
+
 // A type representing a unique revision of a document.
 // This can be used to perform optimistic locking.
 type Cas uint64
@@ -50,7 +55,41 @@ func (mp *multiPendingOp) Cancel() bool {
 	return allCancelled
 }
 
+func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
+	if agent.nmvRetryDelay == 0 {
+		agent.requeueDirect(req)
+	} else {
+		time.AfterFunc(agent.nmvRetryDelay, func() {
+			agent.requeueDirect(req)
+		})
+	}
+}
+
+func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
+	// Grab just the hostname from the source address
+	sourceHost, _, _ := net.SplitHostPort(resp.sourceAddr)
+
+	// Try to parse the value as a bucket configuration
+	bk, err := parseConfig(resp.Value, sourceHost)
+	if err == nil {
+		agent.updateConfig(bk)
+	}
+
+	// Redirect it!  This may actually come back to this server, but I won't tell
+	//   if you don't ;)
+	agent.waitAndRetryOperation(req)
+}
+
 func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
+	originalCallback := req.Callback
+	req.Callback = func(resp *memdQResponse, req *memdQRequest, err error) {
+		if err == ErrNotMyVBucket {
+			agent.waitAndRetryOperation(req)
+			return
+		}
+		originalCallback(resp, req, err)
+	}
+
 	err := agent.dispatchDirect(req)
 	if err != nil {
 		return nil, err

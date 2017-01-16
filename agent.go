@@ -2,9 +2,9 @@ package gocbcore
 
 import (
 	"crypto/tls"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -20,6 +20,7 @@ type Agent struct {
 	initFn            memdInitFunc
 	useMutationTokens bool
 
+	configLock  sync.Mutex
 	routingInfo routeDataPtr
 	numVbuckets int
 
@@ -31,8 +32,8 @@ type Agent struct {
 	serverConnectTimeout time.Duration
 	serverWaitTimeout    time.Duration
 	nmvRetryDelay        time.Duration
-
-	shutdownWaitCh chan *memdPipeline
+	kvPoolSize           int
+	maxQueueSize         int
 }
 
 // The timeout for each server connection, including all authentication steps.
@@ -66,13 +67,25 @@ type AgentConfig struct {
 	ConnectTimeout       time.Duration
 	ServerConnectTimeout time.Duration
 	NmvRetryDelay        time.Duration
+	MaxQueueSize         int
+}
+
+func createInitFn(config *AgentConfig) memdInitFunc {
+	return func(client *syncClient, deadline time.Time) error {
+		var features []HelloFeature
+		if config.UseMutationTokens {
+			features = append(features, FeatureSeqNo)
+		}
+
+		client.ExecHello(features, deadline)
+
+		return config.AuthHandler(client, deadline)
+	}
 }
 
 // Creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := func(pipeline *memdPipeline, deadline time.Time) error {
-		return config.AuthHandler(&authClient{pipeline}, deadline)
-	}
+	initFn := createInitFn(config)
 	return createAgent(config, initFn)
 }
 
@@ -81,16 +94,19 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 func CreateDcpAgent(config *AgentConfig, dcpStreamName string) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	dcpInitFn := func(pipeline *memdPipeline, deadline time.Time) error {
-		if err := config.AuthHandler(&authClient{pipeline}, deadline); err != nil {
+	initFn := createInitFn(config)
+	dcpInitFn := func(client *syncClient, deadline time.Time) error {
+		if err := initFn(client, deadline); err != nil {
 			return err
 		}
-		return doOpenDcpChannel(pipeline, dcpStreamName, deadline)
+		return client.ExecOpenDcpConsumer(dcpStreamName, deadline)
 	}
 	return createAgent(config, dcpInitFn)
 }
 
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
+	// TODO(brett19): Put all configurable options in the AgentConfig
+
 	c := &Agent{
 		bucket:    config.BucketName,
 		password:  config.Password,
@@ -106,6 +122,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		serverConnectTimeout: config.ServerConnectTimeout,
 		serverWaitTimeout:    5 * time.Second,
 		nmvRetryDelay:        config.NmvRetryDelay,
+		kvPoolSize:           1,
+		maxQueueSize:         2048,
 	}
 
 	deadline := time.Now().Add(config.ConnectTimeout)
@@ -131,23 +149,26 @@ func (agent *Agent) cccpLooper() {
 			break
 		}
 
-		numServers := len(routingInfo.servers)
-		if numServers == 0 {
-			logDebugf("CCCPPOLL: No servers")
+		numNodes := len(routingInfo.kvPipelines)
+		if numNodes == 0 {
+			logDebugf("CCCPPOLL: No nodes available to poll")
 			continue
 		}
 
-		srvIdx := rand.Intn(numServers)
-		srv := routingInfo.servers[srvIdx]
+		nodeIdx := rand.Intn(numNodes)
+		pipeline := routingInfo.kvPipelines[nodeIdx]
 
-		// Force config refresh from random node
-		cccpBytes, err := doCccpRequest(srv, time.Now().Add(maxWaitTime))
+		client := syncClient{
+			client: pipeline,
+		}
+		cccpBytes, err := client.ExecCccpRequest(time.Now().Add(maxWaitTime))
 		if err != nil {
 			logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
 			continue
 		}
 
-		bk, err := parseConfig(cccpBytes, srv.Hostname())
+		hostName, _, _ := net.SplitHostPort(pipeline.Address())
+		bk, err := parseConfig(cccpBytes, hostName)
 		if err != nil {
 			logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
 			continue
@@ -169,57 +190,61 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			srvDeadlineTm = deadline
 		}
 
-		srv := CreateMemdPipeline(thisHostPort)
-
 		logDebugf("Trying to connect")
-		err := agent.connectPipeline(srv, srvDeadlineTm)
-		if err != nil {
-			if err == ErrAuthError {
-				return err
-			}
+		client, err := agent.dialMemdClient(thisHostPort)
+		if err == ErrAuthError {
+			return err
+		} else if err != nil {
 			logDebugf("Connecting failed! %v", err)
 			continue
 		}
 
+		syncCli := syncClient{
+			client: client,
+		}
+
 		logDebugf("Attempting to request CCCP configuration")
-		cccpBytes, err := doCccpRequest(srv, srvDeadlineTm)
+		cccpBytes, err := syncCli.ExecCccpRequest(srvDeadlineTm)
 		if err != nil {
 			logDebugf("Failed to retrieve CCCP config. %v", err)
-			srv.Close()
+			client.Close()
 			continue
 		}
 
-		bk, err := parseConfig(cccpBytes, srv.Hostname())
+		hostName, _, _ := net.SplitHostPort(thisHostPort)
+		bk, err := parseConfig(cccpBytes, hostName)
 		if err != nil {
-			srv.Close()
+			logDebugf("Failed to parse CCCP configuration")
+			client.Close()
 			continue
 		}
 
 		if !bk.supportsCccp() {
-			// No CCCP support, fall back to HTTP!
-			srv.Close()
+			logDebugf("Bucket does not support CCCP")
+			client.Close()
 			break
 		}
 
 		routeCfg := buildRouteConfig(bk, agent.IsSecure())
 		if !routeCfg.IsValid() {
-			// Something is invalid about this config, keep trying
-			srv.Close()
+			logDebugf("Configuration was deemed invalid")
+			client.Close()
 			continue
 		}
 
 		logDebugf("Successfully connected")
 
-		// Build some fake routing data, this is used to essentially 'pass' the
-		//   server connection we already have over to the config update function.
+		// Build some fake routing data, this is used to indicate that
+		//  client is "alive".  A nil routeData causes immediate shutdown.
 		agent.routingInfo.update(nil, &routeData{
-			servers: []*memdPipeline{srv},
+			revId: -1,
 		})
+
+		// TODO(brett19): Save the client that we build for bootstrap
+		client.Close()
 
 		agent.numVbuckets = len(routeCfg.vbMap)
 		agent.applyConfig(routeCfg)
-
-		srv.SetHandlers(agent.handleServerNmv, agent.handleServerDeath)
 
 		go agent.cccpLooper()
 
@@ -237,6 +262,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		}
 	}
 	agent.routingInfo.update(nil, &routeData{
+		revId:      -1,
 		mgmtEpList: epList,
 	})
 
@@ -274,9 +300,6 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 // Shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() {
-	// Set up a channel so we can find out when servers shut down.
-	agent.shutdownWaitCh = make(chan *memdPipeline)
-
 	// Clear the routingInfo so no new operations are performed
 	//   and retrieve the last active routing configuration
 	routingInfo := agent.routingInfo.clear()
@@ -284,33 +307,25 @@ func (agent *Agent) Close() {
 		return
 	}
 
-	// Loop all the currently running servers and close their
-	//   connections.  Their requests will be drained below.
-	for _, s := range routingInfo.servers {
-		s.Close()
+	// Loop all the pipelines and close them, then close the wait
+	//  queue to prevent any further data from entering them.
+	for _, pipeline := range routingInfo.kvPipelines {
+		pipeline.Close()
+	}
+	if routingInfo.deadPipe != nil {
+		routingInfo.deadPipe.Close()
 	}
 
-	// Clear any extraneous queues that may still contain
-	//   requests which are not pending on a server queue.
-	if routingInfo.deadQueue != nil {
-		routingInfo.deadQueue.Drain(func(req *memdQRequest) {
-			req.Callback(nil, nil, ErrShutdown)
-		}, nil)
+	// Drain all the pipelines and error their requests, then
+	//  drain the dead queue and error those requests.
+	dispatchReqErr := func(req *memdQRequest) {
+		req.tryCallback(nil, ErrShutdown)
 	}
-	if routingInfo.waitQueue != nil {
-		routingInfo.waitQueue.Drain(func(req *memdQRequest) {
-			req.Callback(nil, nil, ErrShutdown)
-		}, nil)
+	for _, pipeline := range routingInfo.kvPipelines {
+		pipeline.Drain(dispatchReqErr)
 	}
-
-	// Loop all the currently running servers and wait for them
-	//   to stop running then drain their requests as errors
-	//   (this also closes the server conn).
-	for range routingInfo.servers {
-		s := <-agent.shutdownWaitCh
-		s.Drain(func(req *memdQRequest) {
-			req.Callback(nil, nil, ErrShutdown)
-		})
+	if routingInfo.deadPipe != nil {
+		routingInfo.deadPipe.Drain(dispatchReqErr)
 	}
 }
 
@@ -349,7 +364,7 @@ func (agent *Agent) NumServers() int {
 	if routingInfo == nil {
 		return 0
 	}
-	return len(routingInfo.queues)
+	return len(routingInfo.kvPipelines)
 }
 
 // Returns list of VBuckets on the server.
@@ -406,46 +421,4 @@ func (agent *Agent) FtsEps() []string {
 		return nil
 	}
 	return routingInfo.ftsEpList
-}
-
-func doCccpRequest(pipeline *memdPipeline, deadline time.Time) ([]byte, error) {
-	resp, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdGetClusterConfig,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
-		},
-	}, deadline)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Value, nil
-}
-
-func doOpenDcpChannel(pipeline *memdPipeline, streamName string, deadline time.Time) error {
-	extraBuf := make([]byte, 8)
-	binary.BigEndian.PutUint32(extraBuf[0:], 0)
-	binary.BigEndian.PutUint32(extraBuf[4:], 1)
-
-	_, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdDcpOpenConnection,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      []byte(streamName),
-			Value:    nil,
-		},
-	}, deadline)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
