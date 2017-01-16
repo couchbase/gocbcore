@@ -1,273 +1,253 @@
 package gocbcore
 
 import (
-	"strings"
+	"errors"
+	"fmt"
 	"sync"
-	"time"
 )
 
-type memdInitFunc func(*memdPipeline, time.Time) error
+var (
+	errPipelineClosed = errors.New("Pipeline has been closed")
+	errPipelineFull   = errors.New("Pipeline is too full")
+)
 
-type CloseHandler func(*memdPipeline)
-type BadRouteHandler func(*memdPipeline, *memdQRequest, *memdQResponse)
-
-type Callback func(*memdQResponse, *memdQRequest, error)
+type memdGetClientFn func() (*memdClient, error)
 
 type memdPipeline struct {
-	lock sync.RWMutex
-
-	queue *memdQueue
-
-	address  string
-	conn     memdConn
-	isClosed bool
-	ioDoneCh chan bool
-
-	opList memdOpMap
-
-	handleBadRoute BadRouteHandler
-	handleDeath    CloseHandler
+	address     string
+	getClientFn memdGetClientFn
+	maxItems    int
+	queue       *memdOpQueue
+	maxClients  int
+	clients     []*memdPipelineClient
 }
 
-func CreateMemdPipeline(address string) *memdPipeline {
+func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
 	return &memdPipeline{
-		address:  address,
-		queue:    createMemdQueue(),
-		ioDoneCh: make(chan bool, 1),
+		address:     address,
+		getClientFn: getClientFn,
+		maxClients:  maxClients,
+		maxItems:    maxItems,
+		queue:       newMemdOpQueue(),
 	}
 }
 
-func (s *memdPipeline) Address() string {
-	return s.address
+func newDeadPipeline(maxItems int) *memdPipeline {
+	return newPipeline("", 0, maxItems, nil)
 }
 
-func (s *memdPipeline) Hostname() string {
-	return strings.Split(s.address, ":")[0]
+func (pipeline memdPipeline) debugString() string {
+	var outStr string
+
+	if pipeline.address != "" {
+		outStr += fmt.Sprintf("Address: %s\n", pipeline.address)
+		outStr += fmt.Sprintf("Max Clients: %d\n", pipeline.maxClients)
+		outStr += fmt.Sprintf("Num Clients: %d\n", len(pipeline.clients))
+		outStr += fmt.Sprintf("Max Items: %d\n", pipeline.maxItems)
+	} else {
+		outStr += "Dead-Server Queue\n"
+	}
+
+	outStr += "Op Queue:\n"
+	outStr += reindentLog("  ", pipeline.queue.debugString())
+
+	return outStr
 }
 
-func (s *memdPipeline) IsClosed() bool {
-	s.lock.Lock()
-	rv := s.isClosed
-	s.lock.Unlock()
-	return rv
+func (pipeline memdPipeline) Address() string {
+	return pipeline.address
 }
 
-func (s *memdPipeline) SetHandlers(badRouteFn BadRouteHandler, deathFn CloseHandler) {
-	s.lock.Lock()
+func (pipeline *memdPipeline) StartClients() {
+	for len(pipeline.clients) < pipeline.maxClients {
+		client := newMemdPipelineClient(pipeline)
+		pipeline.clients = append(pipeline.clients, client)
 
-	if s.isClosed {
-		// We died between authentication and here, immediately notify the deathFn
-		s.lock.Unlock()
-		deathFn(s)
-		return
-	}
-
-	s.handleBadRoute = badRouteFn
-	s.handleDeath = deathFn
-	s.lock.Unlock()
-}
-
-func (pipeline *memdPipeline) ExecuteRequest(req *memdQRequest, deadline time.Time) (respOut *memdQResponse, errOut error) {
-	if req.Callback != nil {
-		panic("Tried to synchronously dispatch an operation with an async handler.")
-	}
-
-	signal := make(chan bool)
-
-	req.Callback = func(resp *memdQResponse, _ *memdQRequest, err error) {
-		respOut = resp
-		errOut = err
-		signal <- true
-	}
-
-	if !pipeline.queue.QueueRequest(req) {
-		return nil, ErrDispatchFail
-	}
-
-	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
-	select {
-	case <-signal:
-		ReleaseTimer(timeoutTmr, false)
-		return
-	case <-timeoutTmr.C:
-		ReleaseTimer(timeoutTmr, true)
-		if !req.Cancel() {
-			<-signal
-			return
-		}
-		return nil, ErrTimeout
+		go client.Run()
 	}
 }
 
-func (pipeline *memdPipeline) dispatchRequest(req *memdQRequest) error {
-	// We do a cursory check of the server to avoid dispatching operations on the network
-	//   that have already knowingly been cancelled.  This doesn't guarentee a cancelled
-	//   operation from being sent, but it does reduce network IO when possible.
-	if req.QueueOwner() != pipeline.queue {
-		// Even though we failed to dispatch, this is not actually an error,
-		//   we just consume the operation since its already been handled elsewhere
-		return nil
-	}
-
-	pipeline.opList.Add(req)
-
-	err := pipeline.conn.WritePacket(&req.memdPacket)
-	if err != nil {
-		logDebugf("Got write error")
-		pipeline.opList.Remove(req)
+func (pipeline *memdPipeline) sendRequest(req *memdQRequest, maxItems int) error {
+	err := pipeline.queue.Push(req, maxItems)
+	if err == errOpQueueClosed {
+		return errPipelineClosed
+	} else if err == errOpQueueFull {
+		return errPipelineFull
+	} else if err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (s *memdPipeline) resolveRequest(resp *memdQResponse) {
-	opIndex := resp.Opaque
-	isFailResp := resp.Magic == ResMagic && resp.Status != StatusSuccess
+func (pipeline *memdPipeline) RequeueRequest(req *memdQRequest) error {
+	return pipeline.sendRequest(req, 0)
+}
 
-	// Find the request that goes with this response
-	alwaysRemove := isFailResp
-	req := s.opList.FindAndMaybeRemove(opIndex, alwaysRemove)
+func (pipeline *memdPipeline) SendRequest(req *memdQRequest) error {
+	return pipeline.sendRequest(req, pipeline.maxItems)
+}
 
-	if req == nil {
-		// There is no known request that goes with this response.  Ignore it.
-		logDebugf("Received response with no corresponding request.")
+// Performs a takeover of another pipeline.  Note that this does not
+//  take over the requests queued in the old pipeline, and those must
+//  be drained and processed separately.
+func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
+	if oldPipeline.address != pipeline.address {
+		logErrorf("Attempted pipeline takeover for differing address")
+
+		// We try to 'gracefully' error here by resolving all the requests as
+		//  errors, but allowing the application to continue.
+		oldPipeline.Close()
+		oldPipeline.Drain(func(req *memdQRequest) {
+			req.tryCallback(nil, ErrInternalError)
+		})
+
 		return
 	}
 
-	if isFailResp || !req.Persistent {
-		if !s.queue.UnqueueRequest(req) {
-			// While we found a valid request, the request does not appear to be queued
-			//   with this server anymore, this probably means that it has been cancelled.
-			logDebugf("Received response for cancelled request.")
-			return
-		}
+	// Migrate all the clients to the new pipeline
+	pipeline.clients = oldPipeline.clients
+	oldPipeline.clients = nil
+	for _, client := range pipeline.clients {
+		client.ReassignTo(pipeline)
 	}
 
-	if isFailResp && resp.Status == StatusNotMyVBucket {
-		// If possible, lets backchannel our NMV back to the Agent of this memdQueueConn
-		//   instance.  This is primarily meant to enhance performance, and allow the
-		//   agent to be instantly notified upon a new configuration arriving.  If the
-		//   backchannel isn't available, we just Callback with the NMV error.
-		logDebugf("Received NMV response.")
-		s.lock.RLock()
-		badRouteFn := s.handleBadRoute
-		s.lock.RUnlock()
-		if badRouteFn != nil {
-			badRouteFn(s, req, resp)
-			return
-		}
-	}
-
-	// Call the requests callback handler...  Ignore Status field for incoming requests.
-	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
-	if resp.Magic == ReqMagic {
-		req.Callback(resp, req, nil)
-	} else {
-		req.Callback(resp, req, getMemdError(resp.Status))
-	}
-}
-
-func (pipeline *memdPipeline) ioLoop() {
-	killSig := make(chan bool)
-
-	// Reading
-	go func() {
-		logDebugf("Reader loop starting...")
-		for {
-			resp := &memdQResponse{
-				sourceAddr: pipeline.address,
-			}
-
-			err := pipeline.conn.ReadPacket(&resp.memdPacket)
-			if err != nil {
-				logDebugf("Server read error: %v", err)
-				killSig <- true
-				break
-			}
-			logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
-			pipeline.resolveRequest(resp)
-		}
-	}()
-
-	// Writing
-	logDebugf("Writer loop starting...")
-	for {
-		select {
-		case req := <-pipeline.queue.reqsCh:
-			logSchedf("Dispatching request OP=0x%x. Opaque=%d.", req.Opcode, req.Opaque)
-			err := pipeline.dispatchRequest(req)
-			if err != nil {
-				// Ensure that the connection gets fully closed
-				pipeline.conn.Close()
-
-				// We must wait for the receive goroutine to die as well before we can continue.
-				<-killSig
-
-				// We have to run this code in a goroutine as the requests channel
-				//   may be full so we need to notify people to drain this server
-				//   before it may complete, however at the same time, we have to
-				//   wait to trip ioDoneCh until after that last request is returned
-				//   to the queue or our drain might miss it.
-				go func() {
-					// Return the active request back to the queue and mark the io as being completed.
-					pipeline.queue.reqsCh <- req
-
-					// Now we must signal drainers that we are done!
-					pipeline.ioDoneCh <- true
-				}()
-
-				return
-			}
-		case <-killSig:
-			// Now we must signal drainers that we are done!
-			pipeline.ioDoneCh <- true
-
-			return
-		}
-	}
-}
-
-func (pipeline *memdPipeline) Run() {
-	logDebugf("Beginning pipeline runner")
-
-	// Run the IO loop.  This will block until the connection has been closed.
-	pipeline.ioLoop()
-
-	// Signal the creator that we died :(
-	pipeline.lock.Lock()
-	pipeline.isClosed = true
-	deathFn := pipeline.handleDeath
-	pipeline.lock.Unlock()
-	if deathFn != nil {
-		deathFn(pipeline)
-	} else {
-		pipeline.Drain(nil)
-	}
+	// Shut down the old pipelines queue, this will force all the
+	//  clients to 'refresh' their consumer, and pick up the new
+	//  pipeline queue from the new pipeline.
+	oldPipeline.queue.Close()
 }
 
 func (pipeline *memdPipeline) Close() {
-	pipeline.conn.Close()
+	// Shut down all the clients
+	for _, pipecli := range pipeline.clients {
+		pipecli.Close()
+	}
+
+	// Kill the queue, forcing everyone to stop
+	pipeline.queue.Close()
 }
 
-func (pipeline *memdPipeline) Drain(reqCb drainedReqCallback) {
-	// If the user does no pass a drain callback, we handle the requests
-	//   by immediately failing them with a network error.
-	if reqCb == nil {
-		reqCb = func(req *memdQRequest) {
-			req.Callback(nil, nil, ErrNetwork)
+func (pipeline *memdPipeline) Drain(cb func(*memdQRequest)) {
+	pipeline.queue.Drain(cb)
+}
+
+type memdPipelineClient struct {
+	parent     *memdPipeline
+	clientDead bool
+	consumer   *memdOpConsumer
+	lock       sync.Mutex
+}
+
+func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
+	return &memdPipelineClient{
+		parent: parent,
+	}
+}
+
+func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
+	pipecli.lock.Lock()
+	pipecli.parent = parent
+	consumer := pipecli.consumer
+	pipecli.lock.Unlock()
+
+	consumer.Close()
+}
+
+func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
+	killSig := make(chan struct{})
+
+	go func() {
+		logDebugf("Pipeline `%s/%p` client watcher starting...", pipecli.parent.address, pipecli)
+
+		<-client.CloseNotify()
+
+		pipecli.lock.Lock()
+		pipecli.clientDead = true
+		consumer := pipecli.consumer
+		pipecli.lock.Unlock()
+
+		consumer.Close()
+
+		killSig <- struct{}{}
+	}()
+
+	logDebugf("Pipeline `%s/%p` IO loop starting...", pipecli.parent.address, pipecli)
+
+	for {
+		if pipecli.consumer == nil {
+			pipecli.lock.Lock()
+
+			if pipecli.parent == nil {
+				// This pipelineClient has been shut down
+				pipecli.lock.Unlock()
+				break
+			}
+
+			if pipecli.clientDead {
+				// The client has disconnected from the server
+				pipecli.lock.Unlock()
+				break
+			}
+
+			pipecli.consumer = pipecli.parent.queue.Consumer()
+			pipecli.lock.Unlock()
+		}
+
+		req := pipecli.consumer.Pop()
+		if req == nil {
+			pipecli.consumer = nil
+			continue
+		}
+
+		err := client.SendRequest(req)
+		if err != nil {
+			logDebugf("Server write error: %v", err)
+
+			// We need to alert the caller that there was a network error
+			req.Callback(nil, req, ErrNetwork)
+
+			// Stop looping
+			break
 		}
 	}
 
-	// Drain the request queue, this will block until the io thread signals
-	//   on ioDoneCh, and the queues have been completely emptied
-	pipeline.queue.Drain(reqCb, pipeline.ioDoneCh)
+	// Ensure the connection is fully closed
+	client.Close()
 
-	// As a last step, immediately notify all the requests that were
-	//   on-the-wire that a network error has occurred.
-	pipeline.opList.Drain(func(r *memdQRequest) {
-		if pipeline.queue.UnqueueRequest(r) {
-			r.Callback(nil, nil, ErrNetwork)
+	// We must wait for the close wait goroutine to die as well before we can continue.
+	<-killSig
+}
+
+func (pipecli *memdPipelineClient) Run() {
+	for {
+		pipecli.lock.Lock()
+		pipeline := pipecli.parent
+		pipecli.lock.Unlock()
+
+		if pipeline == nil {
+			break
 		}
-	})
+
+		client, err := pipeline.getClientFn()
+		if err != nil {
+			continue
+		}
+
+		// Runs until the connection has died (for whatever reason)
+		pipecli.ioLoop(client)
+	}
+}
+
+func (pipecli *memdPipelineClient) Close() error {
+	pipecli.lock.Lock()
+	pipecli.parent = nil
+	consumer := pipecli.consumer
+	pipecli.lock.Unlock()
+
+	if consumer != nil {
+		consumer.Close()
+	}
+
+	return nil
 }

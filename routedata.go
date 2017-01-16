@@ -1,108 +1,68 @@
 package gocbcore
 
 import (
+	"fmt"
 	"sync/atomic"
 	"unsafe"
 )
 
 type routeData struct {
-	revId   uint
+	revId   int64
 	bktType BucketType
 
-	queues     []*memdQueue
-	vbMap      [][]int
+	vbMap       [][]int
+	kvPipelines []*memdPipeline
+	deadPipe    *memdPipeline
+
 	capiEpList []string
 	mgmtEpList []string
 	n1qlEpList []string
 	ftsEpList  []string
 
-	servers        []*memdPipeline
-	pendingServers []*memdPipeline
-	waitQueue      *memdQueue
-	deadQueue      *memdQueue
-
 	source *routeConfig
 }
 
-func (d *routeData) logDebug() {
-	logDebugf("  Revision ID: %d", d.revId)
+func (rd *routeData) debugString() string {
+	var outStr string
 
-	logDebugf("  Queues:")
-	for i, q := range d.queues {
-		if q == nil {
-			logDebugf("    %d: nil", i)
-		}
+	outStr += fmt.Sprintf("Revision ID: %d\n", rd.revId)
 
-		if q == d.waitQueue {
-			logDebugf("    %d: WaitQueue", i)
-			continue
-		}
-
-		var ownerServer int = -1
-		for j, s := range d.servers {
-			if q == s.queue {
-				ownerServer = j
-				break
-			}
-		}
-		if ownerServer >= 0 {
-			logDebugf("    %d: Server %d", i, ownerServer)
-			continue
-		}
-
-		logDebugf("    %d: Unknown... %v", i, q)
+	for i, n := range rd.kvPipelines {
+		outStr += fmt.Sprintf("Pipeline %d:\n", i)
+		outStr += reindentLog("  ", n.debugString()) + "\n"
 	}
 
-	logDebugf("  Servers:")
-	for i, s := range d.servers {
-		if s == nil {
-			logDebugf("    %d: nil", i)
-		} else if !s.IsClosed() {
-			logDebugf("    %d: %p[%s] (ACTIVE)", i, s, s.Address())
-		} else {
-			logDebugf("    %d: %p[%s] (CLOSED)", i, s, s.Address())
-		}
-	}
-
-	logDebugf("  Pending Servers:")
-	for i, s := range d.pendingServers {
-		if s == nil {
-			logDebugf("    %d: nil", i)
-		} else {
-			logDebugf("    %d: %p[%s]", i, s, s.Address())
-		}
-	}
-
-	if d.waitQueue != nil {
-		logDebugf("  Has WaitQueue? YES")
+	outStr += "Dead Pipeline:\n"
+	if rd.deadPipe != nil {
+		outStr += reindentLog("  ", rd.deadPipe.debugString()) + "\n"
 	} else {
-		logDebugf("  Has WaitQueue? NO")
+		outStr += "  Disabled\n"
 	}
 
-	if d.deadQueue != nil {
-		logDebugf("  Has DeadQueue? YES")
-	} else {
-		logDebugf("  Has DeadQueue? NO")
+	outStr += "Capi Eps:\n"
+	for _, ep := range rd.capiEpList {
+		outStr += fmt.Sprintf("  - %s\n", ep)
 	}
 
-	logDebugf("  Capi Eps:")
-	for _, ep := range d.capiEpList {
-		logDebugf("    - %s", ep)
-	}
-	logDebugf("  Mgmt Eps:")
-	for _, ep := range d.mgmtEpList {
-		logDebugf("    - %s", ep)
-	}
-	logDebugf("  N1ql Eps:")
-	for _, ep := range d.n1qlEpList {
-		logDebugf("    - %s", ep)
-	}
-	logDebugf("  FTS Eps:")
-	for _, ep := range d.ftsEpList {
-		logDebugf("    - %s", ep)
+	outStr += "Mgmt Eps:\n"
+	for _, ep := range rd.mgmtEpList {
+		outStr += fmt.Sprintf("  - %s\n", ep)
 	}
 
-	//logDebugf("  Source Data: %v", d.source)
+	outStr += "N1ql Eps:\n"
+	for _, ep := range rd.n1qlEpList {
+		outStr += fmt.Sprintf("  - %s\n", ep)
+	}
+
+	outStr += "FTS Eps:\n"
+	for _, ep := range rd.ftsEpList {
+		outStr += fmt.Sprintf("  - %s\n", ep)
+	}
+
+	outStr += "Source Data: *"
+	//outStr += fmt.Sprintf("  Source Data: %v", d.source)
+
+	return outStr
 }
 
 type routeDataPtr struct {

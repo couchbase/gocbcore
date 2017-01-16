@@ -44,6 +44,8 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 		if resp.Magic == ResMagic {
 			// This is the response to the open stream request.
 			if err != nil {
+				req.Cancel()
+
 				// All client errors are handled by the StreamObserver
 				cb(nil, err)
 				return
@@ -63,6 +65,7 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 		}
 
 		if err != nil {
+			req.Cancel()
 			evtHandler.End(vbId, err)
 			return
 		}

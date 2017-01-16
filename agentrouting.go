@@ -1,123 +1,21 @@
 package gocbcore
 
 import (
+	"container/list"
 	"crypto/tls"
-	"encoding/binary"
 	"net"
+	"sort"
 	"time"
 )
 
-func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
-	if agent.nmvRetryDelay == 0 {
-		agent.redispatchDirect(req)
-	} else {
-		time.AfterFunc(agent.nmvRetryDelay, func() {
-			agent.redispatchDirect(req)
-		})
-	}
-}
+type memdInitFunc func(*syncClient, time.Time) error
 
-func (agent *Agent) handleServerNmv(s *memdPipeline, req *memdQRequest, resp *memdQResponse) {
-	// Try to parse the value as a bucket configuration
-	bk, err := parseConfig(resp.Value, s.Hostname())
-	if err == nil {
-		agent.updateConfig(bk)
-	}
-
-	// Redirect it!  This may actually come back to this server, but I won't tell
-	//   if you don't ;)
-	agent.waitAndRetryOperation(req)
-}
-
-func (agent *Agent) handleServerDeath(s *memdPipeline) {
-	// Check if we are shutting down, if so, simply notify the shutdown
-	//   method that we are going away.
-	routeData := agent.routingInfo.get()
-	if routeData == nil {
-		agent.shutdownWaitCh <- s
-		return
-	}
-
-	// Refresh the routing data with the existing configuration, this has
-	//   the effect of attempting to rebuild the dead server.
-	agent.updateConfig(nil)
-
-	// TODO(brett19): We probably should actually try other ways of resolving
-	//  the issue, like requesting a new configuration.
-}
-
-func appendFeatureCode(bytes []byte, feature HelloFeature) []byte {
-	bytes = append(bytes, 0, 0)
-	binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
-	return bytes
-}
-
-func (agent *Agent) tryHello(pipeline *memdPipeline, deadline time.Time) error {
-	var featuresBytes []byte
-
-	if agent.useMutationTokens {
-		featuresBytes = appendFeatureCode(featuresBytes, FeatureSeqNo)
-	}
-
-	_, err := pipeline.ExecuteRequest(&memdQRequest{
-		memdPacket: memdPacket{
-			Magic:  ReqMagic,
-			Opcode: CmdHello,
-			Key:    []byte("gocb/" + GoCbCoreVersionStr),
-			Value:  featuresBytes,
-		},
-	}, deadline)
-
-	return err
-}
-
-// Attempt to connect a server, this function must be called
-//  in its own goroutine and will ensure that offline servers
-//  are not spammed with connection attempts.
-func (agent *Agent) connectServer(server *memdPipeline) {
-	agent.serverFailuresLock.Lock()
-	failureTime := agent.serverFailures[server.address]
-	agent.serverFailuresLock.Unlock()
-
-	if !failureTime.IsZero() {
-		waitedTime := time.Since(failureTime)
-		if waitedTime < agent.serverWaitTimeout {
-			time.Sleep(agent.serverWaitTimeout - waitedTime)
-
-			if !agent.checkPendingServer(server) {
-				// Server is no longer pending.  Stop trying.
-				return
-			}
-		}
-	}
-
-	err := agent.connectPipeline(server, time.Now().Add(agent.serverConnectTimeout))
-	if err != nil {
-		agent.serverFailuresLock.Lock()
-		agent.serverFailures[server.address] = time.Now()
-		agent.serverFailuresLock.Unlock()
-
-		// Force a config update which will clear away this dead pending
-		// server and create a new one to connect with.
-		agent.updateConfig(nil)
-		return
-	}
-
-	if !agent.activatePendingServer(server) {
-		// If this is no longer a valid pending server, we should shut
-		//   it down!
-		server.Close()
-	}
-}
-
-func (agent *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) error {
-	logDebugf("Attempting to connect pipeline to %s", pipeline.address)
-
+func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config = nil
 	if agent.tlsConfig != nil {
-		host, _, _ := net.SplitHostPort(pipeline.address)
+		host, _, _ := net.SplitHostPort(address)
 		tlsConfig = &tls.Config{
 			InsecureSkipVerify: agent.tlsConfig.InsecureSkipVerify,
 			RootCAs:            agent.tlsConfig.RootCAs,
@@ -125,148 +23,67 @@ func (agent *Agent) connectPipeline(pipeline *memdPipeline, deadline time.Time) 
 		}
 	}
 
-	memdConn, err := DialMemdConn(pipeline.address, tlsConfig, deadline)
+	deadline := time.Now().Add(agent.serverConnectTimeout)
+
+	memdConn, err := DialMemdConn(address, tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
-		pipeline.lock.Lock()
-		pipeline.isClosed = true
-		pipeline.lock.Unlock()
-		return err
+		return nil, err
 	}
 
-	logDebugf("Connected.")
-	pipeline.conn = memdConn
-	go pipeline.Run()
+	client := newMemdClient(memdConn)
+
+	sclient := syncClient{
+		client: client,
+	}
 
 	logDebugf("Authenticating...")
-	err = agent.initFn(pipeline, deadline)
+	err = agent.initFn(&sclient, deadline)
 	if err != nil {
 		logDebugf("Failed to authenticate. %v", err)
 		memdConn.Close()
-		return err
+		return nil, err
 	}
 
-	agent.tryHello(pipeline, deadline)
-
-	return nil
+	return client, nil
 }
 
-// Drains all the requests out of the queue for this server.  This must be
-//   invoked only once this server no longer exists in the routing data or an
-//   infinite loop will likely occur.
-func (agent *Agent) shutdownPipeline(s *memdPipeline) {
-	s.Drain(func(req *memdQRequest) {
-		agent.redispatchDirect(req)
-	})
+func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
+	agent.serverFailuresLock.Lock()
+	failureTime := agent.serverFailures[address]
+	agent.serverFailuresLock.Unlock()
 
-	s.Close()
+	if !failureTime.IsZero() {
+		waitedTime := time.Since(failureTime)
+		if waitedTime < agent.serverWaitTimeout {
+			time.Sleep(agent.serverWaitTimeout - waitedTime)
+		}
+	}
+
+	client, err := agent.dialMemdClient(address)
+	if err != nil {
+		agent.serverFailuresLock.Lock()
+		agent.serverFailures[address] = time.Now()
+		agent.serverFailuresLock.Unlock()
+
+		return nil, err
+	}
+
+	return client, nil
 }
 
-func (agent *Agent) checkPendingServer(server *memdPipeline) bool {
-	oldRouting := agent.routingInfo.get()
-	if oldRouting == nil {
-		return false
-	}
+type memdQRequestSorter []*memdQRequest
 
-	// Find the index of the pending server we want to swap
-	var serverIdx int = -1
-	for i, s := range oldRouting.pendingServers {
-		if s == server {
-			serverIdx = i
-			break
-		}
-	}
-
-	return serverIdx != -1
+func (list memdQRequestSorter) Len() int {
+	return len(list)
 }
 
-func (agent *Agent) activatePendingServer(server *memdPipeline) bool {
-	logDebugf("Activating Server...")
+func (list memdQRequestSorter) Less(i, j int) bool {
+	return list[i].dispatchTime.Before(list[j].dispatchTime)
+}
 
-	var oldRouting *routeData
-	for {
-		oldRouting = agent.routingInfo.get()
-		if oldRouting == nil {
-			return false
-		}
-
-		// Find the index of the pending server we want to swap
-		var serverIdx int = -1
-		for i, s := range oldRouting.pendingServers {
-			if s == server {
-				serverIdx = i
-				break
-			}
-		}
-
-		if serverIdx == -1 {
-			// This server is no longer in the list
-			return false
-		}
-
-		var newRouting *routeData = &routeData{
-			revId:      oldRouting.revId,
-			capiEpList: oldRouting.capiEpList,
-			mgmtEpList: oldRouting.mgmtEpList,
-			n1qlEpList: oldRouting.n1qlEpList,
-			ftsEpList:  oldRouting.ftsEpList,
-			vbMap:      oldRouting.vbMap,
-			source:     oldRouting.source,
-			deadQueue:  oldRouting.deadQueue,
-			bktType:    oldRouting.bktType,
-		}
-
-		// Copy the lists
-		newRouting.queues = append(newRouting.queues, oldRouting.queues...)
-		newRouting.servers = append(newRouting.servers, oldRouting.servers...)
-		newRouting.pendingServers = append(newRouting.pendingServers, oldRouting.pendingServers...)
-
-		// Swap around the pending server to being an active one
-		newRouting.servers = append(newRouting.servers, server)
-		newRouting.queues[serverIdx] = server.queue
-		newRouting.pendingServers[serverIdx] = nil
-
-		// Update to the new waitQueue
-		for i, q := range newRouting.queues {
-			if q == oldRouting.waitQueue {
-				if newRouting.waitQueue == nil {
-					newRouting.waitQueue = createMemdQueue()
-				}
-				newRouting.queues[i] = newRouting.waitQueue
-			}
-		}
-
-		// Double-check the queue to make sure its still big enough.
-		if len(newRouting.queues) != len(oldRouting.queues) {
-			panic("Pending server swap corrupted the queue list.")
-		}
-
-		// Attempt to atomically update the routing data
-		if !agent.routingInfo.update(oldRouting, newRouting) {
-			// Someone preempted us, let's restart and try again...
-			continue
-		}
-
-		server.SetHandlers(agent.handleServerNmv, agent.handleServerDeath)
-
-		logDebugf("Switching routing data (server activation %d)...", serverIdx)
-		oldRouting.logDebug()
-		logDebugf("To new data...")
-		newRouting.logDebug()
-
-		// We've successfully swapped to the new config, lets finish building the
-		//   new routing data's connections and destroy/draining old connections.
-		break
-	}
-
-	oldWaitQueue := oldRouting.waitQueue
-	if oldWaitQueue != nil {
-		oldWaitQueue.Drain(func(req *memdQRequest) {
-			agent.redispatchDirect(req)
-		}, nil)
-	}
-
-	return true
+func (list memdQRequestSorter) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
 }
 
 // Accepts a cfgBucket object representing a cluster configuration and rebuilds the server list
@@ -278,8 +95,11 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 		panic("Received a configuration with a different number of vbuckets.")
 	}
 
-	var oldRouting *routeData
-	var newRouting *routeData = &routeData{
+	// Only a single thing can modify the config at any time
+	agent.configLock.Lock()
+	defer agent.configLock.Unlock()
+
+	newRouting := &routeData{
 		revId:      cfg.revId,
 		capiEpList: cfg.capiEpList,
 		mgmtEpList: cfg.mgmtEpList,
@@ -290,131 +110,104 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 		source:     cfg,
 	}
 
-	var needsDeadQueue bool
-	for _, replicaList := range cfg.vbMap {
-		for _, srvIdx := range replicaList {
-			if srvIdx == -1 {
-				needsDeadQueue = true
-				break
-			}
+	kvPoolSize := agent.kvPoolSize
+	maxQueueSize := agent.maxQueueSize
+	for _, hostPort := range cfg.kvServerList {
+		hostPort := hostPort
+
+		getClientFn := func() (*memdClient, error) {
+			return agent.slowDialMemdClient(hostPort)
 		}
+		pipeline := newPipeline(hostPort, kvPoolSize, maxQueueSize, getClientFn)
+
+		newRouting.kvPipelines = append(newRouting.kvPipelines, pipeline)
 	}
-	if needsDeadQueue {
-		newRouting.deadQueue = createMemdQueue()
+
+	newRouting.deadPipe = newDeadPipeline(maxQueueSize)
+
+	oldRouting := agent.routingInfo.get()
+	if oldRouting == nil {
+		return
 	}
 
-	var createdServers []*memdPipeline
-	for {
-		oldRouting = agent.routingInfo.get()
-		if oldRouting == nil {
-			return
-		}
+	if newRouting.revId == 0 {
+		logDebugf("Unversioned configuration data, ")
+	} else if newRouting.revId == oldRouting.revId {
+		logDebugf("Ignoring configuration with identical revision number")
+		return
+	} else if newRouting.revId <= oldRouting.revId {
+		logDebugf("Ignoring new configuration as it has an older revision id")
+		return
+	}
 
-		if newRouting.revId < oldRouting.revId {
-			logDebugf("Ignoring new configuration as it has an older revision id.")
-			return
-		}
-
-		// Reset the lists before each iteration
-		newRouting.queues = nil
-		newRouting.servers = nil
-		newRouting.pendingServers = nil
-
-		for _, hostPort := range cfg.kvServerList {
-			var thisServer *memdPipeline
-
-			// See if this server exists in the old routing data and is still alive
-			for _, oldServer := range oldRouting.servers {
-				if oldServer.Address() == hostPort && !oldServer.IsClosed() {
-					thisServer = oldServer
-					break
-				}
-			}
-
-			// If we found a still active connection in our old routing table,
-			//   we just need to copy it over to the new routing table.
-			if thisServer != nil {
-				newRouting.pendingServers = append(newRouting.pendingServers, nil)
-				newRouting.servers = append(newRouting.servers, thisServer)
-				newRouting.queues = append(newRouting.queues, thisServer.queue)
-				continue
-			}
-
-			// Search for any servers we are already trying to connect with.
-			for _, oldServer := range oldRouting.pendingServers {
-				if oldServer != nil && oldServer.Address() == hostPort && !oldServer.IsClosed() {
-					thisServer = oldServer
-					break
-				}
-			}
-
-			// If we do not already have a pending server we are trying to
-			//   connect to, we should build one!
-			if thisServer == nil {
-				thisServer = CreateMemdPipeline(hostPort)
-				createdServers = append(createdServers, thisServer)
-			}
-
-			if newRouting.waitQueue == nil {
-				newRouting.waitQueue = createMemdQueue()
-			}
-
-			newRouting.pendingServers = append(newRouting.pendingServers, thisServer)
-			newRouting.queues = append(newRouting.queues, newRouting.waitQueue)
-		}
-
-		// Check everything is sane
-		if len(newRouting.queues) < len(cfg.kvServerList) {
-			panic("Failed to generate a queues list that matches the config server list.")
-		}
-
-		// Attempt to atomically update the routing data
-		if !agent.routingInfo.update(oldRouting, newRouting) {
-			// Someone preempted us, let's restart and try again...
-			continue
-		}
-
-		// We've successfully swapped to the new config, lets finish building the
-		//   new routing data's connections and destroy/draining old connections.
-		break
+	// Attempt to atomically update the routing data
+	if !agent.routingInfo.update(oldRouting, newRouting) {
+		logErrorf("Someone preempted the config update, skipping update")
+		return
 	}
 
 	logDebugf("Switching routing data (update)...")
-	oldRouting.logDebug()
-	logDebugf("To new data...")
-	newRouting.logDebug()
+	logDebugf("New Routing Data:\n%s", newRouting.debugString())
 
-	// Launch all the new servers
-	for _, newServer := range createdServers {
-		go agent.connectServer(newServer)
+	// Gather all our old pipelines up for takeover and what not
+	oldPipelines := list.New()
+	for _, pipeline := range oldRouting.kvPipelines {
+		oldPipelines.PushBack(pipeline)
 	}
 
-	// Identify all the dead servers and drain their requests
-	for _, oldServer := range oldRouting.servers {
-		found := false
-		for _, newServer := range newRouting.servers {
-			if newServer == oldServer {
-				found = true
-				break
+	// Build a function to find an existing pipeline
+	stealPipeline := func(address string) *memdPipeline {
+		for e := oldPipelines.Front(); e != nil; e = e.Next() {
+			pipeline := e.Value.(*memdPipeline)
+
+			if pipeline.Address() == address {
+				oldPipelines.Remove(e)
+				return pipeline
 			}
 		}
-		if !found {
-			go agent.shutdownPipeline(oldServer)
+
+		return nil
+	}
+
+	// Initialize new pipelines (possibly with a takeover)
+	for _, pipeline := range newRouting.kvPipelines {
+		oldPipeline := stealPipeline(pipeline.Address())
+		if oldPipeline != nil {
+			pipeline.Takeover(oldPipeline)
 		}
+
+		pipeline.StartClients()
 	}
 
-	oldWaitQueue := oldRouting.waitQueue
-	if oldWaitQueue != nil {
-		oldWaitQueue.Drain(func(req *memdQRequest) {
-			agent.redispatchDirect(req)
-		}, nil)
+	// Shut down any pipelines that were not taken over
+	for e := oldPipelines.Front(); e != nil; e = e.Next() {
+		pipeline := e.Value.(*memdPipeline)
+		pipeline.Close()
+	}
+	if oldRouting.deadPipe != nil {
+		oldRouting.deadPipe.Close()
 	}
 
-	oldDeadQueue := oldRouting.deadQueue
-	if oldDeadQueue != nil {
-		oldDeadQueue.Drain(func(req *memdQRequest) {
-			agent.redispatchDirect(req)
-		}, nil)
+	// Gather all the requests from all the old pipelines and then
+	//  sort and redispatch them (which will use the new pipelines)
+	var requestList []*memdQRequest
+	for _, pipeline := range oldRouting.kvPipelines {
+		logDebugf("Draining queue %+v", pipeline)
+
+		pipeline.Drain(func(req *memdQRequest) {
+			requestList = append(requestList, req)
+		})
+	}
+	if oldRouting.deadPipe != nil {
+		oldRouting.deadPipe.Drain(func(req *memdQRequest) {
+			requestList = append(requestList, req)
+		})
+	}
+
+	sort.Sort(memdQRequestSorter(requestList))
+
+	for _, req := range requestList {
+		agent.requeueDirect(req)
 	}
 }
 
@@ -441,10 +234,10 @@ func (agent *Agent) updateConfig(bk *cfgBucket) {
 	}
 }
 
-func (agent *Agent) routeRequest(req *memdQRequest) (*memdQueue, error) {
+func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 	routingInfo := agent.routingInfo.get()
 	if routingInfo == nil {
-		return nil, nil
+		return nil, ErrShutdown
 	}
 
 	var srvIdx int
@@ -453,48 +246,48 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdQueue, error) {
 	// Route to specific server
 	if repId < 0 {
 		srvIdx = -repId - 1
-		if srvIdx >= len(routingInfo.queues) {
-			return nil, ErrInvalidServer
-		}
-		return routingInfo.queues[srvIdx], nil
-	}
+	} else {
 
-	if routingInfo.bktType == BktTypeCouchbase {
-		// Targeting a specific replica; repId >= 0
-		if repId >= routingInfo.source.numReplicas+1 {
-			return nil, ErrInvalidReplica
-		}
-
-		if req.Key != nil {
-			srvIdx, req.Vbucket = routingInfo.MapKeyVBucket(req.Key, repId)
-		} else {
-			// Filter explicit vBucket input. Really only used in OBSERVE
-			if int(req.Vbucket) >= len(routingInfo.vbMap) {
-				return nil, ErrInvalidVBucket
+		if routingInfo.bktType == BktTypeCouchbase {
+			// Targeting a specific replica; repId >= 0
+			if repId >= len(routingInfo.vbMap[0]) {
+				return nil, ErrInvalidReplica
 			}
-			srvIdx = routingInfo.vbMap[req.Vbucket][repId]
-		}
-	} else if routingInfo.bktType == BktTypeMemcached {
-		if repId > 0 {
-			// Error. Memcached buckets don't understand replicas!
-			return nil, ErrInvalidReplica
-		}
 
-		if req.Key == nil {
-			panic("Non-broadcast keyless Memcached bucket request found!")
+			if req.Key != nil {
+				srvIdx, req.Vbucket = routingInfo.MapKeyVBucket(req.Key, repId)
+			} else {
+				// Filter explicit vBucket input. Really only used in OBSERVE
+				if int(req.Vbucket) >= len(routingInfo.vbMap) {
+					return nil, ErrInvalidVBucket
+				}
+
+				srvIdx = routingInfo.vbMap[req.Vbucket][repId]
+			}
+		} else if routingInfo.bktType == BktTypeMemcached {
+			if repId > 0 {
+				// Error. Memcached buckets don't understand replicas!
+				return nil, ErrInvalidReplica
+			}
+
+			if req.Key == nil {
+				// Non-broadcast keyless Memcached bucket request
+				return nil, ErrInvalidArgs
+			}
+
+			srvIdx = routingInfo.MapKetama(req.Key)
 		}
-		srvIdx = routingInfo.MapKetama(req.Key)
 	}
 
-	if srvIdx == -1 {
-		return routingInfo.deadQueue, nil
+	if srvIdx < 0 {
+		return routingInfo.deadPipe, nil
+	} else if srvIdx >= len(routingInfo.kvPipelines) {
+		return nil, ErrInvalidServer
 	}
 
-	return routingInfo.queues[srvIdx], nil
+	return routingInfo.kvPipelines[srvIdx], nil
 }
 
-// This immediately dispatches a request to the appropriate server based on the
-//  currently available routing data.
 func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 	for {
 		pipeline, err := agent.routeRequest(req)
@@ -502,27 +295,43 @@ func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 			return err
 		}
 
-		if pipeline == nil {
-			// If no routing data exists this indicates that this Agent
-			//   has been shut down!
-			return ErrShutdown
-		}
-
-		if !pipeline.QueueRequest(req) {
+		err = pipeline.SendRequest(req)
+		if err == errPipelineClosed {
 			continue
+		} else if err == errPipelineFull {
+			return ErrOverload
+		} else if err != nil {
+			return err
 		}
 
 		break
 	}
+
 	return nil
 }
 
-// This function is meant to be used when a memdRequest is internally shuffled
-//   around.  It currently simply calls dispatchDirect.
-func (agent *Agent) redispatchDirect(req *memdQRequest) {
-	// Reschedule the operation
-	err := agent.dispatchDirect(req)
-	if err != nil {
-		panic("dispatchDirect errored during redispatch.")
+func (agent *Agent) requeueDirect(req *memdQRequest) {
+	handleError := func(err error) {
+		logErrorf("Reschedule failed, failing request (%s)", err)
+
+		req.tryCallback(nil, err)
+	}
+
+	for {
+		pipeline, err := agent.routeRequest(req)
+		if err != nil {
+			handleError(err)
+			return
+		}
+
+		err = pipeline.RequeueRequest(req)
+		if err == errPipelineClosed {
+			continue
+		} else if err != nil {
+			handleError(err)
+			return
+		}
+
+		break
 	}
 }

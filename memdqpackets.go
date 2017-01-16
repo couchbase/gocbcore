@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -14,6 +15,8 @@ type memdQResponse struct {
 	sourceAddr string
 }
 
+type Callback func(*memdQResponse, *memdQRequest, error)
+
 // The data for a request that can be queued with a memdqueueconn,
 //   and can potentially be rerouted to multiple servers due to
 //   configuration changes.
@@ -25,22 +28,62 @@ type memdQRequest struct {
 	Callback   Callback
 	Persistent bool
 
+	// This tracks when the request was dispatched so that we can
+	//  properly prioritize older requests to try and meet timeout
+	//  requirements.
+	dispatchTime time.Time
+
 	// This stores a pointer to the server that currently own
-	//   this request.  When a request is resolved or cancelled,
-	//   this is nulled out.  This property allows the request to
-	//   lookup who owns it during cancelling as well as prevents
-	//   callback after cancel, or cancel after callback.
+	//   this request.  This allows us to remove it from that list
+	//   whenever the request is cancelled.
 	queuedWith unsafe.Pointer
+
+	// This stores a pointer to the opList that currently is holding
+	//  this request.  This allows us to remove it form that list
+	//  whenever the request is cancelled
+	waitingIn unsafe.Pointer
+
+	// This keeps track of whether the request has been 'completed'
+	//  which is synonymous with the callback having been invoked.
+	//  This is an integer to allow us to atomically control it.
+	isCompleted uint32
 }
 
-func (req *memdQRequest) QueueOwner() *memdQueue {
-	return (*memdQueue)(atomic.LoadPointer(&req.queuedWith))
+func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
+	if req.Persistent {
+		if atomic.LoadUint32(&req.isCompleted) == 0 {
+			req.Callback(resp, req, err)
+			return true
+		}
+	} else {
+		if atomic.SwapUint32(&req.isCompleted, 1) == 0 {
+			req.Callback(resp, req, err)
+			return true
+		}
+	}
+
+	return false
+}
+
+func (req *memdQRequest) isCancelled() bool {
+	return atomic.LoadUint32(&req.isCompleted) != 0
 }
 
 func (req *memdQRequest) Cancel() bool {
-	queue := (*memdQueue)(atomic.SwapPointer(&req.queuedWith, nil))
-	if queue == nil {
+	if atomic.SwapUint32(&req.isCompleted, 1) != 0 {
+		// Someone already completed this request
 		return false
 	}
+
+	queuedWith := (*memdOpQueue)(atomic.LoadPointer(&req.queuedWith))
+	if queuedWith != nil {
+		queuedWith.Remove(req)
+	}
+
+	waitingIn := (*memdOpMap)(atomic.LoadPointer(&req.waitingIn))
+	if waitingIn != nil {
+		waitingIn.Remove(req)
+	}
+
 	return true
 }

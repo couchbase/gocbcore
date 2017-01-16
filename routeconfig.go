@@ -15,7 +15,7 @@ type routeKetamaContinuum struct {
 }
 
 type routeConfig struct {
-	revId        uint
+	revId        int64
 	numReplicas  int
 	bktType      BucketType
 	kvServerList []string

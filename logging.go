@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 )
 
 type LogLevel int
@@ -107,4 +108,9 @@ func logSchedf(format string, v ...interface{}) {
 
 func logErrorf(format string, v ...interface{}) {
 	logExf(LogError, 2, format, v...)
+}
+
+func reindentLog(indent, message string) string {
+	reindentedMessage := strings.Replace(message, "\n", "\n"+indent, -1)
+	return fmt.Sprintf("%s%s", indent, reindentedMessage)
 }
