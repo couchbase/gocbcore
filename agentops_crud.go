@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"sync"
 	"sync/atomic"
 )
 
@@ -121,14 +122,31 @@ func (agent *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (P
 func (agent *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
 	opRes := &multiPendingOp{}
 
+	// We use a lock here to guard from concurrent modification by
+	//  operation completion cancellation and op dispatch / insertion.
+	var lock sync.Mutex
+
+	// 0/1 depending on whether a result was received.
 	var cbCalled uint32
 	handler := func(value []byte, flags uint32, cas Cas, err error) {
-		if atomic.CompareAndSwapUint32(&cbCalled, 0, 1) {
-			// Cancel all other commands if possible.
-			opRes.Cancel()
-			// Dispatch Callback
-			cb(value, flags, cas, err)
+		lock.Lock()
+
+		if cbCalled == 1 {
+			// Do nothing if we already got an answer
+			lock.Unlock()
+			return
 		}
+
+		// Mark the callback as having been invoked
+		cbCalled = 1
+
+		// Cancel any remaining operation
+		opRes.Cancel()
+
+		lock.Unlock()
+
+		// Dispatch Callback
+		cb(value, flags, cas, err)
 	}
 
 	// Dispatch a getReplica for each replica server
@@ -136,7 +154,15 @@ func (agent *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error)
 	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
 		op, err := agent.getOneReplica(key, repIdx, handler)
 		if err == nil {
+			lock.Lock()
+			if cbCalled == 1 {
+				op.Cancel()
+				lock.Unlock()
+				break
+			}
+
 			opRes.ops = append(opRes.ops, op)
+			lock.Unlock()
 		}
 	}
 

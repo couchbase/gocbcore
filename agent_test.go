@@ -51,9 +51,8 @@ func saslAuthFn(bucket, password string) func(AuthClient, time.Time) error {
 }
 
 type Signaler struct {
-	t       *testing.T
-	wrapped bool
-	signal  chan int
+	t      *testing.T
+	signal chan int
 }
 
 func (s *Signaler) Continue() {
@@ -61,9 +60,7 @@ func (s *Signaler) Continue() {
 }
 
 func (s *Signaler) Wrap(fn func()) {
-	s.wrapped = true
 	defer func() {
-		s.wrapped = false
 		if r := recover(); r != nil {
 			// Rethrow actual panics
 			if r != s {
