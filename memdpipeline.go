@@ -97,7 +97,13 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 		// We try to 'gracefully' error here by resolving all the requests as
 		//  errors, but allowing the application to continue.
-		oldPipeline.Close()
+		err := oldPipeline.Close()
+		if err != nil {
+			// Log and continue with this non-fatal error.
+			logDebugf("Failed to shutdown old pipeline (%s)", err)
+		}
+
+		// Drain all the requests as an internal error so they are not lost
 		oldPipeline.Drain(func(req *memdQRequest) {
 			req.tryCallback(nil, ErrInternalError)
 		})
@@ -118,14 +124,20 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 	oldPipeline.queue.Close()
 }
 
-func (pipeline *memdPipeline) Close() {
+func (pipeline *memdPipeline) Close() error {
 	// Shut down all the clients
+	var errs MultiError
 	for _, pipecli := range pipeline.clients {
-		pipecli.Close()
+		err := pipecli.Close()
+		if err != nil {
+			errs.add(err)
+		}
 	}
 
 	// Kill the queue, forcing everyone to stop
 	pipeline.queue.Close()
+
+	return errs.get()
 }
 
 func (pipeline *memdPipeline) Drain(cb func(*memdQRequest)) {
@@ -155,10 +167,25 @@ func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
 }
 
 func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
+	pipecli.lock.Lock()
+	if pipecli.parent == nil {
+		logErrorf("Pipeline ioLoop started with no parent")
+		pipecli.lock.Unlock()
+
+		err := client.Close()
+		if err != nil {
+			logErrorf("Failed to shut down broken ioLoop client (%s)", err)
+		}
+
+		return
+	}
+	address := pipecli.parent.address
+	pipecli.lock.Unlock()
+
 	killSig := make(chan struct{})
 
 	go func() {
-		logDebugf("Pipeline `%s/%p` client watcher starting...", pipecli.parent.address, pipecli)
+		logDebugf("Pipeline `%s/%p` client watcher starting...", address, pipecli)
 
 		<-client.CloseNotify()
 
@@ -172,7 +199,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 		killSig <- struct{}{}
 	}()
 
-	logDebugf("Pipeline `%s/%p` IO loop starting...", pipecli.parent.address, pipecli)
+	logDebugf("Pipeline `%s/%p` IO loop starting...", address, pipecli)
 
 	var localConsumer *memdOpConsumer
 	for {
@@ -215,7 +242,11 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 	}
 
 	// Ensure the connection is fully closed
-	client.Close()
+	err := client.Close()
+	if err != nil {
+		// We just log here, since this is a non-fatal error.
+		logErrorf("Failed to shut down client socket (%s)", err)
+	}
 
 	// We must wait for the close wait goroutine to die as well before we can continue.
 	<-killSig

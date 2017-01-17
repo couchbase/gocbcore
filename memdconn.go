@@ -48,8 +48,15 @@ func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 		return nil, err
 	}
 
-	tcpConn := baseConn.(*net.TCPConn)
-	tcpConn.SetNoDelay(false)
+	tcpConn, isTcpConn := baseConn.(*net.TCPConn)
+	if !isTcpConn || tcpConn == nil {
+		return nil, ErrInternalError
+	}
+
+	err = tcpConn.SetNoDelay(false)
+	if err != nil {
+		logWarnf("Failed to disable TCP nodelay (%s)", err)
+	}
 
 	var conn io.ReadWriteCloser
 	if tlsConfig == nil {

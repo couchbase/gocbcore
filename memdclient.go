@@ -59,7 +59,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	req.tryCallback(resp, err)
 }
 
-func (client *memdClient) run() error {
+func (client *memdClient) run() {
 	go func() {
 		for {
 			resp := memdQResponse{
@@ -76,7 +76,11 @@ func (client *memdClient) run() error {
 			client.resolveRequest(&resp)
 		}
 
-		client.conn.Close()
+		err := client.conn.Close()
+		if err != nil {
+			// Lets log an error, as this is non-fatal
+			logErrorf("Failed to shut down client connection (%s)", err)
+		}
 
 		client.opList.Drain(func(req *memdQRequest) {
 			req.tryCallback(nil, ErrNetwork)
@@ -84,8 +88,6 @@ func (client *memdClient) run() error {
 
 		client.closeNotify <- true
 	}()
-
-	return nil
 }
 
 func (client *memdClient) Close() error {

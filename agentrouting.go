@@ -15,7 +15,11 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config = nil
 	if agent.tlsConfig != nil {
-		host, _, _ := net.SplitHostPort(address)
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			logErrorf("Failed to parse address for TLS config (%s)", err)
+		}
+
 		tlsConfig = &tls.Config{
 			InsecureSkipVerify: agent.tlsConfig.InsecureSkipVerify,
 			RootCAs:            agent.tlsConfig.RootCAs,
@@ -41,7 +45,12 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	err = agent.initFn(&sclient, deadline)
 	if err != nil {
 		logDebugf("Failed to authenticate. %v", err)
-		memdConn.Close()
+
+		closeErr := memdConn.Close()
+		if closeErr != nil {
+			logWarnf("Failed to close authentication client (%s)", err)
+		}
+
 		return nil, err
 	}
 
@@ -159,7 +168,11 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 	// Build a function to find an existing pipeline
 	stealPipeline := func(address string) *memdPipeline {
 		for e := oldPipelines.Front(); e != nil; e = e.Next() {
-			pipeline := e.Value.(*memdPipeline)
+			pipeline, ok := e.Value.(*memdPipeline)
+			if !ok {
+				logErrorf("Failed to cast old pipeline")
+				continue
+			}
 
 			if pipeline.Address() == address {
 				oldPipelines.Remove(e)
@@ -182,11 +195,22 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 
 	// Shut down any pipelines that were not taken over
 	for e := oldPipelines.Front(); e != nil; e = e.Next() {
-		pipeline := e.Value.(*memdPipeline)
-		pipeline.Close()
+		pipeline, ok := e.Value.(*memdPipeline)
+		if !ok {
+			logErrorf("Failed to cast old pipeline")
+			continue
+		}
+
+		err := pipeline.Close()
+		if err != nil {
+			logErrorf("Failed to properly close abandoned pipeline (%s)", err)
+		}
 	}
 	if oldRouting.deadPipe != nil {
-		oldRouting.deadPipe.Close()
+		err := oldRouting.deadPipe.Close()
+		if err != nil {
+			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
+		}
 	}
 
 	// Gather all the requests from all the old pipelines and then
@@ -227,7 +251,11 @@ func (agent *Agent) updateConfig(bk *cfgBucket) {
 		routeCfg := buildRouteConfig(bk, agent.IsSecure())
 		if !routeCfg.IsValid() {
 			// We received an invalid configuration, lets shutdown.
-			agent.Close()
+			err := agent.Close()
+			if err != nil {
+				logErrorf("Invalid config caused agent close failure (%s)", err)
+			}
+
 			return
 		}
 
