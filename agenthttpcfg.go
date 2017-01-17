@@ -135,7 +135,11 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 		go func() {
 			<-time.After(maxConnPeriod)
 			logDebugf("Auto DC!")
-			resp.Body.Close()
+
+			err := resp.Body.Close()
+			if err != nil {
+				logErrorf("Socket close failed during auto-dc (%s)", err)
+			}
 		}()
 
 		dec := json.NewDecoder(resp.Body)
@@ -143,7 +147,13 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 		for {
 			err := dec.Decode(configBlock)
 			if err != nil {
-				resp.Body.Close()
+				logWarnf("Config block decode failure (%s)", err)
+
+				err = resp.Body.Close()
+				if err != nil {
+					logErrorf("Socket close failed after decode fail (%s)", err)
+				}
+
 				break
 			}
 
@@ -152,7 +162,12 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 			bkCfg, err := parseConfig(configBlock.Bytes, hostname)
 			if err != nil {
 				logDebugf("Got error while parsing config: %v", err)
-				resp.Body.Close()
+
+				err = resp.Body.Close()
+				if err != nil {
+					logErrorf("Socket close failed after parsing fail (%s)", err)
+				}
+
 				break
 			}
 
@@ -163,7 +178,12 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				logDebugf("HTTP Config Init")
 				if !firstCfgFn(bkCfg, nil) {
 					logDebugf("Got error while activating first config")
-					resp.Body.Close()
+
+					err = resp.Body.Close()
+					if err != nil {
+						logErrorf("Socket close failed after config init (%s)", err)
+					}
+
 					break
 				}
 				isFirstTry = false

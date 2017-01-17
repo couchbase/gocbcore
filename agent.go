@@ -77,7 +77,10 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 			features = append(features, FeatureSeqNo)
 		}
 
-		client.ExecHello(features, deadline)
+		err := client.ExecHello(features, deadline)
+		if err != nil {
+			logDebugf("Failed to HELLO with server (%s)", err)
+		}
 
 		return config.AuthHandler(client, deadline)
 	}
@@ -167,7 +170,12 @@ func (agent *Agent) cccpLooper() {
 			continue
 		}
 
-		hostName, _, _ := net.SplitHostPort(pipeline.Address())
+		hostName, _, err := net.SplitHostPort(pipeline.Address())
+		if err != nil {
+			logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+			continue
+		}
+
 		bk, err := parseConfig(cccpBytes, hostName)
 		if err != nil {
 			logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
@@ -199,6 +207,13 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			continue
 		}
 
+		disconnectClient := func() {
+			err := client.Close()
+			if err != nil {
+				logErrorf("Failed to shut down client connection (%s)", err)
+			}
+		}
+
 		syncCli := syncClient{
 			client: client,
 		}
@@ -207,28 +222,34 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		cccpBytes, err := syncCli.ExecCccpRequest(srvDeadlineTm)
 		if err != nil {
 			logDebugf("Failed to retrieve CCCP config. %v", err)
-			client.Close()
+			disconnectClient()
 			continue
 		}
 
-		hostName, _, _ := net.SplitHostPort(thisHostPort)
+		hostName, _, err := net.SplitHostPort(thisHostPort)
+		if err != nil {
+			logErrorf("Failed to parse CCCP source address. %v", err)
+			disconnectClient()
+			continue
+		}
+
 		bk, err := parseConfig(cccpBytes, hostName)
 		if err != nil {
-			logDebugf("Failed to parse CCCP configuration")
-			client.Close()
+			logDebugf("Failed to parse CCCP configuration. %v", err)
+			disconnectClient()
 			continue
 		}
 
 		if !bk.supportsCccp() {
 			logDebugf("Bucket does not support CCCP")
-			client.Close()
+			disconnectClient()
 			break
 		}
 
 		routeCfg := buildRouteConfig(bk, agent.IsSecure())
 		if !routeCfg.IsValid() {
 			logDebugf("Configuration was deemed invalid")
-			client.Close()
+			disconnectClient()
 			continue
 		}
 
@@ -241,7 +262,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		})
 
 		// TODO(brett19): Save the client that we build for bootstrap
-		client.Close()
+		disconnectClient()
 
 		agent.numVbuckets = len(routeCfg.vbMap)
 		agent.applyConfig(routeCfg)
@@ -299,21 +320,32 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 
 // Shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
-func (agent *Agent) Close() {
+func (agent *Agent) Close() error {
+	var errs MultiError
+
+	agent.configLock.Lock()
+
 	// Clear the routingInfo so no new operations are performed
 	//   and retrieve the last active routing configuration
 	routingInfo := agent.routingInfo.clear()
 	if routingInfo == nil {
-		return
+		agent.configLock.Unlock()
+		return ErrShutdown
 	}
 
 	// Loop all the pipelines and close them, then close the wait
 	//  queue to prevent any further data from entering them.
 	for _, pipeline := range routingInfo.kvPipelines {
-		pipeline.Close()
+		err := pipeline.Close()
+		if err != nil {
+			errs.add(err)
+		}
 	}
 	if routingInfo.deadPipe != nil {
-		routingInfo.deadPipe.Close()
+		err := routingInfo.deadPipe.Close()
+		if err != nil {
+			errs.add(err)
+		}
 	}
 
 	// Drain all the pipelines and error their requests, then
@@ -327,6 +359,10 @@ func (agent *Agent) Close() {
 	if routingInfo.deadPipe != nil {
 		routingInfo.deadPipe.Drain(dispatchReqErr)
 	}
+
+	agent.configLock.Unlock()
+
+	return errs.get()
 }
 
 // Returns whether this client is connected via SSL.

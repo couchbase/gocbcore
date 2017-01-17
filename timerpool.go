@@ -8,11 +8,14 @@ import (
 var globalTimerPool sync.Pool
 
 func AcquireTimer(d time.Duration) *time.Timer {
-	tmrMaybe := globalTimerPool.Get()
-	if tmrMaybe == nil {
+	tmr, isTmr := globalTimerPool.Get().(*time.Timer)
+	if tmr == nil || !isTmr {
+		if !isTmr && tmr != nil {
+			logErrorf("Encountered non-timer in timer pool")
+		}
+
 		return time.NewTimer(d)
 	}
-	tmr := tmrMaybe.(*time.Timer)
 	tmr.Reset(d)
 	return tmr
 }

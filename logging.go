@@ -44,8 +44,7 @@ func (l *defaultLogger) Log(level LogLevel, offset int, format string, v ...inte
 		return nil
 	}
 	s := fmt.Sprintf(format, v...)
-	l.GoLogger.Output(offset+1, s)
-	return nil
+	return l.GoLogger.Output(offset+1, s)
 }
 
 var (
@@ -94,7 +93,10 @@ func SetLogger(logger Logger) {
 
 func logExf(level LogLevel, offset int, format string, v ...interface{}) {
 	if globalLogger != nil {
-		globalLogger.Log(level, offset+1, format, v...)
+		err := globalLogger.Log(level, offset+1, format, v...)
+		if err != nil {
+			log.Printf("Logger error occured (%s)\n", err)
+		}
 	}
 }
 
@@ -104,6 +106,10 @@ func logDebugf(format string, v ...interface{}) {
 
 func logSchedf(format string, v ...interface{}) {
 	logExf(LogSched, 2, format, v...)
+}
+
+func logWarnf(format string, v ...interface{}) {
+	logExf(LogWarn, 2, format, v...)
 }
 
 func logErrorf(format string, v ...interface{}) {

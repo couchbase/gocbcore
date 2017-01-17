@@ -67,7 +67,12 @@ func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
 
 func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	// Grab just the hostname from the source address
-	sourceHost, _, _ := net.SplitHostPort(resp.sourceAddr)
+	sourceHost, _, err := net.SplitHostPort(resp.sourceAddr)
+	if err != nil {
+		logErrorf("NMV response source address was invalid, skipping config update")
+		agent.waitAndRetryOperation(req)
+		return
+	}
 
 	// Try to parse the value as a bucket configuration
 	bk, err := parseConfig(resp.Value, sourceHost)
