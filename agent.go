@@ -149,7 +149,7 @@ func (agent *Agent) cccpLooper() {
 		// Wait 10 seconds
 		time.Sleep(tickTime)
 
-		routingInfo := agent.routingInfo.get()
+		routingInfo := agent.routingInfo.Get()
 		if routingInfo == nil {
 			// If we have a blank routingInfo, it indicates the client is shut down.
 			break
@@ -260,7 +260,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 
 		// Build some fake routing data, this is used to indicate that
 		//  client is "alive".  A nil routeData causes immediate shutdown.
-		agent.routingInfo.update(nil, &routeData{
+		agent.routingInfo.Update(nil, &routeData{
 			revId: -1,
 		})
 
@@ -285,7 +285,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			epList = append(epList, fmt.Sprintf("https://%s", hostPort))
 		}
 	}
-	agent.routingInfo.update(nil, &routeData{
+	agent.routingInfo.Update(nil, &routeData{
 		revId:      -1,
 		mgmtEpList: epList,
 	})
@@ -330,7 +330,7 @@ func (agent *Agent) Close() error {
 
 	// Clear the routingInfo so no new operations are performed
 	//   and retrieve the last active routing configuration
-	routingInfo := agent.routingInfo.clear()
+	routingInfo := agent.routingInfo.Clear()
 	if routingInfo == nil {
 		agent.configLock.Unlock()
 		return ErrShutdown
@@ -390,7 +390,7 @@ func (agent *Agent) NumVbuckets() int {
 // NumReplicas returns the number of replicas configured on the
 // connected cluster.
 func (agent *Agent) NumReplicas() int {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return 0
 	}
@@ -399,7 +399,7 @@ func (agent *Agent) NumReplicas() int {
 
 // NumServers returns the number of servers accessible for K/V.
 func (agent *Agent) NumServers() int {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return 0
 	}
@@ -413,7 +413,7 @@ func (agent *Agent) NumServers() int {
 // VbucketsOnServer returns the list of VBuckets for a server.
 func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	var vbuckets []uint16
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return vbuckets
 	}
@@ -429,7 +429,7 @@ func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return nil
 	}
@@ -439,7 +439,7 @@ func (agent *Agent) CapiEps() []string {
 // MgmtEps returns all the available endpoints for performing
 // management queries.
 func (agent *Agent) MgmtEps() []string {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return nil
 	}
@@ -449,7 +449,7 @@ func (agent *Agent) MgmtEps() []string {
 // N1qlEps returns all the available endpoints for performing
 // N1QL queries.
 func (agent *Agent) N1qlEps() []string {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return nil
 	}
@@ -459,7 +459,7 @@ func (agent *Agent) N1qlEps() []string {
 // FtsEps returns all the available endpoints for performing
 // FTS queries.
 func (agent *Agent) FtsEps() []string {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return nil
 	}

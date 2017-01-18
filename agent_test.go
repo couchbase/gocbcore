@@ -14,7 +14,7 @@ import (
 // of a server
 func (agent *Agent) makeDistKeys() (keys []string) {
 	// Get the routing information
-	cfg := agent.routingInfo.get()
+	cfg := agent.routingInfo.Get()
 	keys = make([]string, len(cfg.kvPipelines))
 	remaining := len(keys)
 
@@ -594,7 +594,7 @@ func TestRandomGet(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
-	numServers := len(agent.routingInfo.get().kvPipelines)
+	numServers := len(agent.routingInfo.Get().kvPipelines)
 
 	agent.Stats("", func(stats map[string]SingleServerStats) {
 		s.Wrap(func() {

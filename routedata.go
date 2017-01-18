@@ -22,7 +22,7 @@ type routeData struct {
 	source *routeConfig
 }
 
-func (rd *routeData) debugString() string {
+func (rd *routeData) DebugString() string {
 	var outStr string
 
 	outStr += fmt.Sprintf("Revision ID: %d\n", rd.revId)
@@ -69,11 +69,11 @@ type routeDataPtr struct {
 	data unsafe.Pointer
 }
 
-func (ptr *routeDataPtr) get() *routeData {
+func (ptr *routeDataPtr) Get() *routeData {
 	return (*routeData)(atomic.LoadPointer(&ptr.data))
 }
 
-func (ptr *routeDataPtr) update(old, new *routeData) bool {
+func (ptr *routeDataPtr) Update(old, new *routeData) bool {
 	if new == nil {
 		logErrorf("Attempted to update to nil routeData")
 		return false
@@ -91,7 +91,7 @@ func (ptr *routeDataPtr) update(old, new *routeData) bool {
 	return true
 }
 
-func (ptr *routeDataPtr) clear() *routeData {
+func (ptr *routeDataPtr) Clear() *routeData {
 	val := atomic.SwapPointer(&ptr.data, nil)
 	return (*routeData)(val)
 }
