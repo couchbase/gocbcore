@@ -267,7 +267,12 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		// TODO(brett19): Save the client that we build for bootstrap
 		disconnectClient()
 
-		agent.numVbuckets = len(routeCfg.vbMap)
+		if routeCfg.vbMap != nil {
+			agent.numVbuckets = routeCfg.vbMap.NumReplicas()
+		} else {
+			agent.numVbuckets = 0
+		}
+
 		agent.applyConfig(routeCfg)
 
 		go agent.cccpLooper()
@@ -315,7 +320,12 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		return err
 	}
 
-	agent.numVbuckets = len(routeCfg.vbMap)
+	if routeCfg.vbMap != nil {
+		agent.numVbuckets = routeCfg.vbMap.NumReplicas()
+	} else {
+		agent.numVbuckets = 0
+	}
+
 	agent.applyConfig(routeCfg)
 
 	return nil
@@ -375,10 +385,18 @@ func (agent *Agent) IsSecure() bool {
 
 // KeyToVbucket translates a particular key to its assigned vbucket.
 func (agent *Agent) KeyToVbucket(key []byte) uint16 {
-	if agent.NumVbuckets() <= 0 {
-		return 0xFFFF
+	// TODO(brett19): The KeyToVbucket Bucket API should return an error
+
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return 0
 	}
-	return uint16(cbCrc(key) % uint32(agent.NumVbuckets()))
+
+	if routingInfo.vbMap == nil {
+		return 0
+	}
+
+	return routingInfo.vbMap.VbucketByKey(key)
 }
 
 // NumVbuckets returns the number of VBuckets configured on the
@@ -394,7 +412,12 @@ func (agent *Agent) NumReplicas() int {
 	if routingInfo == nil {
 		return 0
 	}
-	return len(routingInfo.vbMap[0]) - 1
+
+	if routingInfo.vbMap == nil {
+		return 0
+	}
+
+	return routingInfo.vbMap.NumReplicas()
 }
 
 // NumServers returns the number of servers accessible for K/V.
@@ -412,18 +435,23 @@ func (agent *Agent) NumServers() int {
 
 // VbucketsOnServer returns the list of VBuckets for a server.
 func (agent *Agent) VbucketsOnServer(index int) []uint16 {
-	var vbuckets []uint16
 	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
-		return vbuckets
+		return nil
 	}
 
-	for vb, entry := range routingInfo.vbMap {
-		if entry[0] == index {
-			vbuckets = append(vbuckets, uint16(vb))
-		}
+	if routingInfo.vbMap == nil {
+		return nil
 	}
-	return vbuckets
+
+	vbList := routingInfo.vbMap.VbucketsByServer(0)
+
+	if len(vbList) <= index {
+		// Invalid server index
+		return nil
+	}
+
+	return vbList[index]
 }
 
 // CapiEps returns all the available endpoints for performing

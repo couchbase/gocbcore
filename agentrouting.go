@@ -100,7 +100,7 @@ func (list memdQRequestSorter) Swap(i, j int) {
 //  This method MUST NEVER BLOCK due to its use from various contention points.
 func (agent *Agent) applyConfig(cfg *routeConfig) {
 	// Check some basic things to ensure consistency!
-	if len(cfg.vbMap) != agent.numVbuckets {
+	if cfg.vbMap != nil && cfg.vbMap.NumReplicas() != agent.numVbuckets {
 		logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
 		return
 	}
@@ -116,6 +116,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 		n1qlEpList: cfg.n1qlEpList,
 		ftsEpList:  cfg.ftsEpList,
 		vbMap:      cfg.vbMap,
+		ketamaMap:  cfg.ketamaMap,
 		bktType:    cfg.bktType,
 		source:     cfg,
 	}
@@ -276,22 +277,16 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 	if repId < 0 {
 		srvIdx = -repId - 1
 	} else {
+		var err error
 
 		if routingInfo.bktType == bktTypeCouchbase {
-			// Targeting a specific replica; repId >= 0
-			if repId >= len(routingInfo.vbMap[0]) {
-				return nil, ErrInvalidReplica
+			if req.Key != nil {
+				req.Vbucket = routingInfo.vbMap.VbucketByKey(req.Key)
 			}
 
-			if req.Key != nil {
-				srvIdx, req.Vbucket = routingInfo.MapKeyVBucket(req.Key, repId)
-			} else {
-				// Filter explicit vBucket input. Really only used in OBSERVE
-				if int(req.Vbucket) >= len(routingInfo.vbMap) {
-					return nil, ErrInvalidVBucket
-				}
-
-				srvIdx = routingInfo.vbMap[req.Vbucket][repId]
+			srvIdx, err = routingInfo.vbMap.NodeByVbucket(req.Vbucket, uint32(repId))
+			if err != nil {
+				return nil, err
 			}
 		} else if routingInfo.bktType == bktTypeMemcached {
 			if repId > 0 {
@@ -299,12 +294,15 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 				return nil, ErrInvalidReplica
 			}
 
-			if req.Key == nil {
+			if len(req.Key) == 0 {
 				// Non-broadcast keyless Memcached bucket request
-				return nil, ErrInvalidArgs
+				return nil, ErrInternalError
 			}
 
-			srvIdx = routingInfo.MapKetama(req.Key)
+			srvIdx, err = routingInfo.ketamaMap.NodeByKey(req.Key)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

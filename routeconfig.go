@@ -1,39 +1,22 @@
 package gocbcore
 
 import (
-	"crypto/md5"
 	"fmt"
 	"net"
-	"sort"
 	"strings"
 )
 
-// "Point" in the ring hash entry. See lcbvb_CONTINUUM
-type routeKetamaContinuum struct {
-	index uint32
-	point uint32
-}
-
 type routeConfig struct {
 	revId        int64
-	numReplicas  int
 	bktType      bucketType
 	kvServerList []string
 	capiEpList   []string
 	mgmtEpList   []string
 	n1qlEpList   []string
 	ftsEpList    []string
-	vbMap        [][]int
-	ketamaMap    []routeKetamaContinuum
+	vbMap        *vbucketMap
+	ketamaMap    *ketamaContinuum
 }
-
-type ketamaSorter struct {
-	elems []routeKetamaContinuum
-}
-
-func (c ketamaSorter) Len() int           { return len(c.elems) }
-func (c ketamaSorter) Swap(i, j int)      { c.elems[i], c.elems[j] = c.elems[j], c.elems[i] }
-func (c ketamaSorter) Less(i, j int) bool { return c.elems[i].point < c.elems[j].point }
 
 func (config *routeConfig) IsValid() bool {
 	if len(config.kvServerList) == 0 || len(config.mgmtEpList) == 0 {
@@ -41,91 +24,11 @@ func (config *routeConfig) IsValid() bool {
 	}
 	switch config.bktType {
 	case bktTypeCouchbase:
-		return len(config.vbMap) > 0 && len(config.vbMap[0]) > 0
+		return config.vbMap != nil && config.vbMap.IsValid()
 	case bktTypeMemcached:
-		return len(config.ketamaMap) > 0
+		return config.ketamaMap != nil && config.ketamaMap.IsValid()
 	default:
 		return false
-	}
-}
-
-func (config *routeConfig) buildKetama() {
-	// Libcouchbase presorts this. Might not strictly be required..
-	sort.Strings(config.kvServerList)
-
-	for ss, authority := range config.kvServerList {
-		// 160 points per server
-		for hh := 0; hh < 40; hh++ {
-			hostkey := []byte(fmt.Sprintf("%s-%d", authority, hh))
-			digest := md5.Sum(hostkey)
-
-			for nn := 0; nn < 4; nn++ {
-
-				var d1 = uint32(digest[3+nn*4]&0xff) << 24
-				var d2 = uint32(digest[2+nn*4]&0xff) << 16
-				var d3 = uint32(digest[1+nn*4]&0xff) << 8
-				var d4 = uint32(digest[0+nn*4] & 0xff)
-				var point = d1 | d2 | d3 | d4
-
-				config.ketamaMap = append(config.ketamaMap, routeKetamaContinuum{
-					point: point,
-					index: uint32(ss),
-				})
-			}
-		}
-	}
-
-	sort.Sort(ketamaSorter{config.ketamaMap})
-}
-
-func (config *routeConfig) KetamaHash(key []byte) uint32 {
-	digest := md5.Sum(key)
-
-	return ((uint32(digest[3])&0xFF)<<24 |
-		(uint32(digest[2])&0xFF)<<16 |
-		(uint32(digest[1])&0xFF)<<8 |
-		(uint32(digest[0]) & 0xFF)) & 0xffffffff
-}
-
-func (config *routeConfig) KetamaNode(hash uint32) uint32 {
-	var lowp = uint32(0)
-	var highp = uint32(len(config.ketamaMap))
-	var maxp = highp
-
-	if len(config.ketamaMap) <= 0 {
-		logErrorf("0-length ketama map!  Mapping to node 0.")
-		return 0
-	}
-
-	// Copied from libcouchbase vbucket.c (map_ketama)
-	for {
-		midp := lowp + (highp-lowp)/2
-		if midp == maxp {
-			// Roll over to first entry
-			return config.ketamaMap[0].index
-		}
-
-		mid := config.ketamaMap[midp].point
-		var prev uint32
-		if midp == 0 {
-			prev = 0
-		} else {
-			prev = config.ketamaMap[midp-1].point
-		}
-
-		if hash <= mid && hash > prev {
-			return config.ketamaMap[midp].index
-		}
-
-		if mid < hash {
-			lowp = midp + 1
-		} else {
-			highp = midp - 1
-		}
-
-		if lowp > highp {
-			return config.ketamaMap[0].index
-		}
 	}
 }
 
@@ -230,13 +133,15 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 		mgmtEpList:   mgmtEpList,
 		n1qlEpList:   n1qlEpList,
 		ftsEpList:    ftsEpList,
-		vbMap:        bk.VBucketServerMap.VBucketMap,
-		numReplicas:  bk.VBucketServerMap.NumReplicas,
 		bktType:      bktType,
 	}
 
-	if bktType == bktTypeMemcached {
-		rc.buildKetama()
+	if bktType == bktTypeCouchbase {
+		vbMap := bk.VBucketServerMap.VBucketMap
+		numReplicas := bk.VBucketServerMap.NumReplicas
+		rc.vbMap = newVbucketMap(vbMap, numReplicas)
+	} else if bktType == bktTypeMemcached {
+		rc.ketamaMap = newKetamaContinuum(kvServerList)
 	}
 
 	return rc
