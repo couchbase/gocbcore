@@ -219,7 +219,7 @@ const (
 )
 
 // SubDocFlag specifies flags for a sub-document operation.
-type SubDocFlag uint16
+type SubDocFlag uint8
 
 const (
 	// SubDocFlagMkDirP indicates that the path should be created if it does not already exist.

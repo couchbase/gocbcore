@@ -103,7 +103,7 @@ func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value [
 		extraBuf = make([]byte, 3)
 	}
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = 0
+	extraBuf[2] = uint8(subdocFlags)
 	if len(extraBuf) >= 7 {
 		binary.BigEndian.PutUint32(extraBuf[3:], expiry)
 	}
