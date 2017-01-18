@@ -21,9 +21,9 @@ func (agent *Agent) makeDistKeys() (keys []string) {
 	for i := 0; remaining > 0; i++ {
 		keyTmp := fmt.Sprintf("DistKey_%d", i)
 		// Map the vBucket and server
-		vbid := agent.KeyToVbucket([]byte(keyTmp))
-		srvIx := cfg.vbMap[vbid][0]
-		if srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
+		vbID := cfg.vbMap.VbucketByKey([]byte(keyTmp))
+		srvIx, err := cfg.vbMap.NodeByVbucket(vbID, 0)
+		if err != nil || srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
 			continue
 		}
 		keys[srvIx] = keyTmp

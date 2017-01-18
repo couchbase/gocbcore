@@ -10,7 +10,8 @@ type routeData struct {
 	revId   int64
 	bktType bucketType
 
-	vbMap       [][]int
+	ketamaMap   *ketamaContinuum
+	vbMap       *vbucketMap
 	kvPipelines []*memdPipeline
 	deadPipe    *memdPipeline
 
@@ -94,18 +95,4 @@ func (ptr *routeDataPtr) Update(old, new *routeData) bool {
 func (ptr *routeDataPtr) Clear() *routeData {
 	val := atomic.SwapPointer(&ptr.data, nil)
 	return (*routeData)(val)
-}
-
-// Maps a key to a vBucket and a server
-// repidx is the server index within the vbucket entry to select. 0 means
-// the master server
-func (rd *routeData) MapKeyVBucket(key []byte, repIdx int) (srvidx int, vbid uint16) {
-	vbid = uint16(cbCrc(key) % uint32(len(rd.vbMap)))
-	srvidx = rd.vbMap[vbid][repIdx]
-	return
-}
-
-func (rd *routeData) MapKetama(key []byte) (srvidx int) {
-	hash := rd.source.KetamaHash(key)
-	return int(rd.source.KetamaNode(hash))
 }

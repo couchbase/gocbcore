@@ -26,7 +26,7 @@ func TestGoodConfig(t *testing.T) {
 	if cfg.bktType != bktTypeCouchbase {
 		t.Fatal("Wrong bucket type!")
 	}
-	if cfg.numReplicas != 1 {
+	if cfg.vbMap.NumReplicas() != 1 {
 		t.Fatal("Expected 2 replicas!")
 	}
 }
@@ -39,6 +39,7 @@ func TestBadConfig(t *testing.T) {
 	}
 }
 
+// TODO(mnunberg): Should test ketama separately from memcached config testing.
 func TestKetama(t *testing.T) {
 	cfg := getConfig(t, "testdata/memd_4node.config.json")
 	if cfg.bktType != bktTypeMemcached {
@@ -47,7 +48,7 @@ func TestKetama(t *testing.T) {
 	if len(cfg.kvServerList) != 4 {
 		t.Fatal("Expected 4 nodes!")
 	}
-	if len(cfg.ketamaMap) != 160*4 {
+	if len(cfg.ketamaMap.entries) != 160*4 {
 		t.Fatal("Bad length for ketama map")
 	}
 
@@ -66,13 +67,13 @@ func TestKetama(t *testing.T) {
 	}
 
 	for k, expCur := range exp {
-		hash := cfg.KetamaHash([]byte(k))
+		hash := ketamaHash([]byte(k))
 		if hash != expCur.Hash {
 			t.Fatalf("Bad hash for %s. Expected %d but got %d", k, expCur.Hash, hash)
 		}
 
-		index := cfg.KetamaNode(hash)
-		if index != expCur.Index {
+		index, _ := cfg.ketamaMap.NodeByKey([]byte(k))
+		if index != int(expCur.Index) {
 			t.Fatalf("Bad index for %s (hash=%d). Expected %v but got %d", k, expCur.Hash, expCur.Index, index)
 		}
 	}
