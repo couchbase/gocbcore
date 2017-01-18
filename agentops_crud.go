@@ -469,7 +469,7 @@ func (agent *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
 
 // Stats retrieves statistics information from the server.
 func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, error) {
-	config := agent.routingInfo.get()
+	config := agent.routingInfo.Get()
 	allOk := true
 	// Iterate over each of the configs
 

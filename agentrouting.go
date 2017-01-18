@@ -135,7 +135,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 
 	newRouting.deadPipe = newDeadPipeline(maxQueueSize)
 
-	oldRouting := agent.routingInfo.get()
+	oldRouting := agent.routingInfo.Get()
 	if oldRouting == nil {
 		return
 	}
@@ -151,13 +151,13 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 	}
 
 	// Attempt to atomically update the routing data
-	if !agent.routingInfo.update(oldRouting, newRouting) {
+	if !agent.routingInfo.Update(oldRouting, newRouting) {
 		logErrorf("Someone preempted the config update, skipping update")
 		return
 	}
 
 	logDebugf("Switching routing data (update)...")
-	logDebugf("New Routing Data:\n%s", newRouting.debugString())
+	logDebugf("New Routing Data:\n%s", newRouting.DebugString())
 
 	// Gather all our old pipelines up for takeover and what not
 	oldPipelines := list.New()
@@ -239,7 +239,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 func (agent *Agent) updateConfig(bk *cfgBucket) {
 	if bk == nil {
 		// Use the existing config if none was passed.
-		oldRouting := agent.routingInfo.get()
+		oldRouting := agent.routingInfo.Get()
 		if oldRouting == nil {
 			// If there is no previous config, we can't do anything
 			return
@@ -264,7 +264,7 @@ func (agent *Agent) updateConfig(bk *cfgBucket) {
 }
 
 func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
-	routingInfo := agent.routingInfo.get()
+	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return nil, ErrShutdown
 	}

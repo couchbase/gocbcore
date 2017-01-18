@@ -37,7 +37,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 
 	logDebugf("HTTP Looper starting.")
 	for {
-		routingInfo := agent.routingInfo.get()
+		routingInfo := agent.routingInfo.Get()
 		if routingInfo == nil {
 			// Shutdown the looper if the agent is shutdown
 			break

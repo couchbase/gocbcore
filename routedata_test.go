@@ -6,7 +6,7 @@ import (
 
 func TestRouteDataPtr(t *testing.T) {
 	var rd routeDataPtr
-	if rd.get() != nil {
+	if rd.Get() != nil {
 		t.Errorf("Route Data should start with nil")
 	}
 }
