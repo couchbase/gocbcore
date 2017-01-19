@@ -50,7 +50,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	// Grab an error object if one needs to exist.
 	var err error
-	if resp.Magic == ResMagic {
+	if resp.Magic == resMagic {
 		err = getMemdError(resp.Status)
 	}
 

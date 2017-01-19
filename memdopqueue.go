@@ -146,7 +146,12 @@ func (q *memdOpQueue) pop(c *memdOpConsumer) *memdQRequest {
 	e := q.items.Front()
 	q.items.Remove(e)
 
-	req := e.Value.(*memdQRequest)
+	req, ok := e.Value.(*memdQRequest)
+	if !ok {
+		logErrorf("Encountered incorrect type in memdOpQueue")
+		return q.pop(c)
+	}
+
 	atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(q), nil)
 
 	q.lock.Unlock()
@@ -166,7 +171,12 @@ func (q *memdOpQueue) Drain(cb drainCallback) {
 	}
 
 	for e := q.items.Front(); e != nil; e = e.Next() {
-		req := e.Value.(*memdQRequest)
+		req, ok := e.Value.(*memdQRequest)
+		if !ok {
+			logErrorf("Encountered incorrect type in memdOpQueue")
+			continue
+		}
+
 		atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(q), nil)
 
 		cb(req)

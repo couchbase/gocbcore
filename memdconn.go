@@ -10,10 +10,10 @@ import (
 )
 
 type memdPacket struct {
-	Magic    CommandMagic
-	Opcode   CommandCode
+	Magic    commandMagic
+	Opcode   commandCode
 	Datatype uint8
-	Status   StatusCode
+	Status   statusCode
 	Vbucket  uint16
 	Opaque   uint32
 	Cas      uint64
@@ -38,7 +38,7 @@ type memdTcpConn struct {
 	remoteAddr string
 }
 
-func DialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {
+func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {
 	d := net.Dialer{
 		Deadline: deadline,
 	}
@@ -108,7 +108,7 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 	binary.BigEndian.PutUint16(buffer[2:], uint16(keyLen))
 	buffer[4] = byte(extLen)
 	buffer[5] = req.Datatype
-	if req.Magic != ResMagic {
+	if req.Magic != resMagic {
 		binary.BigEndian.PutUint16(buffer[6:], uint16(req.Vbucket))
 	} else {
 		binary.BigEndian.PutUint16(buffer[6:], uint16(req.Status))
@@ -159,11 +159,11 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	keyLen := int(binary.BigEndian.Uint16(s.headerBuf[2:]))
 	extLen := int(s.headerBuf[4])
 
-	resp.Magic = CommandMagic(s.headerBuf[0])
-	resp.Opcode = CommandCode(s.headerBuf[1])
+	resp.Magic = commandMagic(s.headerBuf[0])
+	resp.Opcode = commandCode(s.headerBuf[1])
 	resp.Datatype = s.headerBuf[5]
-	if resp.Magic == ResMagic {
-		resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
+	if resp.Magic == resMagic {
+		resp.Status = statusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
 	} else {
 		resp.Vbucket = binary.BigEndian.Uint16(s.headerBuf[6:])
 	}

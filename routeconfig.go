@@ -17,7 +17,7 @@ type routeKetamaContinuum struct {
 type routeConfig struct {
 	revId        int64
 	numReplicas  int
-	bktType      BucketType
+	bktType      bucketType
 	kvServerList []string
 	capiEpList   []string
 	mgmtEpList   []string
@@ -27,22 +27,22 @@ type routeConfig struct {
 	ketamaMap    []routeKetamaContinuum
 }
 
-type KetamaSorter struct {
+type ketamaSorter struct {
 	elems []routeKetamaContinuum
 }
 
-func (c KetamaSorter) Len() int           { return len(c.elems) }
-func (c KetamaSorter) Swap(i, j int)      { c.elems[i], c.elems[j] = c.elems[j], c.elems[i] }
-func (c KetamaSorter) Less(i, j int) bool { return c.elems[i].point < c.elems[j].point }
+func (c ketamaSorter) Len() int           { return len(c.elems) }
+func (c ketamaSorter) Swap(i, j int)      { c.elems[i], c.elems[j] = c.elems[j], c.elems[i] }
+func (c ketamaSorter) Less(i, j int) bool { return c.elems[i].point < c.elems[j].point }
 
 func (config *routeConfig) IsValid() bool {
 	if len(config.kvServerList) == 0 || len(config.mgmtEpList) == 0 {
 		return false
 	}
 	switch config.bktType {
-	case BktTypeCouchbase:
+	case bktTypeCouchbase:
 		return len(config.vbMap) > 0 && len(config.vbMap[0]) > 0
-	case BktTypeMemcached:
+	case bktTypeMemcached:
 		return len(config.ketamaMap) > 0
 	default:
 		return false
@@ -75,7 +75,7 @@ func (config *routeConfig) buildKetama() {
 		}
 	}
 
-	sort.Sort(KetamaSorter{config.ketamaMap})
+	sort.Sort(ketamaSorter{config.ketamaMap})
 }
 
 func (config *routeConfig) KetamaHash(key []byte) uint32 {
@@ -105,7 +105,7 @@ func (config *routeConfig) KetamaNode(hash uint32) uint32 {
 			return config.ketamaMap[0].index
 		}
 
-		var mid uint32 = config.ketamaMap[midp].point
+		mid := config.ketamaMap[midp].point
 		var prev uint32
 		if midp == 0 {
 			prev = 0
@@ -135,16 +135,16 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 	var mgmtEpList []string
 	var n1qlEpList []string
 	var ftsEpList []string
-	var bktType BucketType
+	var bktType bucketType
 
 	switch bk.NodeLocator {
 	case "ketama":
-		bktType = BktTypeMemcached
+		bktType = bktTypeMemcached
 	case "vbucket":
-		bktType = BktTypeCouchbase
+		bktType = bktTypeCouchbase
 	default:
 		logDebugf("Invalid nodeLocator %s", bk.NodeLocator)
-		bktType = BktTypeInvalid
+		bktType = bktTypeInvalid
 	}
 
 	if bk.NodesExt != nil {
@@ -194,7 +194,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 			return &routeConfig{}
 		}
 
-		if bktType == BktTypeCouchbase {
+		if bktType == bktTypeCouchbase {
 			kvServerList = bk.VBucketServerMap.ServerList
 		}
 
@@ -209,7 +209,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 				mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s", node.Hostname))
 			}
 
-			if bktType == BktTypeMemcached {
+			if bktType == bktTypeMemcached {
 				// Get the data port. No VBucketServerMap.
 				host, _, err := net.SplitHostPort(node.Hostname)
 				if err != nil {
@@ -235,7 +235,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 		bktType:      bktType,
 	}
 
-	if bktType == BktTypeMemcached {
+	if bktType == bktTypeMemcached {
 		rc.buildKetama()
 	}
 

@@ -7,25 +7,25 @@ import (
 )
 
 // The data for a response from a server.  This includes the
-//  packets data along with some useful meta-data related to
-//  the response.
+// packets data along with some useful meta-data related to
+// the response.
 type memdQResponse struct {
 	memdPacket
 
 	sourceAddr string
 }
 
-type Callback func(*memdQResponse, *memdQRequest, error)
+type callback func(*memdQResponse, *memdQRequest, error)
 
 // The data for a request that can be queued with a memdqueueconn,
-//   and can potentially be rerouted to multiple servers due to
-//   configuration changes.
+// and can potentially be rerouted to multiple servers due to
+// configuration changes.
 type memdQRequest struct {
 	memdPacket
 
 	// Static routing properties
 	ReplicaIdx int
-	Callback   Callback
+	Callback   callback
 	Persistent bool
 
 	// This tracks when the request was dispatched so that we can

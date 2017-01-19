@@ -4,8 +4,7 @@ import (
 	"encoding/binary"
 )
 
-// **INTERNAL**
-// Stores a document along with setting some internal Couchbase meta-data.
+// SetMeta stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -33,8 +32,8 @@ func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uin
 	copy(extraBuf[30:], extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSetMeta,
+			Magic:    reqMagic,
+			Opcode:   cmdSetMeta,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
@@ -46,8 +45,7 @@ func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uin
 	return agent.dispatchOp(req)
 }
 
-// **INTERNAL**
-// Deletes a document along with setting some internal Couchbase meta-data.
+// DeleteMeta deletes a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -75,8 +73,8 @@ func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32,
 	copy(extraBuf[30:], extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdDelMeta,
+			Magic:    reqMagic,
+			Opcode:   cmdDelMeta,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,

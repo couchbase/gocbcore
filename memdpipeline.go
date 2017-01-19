@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	errPipelineClosed = errors.New("Pipeline has been closed")
-	errPipelineFull   = errors.New("Pipeline is too full")
+	errPipelineClosed = errors.New("pipeline has been closed")
+	errPipelineFull   = errors.New("pipeline is too full")
 )
 
 type memdGetClientFn func() (*memdClient, error)

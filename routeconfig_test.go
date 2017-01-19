@@ -23,7 +23,7 @@ func getConfig(t *testing.T, filename string) (cfg *routeConfig) {
 func TestGoodConfig(t *testing.T) {
 	// Parsing an old 2.x config
 	cfg := getConfig(t, "testdata/full_25.json")
-	if cfg.bktType != BktTypeCouchbase {
+	if cfg.bktType != bktTypeCouchbase {
 		t.Fatal("Wrong bucket type!")
 	}
 	if cfg.numReplicas != 1 {
@@ -41,7 +41,7 @@ func TestBadConfig(t *testing.T) {
 
 func TestKetama(t *testing.T) {
 	cfg := getConfig(t, "testdata/memd_4node.config.json")
-	if cfg.bktType != BktTypeMemcached {
+	if cfg.bktType != bktTypeMemcached {
 		t.Fatal("Wrong bucket type!")
 	}
 	if len(cfg.kvServerList) != 4 {
@@ -65,15 +65,15 @@ func TestKetama(t *testing.T) {
 		t.Fatalf("Bad JSON in expected output")
 	}
 
-	for k, exp_cur := range exp {
+	for k, expCur := range exp {
 		hash := cfg.KetamaHash([]byte(k))
-		if hash != exp_cur.Hash {
-			t.Fatalf("Bad hash for %s. Expected %d but got %d", k, exp_cur.Hash, hash)
+		if hash != expCur.Hash {
+			t.Fatalf("Bad hash for %s. Expected %d but got %d", k, expCur.Hash, hash)
 		}
 
 		index := cfg.KetamaNode(hash)
-		if index != exp_cur.Index {
-			t.Fatalf("Bad index for %s (hash=%d). Expected %v but got %d", k, exp_cur.Hash, exp_cur.Index, index)
+		if index != expCur.Index {
+			t.Fatalf("Bad index for %s (hash=%d). Expected %v but got %d", k, expCur.Hash, expCur.Index, index)
 		}
 	}
 }

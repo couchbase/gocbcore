@@ -12,11 +12,11 @@ type memdOpMapItem struct {
 }
 
 // This is used to store operations while they are pending
-//   a response from the server to allow mapping of a response
-//   opaque back to the originating request.  This queue takes
-//   advantage of the monotonic nature of the opaque values
-//   and synchronous responses from the server to nearly always
-//   return the request without needing to iterate at all.
+//  a response from the server to allow mapping of a response
+//  opaque back to the originating request.  This queue takes
+//  advantage of the monotonic nature of the opaque values
+//  and synchronous responses from the server to nearly always
+//  return the request without needing to iterate at all.
 type memdOpMap struct {
 	lock    sync.Mutex
 	opIndex uint32
@@ -61,8 +61,8 @@ func (q *memdOpMap) Add(req *memdQRequest) {
 }
 
 // Removes a request from the op queue.  Expects to be passed
-//   the request to remove, along with the request that
-//   immediately preceeds it in the queue.
+//  the request to remove, along with the request that
+//  immediately precedes it in the queue.
 func (q *memdOpMap) remove(prev *memdOpMapItem, req *memdOpMapItem) {
 	// TODO(brett19): Maybe should ensure this was meant to be in this opmap.
 	atomic.CompareAndSwapPointer(&req.value.waitingIn, unsafe.Pointer(q), nil)
@@ -84,7 +84,7 @@ func (q *memdOpMap) remove(prev *memdOpMapItem, req *memdOpMapItem) {
 func (q *memdOpMap) Remove(req *memdQRequest) bool {
 	q.lock.Lock()
 
-	var cur *memdOpMapItem = q.first
+	cur := q.first
 	var prev *memdOpMapItem
 	for cur != nil {
 		if cur.value == req {
@@ -101,13 +101,13 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 }
 
 // Locates a request (searching FIFO-style) in the op queue using
-//   the opaque value that was assigned to it when it was dispatched.
-//   It then removes the request from the queue if it is not persistent
-//   or if alwaysRemove is set to true.
+// the opaque value that was assigned to it when it was dispatched.
+// It then removes the request from the queue if it is not persistent
+// or if alwaysRemove is set to true.
 func (q *memdOpMap) FindAndMaybeRemove(opaque uint32) *memdQRequest {
 	q.lock.Lock()
 
-	var cur *memdOpMapItem = q.first
+	cur := q.first
 	var prev *memdOpMapItem
 	for cur != nil {
 		if cur.value.Opaque == opaque {
@@ -127,7 +127,7 @@ func (q *memdOpMap) FindAndMaybeRemove(opaque uint32) *memdQRequest {
 }
 
 // Clears the queue of all requests and calls the passed function
-//   once for each request found in the queue.
+// once for each request found in the queue.
 func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
 	for cur := q.first; cur != nil; cur = cur.next {
 		// TODO(brett19): Maybe should ensure this was meant to be in this opmap.

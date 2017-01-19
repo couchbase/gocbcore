@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 )
 
-// Retrieves the current CAS and persistence state for a document.
+// Observe retrieves the current CAS and persistence state for a document.
 func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (PendingOp, error) {
 	// TODO(mnunberg): Use bktType when implemented
 	if agent.numVbuckets == 0 {
@@ -42,8 +42,8 @@ func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdObserve,
+			Magic:    reqMagic,
+			Opcode:   cmdObserve,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -57,7 +57,7 @@ func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pen
 	return agent.dispatchOp(req)
 }
 
-// Retrieves the persistence state sequence numbers for a particular VBucket.
+// ObserveSeqNo retrieves the persistence state sequence numbers for a particular VBucket.
 func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoCallback) (PendingOp, error) {
 	// TODO(mnunberg): Use bktType when implemented
 	if agent.numVbuckets == 0 {
@@ -119,8 +119,8 @@ func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb O
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdObserveSeqNo,
+			Magic:    reqMagic,
+			Opcode:   cmdObserveSeqNo,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,

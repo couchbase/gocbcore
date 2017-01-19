@@ -19,14 +19,14 @@ func (agent *Agent) makeDistKeys() (keys []string) {
 	remaining := len(keys)
 
 	for i := 0; remaining > 0; i++ {
-		kTmp := fmt.Sprintf("DistKey_%d", i)
+		keyTmp := fmt.Sprintf("DistKey_%d", i)
 		// Map the vBucket and server
-		vbid := agent.KeyToVbucket([]byte(kTmp))
+		vbid := agent.KeyToVbucket([]byte(keyTmp))
 		srvIx := cfg.vbMap[vbid][0]
 		if srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
 			continue
 		}
-		keys[srvIx] = kTmp
+		keys[srvIx] = keyTmp
 		remaining--
 	}
 	return
@@ -623,17 +623,17 @@ func TestGetHttpEps(t *testing.T) {
 	// Relies on a 3.0.0+ server
 	n1qlEpList := agent.N1qlEps()
 	if len(n1qlEpList) == 0 {
-		t.Fatalf("Failed to retreive N1QL endpoint list")
+		t.Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 
 	mgmtEpList := agent.MgmtEps()
 	if len(mgmtEpList) == 0 {
-		t.Fatalf("Failed to retreive N1QL endpoint list")
+		t.Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 
 	capiEpList := agent.CapiEps()
 	if len(capiEpList) == 0 {
-		t.Fatalf("Failed to retreive N1QL endpoint list")
+		t.Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 }
 
@@ -686,7 +686,7 @@ func TestMemcachedBucket(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	SetLogger(DefaultStdOutLogger())
+	SetLogger(DefaultStdioLogger())
 	flag.Parse()
 	mpath, err := gojcbmock.GetMockPath()
 	if err != nil {

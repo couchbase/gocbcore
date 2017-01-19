@@ -4,25 +4,26 @@ import (
 	"encoding/binary"
 )
 
-// Represents the state of a particular cluster snapshot.
+// SnapshotState represents the state of a particular cluster snapshot.
 type SnapshotState uint32
 
-// Returns whether this snapshot is available in memory.
+// HasInMemory returns whether this snapshot is available in memory.
 func (s SnapshotState) HasInMemory() bool {
 	return uint32(s)&1 != 0
 }
 
-// Returns whether this snapshot is available on disk.
+// HasOnDisk returns whether this snapshot is available on disk.
 func (s SnapshotState) HasOnDisk() bool {
 	return uint32(s)&2 != 0
 }
 
-// Represents a single entry in the server failover log.
+// FailoverEntry represents a single entry in the server fail-over log.
 type FailoverEntry struct {
 	VbUuid VbUuid
 	SeqNo  SeqNo
 }
 
+// StreamObserver provides an interface to receive events from a running DCP stream.
 type StreamObserver interface {
 	SnapshotMarker(startSeqNo, endSeqNo uint64, vbId uint16, snapshotType SnapshotState)
 	Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16, key, value []byte)
@@ -31,17 +32,23 @@ type StreamObserver interface {
 	End(vbId uint16, err error)
 }
 
+// OpenStreamCallback is invoked with the results of `OpenStream` operations.
 type OpenStreamCallback func([]FailoverEntry, error)
+
+// CloseStreamCallback is invoked with the results of `CloseStream` operations.
 type CloseStreamCallback func(error)
+
+// GetFailoverLogCallback is invoked with the results of `GetFailoverLog` operations.
 type GetFailoverLogCallback func([]FailoverEntry, error)
+
+// GetVBucketSeqnosCallback is invoked with the results of `GetVBucketSeqnos` operations.
 type GetVBucketSeqnosCallback func(uint16, SeqNo, error)
 
-// **INTERNAL**
-// Opens a DCP stream for a particular VBucket.
+// OpenStream opens a DCP stream for a particular VBucket.
 func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if resp != nil && resp.Magic == ResMagic {
+		if resp != nil && resp.Magic == resMagic {
 			// This is the response to the open stream request.
 			if err != nil {
 				req.Cancel()
@@ -72,13 +79,13 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 
 		// This is one of the stream events
 		switch resp.Opcode {
-		case CmdDcpSnapshotMarker:
+		case cmdDcpSnapshotMarker:
 			vbId := uint16(resp.Status)
 			newStartSeqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			newEndSeqNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			snapshotType := binary.BigEndian.Uint32(resp.Extras[16:])
 			evtHandler.SnapshotMarker(newStartSeqNo, newEndSeqNo, vbId, SnapshotState(snapshotType))
-		case CmdDcpMutation:
+		case cmdDcpMutation:
 			vbId := uint16(resp.Status)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
@@ -86,19 +93,19 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 			expiry := binary.BigEndian.Uint32(resp.Extras[20:])
 			lockTime := binary.BigEndian.Uint32(resp.Extras[24:])
 			evtHandler.Mutation(seqNo, revNo, flags, expiry, lockTime, resp.Cas, resp.Datatype, vbId, resp.Key, resp.Value)
-		case CmdDcpDeletion:
+		case cmdDcpDeletion:
 			vbId := uint16(resp.Status)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			evtHandler.Deletion(seqNo, revNo, resp.Cas, vbId, resp.Key)
-		case CmdDcpExpiration:
+		case cmdDcpExpiration:
 			vbId := uint16(resp.Status)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			evtHandler.Expiration(seqNo, revNo, resp.Cas, vbId, resp.Key)
-		case CmdDcpStreamEnd:
+		case cmdDcpStreamEnd:
 			vbId := uint16(resp.Status)
-			code := StreamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
+			code := streamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
 			evtHandler.End(vbId, getStreamEndError(code))
 			req.Cancel()
 		}
@@ -115,8 +122,8 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 
 	req = &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdDcpStreamReq,
+			Magic:    reqMagic,
+			Opcode:   cmdDcpStreamReq,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
@@ -131,8 +138,7 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 	return agent.dispatchOp(req)
 }
 
-// **INTERNAL**
-// Shuts down an open stream for the specified VBucket.
+// CloseStream shuts down an open stream for the specified VBucket.
 func (agent *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp, error) {
 	handler := func(_ *memdQResponse, _ *memdQRequest, err error) {
 		cb(err)
@@ -140,8 +146,8 @@ func (agent *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp,
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdDcpCloseStream,
+			Magic:    reqMagic,
+			Opcode:   cmdDcpCloseStream,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -156,9 +162,8 @@ func (agent *Agent) CloseStream(vbId uint16, cb CloseStreamCallback) (PendingOp,
 	return agent.dispatchOp(req)
 }
 
-// **INTERNAL**
-// Retrieves the failover log for a particular VBucket.  This is used
-// to resume an interrupted stream after a node failover has occured.
+// GetFailoverLog retrieves the fail-over log for a particular VBucket.  This is used
+// to resume an interrupted stream after a node fail-over has occurred.
 func (agent *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -179,8 +184,8 @@ func (agent *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (Pend
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdDcpGetFailoverLog,
+			Magic:    reqMagic,
+			Opcode:   cmdDcpGetFailoverLog,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -195,8 +200,7 @@ func (agent *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (Pend
 	return agent.dispatchOp(req)
 }
 
-// **INTERNAL**
-// Returns the last checkpoint for a particular VBucket.  This is useful
+// GetVbucketSeqnos returns the last checkpoint for a particular VBucket.  This is useful
 // for starting a DCP stream from wherever the server currently is.
 func (agent *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -214,12 +218,12 @@ func (agent *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback)
 	}
 
 	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], uint32(VBucketStateActive))
+	binary.BigEndian.PutUint32(extraBuf[0:], uint32(vbucketStateActive))
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdGetAllVBSeqnos,
+			Magic:    reqMagic,
+			Opcode:   cmdGetAllVBSeqnos,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,

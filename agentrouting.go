@@ -13,7 +13,7 @@ type memdInitFunc func(*syncClient, time.Time) error
 func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
-	var tlsConfig *tls.Config = nil
+	var tlsConfig *tls.Config
 	if agent.tlsConfig != nil {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
@@ -29,7 +29,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 
 	deadline := time.Now().Add(agent.serverConnectTimeout)
 
-	memdConn, err := DialMemdConn(address, tlsConfig, deadline)
+	memdConn, err := dialMemdConn(address, tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
@@ -277,7 +277,7 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 		srvIdx = -repId - 1
 	} else {
 
-		if routingInfo.bktType == BktTypeCouchbase {
+		if routingInfo.bktType == bktTypeCouchbase {
 			// Targeting a specific replica; repId >= 0
 			if repId >= len(routingInfo.vbMap[0]) {
 				return nil, ErrInvalidReplica
@@ -293,7 +293,7 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 
 				srvIdx = routingInfo.vbMap[req.Vbucket][repId]
 			}
-		} else if routingInfo.bktType == BktTypeMemcached {
+		} else if routingInfo.bktType == bktTypeMemcached {
 			if repId > 0 {
 				// Error. Memcached buckets don't understand replicas!
 				return nil, ErrInvalidReplica

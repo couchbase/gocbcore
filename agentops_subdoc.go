@@ -4,8 +4,7 @@ import (
 	"encoding/binary"
 )
 
-// **UNCOMMITTED**
-// Retrieves the value at a particular path within a JSON document.
+// GetIn retrieves the value at a particular path within a JSON document.
 func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -24,8 +23,8 @@ func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp,
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocGet,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocGet,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
@@ -37,8 +36,7 @@ func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp,
 	return agent.dispatchOp(req)
 }
 
-// **UNCOMMITTED**
-// Returns whether a particular path exists within a document.
+// ExistsIn returns whether a particular path exists within a document.
 func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -57,8 +55,8 @@ func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (Pend
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocExists,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocExists,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
@@ -70,7 +68,7 @@ func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (Pend
 	return agent.dispatchOp(req)
 }
 
-func (agent *Agent) storeIn(opcode CommandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -112,7 +110,7 @@ func (agent *Agent) storeIn(opcode CommandCode, key []byte, path string, value [
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
+			Magic:    reqMagic,
 			Opcode:   opcode,
 			Datatype: 0,
 			Cas:      uint64(cas),
@@ -125,54 +123,46 @@ func (agent *Agent) storeIn(opcode CommandCode, key []byte, path string, value [
 	return agent.dispatchOp(req)
 }
 
-// **UNCOMMITTED**
-// Sets the value at a path within a document.
+// SetIn sets the value at a path within a document.
 func (agent *Agent) SetIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocDictSet, key, path, value, createParents, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocDictSet, key, path, value, createParents, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Adds a value at the path within a document.
-// This method works like SetIn, but only only succeeds
-// if the path does not currently exist.
+// AddIn adds a value at the path within a document.  This method
+// works like SetIn, but only only succeeds if the path does not
+// currently exist.
 func (agent *Agent) AddIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocDictAdd, key, path, value, createParents, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocDictAdd, key, path, value, createParents, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Replaces the value at the path within a document.
+// ReplaceIn replaces the value at the path within a document.
 // This method works like SetIn, but only only succeeds
 // if the path currently exists.
 func (agent *Agent) ReplaceIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocReplace, key, path, value, false, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocReplace, key, path, value, false, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Pushes an entry to the front of an array at a path within a document.
+// PushFrontIn pushes an entry to the front of an array at a path within a document.
 func (agent *Agent) PushFrontIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocArrayPushFirst, key, path, value, createParents, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocArrayPushFirst, key, path, value, createParents, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Pushes an entry to the back of an array at a path within a document.
+// PushBackIn pushes an entry to the back of an array at a path within a document.
 func (agent *Agent) PushBackIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocArrayPushLast, key, path, value, createParents, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocArrayPushLast, key, path, value, createParents, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Inserts an entry to an array at a path within the document.
+// ArrayInsertIn inserts an entry to an array at a path within the document.
 func (agent *Agent) ArrayInsertIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocArrayInsert, key, path, value, false, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocArrayInsert, key, path, value, false, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Adds an entry to an array at a path but only if the value doesn't already exist in the array.
+// AddUniqueIn adds an entry to an array at a path but only if the value doesn't already exist in the array.
 func (agent *Agent) AddUniqueIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(CmdSubDocArrayAddUnique, key, path, value, createParents, cas, expiry, cb)
+	return agent.storeIn(cmdSubDocArrayAddUnique, key, path, value, createParents, cas, expiry, cb)
 }
 
-// **UNCOMMITTED**
-// Performs an arithmetic add or subtract on a value at a path in the document.
+// CounterIn performs an arithmetic add or subtract on a value at a path in the document.
 func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -210,8 +200,8 @@ func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, ex
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocCounter,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocCounter,
 			Datatype: 0,
 			Cas:      uint64(cas),
 			Extras:   extraBuf,
@@ -223,8 +213,7 @@ func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, ex
 	return agent.dispatchOp(req)
 }
 
-// **UNCOMMITTED**
-// Removes the value at a path within the document.
+// RemoveIn removes the value at a path within the document.
 func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -258,8 +247,8 @@ func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocDelete,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocDelete,
 			Datatype: 0,
 			Cas:      uint64(cas),
 			Extras:   extraBuf,
@@ -271,9 +260,8 @@ func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb
 	return agent.dispatchOp(req)
 }
 
-// **UNCOMMITTED**
-// The per-operation structure to be passed to MutateIn or LookupIn
-// for performing many sub-document operations.
+// SubDocOp defines a per-operation structure to be passed to MutateIn
+// or LookupIn for performing many sub-document operations.
 type SubDocOp struct {
 	Op    SubDocOpType
 	Flags SubDocFlag
@@ -281,6 +269,7 @@ type SubDocOp struct {
 	Value []byte
 }
 
+// SubDocLookup performs a multiple-lookup sub-document operation on a document.
 func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
@@ -291,13 +280,13 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 		}
 
 		respIter := 0
-		for i, _ := range results {
+		for i := range results {
 			if respIter+6 > len(resp.Value) {
 				cb(nil, 0, ErrProtocol)
 				return
 			}
 
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
+			resError := statusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
 			resValueLen := int(binary.BigEndian.Uint32(resp.Value[respIter+2:]))
 
 			if respIter+6+resValueLen > len(resp.Value) {
@@ -344,8 +333,8 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocMultiLookup,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocMultiLookup,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -357,6 +346,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 	return agent.dispatchOp(req)
 }
 
+// SubDocMutate performs a multiple-mutation sub-document operation on a document.
 func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
@@ -373,7 +363,7 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 			}
 
 			opIndex := int(resp.Value[0])
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
+			resError := statusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
 			err := SubDocMutateError{
 				Err:     getMemdError(resError),
@@ -385,11 +375,11 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
-			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
+			opStatus := statusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 			results[opIndex].Err = getMemdError(opStatus)
 			readPos += 3
 
-			if opStatus == StatusSuccess {
+			if opStatus == statusSuccess {
 				valLength := binary.BigEndian.Uint32(resp.Value[readPos:])
 				results[opIndex].Value = resp.Value[readPos+4 : readPos+4+valLength]
 				readPos += 4 + valLength
@@ -449,8 +439,8 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    ReqMagic,
-			Opcode:   CmdSubDocMultiMutation,
+			Magic:    reqMagic,
+			Opcode:   cmdSubDocMultiMutation,
 			Datatype: 0,
 			Cas:      uint64(cas),
 			Extras:   extraBuf,

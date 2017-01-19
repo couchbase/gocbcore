@@ -59,18 +59,18 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				logDebugf("Could not find any alive http hosts.")
 				firstCfgFn(nil, ErrBadHosts)
 				return
-			} else {
-				if !iterSawConfig {
-					logDebugf("Looper waiting...")
-					// Wait for a period before trying again if there was a problem...
-					<-time.After(waitPeriod)
-				}
-				logDebugf("Looping again.")
-				// Go to next iteration and try all servers again
-				iterNum++
-				iterSawConfig = false
-				continue
 			}
+
+			if !iterSawConfig {
+				logDebugf("Looper waiting...")
+				// Wait for a period before trying again if there was a problem...
+				<-time.After(waitPeriod)
+			}
+			logDebugf("Looping again.")
+			// Go to next iteration and try all servers again
+			iterNum++
+			iterSawConfig = false
+			continue
 		}
 
 		logDebugf("Http Picked: %s.", pickedSrv)
