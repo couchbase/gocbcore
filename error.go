@@ -273,6 +273,10 @@ func (e streamEndError) TooSlow() bool {
 }
 
 var (
+	// ErrNoAuthMethod occurs when the server does not support any of the
+	// authentication methods that the client finds suitable.
+	ErrNoAuthMethod = errors.New("no supported auth")
+
 	// ErrDispatchFail occurs when the request router fails to dispatch an operation
 	ErrDispatchFail = errors.New("failed to dispatch operation")
 
