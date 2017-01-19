@@ -105,6 +105,8 @@ func (e memdError) Error() string {
 		return "key already exists"
 	case statusTooBig:
 		return "document value was too large"
+	case statusInvalidArgs:
+		return "invalid arguments"
 	case statusNotStored:
 		return "document could not be stored"
 	case statusBadDelta:
