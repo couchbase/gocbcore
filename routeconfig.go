@@ -127,7 +127,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 	}
 
 	rc := &routeConfig{
-		revId:        0,
+		revId:        bk.Rev,
 		kvServerList: kvServerList,
 		capiEpList:   capiEpList,
 		mgmtEpList:   mgmtEpList,
