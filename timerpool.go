@@ -7,6 +7,7 @@ import (
 
 var globalTimerPool sync.Pool
 
+// AcquireTimer acquires a time from a global pool of timers maintained by the library.
 func AcquireTimer(d time.Duration) *time.Timer {
 	tmr, isTmr := globalTimerPool.Get().(*time.Timer)
 	if tmr == nil || !isTmr {
@@ -20,6 +21,7 @@ func AcquireTimer(d time.Duration) *time.Timer {
 	return tmr
 }
 
+// ReleaseTimer returns a timer to the global pool of timers maintained by the library.
 func ReleaseTimer(t *time.Timer, wasRead bool) {
 	stopped := t.Stop()
 	if !wasRead && !stopped {

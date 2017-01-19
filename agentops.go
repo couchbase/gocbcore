@@ -5,37 +5,37 @@ import (
 	"time"
 )
 
-// A type representing a unique revision of a document.
-// This can be used to perform optimistic locking.
+// Cas represents a unique revision of a document.  This can be used
+// to perform optimistic locking.
 type Cas uint64
 
-// A unique identifier for a particular vbucket history.
+// VbUuid represents a unique identifier for a particular vbucket history.
 type VbUuid uint64
 
-// A sequential mutation number indicating the order and
-// precise position of a write that has occured.
+// SeqNo is a sequential mutation number indicating the order and precise
+// position of a write that has occurred.
 type SeqNo uint64
 
-// Represents a particular mutation within the cluster.
+// MutationToken represents a particular mutation within the cluster.
 type MutationToken struct {
 	VbId   uint16
 	VbUuid VbUuid
 	SeqNo  SeqNo
 }
 
-// Represents the stats returned from a single server.
+// SingleServerStats represents the stats returned from a single server.
 type SingleServerStats struct {
 	Stats map[string]string
 	Error error
 }
 
-// The results from a single subdocument operation.
+// SubDocResult encapsulates the results from a single subdocument operation.
 type SubDocResult struct {
 	Err   error
 	Value []byte
 }
 
-// Represents an outstanding operation within the client.
+// PendingOp represents an outstanding operation within the client.
 // This can be used to cancel an operation before it completes.
 type PendingOp interface {
 	Cancel() bool
@@ -102,20 +102,53 @@ func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
 	return req, nil
 }
 
+// GetCallback is invoked with the results of `Get` operations.
 type GetCallback func([]byte, uint32, Cas, error)
+
+// UnlockCallback is invoked with the results of `Unlock` operations.
 type UnlockCallback func(Cas, MutationToken, error)
+
+// TouchCallback is invoked with the results of `Touch` operations.
 type TouchCallback func(Cas, MutationToken, error)
+
+// RemoveCallback is invoked with the results of `Remove` operations.
 type RemoveCallback func(Cas, MutationToken, error)
+
+// StoreCallback is invoked with the results of any basic storage operations.
 type StoreCallback func(Cas, MutationToken, error)
+
+// CounterCallback is invoked with the results of `Counter` operations.
 type CounterCallback func(uint64, Cas, MutationToken, error)
+
+// ObserveCallback is invoked with the results of `Observe` operations.
 type ObserveCallback func(KeyState, Cas, error)
+
+// ObserveSeqNoCallback is invoked with the results of `ObserveSeqNo` operations.
 type ObserveSeqNoCallback func(SeqNo, SeqNo, error)
+
+// GetRandomCallback is invoked with the results of `GetRandom` operations.
 type GetRandomCallback func([]byte, []byte, uint32, Cas, error)
+
+// ServerStatsCallback is invoked with the results of `Stats` operations.
 type ServerStatsCallback func(stats map[string]SingleServerStats)
+
+// GetInCallback is invoked with the results of `GetIn` operations.
 type GetInCallback func([]byte, Cas, error)
+
+// ExistsInCallback is invoked with the results of `ExistsIn` operations.
 type ExistsInCallback func(Cas, error)
+
+// RemoveInCallback is invoked with the results of `RemoveIn` operations.
 type RemoveInCallback func(Cas, MutationToken, error)
+
+// StoreInCallback is invoked with the results of any sub-document storage operations.
 type StoreInCallback func(Cas, MutationToken, error)
+
+// CounterInCallback is invoked with the results of `CounterIn` operations.
 type CounterInCallback func([]byte, Cas, MutationToken, error)
+
+// LookupInCallback is invoked with the results of `LookupIn` operations.
 type LookupInCallback func([]SubDocResult, Cas, error)
+
+// MutateInCallback is invoked with the results of `MutateIn` operations.
 type MutateInCallback func([]SubDocResult, Cas, MutationToken, error)

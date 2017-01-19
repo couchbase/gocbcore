@@ -1,187 +1,227 @@
 package gocbcore
 
 const (
-	GoCbCoreVersionStr = "v1.1.2"
+	goCbCoreVersionStr = "v1.1.2"
 )
 
-type CommandMagic uint8
+type commandMagic uint8
 
 const (
-	ReqMagic = CommandMagic(0x80)
-	ResMagic = CommandMagic(0x81)
+	reqMagic = commandMagic(0x80)
+	resMagic = commandMagic(0x81)
 )
 
-// CommandCode for memcached packets.
-type CommandCode uint8
+// commandCode for memcached packets.
+type commandCode uint8
 
 const (
-	CmdGet                  = CommandCode(0x00)
-	CmdSet                  = CommandCode(0x01)
-	CmdAdd                  = CommandCode(0x02)
-	CmdReplace              = CommandCode(0x03)
-	CmdDelete               = CommandCode(0x04)
-	CmdIncrement            = CommandCode(0x05)
-	CmdDecrement            = CommandCode(0x06)
-	CmdAppend               = CommandCode(0x0e)
-	CmdPrepend              = CommandCode(0x0f)
-	CmdStat                 = CommandCode(0x10)
-	CmdTouch                = CommandCode(0x1c)
-	CmdGAT                  = CommandCode(0x1d)
-	CmdHello                = CommandCode(0x1f)
-	CmdSASLListMechs        = CommandCode(0x20)
-	CmdSASLAuth             = CommandCode(0x21)
-	CmdSASLStep             = CommandCode(0x22)
-	CmdGetAllVBSeqnos       = CommandCode(0x48)
-	CmdDcpOpenConnection    = CommandCode(0x50)
-	CmdDcpAddStream         = CommandCode(0x51)
-	CmdDcpCloseStream       = CommandCode(0x52)
-	CmdDcpStreamReq         = CommandCode(0x53)
-	CmdDcpGetFailoverLog    = CommandCode(0x54)
-	CmdDcpStreamEnd         = CommandCode(0x55)
-	CmdDcpSnapshotMarker    = CommandCode(0x56)
-	CmdDcpMutation          = CommandCode(0x57)
-	CmdDcpDeletion          = CommandCode(0x58)
-	CmdDcpExpiration        = CommandCode(0x59)
-	CmdDcpFlush             = CommandCode(0x5a)
-	CmdDcpSetVbucketState   = CommandCode(0x5b)
-	CmdDcpNoop              = CommandCode(0x5c)
-	CmdDcpBufferAck         = CommandCode(0x5d)
-	CmdDcpControl           = CommandCode(0x5e)
-	CmdGetReplica           = CommandCode(0x83)
-	CmdSelectBucket         = CommandCode(0x89)
-	CmdObserveSeqNo         = CommandCode(0x91)
-	CmdObserve              = CommandCode(0x92)
-	CmdGetLocked            = CommandCode(0x94)
-	CmdUnlockKey            = CommandCode(0x95)
-	CmdSetMeta              = CommandCode(0xa2)
-	CmdDelMeta              = CommandCode(0xa8)
-	CmdGetClusterConfig     = CommandCode(0xb5)
-	CmdGetRandom            = CommandCode(0xb6)
-	CmdSubDocGet            = CommandCode(0xc5)
-	CmdSubDocExists         = CommandCode(0xc6)
-	CmdSubDocDictAdd        = CommandCode(0xc7)
-	CmdSubDocDictSet        = CommandCode(0xc8)
-	CmdSubDocDelete         = CommandCode(0xc9)
-	CmdSubDocReplace        = CommandCode(0xca)
-	CmdSubDocArrayPushLast  = CommandCode(0xcb)
-	CmdSubDocArrayPushFirst = CommandCode(0xcc)
-	CmdSubDocArrayInsert    = CommandCode(0xcd)
-	CmdSubDocArrayAddUnique = CommandCode(0xce)
-	CmdSubDocCounter        = CommandCode(0xcf)
-	CmdSubDocMultiLookup    = CommandCode(0xd0)
-	CmdSubDocMultiMutation  = CommandCode(0xd1)
+	cmdGet                  = commandCode(0x00)
+	cmdSet                  = commandCode(0x01)
+	cmdAdd                  = commandCode(0x02)
+	cmdReplace              = commandCode(0x03)
+	cmdDelete               = commandCode(0x04)
+	cmdIncrement            = commandCode(0x05)
+	cmdDecrement            = commandCode(0x06)
+	cmdAppend               = commandCode(0x0e)
+	cmdPrepend              = commandCode(0x0f)
+	cmdStat                 = commandCode(0x10)
+	cmdTouch                = commandCode(0x1c)
+	cmdGAT                  = commandCode(0x1d)
+	cmdHello                = commandCode(0x1f)
+	cmdSASLListMechs        = commandCode(0x20)
+	cmdSASLAuth             = commandCode(0x21)
+	cmdSASLStep             = commandCode(0x22)
+	cmdGetAllVBSeqnos       = commandCode(0x48)
+	cmdDcpOpenConnection    = commandCode(0x50)
+	cmdDcpAddStream         = commandCode(0x51)
+	cmdDcpCloseStream       = commandCode(0x52)
+	cmdDcpStreamReq         = commandCode(0x53)
+	cmdDcpGetFailoverLog    = commandCode(0x54)
+	cmdDcpStreamEnd         = commandCode(0x55)
+	cmdDcpSnapshotMarker    = commandCode(0x56)
+	cmdDcpMutation          = commandCode(0x57)
+	cmdDcpDeletion          = commandCode(0x58)
+	cmdDcpExpiration        = commandCode(0x59)
+	cmdDcpFlush             = commandCode(0x5a)
+	cmdDcpSetVbucketState   = commandCode(0x5b)
+	cmdDcpNoop              = commandCode(0x5c)
+	cmdDcpBufferAck         = commandCode(0x5d)
+	cmdDcpControl           = commandCode(0x5e)
+	cmdGetReplica           = commandCode(0x83)
+	cmdSelectBucket         = commandCode(0x89)
+	cmdObserveSeqNo         = commandCode(0x91)
+	cmdObserve              = commandCode(0x92)
+	cmdGetLocked            = commandCode(0x94)
+	cmdUnlockKey            = commandCode(0x95)
+	cmdSetMeta              = commandCode(0xa2)
+	cmdDelMeta              = commandCode(0xa8)
+	cmdGetClusterConfig     = commandCode(0xb5)
+	cmdGetRandom            = commandCode(0xb6)
+	cmdSubDocGet            = commandCode(0xc5)
+	cmdSubDocExists         = commandCode(0xc6)
+	cmdSubDocDictAdd        = commandCode(0xc7)
+	cmdSubDocDictSet        = commandCode(0xc8)
+	cmdSubDocDelete         = commandCode(0xc9)
+	cmdSubDocReplace        = commandCode(0xca)
+	cmdSubDocArrayPushLast  = commandCode(0xcb)
+	cmdSubDocArrayPushFirst = commandCode(0xcc)
+	cmdSubDocArrayInsert    = commandCode(0xcd)
+	cmdSubDocArrayAddUnique = commandCode(0xce)
+	cmdSubDocCounter        = commandCode(0xcf)
+	cmdSubDocMultiLookup    = commandCode(0xd0)
+	cmdSubDocMultiMutation  = commandCode(0xd1)
 )
 
-type SubDocFlag uint16
+type helloFeature uint16
 
 const (
-	SubDocFlagMkDirP = SubDocFlag(0x01)
-)
-
-type SubDocOpType uint8
-
-const (
-	SubDocOpGet            = SubDocOpType(CmdSubDocGet)
-	SubDocOpExists         = SubDocOpType(CmdSubDocExists)
-	SubDocOpDictAdd        = SubDocOpType(CmdSubDocDictAdd)
-	SubDocOpDictSet        = SubDocOpType(CmdSubDocDictSet)
-	SubDocOpDelete         = SubDocOpType(CmdSubDocDelete)
-	SubDocOpReplace        = SubDocOpType(CmdSubDocReplace)
-	SubDocOpArrayPushLast  = SubDocOpType(CmdSubDocArrayPushLast)
-	SubDocOpArrayPushFirst = SubDocOpType(CmdSubDocArrayPushFirst)
-	SubDocOpArrayInsert    = SubDocOpType(CmdSubDocArrayInsert)
-	SubDocOpArrayAddUnique = SubDocOpType(CmdSubDocArrayAddUnique)
-	SubDocOpCounter        = SubDocOpType(CmdSubDocCounter)
-)
-
-type HelloFeature uint16
-
-const (
-	FeatureDatatype = HelloFeature(0x01)
-	FeatureSeqNo    = HelloFeature(0x04)
+	featureDatatype = helloFeature(0x01)
+	featureSeqNo    = helloFeature(0x04)
 )
 
 // Status field for memcached response.
-type StatusCode uint16
+type statusCode uint16
 
 const (
-	StatusSuccess            = StatusCode(0x00)
-	StatusKeyNotFound        = StatusCode(0x01)
-	StatusKeyExists          = StatusCode(0x02)
-	StatusTooBig             = StatusCode(0x03)
-	StatusInvalidArgs        = StatusCode(0x04)
-	StatusNotStored          = StatusCode(0x05)
-	StatusBadDelta           = StatusCode(0x06)
-	StatusNotMyVBucket       = StatusCode(0x07)
-	StatusNoBucket           = StatusCode(0x08)
-	StatusAuthStale          = StatusCode(0x1f)
-	StatusAuthError          = StatusCode(0x20)
-	StatusAuthContinue       = StatusCode(0x21)
-	StatusRangeError         = StatusCode(0x22)
-	StatusRollback           = StatusCode(0x23)
-	StatusAccessError        = StatusCode(0x24)
-	StatusNotInitialized     = StatusCode(0x25)
-	StatusUnknownCommand     = StatusCode(0x81)
-	StatusOutOfMemory        = StatusCode(0x82)
-	StatusNotSupported       = StatusCode(0x83)
-	StatusInternalError      = StatusCode(0x84)
-	StatusBusy               = StatusCode(0x85)
-	StatusTmpFail            = StatusCode(0x86)
-	StatusSubDocPathNotFound = StatusCode(0xc0)
-	StatusSubDocPathMismatch = StatusCode(0xc1)
-	StatusSubDocPathInvalid  = StatusCode(0xc2)
-	StatusSubDocPathTooBig   = StatusCode(0xc3)
-	StatusSubDocDocTooDeep   = StatusCode(0xc4)
-	StatusSubDocCantInsert   = StatusCode(0xc5)
-	StatusSubDocNotJson      = StatusCode(0xc6)
-	StatusSubDocBadRange     = StatusCode(0xc7)
-	StatusSubDocBadDelta     = StatusCode(0xc8)
-	StatusSubDocPathExists   = StatusCode(0xc9)
-	StatusSubDocValueTooDeep = StatusCode(0xca)
-	StatusSubDocBadCombo     = StatusCode(0xcb)
-	StatusSubDocBadMulti     = StatusCode(0xcc)
+	statusSuccess            = statusCode(0x00)
+	statusKeyNotFound        = statusCode(0x01)
+	statusKeyExists          = statusCode(0x02)
+	statusTooBig             = statusCode(0x03)
+	statusInvalidArgs        = statusCode(0x04)
+	statusNotStored          = statusCode(0x05)
+	statusBadDelta           = statusCode(0x06)
+	statusNotMyVBucket       = statusCode(0x07)
+	statusNoBucket           = statusCode(0x08)
+	statusAuthStale          = statusCode(0x1f)
+	statusAuthError          = statusCode(0x20)
+	statusAuthContinue       = statusCode(0x21)
+	statusRangeError         = statusCode(0x22)
+	statusRollback           = statusCode(0x23)
+	statusAccessError        = statusCode(0x24)
+	statusNotInitialized     = statusCode(0x25)
+	statusUnknownCommand     = statusCode(0x81)
+	statusOutOfMemory        = statusCode(0x82)
+	statusNotSupported       = statusCode(0x83)
+	statusInternalError      = statusCode(0x84)
+	statusBusy               = statusCode(0x85)
+	statusTmpFail            = statusCode(0x86)
+	statusSubDocPathNotFound = statusCode(0xc0)
+	statusSubDocPathMismatch = statusCode(0xc1)
+	statusSubDocPathInvalid  = statusCode(0xc2)
+	statusSubDocPathTooBig   = statusCode(0xc3)
+	statusSubDocDocTooDeep   = statusCode(0xc4)
+	statusSubDocCantInsert   = statusCode(0xc5)
+	statusSubDocNotJson      = statusCode(0xc6)
+	statusSubDocBadRange     = statusCode(0xc7)
+	statusSubDocBadDelta     = statusCode(0xc8)
+	statusSubDocPathExists   = statusCode(0xc9)
+	statusSubDocValueTooDeep = statusCode(0xca)
+	statusSubDocBadCombo     = statusCode(0xcb)
+	statusSubDocBadMulti     = statusCode(0xcc)
 )
 
-type KeyState uint8
+type streamEndStatus uint32
 
 const (
-	KeyStateNotPersisted = KeyState(0x00)
-	KeyStatePersisted    = KeyState(0x01)
-	KeyStateNotFound     = KeyState(0x80)
-	KeyStateDeleted      = KeyState(0x81)
+	streamEndOK           = streamEndStatus(0x00)
+	streamEndClosed       = streamEndStatus(0x01)
+	streamEndStateChanged = streamEndStatus(0x02)
+	streamEndDisconnected = streamEndStatus(0x03)
+	streamEndTooSlow      = streamEndStatus(0x04)
 )
 
-type StreamEndStatus uint32
+type bucketType int
 
 const (
-	StreamEndOK           = StreamEndStatus(0x00)
-	StreamEndClosed       = StreamEndStatus(0x01)
-	StreamEndStateChanged = StreamEndStatus(0x02)
-	StreamEndDisconnected = StreamEndStatus(0x03)
-	StreamEndTooSlow      = StreamEndStatus(0x04)
+	bktTypeInvalid   bucketType = 0
+	bktTypeCouchbase            = iota
+	bktTypeMemcached            = iota
 )
 
-type BucketType int
+type vbucketState uint32
 
 const (
-	BktTypeInvalid   BucketType = 0
-	BktTypeCouchbase            = iota
-	BktTypeMemcached            = iota
+	vbucketStateActive  = vbucketState(0x01)
+	vbucketStateReplica = vbucketState(0x02)
+	vbucketStatePending = vbucketState(0x03)
+	vbucketStateDead    = vbucketState(0x04)
 )
 
-type VBucketState uint32
-
-const (
-	VBucketStateActive  = VBucketState(0x01)
-	VBucketStateReplica = VBucketState(0x02)
-	VBucketStatePending = VBucketState(0x03)
-	VBucketStateDead    = VBucketState(0x04)
-)
-
+// SetMetaOption represents possible option values for a SetMeta operation.
 type SetMetaOption uint32
 
 const (
-	SkipConflictResolution   = SetMetaOption(0x01)
+	// SkipConflictResolution disables conflict resolution for the document.
+	SkipConflictResolution = SetMetaOption(0x01)
+
+	// UseLwwConflictResolution switches to Last-Write-Wins conflict resolution
+	// for the document.
 	UseLwwConflictResolution = SetMetaOption(0x02)
-	RegenerateCas            = SetMetaOption(0x04)
+
+	// RegenerateCas causes the server to invalidate the current CAS value for
+	// a document, and to generate a new one.
+	RegenerateCas = SetMetaOption(0x04)
+)
+
+// KeyState represents the various storage states of a key on the server.
+type KeyState uint8
+
+const (
+	// KeyStateNotPersisted indicates the key is in memory, but not yet written to disk.
+	KeyStateNotPersisted = KeyState(0x00)
+
+	// KeyStatePersisted indicates that the key has been written to disk.
+	KeyStatePersisted = KeyState(0x01)
+
+	// KeyStateNotFound indicates that the key is not found in memory or on disk.
+	KeyStateNotFound = KeyState(0x80)
+
+	// KeyStateDeleted indicates that the key has been written to disk as deleted.
+	KeyStateDeleted = KeyState(0x81)
+)
+
+// SubDocOpType specifies the type of a sub-document operation.
+type SubDocOpType uint8
+
+const (
+	// SubDocOpGet indicates the operation is a sub-document `Get` operation.
+	SubDocOpGet = SubDocOpType(cmdSubDocGet)
+
+	// SubDocOpExists indicates the operation is a sub-document `Exists` operation.
+	SubDocOpExists = SubDocOpType(cmdSubDocExists)
+
+	// SubDocOpDictAdd indicates the operation is a sub-document `Add` operation.
+	SubDocOpDictAdd = SubDocOpType(cmdSubDocDictAdd)
+
+	// SubDocOpDictSet indicates the operation is a sub-document `Set` operation.
+	SubDocOpDictSet = SubDocOpType(cmdSubDocDictSet)
+
+	// SubDocOpDelete indicates the operation is a sub-document `Remove` operation.
+	SubDocOpDelete = SubDocOpType(cmdSubDocDelete)
+
+	// SubDocOpReplace indicates the operation is a sub-document `Replace` operation.
+	SubDocOpReplace = SubDocOpType(cmdSubDocReplace)
+
+	// SubDocOpArrayPushLast indicates the operation is a sub-document `ArrayPushLast` operation.
+	SubDocOpArrayPushLast = SubDocOpType(cmdSubDocArrayPushLast)
+
+	// SubDocOpArrayPushFirst indicates the operation is a sub-document `ArrayPushFirst` operation.
+	SubDocOpArrayPushFirst = SubDocOpType(cmdSubDocArrayPushFirst)
+
+	// SubDocOpArrayInsert indicates the operation is a sub-document `ArrayInsert` operation.
+	SubDocOpArrayInsert = SubDocOpType(cmdSubDocArrayInsert)
+
+	// SubDocOpArrayAddUnique indicates the operation is a sub-document `ArrayAddUnique` operation.
+	SubDocOpArrayAddUnique = SubDocOpType(cmdSubDocArrayAddUnique)
+
+	// SubDocOpCounter indicates the operation is a sub-document `Counter` operation.
+	SubDocOpCounter = SubDocOpType(cmdSubDocCounter)
+)
+
+// SubDocFlag specifies flags for a sub-document operation.
+type SubDocFlag uint16
+
+const (
+	// SubDocFlagMkDirP indicates that the path should be created if it does not already exist.
+	SubDocFlagMkDirP = SubDocFlag(0x01)
 )

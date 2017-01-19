@@ -6,6 +6,8 @@ import (
 
 // TODO(brett19): Remove the Exec keyword from AuthClient
 
+// AuthClient exposes an interface for performing authentication on a
+// connected Couchbase K/V client.
 type AuthClient interface {
 	Address() string
 

@@ -1,3 +1,5 @@
+// Package gocbcore implements methods for low-level communication
+// with a Couchbase Server cluster.
 package gocbcore
 
 import (
@@ -10,7 +12,7 @@ import (
 	"time"
 )
 
-// This class represents the base client handling connections to a Couchbase Server.
+// Agent represents the base client handling connections to a Couchbase Server.
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
@@ -36,25 +38,27 @@ type Agent struct {
 	maxQueueSize         int
 }
 
-// The timeout for each server connection, including all authentication steps.
+// ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
 func (agent *Agent) ServerConnectTimeout() time.Duration {
 	return agent.serverConnectTimeout
 }
 
-// Sets the timeout for each server connection.
+// SetServerConnectTimeout sets the timeout for each server connection.
 func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
 	agent.serverConnectTimeout = timeout
 }
 
-// Returns a pre-configured HTTP Client for communicating with
-// Couchbase Server.  You must still specify authentication
-// information for any dispatched requests.
+// HttpClient returns a pre-configured HTTP Client for communicating with
+// Couchbase Server.  You must still specify authentication information
+// for any dispatched requests.
 func (agent *Agent) HttpClient() *http.Client {
 	return agent.httpCli
 }
 
+// AuthFunc is invoked by the agent to authenticate a client.
 type AuthFunc func(client AuthClient, deadline time.Time) error
 
+// AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
 	MemdAddrs         []string
 	HttpAddrs         []string
@@ -72,9 +76,9 @@ type AgentConfig struct {
 
 func createInitFn(config *AgentConfig) memdInitFunc {
 	return func(client *syncClient, deadline time.Time) error {
-		var features []HelloFeature
+		var features []helloFeature
 		if config.UseMutationTokens {
-			features = append(features, FeatureSeqNo)
+			features = append(features, featureSeqNo)
 		}
 
 		err := client.ExecHello(features, deadline)
@@ -86,14 +90,13 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 	}
 }
 
-// Creates an agent for performing normal operations.
+// CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
 	initFn := createInitFn(config)
 	return createAgent(config, initFn)
 }
 
-// **INTERNAL**
-// Creates an agent for performing DCP operations.
+// CreateDcpAgent creates an agent for performing DCP operations.
 func CreateDcpAgent(config *AgentConfig, dcpStreamName string) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
@@ -318,7 +321,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 	return nil
 }
 
-// Shuts down the agent, disconnecting from all servers and failing
+// Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
 	var errs MultiError
@@ -365,12 +368,12 @@ func (agent *Agent) Close() error {
 	return errs.get()
 }
 
-// Returns whether this client is connected via SSL.
+// IsSecure returns whether this client is connected via SSL.
 func (agent *Agent) IsSecure() bool {
 	return agent.tlsConfig != nil
 }
 
-// Translates a particular key to its assigned vbucket.
+// KeyToVbucket translates a particular key to its assigned vbucket.
 func (agent *Agent) KeyToVbucket(key []byte) uint16 {
 	if agent.NumVbuckets() <= 0 {
 		return 0xFFFF
@@ -378,13 +381,13 @@ func (agent *Agent) KeyToVbucket(key []byte) uint16 {
 	return uint16(cbCrc(key) % uint32(agent.NumVbuckets()))
 }
 
-// Returns the number of VBuckets configured on the
+// NumVbuckets returns the number of VBuckets configured on the
 // connected cluster.
 func (agent *Agent) NumVbuckets() int {
 	return agent.numVbuckets
 }
 
-// Returns the number of replicas configured on the
+// NumReplicas returns the number of replicas configured on the
 // connected cluster.
 func (agent *Agent) NumReplicas() int {
 	routingInfo := agent.routingInfo.get()
@@ -394,7 +397,7 @@ func (agent *Agent) NumReplicas() int {
 	return len(routingInfo.vbMap[0]) - 1
 }
 
-// Returns number of servers accessible for K/V.
+// NumServers returns the number of servers accessible for K/V.
 func (agent *Agent) NumServers() int {
 	routingInfo := agent.routingInfo.get()
 	if routingInfo == nil {
@@ -403,7 +406,11 @@ func (agent *Agent) NumServers() int {
 	return len(routingInfo.kvPipelines)
 }
 
-// Returns list of VBuckets on the server.
+// TODO(brett19): Update VbucketsOnServer to return all servers.
+// Otherwise, we could race the route map update and get a
+// non-continuous list of vbuckets for each server.
+
+// VbucketsOnServer returns the list of VBuckets for a server.
 func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	var vbuckets []uint16
 	routingInfo := agent.routingInfo.get()
@@ -419,7 +426,7 @@ func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	return vbuckets
 }
 
-// Returns all the available endpoints for performing
+// CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
 	routingInfo := agent.routingInfo.get()
@@ -429,7 +436,7 @@ func (agent *Agent) CapiEps() []string {
 	return routingInfo.capiEpList
 }
 
-// Returns all the available endpoints for performing
+// MgmtEps returns all the available endpoints for performing
 // management queries.
 func (agent *Agent) MgmtEps() []string {
 	routingInfo := agent.routingInfo.get()
@@ -439,7 +446,7 @@ func (agent *Agent) MgmtEps() []string {
 	return routingInfo.mgmtEpList
 }
 
-// Returns all the available endpoints for performing
+// N1qlEps returns all the available endpoints for performing
 // N1QL queries.
 func (agent *Agent) N1qlEps() []string {
 	routingInfo := agent.routingInfo.get()
@@ -449,7 +456,7 @@ func (agent *Agent) N1qlEps() []string {
 	return routingInfo.n1qlEpList
 }
 
-// Returns all the available endpoints for performing
+// FtsEps returns all the available endpoints for performing
 // FTS queries.
 func (agent *Agent) FtsEps() []string {
 	routingInfo := agent.routingInfo.get()

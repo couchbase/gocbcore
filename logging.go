@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
+// LogLevel specifies the severity of a log message.
 type LogLevel int
 
-// **VOLATILE** (subject to change)
 // Various logging levels (or subsystems) which can categorize the message.
 // Currently these are ordered in decreasing severity.
 const (
@@ -22,8 +22,7 @@ const (
 	LogMaxVerbosity
 )
 
-// **VOLATILE**
-// Logging interface. You can either use one of the default loggers
+// Logger defines a logging interface. You can either use one of the default loggers
 // (DefaultStdioLogger(), VerboseStdioLogger()) or implement your own.
 type Logger interface {
 	// Outputs logging information:
@@ -59,34 +58,32 @@ var (
 	globalLogger Logger
 )
 
-// **DEPRECATED** (Use DefaultStdioLogger() instead)
-// Returns the default logger. This actually logs to stderr rather than
-// stdout. Use DefaultStdioLogger which has a correct name, since the
-// "standard" logger logs to stderr, rather than stdout.
+// DefaultStdOutLogger gets the default logger. This actually logs to stderr
+// rather than stdout. Use DefaultStdioLogger which has a correct name, since
+// the "standard" logger logs to stderr, rather than stdout.
+//
+// Deprecated: Use DefaultStdioLogger() instead.
 func DefaultStdOutLogger() Logger {
 	return &globalDefaultLogger
 }
 
-// **UNCOMMITTED**
-// Gets the default standard I/O logger. You can then make gocbcore log by using
-// the following idiom:
-// gocbcore.SetLogger(gocbcore.DefaultStdioLogger())
+// DefaultStdioLogger gets the default standard I/O logger.
+//  gocbcore.SetLogger(gocbcore.DefaultStdioLogger())
 func DefaultStdioLogger() Logger {
 	return &globalDefaultLogger
 }
 
-// **UNCOMMITTED**
-// This is a more verbose level of DefaultStdioLogger(). Messages pertaining to the
-// scheduling of ordinary commands (and their responses) will also be emitted
-// gocbcore.SetLogger(gocbcore.VerboseStdioLogger())
+// VerboseStdioLogger is a more verbose level of DefaultStdioLogger(). Messages
+// pertaining to the scheduling of ordinary commands (and their responses) will
+// also be emitted.
+//  gocbcore.SetLogger(gocbcore.VerboseStdioLogger())
 func VerboseStdioLogger() Logger {
 	return &globalVerboseLogger
 }
 
-// **UNCOMMITTED**
-// Sets the logger to be used by the library. A logger can be obtained via the
-// DefaultStdioLogger() or VerboseStdioLogger() functions. You can also implement
-// your own logger using the volatile Logger interface.
+// SetLogger sets a logger to be used by the library. A logger can be obtained via
+// the DefaultStdioLogger() or VerboseStdioLogger() functions. You can also implement
+// your own logger using the Logger interface.
 func SetLogger(logger Logger) {
 	globalLogger = logger
 }
@@ -95,7 +92,7 @@ func logExf(level LogLevel, offset int, format string, v ...interface{}) {
 	if globalLogger != nil {
 		err := globalLogger.Log(level, offset+1, format, v...)
 		if err != nil {
-			log.Printf("Logger error occured (%s)\n", err)
+			log.Printf("Logger error occurred (%s)\n", err)
 		}
 	}
 }

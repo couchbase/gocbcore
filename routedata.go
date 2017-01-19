@@ -8,7 +8,7 @@ import (
 
 type routeData struct {
 	revId   int64
-	bktType BucketType
+	bktType bucketType
 
 	vbMap       [][]int
 	kvPipelines []*memdPipeline
@@ -81,14 +81,14 @@ func (ptr *routeDataPtr) update(old, new *routeData) bool {
 
 	if old != nil {
 		return atomic.CompareAndSwapPointer(&ptr.data, unsafe.Pointer(old), unsafe.Pointer(new))
-	} else {
-		if atomic.SwapPointer(&ptr.data, unsafe.Pointer(new)) != nil {
-			logErrorf("Updated from nil attempted on initialized routeDataPtr")
-			return false
-		}
-
-		return true
 	}
+
+	if atomic.SwapPointer(&ptr.data, unsafe.Pointer(new)) != nil {
+		logErrorf("Updated from nil attempted on initialized routeDataPtr")
+		return false
+	}
+
+	return true
 }
 
 func (ptr *routeDataPtr) clear() *routeData {
@@ -106,6 +106,6 @@ func (rd *routeData) MapKeyVBucket(key []byte, repIdx int) (srvidx int, vbid uin
 }
 
 func (rd *routeData) MapKetama(key []byte) (srvidx int) {
-	var hash uint32 = rd.source.KetamaHash(key)
+	hash := rd.source.KetamaHash(key)
 	return int(rd.source.KetamaNode(hash))
 }
