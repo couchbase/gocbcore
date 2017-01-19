@@ -61,10 +61,15 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 		Value:  v,
 		Extras: e,
 	}, deadline)
-	if err != nil {
+
+	// We do it this way as the response value could still be useful even if an
+	// error status code is returned.  For instance, statusAuthContinue still
+	// contains authentication stepping information.
+	if resp == nil {
 		return nil, err
 	}
-	return resp.Value, nil
+
+	return resp.Value, err
 }
 
 func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time) error {
