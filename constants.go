@@ -80,6 +80,7 @@ const (
 	featureTcpNoDelay = helloFeature(0x03)
 	featureSeqNo      = helloFeature(0x04)
 	featureTcpDelay   = helloFeature(0x05)
+	featureXattr      = helloFeature(0x06)
 )
 
 // Status field for memcached response.
@@ -221,16 +222,23 @@ const (
 	SubDocOpCounter = SubDocOpType(cmdSubDocCounter)
 )
 
-// SubDocFlag specifies flags for a sub-document operation.
-type SubDocFlag uint8
+// SubdocFlag specifies flags for a sub-document operation.
+type SubdocFlag uint8
 
 const (
-	// SubDocFlagNone indicates no special treatment for this operation.
-	SubDocFlagNone = SubDocFlag(0x00)
+	// SubdocFlagNone indicates no special treatment for this operation.
+	SubdocFlagNone = SubdocFlag(0x00)
 
-	// SubDocFlagMkDirP indicates that the path should be created if it does not already exist.
-	SubDocFlagMkDirP = SubDocFlag(0x01)
+	// SubdocFlagMkDirP indicates that the path should be created if it does not already exist.
+	SubdocFlagMkDirP = SubdocFlag(0x01)
 
-	// SubDocFlagMkDoc indicates that the document should be created if it does not already exist.
-	SubDocFlagMkDoc = SubDocFlag(0x02)
+	// SubdocFlagMkDoc indicates that the document should be created if it does not already exist.
+	SubdocFlagMkDoc = SubdocFlag(0x02)
+
+	// SubdocFlagXattrPath indicates that the path refers to an Xattr rather than the document body.
+	SubdocFlagXattrPath = SubdocFlag(0x04)
+
+	// SubdocFlagExpandMacros indicates that the value portion of any sub-document mutations
+	// should be expanded if they contain macros such as ${Mutation.CAS}.
+	SubdocFlagExpandMacros = SubdocFlag(0x10)
 )

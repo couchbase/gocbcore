@@ -81,6 +81,9 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 		// Send the TLS flag, which has unknown effects.
 		features = append(features, featureTls)
 
+		// Indicate that we understand XATTRs
+		features = append(features, featureXattr)
+
 		// If the user wants to use mutation tokens, lets enable them
 		if config.UseMutationTokens {
 			features = append(features, featureSeqNo)

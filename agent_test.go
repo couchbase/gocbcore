@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"gopkg.in/couchbaselabs/gojcbmock.v1"
@@ -587,6 +588,92 @@ func TestRandomGet(t *testing.T) {
 			}
 			if len(value) == 0 {
 				s.Fatalf("No value returned")
+			}
+		})
+	})
+	s.Wait(0)
+}
+
+func TestSubdocXattrs(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+
+	agent.Set([]byte("testXattr"), []byte("{\"x\":\"xattrs\"}"), 0, 0, func(cas Cas, token MutationToken, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+		})
+	})
+	s.Wait(0)
+
+	mutateOps := []SubDocOp{
+		{
+			Op:    SubDocOpDictSet,
+			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Path:  "xatest.test",
+			Value: []byte("\"test value\""),
+		},
+		// TODO: Turn on Macro Expansion part of the xattr test
+		/*{
+			Op: SubDocOpDictSet,
+			Flags: SubdocFlagXattrPath | SubdocFlagExpandMacros | SubdocFlagMkDirP,
+			Path: "xatest.rev",
+			Value: []byte("\"${Mutation.CAS}\""),
+		},*/
+		{
+			Op:    SubDocOpDictSet,
+			Flags: SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}
+	agent.SubDocMutate([]byte("testXattr"), mutateOps, 0, 0, func(res []SubDocResult, cas Cas, token MutationToken, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Mutate operation failed: %v", err)
+			}
+			if cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	})
+	s.Wait(0)
+
+	lookupOps := []SubDocOp{
+		{
+			Op:    SubDocOpGet,
+			Flags: SubdocFlagXattrPath,
+			Path:  "xatest",
+		},
+		{
+			Op:    SubDocOpGet,
+			Flags: SubdocFlagNone,
+			Path:  "x",
+		},
+	}
+	agent.SubDocLookup([]byte("testXattr"), lookupOps, func(res []SubDocResult, cas Cas, err error) {
+		s.Wrap(func() {
+			if len(res) != 2 {
+				s.Fatalf("Lookup operation wrong count")
+			}
+			if res[0].Err != nil {
+				s.Fatalf("Lookup operation 1 failed: %v", res[0].Err)
+			}
+			if res[1].Err != nil {
+				s.Fatalf("Lookup operation 2 failed: %v", res[1].Err)
+			}
+
+			/*
+				xatest := fmt.Sprintf(`{"test":"test value","rev":"0x%016x"}`, cas)
+				if !bytes.Equal(res[0].Value, []byte(xatest)) {
+					s.Fatalf("Unexpected xatest value %s (doc) != %s (header)", res[0].Value, xatest)
+				}
+			*/
+			if !bytes.Equal(res[0].Value, []byte(`{"test":"test value"}`)) {
+				s.Fatalf("Unexpected xatest value %s", res[0].Value)
+			}
+			if !bytes.Equal(res[1].Value, []byte(`"x value"`)) {
+				s.Fatalf("Unexpected document value %s", res[1].Value)
 			}
 		})
 	})
