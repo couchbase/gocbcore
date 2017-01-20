@@ -5,7 +5,7 @@ import (
 )
 
 // GetIn retrieves the value at a particular path within a JSON document.
-func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp, error) {
+func (agent *Agent) GetIn(key []byte, path string, flags SubdocFlag, cb GetInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, 0, err)
@@ -19,7 +19,7 @@ func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp,
 
 	extraBuf := make([]byte, 3)
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = 0
+	extraBuf[2] = uint8(flags)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -37,7 +37,7 @@ func (agent *Agent) GetIn(key []byte, path string, cb GetInCallback) (PendingOp,
 }
 
 // ExistsIn returns whether a particular path exists within a document.
-func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (PendingOp, error) {
+func (agent *Agent) ExistsIn(key []byte, path string, flags SubdocFlag, cb ExistsInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(0, err)
@@ -51,7 +51,7 @@ func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (Pend
 
 	extraBuf := make([]byte, 3)
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = 0
+	extraBuf[2] = uint8(flags)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -68,7 +68,7 @@ func (agent *Agent) ExistsIn(key []byte, path string, cb ExistsInCallback) (Pend
 	return agent.dispatchOp(req)
 }
 
-func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -91,11 +91,6 @@ func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value [
 	copy(valueBuf[0:], pathBytes)
 	copy(valueBuf[len(pathBytes):], value)
 
-	var subdocFlags SubDocFlag
-	if createParents {
-		subdocFlags |= SubDocFlagMkDirP
-	}
-
 	var extraBuf []byte
 	if expiry != 0 {
 		extraBuf = make([]byte, 7)
@@ -103,7 +98,7 @@ func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value [
 		extraBuf = make([]byte, 3)
 	}
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(subdocFlags)
+	extraBuf[2] = uint8(flags)
 	if len(extraBuf) >= 7 {
 		binary.BigEndian.PutUint32(extraBuf[3:], expiry)
 	}
@@ -124,46 +119,46 @@ func (agent *Agent) storeIn(opcode commandCode, key []byte, path string, value [
 }
 
 // SetIn sets the value at a path within a document.
-func (agent *Agent) SetIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocDictSet, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) SetIn(key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocDictSet, key, path, value, flags, cas, expiry, cb)
 }
 
 // AddIn adds a value at the path within a document.  This method
 // works like SetIn, but only only succeeds if the path does not
 // currently exist.
-func (agent *Agent) AddIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocDictAdd, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) AddIn(key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocDictAdd, key, path, value, flags, cas, expiry, cb)
 }
 
 // ReplaceIn replaces the value at the path within a document.
 // This method works like SetIn, but only only succeeds
 // if the path currently exists.
-func (agent *Agent) ReplaceIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocReplace, key, path, value, false, cas, expiry, cb)
+func (agent *Agent) ReplaceIn(key []byte, path string, value []byte, cas Cas, expiry uint32, flags SubdocFlag, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocReplace, key, path, value, flags, cas, expiry, cb)
 }
 
 // PushFrontIn pushes an entry to the front of an array at a path within a document.
-func (agent *Agent) PushFrontIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocArrayPushFirst, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) PushFrontIn(key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocArrayPushFirst, key, path, value, flags, cas, expiry, cb)
 }
 
 // PushBackIn pushes an entry to the back of an array at a path within a document.
-func (agent *Agent) PushBackIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocArrayPushLast, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) PushBackIn(key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocArrayPushLast, key, path, value, flags, cas, expiry, cb)
 }
 
 // ArrayInsertIn inserts an entry to an array at a path within the document.
-func (agent *Agent) ArrayInsertIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocArrayInsert, key, path, value, false, cas, expiry, cb)
+func (agent *Agent) ArrayInsertIn(key []byte, path string, value []byte, cas Cas, expiry uint32, flags SubdocFlag, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocArrayInsert, key, path, value, flags, cas, expiry, cb)
 }
 
 // AddUniqueIn adds an entry to an array at a path but only if the value doesn't already exist in the array.
-func (agent *Agent) AddUniqueIn(key []byte, path string, value []byte, createParents bool, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
-	return agent.storeIn(cmdSubDocArrayAddUnique, key, path, value, createParents, cas, expiry, cb)
+func (agent *Agent) AddUniqueIn(key []byte, path string, value []byte, flags SubdocFlag, cas Cas, expiry uint32, cb StoreInCallback) (PendingOp, error) {
+	return agent.storeIn(cmdSubDocArrayAddUnique, key, path, value, flags, cas, expiry, cb)
 }
 
 // CounterIn performs an arithmetic add or subtract on a value at a path in the document.
-func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, cb CounterInCallback) (PendingOp, error) {
+func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, expiry uint32, flags SubdocFlag, cb CounterInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, 0, MutationToken{}, err)
@@ -193,7 +188,7 @@ func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, ex
 		extraBuf = make([]byte, 3)
 	}
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = 0
+	extraBuf[2] = uint8(flags)
 	if len(extraBuf) >= 7 {
 		binary.BigEndian.PutUint32(extraBuf[3:], expiry)
 	}
@@ -214,7 +209,7 @@ func (agent *Agent) CounterIn(key []byte, path string, value []byte, cas Cas, ex
 }
 
 // RemoveIn removes the value at a path within the document.
-func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb RemoveInCallback) (PendingOp, error) {
+func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, flags SubdocFlag, cb RemoveInCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -240,7 +235,7 @@ func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb
 		extraBuf = make([]byte, 3)
 	}
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = 0
+	extraBuf[2] = uint8(flags)
 	if len(extraBuf) >= 7 {
 		binary.BigEndian.PutUint32(extraBuf[3:], expiry)
 	}
@@ -264,7 +259,7 @@ func (agent *Agent) RemoveIn(key []byte, path string, cas Cas, expiry uint32, cb
 // or LookupIn for performing many sub-document operations.
 type SubDocOp struct {
 	Op    SubDocOpType
-	Flags SubDocFlag
+	Flags SubdocFlag
 	Path  string
 	Value []byte
 }
