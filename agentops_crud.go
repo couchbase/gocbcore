@@ -482,6 +482,7 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 	op.remaining = int32(len(config.kvPipelines))
 
 	stats := make(map[string]SingleServerStats)
+	var statsLock sync.Mutex
 
 	defer func() {
 		if !allOk {
@@ -494,6 +495,9 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 		serverName := server.Address()
 
 		handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+			statsLock.Lock()
+			defer statsLock.Unlock()
+
 			// No stat key!
 			curStats, ok := stats[serverName]
 
