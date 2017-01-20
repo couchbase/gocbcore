@@ -77,6 +77,11 @@ type AgentConfig struct {
 func createInitFn(config *AgentConfig) memdInitFunc {
 	return func(client *syncClient, deadline time.Time) error {
 		var features []helloFeature
+
+		// Send the TLS flag, which has unknown effects.
+		features = append(features, featureTls)
+
+		// If the user wants to use mutation tokens, lets enable them
 		if config.UseMutationTokens {
 			features = append(features, featureSeqNo)
 		}
