@@ -571,6 +571,7 @@ func TestRandomGet(t *testing.T) {
 				}
 			})
 		})
+		s.Wait(0)
 	}
 
 	agent.GetRandom(func(key, value []byte, flags uint32, cas Cas, err error) {
@@ -584,7 +585,7 @@ func TestRandomGet(t *testing.T) {
 			if len(key) == 0 {
 				s.Fatalf("Invalid key returned")
 			}
-			if len(key) == 0 {
+			if len(value) == 0 {
 				s.Fatalf("No value returned")
 			}
 		})
