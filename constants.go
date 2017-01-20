@@ -75,8 +75,11 @@ const (
 type helloFeature uint16
 
 const (
-	featureDatatype = helloFeature(0x01)
-	featureSeqNo    = helloFeature(0x04)
+	featureDatatype   = helloFeature(0x01)
+	featureTls        = helloFeature(0x02)
+	featureTcpNoDelay = helloFeature(0x03)
+	featureSeqNo      = helloFeature(0x04)
+	featureTcpDelay   = helloFeature(0x05)
 )
 
 // Status field for memcached response.
@@ -222,6 +225,12 @@ const (
 type SubDocFlag uint8
 
 const (
+	// SubDocFlagNone indicates no special treatment for this operation.
+	SubDocFlagNone = SubDocFlag(0x00)
+
 	// SubDocFlagMkDirP indicates that the path should be created if it does not already exist.
 	SubDocFlagMkDirP = SubDocFlag(0x01)
+
+	// SubDocFlagMkDoc indicates that the document should be created if it does not already exist.
+	SubDocFlagMkDoc = SubDocFlag(0x02)
 )
