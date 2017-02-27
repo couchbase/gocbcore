@@ -17,6 +17,7 @@ import (
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
 	bucket            string
+	username          string
 	password          string
 	tlsConfig         *tls.Config
 	initFn            memdInitFunc
@@ -70,6 +71,7 @@ type AgentConfig struct {
 	HttpAddrs         []string
 	TlsConfig         *tls.Config
 	BucketName        string
+	Username          string
 	Password          string
 	AuthHandler       AuthFunc
 	UseMutationTokens bool
@@ -112,6 +114,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c := &Agent{
 		bucket:    config.BucketName,
+		username:  config.Username,
 		password:  config.Password,
 		tlsConfig: config.TlsConfig,
 		initFn:    initFn,

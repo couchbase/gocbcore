@@ -100,7 +100,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				return 0
 			}
 
-			req.SetBasicAuth(agent.bucket, agent.password)
+			req.SetBasicAuth(agent.username, agent.password)
 
 			resp, err = agent.httpCli.Do(req)
 			if err != nil {
