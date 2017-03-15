@@ -70,6 +70,7 @@ const (
 	cmdSubDocCounter        = commandCode(0xcf)
 	cmdSubDocMultiLookup    = commandCode(0xd0)
 	cmdSubDocMultiMutation  = commandCode(0xd1)
+	cmdGetErrorMap          = commandCode(0xfe)
 )
 
 type helloFeature uint16
@@ -81,6 +82,7 @@ const (
 	featureSeqNo      = helloFeature(0x04)
 	featureTcpDelay   = helloFeature(0x05)
 	featureXattr      = helloFeature(0x06)
+	featureXerror     = helloFeature(0x07)
 )
 
 // Status field for memcached response.

@@ -274,6 +274,8 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 			return
 		}
 
+		errorMap := agent.getErrorMap()
+
 		respIter := 0
 		for i := range results {
 			if respIter+6 > len(resp.Value) {
@@ -289,7 +291,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 				return
 			}
 
-			results[i].Err = getMemdError(resError)
+			results[i].Err = getMemdError(resError, errorMap)
 			results[i].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
 			respIter += 6 + resValueLen
 		}
@@ -351,6 +353,8 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 			return
 		}
 
+		errorMap := agent.getErrorMap()
+
 		if err == ErrSubDocBadMulti {
 			if len(resp.Value) != 3 {
 				cb(nil, 0, MutationToken{}, ErrProtocol)
@@ -361,7 +365,7 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 			resError := statusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
 			err := SubDocMutateError{
-				Err:     getMemdError(resError),
+				Err:     getMemdError(resError, errorMap),
 				OpIndex: opIndex,
 			}
 			cb(nil, 0, MutationToken{}, err)
@@ -371,7 +375,7 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := statusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
-			results[opIndex].Err = getMemdError(opStatus)
+			results[opIndex].Err = getMemdError(opStatus, errorMap)
 			readPos += 3
 
 			if opStatus == statusSuccess {

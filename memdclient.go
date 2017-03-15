@@ -3,6 +3,7 @@ package gocbcore
 type memdClient struct {
 	conn        memdConn
 	opList      memdOpMap
+	errorMap    *kvErrorMap
 	closeNotify chan bool
 }
 
@@ -13,6 +14,10 @@ func newMemdClient(conn memdConn) *memdClient {
 	}
 	client.run()
 	return &client
+}
+
+func (client *memdClient) SetErrorMap(errorMap *kvErrorMap) {
+	client.errorMap = errorMap
 }
 
 func (client *memdClient) Address() string {
@@ -58,7 +63,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	// Grab an error object if one needs to exist.
 	var err error
 	if resp.Magic == resMagic {
-		err = getMemdError(resp.Status)
+		err = getMemdError(resp.Status, client.errorMap)
 	}
 
 	// Call the requests callback handler...

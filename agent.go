@@ -21,9 +21,11 @@ type Agent struct {
 	tlsConfig         *tls.Config
 	initFn            memdInitFunc
 	useMutationTokens bool
+	useKvErrorMaps    bool
 
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
+	kvErrorMap  kvErrorMapPtr
 	numVbuckets int
 
 	serverFailuresLock sync.Mutex
@@ -55,6 +57,10 @@ func (agent *Agent) HttpClient() *http.Client {
 	return agent.httpCli
 }
 
+func (agent *Agent) getErrorMap() *kvErrorMap {
+	return agent.kvErrorMap.Get()
+}
+
 // AuthFunc is invoked by the agent to authenticate a client.
 type AuthFunc func(client AuthClient, deadline time.Time) error
 
@@ -67,6 +73,7 @@ type AgentConfig struct {
 	Password          string
 	AuthHandler       AuthFunc
 	UseMutationTokens bool
+	UseKvErrorMaps    bool
 
 	ConnectTimeout       time.Duration
 	ServerConnectTimeout time.Duration
@@ -76,24 +83,6 @@ type AgentConfig struct {
 
 func createInitFn(config *AgentConfig) memdInitFunc {
 	return func(client *syncClient, deadline time.Time) error {
-		var features []helloFeature
-
-		// Send the TLS flag, which has unknown effects.
-		features = append(features, featureTls)
-
-		// Indicate that we understand XATTRs
-		features = append(features, featureXattr)
-
-		// If the user wants to use mutation tokens, lets enable them
-		if config.UseMutationTokens {
-			features = append(features, featureSeqNo)
-		}
-
-		err := client.ExecHello(features, deadline)
-		if err != nil {
-			logDebugf("Failed to HELLO with server (%s)", err)
-		}
-
 		return config.AuthHandler(client, deadline)
 	}
 }
@@ -132,6 +121,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			},
 		},
 		useMutationTokens:    config.UseMutationTokens,
+		useKvErrorMaps:       config.UseKvErrorMaps,
 		serverFailures:       make(map[string]time.Time),
 		serverConnectTimeout: config.ServerConnectTimeout,
 		serverWaitTimeout:    5 * time.Second,

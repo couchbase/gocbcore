@@ -9,6 +9,15 @@ import (
 
 type memdInitFunc func(*syncClient, time.Time) error
 
+func checkSupportsFeature(srvFeatures []helloFeature, feature helloFeature) bool {
+	for _, srvFeature := range srvFeatures {
+		if srvFeature == feature {
+			return true
+		}
+	}
+	return false
+}
+
 func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
@@ -38,6 +47,60 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 
 	sclient := syncClient{
 		client: client,
+	}
+
+	logDebugf("Fetching cluster client data")
+	var features []helloFeature
+
+	// Send the TLS flag, which has unknown effects.
+	features = append(features, featureTls)
+
+	// Indicate that we understand XATTRs
+	features = append(features, featureXattr)
+
+	// If the user wants to use KV Error maps, lets enable them
+	if agent.useKvErrorMaps {
+		features = append(features, featureXerror)
+	}
+
+	// If the user wants to use mutation tokens, lets enable them
+	if agent.useMutationTokens {
+		features = append(features, featureSeqNo)
+	}
+
+	srvFeatures, err := sclient.ExecHello(features, deadline)
+	if err != nil {
+		logDebugf("Failed to HELLO with server (%s)", err)
+	}
+
+	if checkSupportsFeature(srvFeatures, featureXerror) {
+		errMapData, err := sclient.ExecGetErrorMap(1, deadline)
+		if err == nil {
+			errMap, err := parseKvErrorMap(errMapData)
+			if err == nil {
+				logDebugf("Fetched error map: %+v", errMap)
+
+				// Tell the local client to use this error map
+				client.SetErrorMap(errMap)
+
+				// Check if we need to switch the agent itself to a better
+				//  error map revision.
+				for {
+					origMap := agent.kvErrorMap.Get()
+					if origMap != nil && errMap.Revision < origMap.Revision {
+						break
+					}
+
+					if agent.kvErrorMap.Update(origMap, errMap) {
+						break
+					}
+				}
+			} else {
+				logDebugf("Failed to parse kv error map (%s)", err)
+			}
+		} else {
+			logDebugf("Failed to fetch kv error map (%s)", err)
+		}
 	}
 
 	logDebugf("Authenticating...")

@@ -72,7 +72,7 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 	return resp.Value, err
 }
 
-func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time) error {
+func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time) ([]helloFeature, error) {
 	appendFeatureCode := func(bytes []byte, feature helloFeature) []byte {
 		bytes = append(bytes, 0, 0)
 		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
@@ -86,12 +86,25 @@ func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time)
 
 	clientId := []byte("gocb/" + goCbCoreVersionStr)
 
-	_, err := client.doBasicOp(cmdHello, clientId, featureBytes, nil, deadline)
-	return err
+	bytes, err := client.doBasicOp(cmdHello, clientId, featureBytes, nil, deadline)
+
+	var srvFeatures []helloFeature
+	for i := 0; i < len(bytes); i += 2 {
+		feature := binary.BigEndian.Uint16(bytes[i:])
+		srvFeatures = append(srvFeatures, helloFeature(feature))
+	}
+
+	return srvFeatures, err
 }
 
 func (client *syncClient) ExecCccpRequest(deadline time.Time) ([]byte, error) {
 	return client.doBasicOp(cmdGetClusterConfig, nil, nil, nil, deadline)
+}
+
+func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) ([]byte, error) {
+	valueBuf := make([]byte, 2)
+	binary.BigEndian.PutUint16(valueBuf, version)
+	return client.doBasicOp(cmdGetErrorMap, nil, valueBuf, nil, deadline)
 }
 
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, deadline time.Time) error {

@@ -469,7 +469,7 @@ func getStreamEndError(code streamEndStatus) error {
 	}
 }
 
-func getMemdError(code statusCode) error {
+func getMemdError(code statusCode, errorMap *kvErrorMap) error {
 	switch code {
 	case statusSuccess:
 		return nil
@@ -541,7 +541,15 @@ func getMemdError(code statusCode) error {
 		return ErrSubDocBadCombo
 	case statusSubDocBadMulti:
 		return ErrSubDocBadMulti
-	default:
-		return &memdError{code}
 	}
+
+	/*
+		if errorMap != nil {
+			if errMapErr, ok := errorMap.Errors[code]; ok {
+
+			}
+		}
+	*/
+
+	return &memdError{code}
 }
