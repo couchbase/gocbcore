@@ -44,7 +44,7 @@ func (l *defaultLogger) Log(level LogLevel, offset int, format string, v ...inte
 		return nil
 	}
 	s := fmt.Sprintf(format, v...)
-	return l.GoLogger.Output(offset+1, s)
+	return l.GoLogger.Output(offset+2, s)
 }
 
 var (
@@ -101,19 +101,19 @@ func logExf(level LogLevel, offset int, format string, v ...interface{}) {
 }
 
 func logDebugf(format string, v ...interface{}) {
-	logExf(LogDebug, 2, format, v...)
+	logExf(LogDebug, 1, format, v...)
 }
 
 func logSchedf(format string, v ...interface{}) {
-	logExf(LogSched, 2, format, v...)
+	logExf(LogSched, 1, format, v...)
 }
 
 func logWarnf(format string, v ...interface{}) {
-	logExf(LogWarn, 2, format, v...)
+	logExf(LogWarn, 1, format, v...)
 }
 
 func logErrorf(format string, v ...interface{}) {
-	logExf(LogError, 2, format, v...)
+	logExf(LogError, 1, format, v...)
 }
 
 func reindentLog(indent, message string) string {
