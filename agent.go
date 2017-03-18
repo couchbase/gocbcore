@@ -169,32 +169,45 @@ func (agent *Agent) cccpLooper() {
 			continue
 		}
 
-		nodeIdx := rand.Intn(numNodes)
-		pipeline := routingInfo.kvPipelines[nodeIdx]
+		var foundConfig *cfgBucket
+		startNodeIdx := rand.Intn(numNodes)
+		for nodeOff := 0; nodeOff < numNodes; nodeOff++ {
+			nodeIdx := (startNodeIdx + nodeOff) % numNodes
 
-		client := syncClient{
-			client: pipeline,
-		}
-		cccpBytes, err := client.ExecCccpRequest(time.Now().Add(maxWaitTime))
-		if err != nil {
-			logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-			continue
+			pipeline := routingInfo.kvPipelines[nodeIdx]
+
+			client := syncClient{
+				client: pipeline,
+			}
+			cccpBytes, err := client.ExecCccpRequest(time.Now().Add(maxWaitTime))
+			if err != nil {
+				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+				continue
+			}
+
+			hostName, _, err := net.SplitHostPort(pipeline.Address())
+			if err != nil {
+				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+				continue
+			}
+
+			bk, err := parseConfig(cccpBytes, hostName)
+			if err != nil {
+				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+				continue
+			}
+
+			foundConfig = bk
+			break
 		}
 
-		hostName, _, err := net.SplitHostPort(pipeline.Address())
-		if err != nil {
-			logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-			continue
-		}
-
-		bk, err := parseConfig(cccpBytes, hostName)
-		if err != nil {
-			logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+		if foundConfig == nil {
+			logDebugf("CCCPPOLL: Failed to retrieve config from any node.")
 			continue
 		}
 
 		logDebugf("CCCPPOLL: Received new config")
-		agent.updateConfig(bk)
+		agent.updateConfig(foundConfig)
 	}
 }
 
