@@ -163,7 +163,7 @@ func (agent *Agent) cccpLooper() {
 			break
 		}
 
-		numNodes := len(routingInfo.kvPipelines)
+		numNodes := routingInfo.clientMux.NumPipelines()
 		if numNodes == 0 {
 			logDebugf("CCCPPOLL: No nodes available to poll")
 			continue
@@ -174,7 +174,7 @@ func (agent *Agent) cccpLooper() {
 		for nodeOff := 0; nodeOff < numNodes; nodeOff++ {
 			nodeIdx := (startNodeIdx + nodeOff) % numNodes
 
-			pipeline := routingInfo.kvPipelines[nodeIdx]
+			pipeline := routingInfo.clientMux.GetPipeline(nodeIdx)
 
 			client := syncClient{
 				client: pipeline,
@@ -355,8 +355,6 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
-	var errs MultiError
-
 	agent.configLock.Lock()
 
 	// Clear the routingInfo so no new operations are performed
@@ -367,36 +365,19 @@ func (agent *Agent) Close() error {
 		return ErrShutdown
 	}
 
-	// Loop all the pipelines and close them, then close the wait
-	//  queue to prevent any further data from entering them.
-	for _, pipeline := range routingInfo.kvPipelines {
-		err := pipeline.Close()
-		if err != nil {
-			errs.add(err)
-		}
-	}
-	if routingInfo.deadPipe != nil {
-		err := routingInfo.deadPipe.Close()
-		if err != nil {
-			errs.add(err)
-		}
-	}
+	// Shut down the client multiplexer which will close all its queues
+	// effectively causing all the clients to shut down.
+	muxCloseErr := routingInfo.clientMux.Close()
 
 	// Drain all the pipelines and error their requests, then
 	//  drain the dead queue and error those requests.
-	dispatchReqErr := func(req *memdQRequest) {
+	routingInfo.clientMux.Drain(func(req *memdQRequest) {
 		req.tryCallback(nil, ErrShutdown)
-	}
-	for _, pipeline := range routingInfo.kvPipelines {
-		pipeline.Drain(dispatchReqErr)
-	}
-	if routingInfo.deadPipe != nil {
-		routingInfo.deadPipe.Drain(dispatchReqErr)
-	}
+	})
 
 	agent.configLock.Unlock()
 
-	return errs.get()
+	return muxCloseErr
 }
 
 // IsSecure returns whether this client is connected via SSL.
@@ -447,7 +428,7 @@ func (agent *Agent) NumServers() int {
 	if routingInfo == nil {
 		return 0
 	}
-	return len(routingInfo.kvPipelines)
+	return routingInfo.clientMux.NumPipelines()
 }
 
 // TODO(brett19): Update VbucketsOnServer to return all servers.

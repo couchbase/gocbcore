@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"container/list"
 	"crypto/tls"
 	"net"
 	"sort"
@@ -123,18 +122,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 
 	kvPoolSize := agent.kvPoolSize
 	maxQueueSize := agent.maxQueueSize
-	for _, hostPort := range cfg.kvServerList {
-		hostPort := hostPort
-
-		getClientFn := func() (*memdClient, error) {
-			return agent.slowDialMemdClient(hostPort)
-		}
-		pipeline := newPipeline(hostPort, kvPoolSize, maxQueueSize, getClientFn)
-
-		newRouting.kvPipelines = append(newRouting.kvPipelines, pipeline)
-	}
-
-	newRouting.deadPipe = newDeadPipeline(maxQueueSize)
+	newRouting.clientMux = newMemdClientMux(cfg.kvServerList, kvPoolSize, maxQueueSize, agent.slowDialMemdClient)
 
 	oldRouting := agent.routingInfo.Get()
 	if oldRouting == nil {
@@ -160,80 +148,28 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 	logDebugf("Switching routing data (update)...")
 	logDebugf("New Routing Data:\n%s", newRouting.DebugString())
 
-	// Gather all our old pipelines up for takeover and what not
-	oldPipelines := list.New()
-	for _, pipeline := range oldRouting.kvPipelines {
-		oldPipelines.PushBack(pipeline)
-	}
+	if oldRouting.clientMux == nil {
+		// This is a new agent so there is no existing muxer.  We can
+		// simply start the new muxer.
+		newRouting.clientMux.Start()
+	} else {
+		// Get the new muxer to takeover the pipelines from the older one
+		newRouting.clientMux.Takeover(oldRouting.clientMux)
 
-	// Build a function to find an existing pipeline
-	stealPipeline := func(address string) *memdPipeline {
-		for e := oldPipelines.Front(); e != nil; e = e.Next() {
-			pipeline, ok := e.Value.(*memdPipeline)
-			if !ok {
-				logErrorf("Failed to cast old pipeline")
-				continue
+		// Gather all the requests from all the old pipelines and then
+		//  sort and redispatch them (which will use the new pipelines)
+		if oldRouting.clientMux != nil {
+			var requestList []*memdQRequest
+			oldRouting.clientMux.Drain(func(req *memdQRequest) {
+				requestList = append(requestList, req)
+			})
+
+			sort.Sort(memdQRequestSorter(requestList))
+
+			for _, req := range requestList {
+				agent.requeueDirect(req)
 			}
-
-			if pipeline.Address() == address {
-				oldPipelines.Remove(e)
-				return pipeline
-			}
 		}
-
-		return nil
-	}
-
-	// Initialize new pipelines (possibly with a takeover)
-	for _, pipeline := range newRouting.kvPipelines {
-		oldPipeline := stealPipeline(pipeline.Address())
-		if oldPipeline != nil {
-			pipeline.Takeover(oldPipeline)
-		}
-
-		pipeline.StartClients()
-	}
-
-	// Shut down any pipelines that were not taken over
-	for e := oldPipelines.Front(); e != nil; e = e.Next() {
-		pipeline, ok := e.Value.(*memdPipeline)
-		if !ok {
-			logErrorf("Failed to cast old pipeline")
-			continue
-		}
-
-		err := pipeline.Close()
-		if err != nil {
-			logErrorf("Failed to properly close abandoned pipeline (%s)", err)
-		}
-	}
-	if oldRouting.deadPipe != nil {
-		err := oldRouting.deadPipe.Close()
-		if err != nil {
-			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
-		}
-	}
-
-	// Gather all the requests from all the old pipelines and then
-	//  sort and redispatch them (which will use the new pipelines)
-	var requestList []*memdQRequest
-	for _, pipeline := range oldRouting.kvPipelines {
-		logDebugf("Draining queue %+v", pipeline)
-
-		pipeline.Drain(func(req *memdQRequest) {
-			requestList = append(requestList, req)
-		})
-	}
-	if oldRouting.deadPipe != nil {
-		oldRouting.deadPipe.Drain(func(req *memdQRequest) {
-			requestList = append(requestList, req)
-		})
-	}
-
-	sort.Sort(memdQRequestSorter(requestList))
-
-	for _, req := range requestList {
-		agent.requeueDirect(req)
 	}
 }
 
@@ -306,13 +242,7 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 		}
 	}
 
-	if srvIdx < 0 {
-		return routingInfo.deadPipe, nil
-	} else if srvIdx >= len(routingInfo.kvPipelines) {
-		return nil, ErrInvalidServer
-	}
-
-	return routingInfo.kvPipelines[srvIdx], nil
+	return routingInfo.clientMux.GetPipeline(srvIdx), nil
 }
 
 func (agent *Agent) dispatchDirect(req *memdQRequest) error {

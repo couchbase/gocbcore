@@ -16,7 +16,7 @@ import (
 func (agent *Agent) makeDistKeys() (keys []string) {
 	// Get the routing information
 	cfg := agent.routingInfo.Get()
-	keys = make([]string, len(cfg.kvPipelines))
+	keys = make([]string, cfg.clientMux.NumPipelines())
 	remaining := len(keys)
 
 	for i := 0; remaining > 0; i++ {
@@ -682,7 +682,7 @@ func TestSubdocXattrs(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
-	numServers := len(agent.routingInfo.Get().kvPipelines)
+	numServers := agent.routingInfo.Get().clientMux.NumPipelines()
 
 	agent.Stats("", func(stats map[string]SingleServerStats) {
 		s.Wrap(func() {

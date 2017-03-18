@@ -10,10 +10,9 @@ type routeData struct {
 	revId   int64
 	bktType bucketType
 
-	ketamaMap   *ketamaContinuum
-	vbMap       *vbucketMap
-	kvPipelines []*memdPipeline
-	deadPipe    *memdPipeline
+	ketamaMap *ketamaContinuum
+	vbMap     *vbucketMap
+	clientMux *memdClientMux
 
 	capiEpList []string
 	mgmtEpList []string
@@ -28,17 +27,8 @@ func (rd *routeData) DebugString() string {
 
 	outStr += fmt.Sprintf("Revision ID: %d\n", rd.revId)
 
-	for i, n := range rd.kvPipelines {
-		outStr += fmt.Sprintf("Pipeline %d:\n", i)
-		outStr += reindentLog("  ", n.debugString()) + "\n"
-	}
-
-	outStr += "Dead Pipeline:\n"
-	if rd.deadPipe != nil {
-		outStr += reindentLog("  ", rd.deadPipe.debugString()) + "\n"
-	} else {
-		outStr += "  Disabled\n"
-	}
+	outStr += "Client Multiplexer:"
+	outStr += reindentLog("  ", rd.clientMux.debugString()) + "\n"
 
 	outStr += "Capi Eps:\n"
 	for _, ep := range rd.capiEpList {
