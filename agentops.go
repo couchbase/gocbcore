@@ -85,15 +85,17 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	agent.waitAndRetryOperation(req)
 }
 
-func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
-	originalCallback := req.Callback
-	req.Callback = func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err == ErrNotMyVBucket {
-			agent.waitAndRetryOperation(req)
-			return
-		}
-		originalCallback(resp, req, err)
+func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) bool {
+	if resp.Magic == resMagic && resp.Status == statusNotMyVBucket {
+		agent.handleOpNmv(resp, req)
+		return true
 	}
+
+	return false
+}
+
+func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
+	req.RoutingCallback = agent.handleOpRoutingResp
 
 	err := agent.dispatchDirect(req)
 	if err != nil {

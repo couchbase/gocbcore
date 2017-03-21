@@ -48,6 +48,13 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
+	if req.RoutingCallback != nil {
+		if req.RoutingCallback(resp, req) {
+			logSchedf("Routing callback intercepted response")
+			return
+		}
+	}
+
 	// Grab an error object if one needs to exist.
 	var err error
 	if resp.Magic == resMagic {

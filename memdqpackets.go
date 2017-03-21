@@ -16,6 +16,7 @@ type memdQResponse struct {
 }
 
 type callback func(*memdQResponse, *memdQRequest, error)
+type routingCallback func(*memdQResponse, *memdQRequest) bool
 
 // The data for a request that can be queued with a memdqueueconn,
 // and can potentially be rerouted to multiple servers due to
@@ -24,9 +25,10 @@ type memdQRequest struct {
 	memdPacket
 
 	// Static routing properties
-	ReplicaIdx int
-	Callback   callback
-	Persistent bool
+	ReplicaIdx      int
+	Callback        callback
+	Persistent      bool
+	RoutingCallback routingCallback
 
 	// This tracks when the request was dispatched so that we can
 	//  properly prioritize older requests to try and meet timeout
