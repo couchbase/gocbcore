@@ -163,7 +163,9 @@ func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
 	consumer := pipecli.consumer
 	pipecli.lock.Unlock()
 
-	consumer.Close()
+	if consumer != nil {
+		consumer.Close()
+	}
 }
 
 func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
