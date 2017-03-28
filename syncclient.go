@@ -132,6 +132,6 @@ func (client *syncClient) ExecSaslStep(k, v []byte, deadline time.Time) ([]byte,
 }
 
 func (client *syncClient) ExecSelectBucket(b []byte, deadline time.Time) error {
-	_, err := client.doBasicOp(cmdSelectBucket, nil, b, nil, deadline)
+	_, err := client.doBasicOp(cmdSelectBucket, b, nil, nil, deadline)
 	return err
 }
