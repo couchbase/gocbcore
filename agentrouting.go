@@ -110,7 +110,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 
 		closeErr := memdConn.Close()
 		if closeErr != nil {
-			logWarnf("Failed to close authentication client (%s)", err)
+			logWarnf("Failed to close authentication client (%s)", closeErr)
 		}
 
 		return nil, err
