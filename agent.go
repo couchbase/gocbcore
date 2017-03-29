@@ -146,6 +146,7 @@ func (agent *Agent) cccpLooper() {
 
 	logDebugf("CCCP Looper starting.")
 
+	nodeIdx := -1
 	for {
 		// Wait 10 seconds
 		time.Sleep(tickTime)
@@ -162,10 +163,13 @@ func (agent *Agent) cccpLooper() {
 			continue
 		}
 
+		if nodeIdx < 0 {
+			nodeIdx = rand.Intn(numNodes)
+		}
+
 		var foundConfig *cfgBucket
-		startNodeIdx := rand.Intn(numNodes)
 		for nodeOff := 0; nodeOff < numNodes; nodeOff++ {
-			nodeIdx := (startNodeIdx + nodeOff) % numNodes
+			nodeIdx = (nodeIdx + 1) % numNodes
 
 			pipeline := routingInfo.clientMux.GetPipeline(nodeIdx)
 
