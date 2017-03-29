@@ -80,13 +80,13 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 		// This is one of the stream events
 		switch resp.Opcode {
 		case cmdDcpSnapshotMarker:
-			vbId := uint16(resp.Status)
+			vbId := uint16(resp.Vbucket)
 			newStartSeqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			newEndSeqNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			snapshotType := binary.BigEndian.Uint32(resp.Extras[16:])
 			evtHandler.SnapshotMarker(newStartSeqNo, newEndSeqNo, vbId, SnapshotState(snapshotType))
 		case cmdDcpMutation:
-			vbId := uint16(resp.Status)
+			vbId := uint16(resp.Vbucket)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			flags := binary.BigEndian.Uint32(resp.Extras[16:])
@@ -94,17 +94,17 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 			lockTime := binary.BigEndian.Uint32(resp.Extras[24:])
 			evtHandler.Mutation(seqNo, revNo, flags, expiry, lockTime, resp.Cas, resp.Datatype, vbId, resp.Key, resp.Value)
 		case cmdDcpDeletion:
-			vbId := uint16(resp.Status)
+			vbId := uint16(resp.Vbucket)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			evtHandler.Deletion(seqNo, revNo, resp.Cas, vbId, resp.Key)
 		case cmdDcpExpiration:
-			vbId := uint16(resp.Status)
+			vbId := uint16(resp.Vbucket)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			evtHandler.Expiration(seqNo, revNo, resp.Cas, vbId, resp.Key)
 		case cmdDcpStreamEnd:
-			vbId := uint16(resp.Status)
+			vbId := uint16(resp.Vbucket)
 			code := streamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
 			evtHandler.End(vbId, getStreamEndError(code))
 			req.Cancel()
