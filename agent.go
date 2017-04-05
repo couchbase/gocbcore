@@ -96,7 +96,7 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
-func CreateDcpAgent(config *AgentConfig, dcpStreamName string) (*Agent, error) {
+func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
 	initFn := createInitFn(config)
@@ -104,7 +104,7 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string) (*Agent, error) {
 		if err := initFn(client, deadline); err != nil {
 			return err
 		}
-		return client.ExecOpenDcpConsumer(dcpStreamName, deadline)
+		return client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline)
 	}
 	return createAgent(config, dcpInitFn)
 }

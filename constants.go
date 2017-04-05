@@ -233,6 +233,23 @@ const (
 	SubDocOpAddDoc = SubDocOpType(cmdAdd)
 )
 
+// DcpOpenFlag specifies flags for DCP streams configured when the stream is opened.
+type DcpOpenFlag uint32
+
+const (
+	// DcpOpenFlagProducer indicates this stream wants the other end to be a producer.
+	DcpOpenFlagProducer = DcpOpenFlag(0x01)
+
+	// DcpOpenFlagNotifier indicates this stream wants the other end to be a notifier.
+	DcpOpenFlagNotifier = DcpOpenFlag(0x02)
+
+	// DcpOpenFlagIncludeXattrs indicates the client wishes to receive extended attributes.
+	DcpOpenFlagIncludeXattrs = DcpOpenFlag(0x04)
+
+	// DcpOpenFlagNoValue indicates the client does not wish to receive mutation values.
+	DcpOpenFlagNoValue = DcpOpenFlag(0x08)
+)
+
 // DatatypeFlag specifies data flags for the value of a document.
 type DatatypeFlag uint8
 

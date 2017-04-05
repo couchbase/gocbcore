@@ -107,10 +107,10 @@ func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) ([
 	return client.doBasicOp(cmdGetErrorMap, nil, valueBuf, nil, deadline)
 }
 
-func (client *syncClient) ExecOpenDcpConsumer(streamName string, deadline time.Time) error {
+func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], 0)
-	binary.BigEndian.PutUint32(extraBuf[4:], 1)
+	binary.BigEndian.PutUint32(extraBuf[4:], uint32((openFlags & ^DcpOpenFlag(3))|DcpOpenFlagProducer))
 	_, err := client.doBasicOp(cmdDcpOpenConnection, []byte(streamName), nil, extraBuf, deadline)
 	return err
 }
