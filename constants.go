@@ -222,6 +222,15 @@ const (
 
 	// SubDocOpCounter indicates the operation is a sub-document `Counter` operation.
 	SubDocOpCounter = SubDocOpType(cmdSubDocCounter)
+
+	// SubDocOpGetDoc represents a full document retrieval, for use with extended attribute ops.
+	SubDocOpGetDoc = SubDocOpType(cmdGet)
+
+	// SubDocOpSetDoc represents a full document set, for use with extended attribute ops.
+	SubDocOpSetDoc = SubDocOpType(cmdSet)
+
+	// SubDocOpAddDoc represents a full document add, for use with extended attribute ops.
+	SubDocOpAddDoc = SubDocOpType(cmdAdd)
 )
 
 // DatatypeFlag specifies data flags for the value of a document.
