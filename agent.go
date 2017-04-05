@@ -4,10 +4,15 @@ package gocbcore
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -83,9 +88,133 @@ type AgentConfig struct {
 	MaxQueueSize         int
 }
 
+// FromConnStr populates the AgentConfig with information from a
+// Couchbase Connection String.
+func (config *AgentConfig) FromConnStr(connStr string) error {
+	baseSpec, err := gocbconnstr.Parse(connStr)
+	if err != nil {
+		return err
+	}
+
+	spec, err := gocbconnstr.Resolve(baseSpec)
+	if err != nil {
+		return err
+	}
+
+	fetchOption := func(name string) (string, bool) {
+		optValue := spec.Options[name]
+		if len(optValue) == 0 {
+			return "", false
+		}
+		return optValue[len(optValue)-1], true
+	}
+
+	// Grab the resolved hostnames into a set of string arrays
+	var httpHosts []string
+	for _, specHost := range spec.HttpHosts {
+		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	var memdHosts []string
+	for _, specHost := range spec.MemdHosts {
+		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
+	switch val, _ := fetchOption("bootstrap_on"); val {
+	case "http":
+		memdHosts = nil
+		if len(httpHosts) == 0 {
+			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
+		}
+	case "cccp":
+		httpHosts = nil
+		if len(memdHosts) == 0 {
+			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
+		}
+	case "both":
+	case "":
+		// Do nothing
+		break
+	default:
+		return errors.New("bootstrap_on={http,cccp,both}")
+	}
+	config.MemdAddrs = memdHosts
+	config.HttpAddrs = httpHosts
+
+	var tlsConfig *tls.Config
+	if spec.UseSsl {
+		certpath, _ := fetchOption("certpath")
+
+		tlsConfig = &tls.Config{}
+		if certpath == "" {
+			tlsConfig.InsecureSkipVerify = true
+		} else {
+			cacert, err := ioutil.ReadFile(certpath)
+			if err != nil {
+				return err
+			}
+
+			roots := x509.NewCertPool()
+			ok := roots.AppendCertsFromPEM(cacert)
+			if !ok {
+				return ErrInvalidCert
+			}
+			tlsConfig.RootCAs = roots
+		}
+	}
+	config.TlsConfig = tlsConfig
+
+	if spec.Bucket != "" {
+		config.BucketName = spec.Bucket
+	}
+
+	if valStr, ok := fetchOption("config_total_timeout"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("config_total_timeout option must be a number")
+		}
+		config.ConnectTimeout = time.Duration(val) * time.Millisecond
+	}
+
+	if valStr, ok := fetchOption("config_node_timeout"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("config_node_timeout option must be a number")
+		}
+		config.ServerConnectTimeout = time.Duration(val) * time.Millisecond
+	}
+
+	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
+		if valStr == "1" || valStr == "true" {
+			config.UseMutationTokens = true
+		} else if valStr == "0" || valStr == "false" {
+			config.UseMutationTokens = false
+		} else {
+			return fmt.Errorf("fetch_mutation_tokens option must be a boolean")
+		}
+	}
+
+	return nil
+}
+
 func createInitFn(config *AgentConfig) memdInitFunc {
 	return func(client *syncClient, deadline time.Time) error {
-		return config.AuthHandler(client, deadline)
+		if config.AuthHandler != nil {
+			return config.AuthHandler(client, deadline)
+		}
+
+		if err := SaslAuthPlain(config.Username, config.Password, client, deadline); err != nil {
+			return err
+		}
+
+		if config.BucketName != config.Username {
+			if err := client.ExecSelectBucket([]byte(config.BucketName), deadline); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 }
 
