@@ -27,7 +27,7 @@ type FailoverEntry struct {
 type StreamObserver interface {
 	SnapshotMarker(startSeqNo, endSeqNo uint64, vbId uint16, snapshotType SnapshotState)
 	Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16, key, value []byte)
-	Deletion(seqNo, revNo, cas uint64, vbId uint16, key []byte)
+	Deletion(seqNo, revNo, cas uint64, datatype uint8, vbId uint16, key, value []byte)
 	Expiration(seqNo, revNo, cas uint64, vbId uint16, key []byte)
 	End(vbId uint16, err error)
 }
@@ -97,7 +97,7 @@ func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo,
 			vbId := uint16(resp.Vbucket)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
-			evtHandler.Deletion(seqNo, revNo, resp.Cas, vbId, resp.Key)
+			evtHandler.Deletion(seqNo, revNo, resp.Cas, resp.Datatype, vbId, resp.Key, resp.Value)
 		case cmdDcpExpiration:
 			vbId := uint16(resp.Vbucket)
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
