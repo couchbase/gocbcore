@@ -168,6 +168,8 @@ func (e memdError) Error() string {
 		return "incorrectly matched subdocument operation types"
 	case statusSubDocBadMulti:
 		return "could not execute one or more multi lookups or mutations"
+	case statusSubDocSuccessDeleted:
+		return "document is soft-deleted"
 	default:
 		return fmt.Sprintf("an unknown error occurred (%d)", e.code)
 	}
@@ -450,6 +452,10 @@ var (
 	// ErrSubDocBadMulti occurs when a multi-operation sub-document operation is
 	// performed and operations within the package of ops conflict with each other.
 	ErrSubDocBadMulti = &memdError{statusSubDocBadMulti}
+
+	// ErrSubDocSuccessDeleted occurs when a multi-operation sub-document operation
+	// is performed on a soft-deleted document.
+	ErrSubDocSuccessDeleted = &memdError{statusSubDocSuccessDeleted}
 )
 
 func getStreamEndError(code streamEndStatus) error {

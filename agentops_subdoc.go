@@ -269,7 +269,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil && err != ErrSubDocBadMulti {
+		if err != nil && err != ErrSubDocSuccessDeleted && err != ErrSubDocBadMulti {
 			cb(nil, 0, err)
 			return
 		}
@@ -348,7 +348,7 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil && err != ErrSubDocBadMulti {
+		if err != nil && err != ErrSubDocSuccessDeleted && err != ErrSubDocBadMulti {
 			cb(nil, 0, MutationToken{}, err)
 			return
 		}
