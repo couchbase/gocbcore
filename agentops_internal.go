@@ -5,7 +5,7 @@ import (
 )
 
 // SetMeta stores a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
+func (agent *Agent) SetMeta(key, value, extra []byte, datatype uint8, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -34,7 +34,7 @@ func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uin
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdSetMeta,
-			Datatype: 0,
+			Datatype: datatype,
 			Cas:      0,
 			Extras:   extraBuf,
 			Key:      key,
@@ -46,7 +46,7 @@ func (agent *Agent) SetMeta(key, value, extra []byte, options, flags, expiry uin
 }
 
 // DeleteMeta deletes a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
+func (agent *Agent) DeleteMeta(key, value, extra []byte, datatype uint8, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(0, MutationToken{}, err)
@@ -75,11 +75,11 @@ func (agent *Agent) DeleteMeta(key, extra []byte, options, flags, expiry uint32,
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdDelMeta,
-			Datatype: 0,
+			Datatype: datatype,
 			Cas:      0,
 			Extras:   extraBuf,
 			Key:      key,
-			Value:    nil,
+			Value:    value,
 		},
 		Callback: handler,
 	}
