@@ -547,6 +547,8 @@ func getMemdError(code statusCode, errorMap *kvErrorMap) error {
 		return ErrSubDocBadCombo
 	case statusSubDocBadMulti:
 		return ErrSubDocBadMulti
+	case statusSubDocSuccessDeleted:
+		return ErrSubDocSuccessDeleted
 	}
 
 	/*
