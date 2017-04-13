@@ -17,6 +17,10 @@ func (vbMap vbucketMap) IsValid() bool {
 	return len(vbMap.entries) > 0 && len(vbMap.entries[0]) > 0
 }
 
+func (vbMap vbucketMap) NumVbuckets() int {
+	return len(vbMap.entries)
+}
+
 func (vbMap vbucketMap) NumReplicas() int {
 	return vbMap.numReplicas
 }
