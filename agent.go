@@ -468,7 +468,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 	}
 
 	if routeCfg.vbMap != nil {
-		agent.numVbuckets = routeCfg.vbMap.NumReplicas()
+		agent.numVbuckets = routeCfg.vbMap.NumVbuckets()
 	} else {
 		agent.numVbuckets = 0
 	}
