@@ -162,7 +162,7 @@ func (list memdQRequestSorter) Swap(i, j int) {
 //  This method MUST NEVER BLOCK due to its use from various contention points.
 func (agent *Agent) applyConfig(cfg *routeConfig) {
 	// Check some basic things to ensure consistency!
-	if cfg.vbMap != nil && cfg.vbMap.NumReplicas() != agent.numVbuckets {
+	if cfg.vbMap != nil && cfg.vbMap.NumVbuckets() != agent.numVbuckets {
 		logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
 		return
 	}
