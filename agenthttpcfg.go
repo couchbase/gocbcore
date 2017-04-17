@@ -28,8 +28,9 @@ func hostnameFromUri(uri string) string {
 }
 
 func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
-	waitPeriod := 20 * time.Second
-	maxConnPeriod := 10 * time.Second
+	waitPeriod := agent.confHttpRetryDelay
+	maxConnPeriod := agent.confHttpRedialPeriod
+
 	var iterNum uint64 = 1
 	iterSawConfig := false
 	seenNodes := make(map[string]uint64)

@@ -39,6 +39,11 @@ type Agent struct {
 
 	httpCli *http.Client
 
+	confHttpRedialPeriod time.Duration
+	confHttpRetryDelay   time.Duration
+	confCccpMaxWait      time.Duration
+	confCccpPollPeriod   time.Duration
+
 	serverConnectTimeout time.Duration
 	serverWaitTimeout    time.Duration
 	nmvRetryDelay        time.Duration
@@ -82,9 +87,15 @@ type AgentConfig struct {
 	UseMutationTokens bool
 	UseKvErrorMaps    bool
 
+	HttpRedialPeriod time.Duration
+	HttpRetryDelay   time.Duration
+	CccpMaxWait      time.Duration
+	CccpPollPeriod   time.Duration
+
 	ConnectTimeout       time.Duration
 	ServerConnectTimeout time.Duration
 	NmvRetryDelay        time.Duration
+	KvPoolSize           int
 	MaxQueueSize         int
 }
 
@@ -185,6 +196,60 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.ServerConnectTimeout = time.Duration(val) * time.Millisecond
 	}
 
+	// This option is experimental
+	if valStr, ok := fetchOption("http_redial_period"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http redial period option must be a number")
+		}
+		config.HttpRedialPeriod = time.Duration(val) * time.Millisecond
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("http_retry_delay"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http retry delay option must be a number")
+		}
+		config.HttpRetryDelay = time.Duration(val) * time.Millisecond
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("cccp_max_wait"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("cccp max wait option must be a number")
+		}
+		config.CccpMaxWait = time.Duration(val) * time.Millisecond
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("cccp_poll_period"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("cccp pool period option must be a number")
+		}
+		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("kv_pool_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("kv pool size option must be a number")
+		}
+		config.KvPoolSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("max_queue_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("max queue size option must be a number")
+		}
+		config.MaxQueueSize = int(val)
+	}
+
 	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
 		if valStr == "1" || valStr == "true" {
 			config.UseMutationTokens = true
@@ -255,14 +320,48 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
 		serverFailures:       make(map[string]time.Time),
-		serverConnectTimeout: config.ServerConnectTimeout,
+		serverConnectTimeout: 7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,
-		nmvRetryDelay:        config.NmvRetryDelay,
+		nmvRetryDelay:        100 * time.Millisecond,
 		kvPoolSize:           1,
 		maxQueueSize:         2048,
+		confHttpRetryDelay:   10 * time.Second,
+		confHttpRedialPeriod: 10 * time.Second,
+		confCccpMaxWait:      3 * time.Second,
+		confCccpPollPeriod:   10 * time.Second,
 	}
 
-	deadline := time.Now().Add(config.ConnectTimeout)
+	connectTimeout := 60000 * time.Millisecond
+	if config.ConnectTimeout > 0 {
+		connectTimeout = config.ConnectTimeout
+	}
+
+	if config.ServerConnectTimeout > 0 {
+		c.serverConnectTimeout = config.ServerConnectTimeout
+	}
+	if config.NmvRetryDelay > 0 {
+		c.nmvRetryDelay = config.NmvRetryDelay
+	}
+	if config.KvPoolSize > 0 {
+		c.kvPoolSize = config.KvPoolSize
+	}
+	if config.MaxQueueSize > 0 {
+		c.maxQueueSize = config.MaxQueueSize
+	}
+	if config.HttpRetryDelay > 0 {
+		c.confHttpRetryDelay = config.HttpRetryDelay
+	}
+	if config.HttpRedialPeriod > 0 {
+		c.confHttpRedialPeriod = config.HttpRedialPeriod
+	}
+	if config.CccpMaxWait > 0 {
+		c.confCccpMaxWait = config.CccpMaxWait
+	}
+	if config.CccpPollPeriod > 0 {
+		c.confCccpPollPeriod = config.CccpPollPeriod
+	}
+
+	deadline := time.Now().Add(connectTimeout)
 	if err := c.connect(config.MemdAddrs, config.HttpAddrs, deadline); err != nil {
 		return nil, err
 	}
@@ -270,8 +369,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 }
 
 func (agent *Agent) cccpLooper() {
-	tickTime := time.Second * 10
-	maxWaitTime := time.Second * 3
+	tickTime := agent.confCccpPollPeriod
+	maxWaitTime := agent.confCccpMaxWait
 
 	logDebugf("CCCP Looper starting.")
 
