@@ -627,7 +627,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Value: []byte("\"x value\""),
 		},
 	}
-	agent.SubDocMutate([]byte("testXattr"), mutateOps, 0, 0, func(res []SubDocResult, cas Cas, token MutationToken, err error) {
+	agent.SubDocMutate([]byte("testXattr"), mutateOps, 0, 0, 0, func(res []SubDocResult, cas Cas, token MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Mutate operation failed: %v", err)
@@ -651,7 +651,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Path:  "x",
 		},
 	}
-	agent.SubDocLookup([]byte("testXattr"), lookupOps, func(res []SubDocResult, cas Cas, err error) {
+	agent.SubDocLookup([]byte("testXattr"), lookupOps, 0, func(res []SubDocResult, cas Cas, err error) {
 		s.Wrap(func() {
 			if len(res) != 2 {
 				s.Fatalf("Lookup operation wrong count")

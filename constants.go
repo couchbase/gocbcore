@@ -275,16 +275,31 @@ const (
 	// SubdocFlagMkDirP indicates that the path should be created if it does not already exist.
 	SubdocFlagMkDirP = SubdocFlag(0x01)
 
-	// SubdocFlagMkDoc indicates that the document should be created if it does not already exist.
-	SubdocFlagMkDoc = SubdocFlag(0x02)
+	// 0x02 is unused, formally SubdocFlagMkDoc
 
 	// SubdocFlagXattrPath indicates that the path refers to an Xattr rather than the document body.
 	SubdocFlagXattrPath = SubdocFlag(0x04)
 
-	// SubdocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
-	SubdocFlagAccessDeleted = SubdocFlag(0x08)
+	// 0x08 is unused, formally SubdocFlagAccessDeleted
 
 	// SubdocFlagExpandMacros indicates that the value portion of any sub-document mutations
 	// should be expanded if they contain macros such as ${Mutation.CAS}.
 	SubdocFlagExpandMacros = SubdocFlag(0x10)
+)
+
+// SubdocDocFlag specifies document-level flags for a sub-document operation.
+type SubdocDocFlag uint8
+
+const (
+	// SubdocDocFlagNone indicates no special treatment for this operation.
+	SubdocDocFlagNone = SubdocDocFlag(0x00)
+
+	// SubdocDocFlagMkDoc indicates that the document should be created if it does not already exist.
+	SubdocDocFlagMkDoc = SubdocDocFlag(0x01)
+
+	// SubdocDocFlagReplaceDoc indices that this operation should be a replace rather than upsert.
+	SubdocDocFlagReplaceDoc = SubdocDocFlag(0x02)
+
+	// SubdocDocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
+	SubdocDocFlagAccessDeleted = SubdocDocFlag(0x04)
 )

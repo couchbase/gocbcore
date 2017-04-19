@@ -265,7 +265,7 @@ type SubDocOp struct {
 }
 
 // SubDocLookup performs a multiple-lookup sub-document operation on a document.
-func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback) (PendingOp, error) {
+func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag, cb LookupInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -328,13 +328,18 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 		valueIter += 4 + pathBytesLen
 	}
 
+	var extraBuf []byte
+	if flags != 0 {
+		extraBuf = append(extraBuf, uint8(flags))
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdSubDocMultiLookup,
 			Datatype: 0,
 			Cas:      0,
-			Extras:   nil,
+			Extras:   extraBuf,
 			Key:      key,
 			Value:    valueBuf,
 		},
@@ -344,7 +349,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, cb LookupInCallback
 }
 
 // SubDocMutate performs a multiple-mutation sub-document operation on a document.
-func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
+func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, flags SubdocDocFlag, cas Cas, expiry uint32, cb MutateInCallback) (PendingOp, error) {
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -432,8 +437,12 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, cas Cas, expiry uin
 
 	var extraBuf []byte
 	if expiry != 0 {
-		extraBuf = make([]byte, 4)
-		binary.BigEndian.PutUint32(extraBuf[0:], expiry)
+		tmpBuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(tmpBuf[0:], expiry)
+		extraBuf = append(extraBuf, tmpBuf...)
+	}
+	if flags != 0 {
+		extraBuf = append(extraBuf, uint8(flags))
 	}
 
 	req := &memdQRequest{
