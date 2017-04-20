@@ -311,7 +311,8 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag
 
 	valueIter := 0
 	for i, op := range ops {
-		if op.Op != SubDocOpGet && op.Op != SubDocOpExists {
+		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
+			op.Op != SubDocOpGetDoc {
 			return nil, ErrInvalidArgs
 		}
 		if op.Value != nil {
@@ -418,7 +419,8 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, flags SubdocDocFlag
 			op.Op != SubDocOpDelete && op.Op != SubDocOpReplace &&
 			op.Op != SubDocOpArrayPushLast && op.Op != SubDocOpArrayPushFirst &&
 			op.Op != SubDocOpArrayInsert && op.Op != SubDocOpArrayAddUnique &&
-			op.Op != SubDocOpCounter {
+			op.Op != SubDocOpCounter && op.Op != SubDocOpSetDoc &&
+			op.Op != SubDocOpAddDoc {
 			return nil, ErrInvalidArgs
 		}
 
