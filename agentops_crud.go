@@ -509,11 +509,22 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 				}
 				curStats = stats[serverName]
 			}
+
 			if err != nil {
 				if curStats.Error == nil {
-					curStats.Error = err
+					stats[serverName] = SingleServerStats{
+						Stats: make(map[string]string),
+						Error: err,
+					}
 				} else {
 					logDebugf("Got additional error for stats: %s: %v", serverName, err)
+				}
+
+				req.Cancel()
+
+				remaining := atomic.AddInt32(&op.remaining, -1)
+				if remaining == 0 {
+					callback(stats)
 				}
 			}
 
@@ -528,6 +539,7 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 			} else {
 				curStats.Stats[string(resp.Key)] = string(resp.Value)
 			}
+
 		}
 
 		// Send the request
