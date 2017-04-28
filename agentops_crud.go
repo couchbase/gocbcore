@@ -511,14 +511,14 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 			}
 			if err != nil {
 				if curStats.Error == nil {
-					curStats.Error = err
+					stats[serverName] = SingleServerStats{
+						Stats: make(map[string]string),
+						Error: err,
+					}
 				} else {
 					logDebugf("Got additional error for stats: %s: %v", serverName, err)
 				}
-			}
 
-			if len(resp.Key) == 0 {
-				// No more request for server!
 				req.Cancel()
 
 				remaining := atomic.AddInt32(&op.remaining, -1)
@@ -526,7 +526,17 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 					callback(stats)
 				}
 			} else {
-				curStats.Stats[string(resp.Key)] = string(resp.Value)
+				if len(resp.Key) == 0 {
+					// No more request for server!
+					req.Cancel()
+
+					remaining := atomic.AddInt32(&op.remaining, -1)
+					if remaining == 0 {
+						callback(stats)
+					}
+				} else {
+					curStats.Stats[string(resp.Key)] = string(resp.Value)
+				}
 			}
 		}
 
