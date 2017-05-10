@@ -301,6 +301,9 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 		if err := client.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
 			return err
 		}
+		if err := client.ExecEnableDcpBufferAck(8*1024*1024, deadline); err != nil {
+			return err
+		}
 		if err := client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
 			return err
 		}

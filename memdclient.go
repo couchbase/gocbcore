@@ -1,10 +1,16 @@
 package gocbcore
 
+import (
+	"encoding/binary"
+)
+
 type memdClient struct {
 	conn        memdConn
 	opList      memdOpMap
 	errorMap    *kvErrorMap
 	closeNotify chan bool
+	dcpAckSize  int
+	dcpFlowRecv int
 }
 
 func newMemdClient(conn memdConn) *memdClient {
@@ -14,6 +20,46 @@ func newMemdClient(conn memdConn) *memdClient {
 	}
 	client.run()
 	return &client
+}
+
+func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
+	client.dcpAckSize = bufferAckSize
+}
+
+func (client *memdClient) maybeSendDcpBufferAck(packet *memdPacket) {
+	switch packet.Opcode {
+	case cmdDcpSnapshotMarker:
+	case cmdDcpMutation:
+	case cmdDcpDeletion:
+	case cmdDcpExpiration:
+	case cmdDcpStreamEnd:
+	default:
+		// This is not a DCP message, ignore.
+		return
+	}
+
+	packetLen := 24 + len(packet.Extras) + len(packet.Key) + len(packet.Value)
+
+	client.dcpFlowRecv += packetLen
+	if client.dcpFlowRecv < client.dcpAckSize {
+		return
+	}
+
+	ackAmt := client.dcpFlowRecv
+
+	extrasBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(extrasBuf, uint32(ackAmt))
+
+	err := client.conn.WritePacket(&memdPacket{
+		Magic:  reqMagic,
+		Opcode: cmdDcpBufferAck,
+		Extras: extrasBuf,
+	})
+	if err != nil {
+		logWarnf("Failed to dispatch DCP buffer ack: %s", err)
+	}
+
+	client.dcpFlowRecv -= ackAmt
 }
 
 func (client *memdClient) SetErrorMap(errorMap *kvErrorMap) {
@@ -94,6 +140,10 @@ func (client *memdClient) run() {
 					logWarnf("Failed to dispatch DCP noop reply: %s", err)
 				}
 				continue
+			}
+
+			if client.dcpAckSize > 0 {
+				client.maybeSendDcpBufferAck(&resp.memdPacket)
 			}
 
 			logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)

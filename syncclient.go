@@ -147,6 +147,24 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 	return nil
 }
 
+func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.Time) error {
+	mclient, ok := client.client.(*memdClient)
+	if !ok {
+		return ErrInternalError
+	}
+
+	// Enable buffer acknowledgment on the client
+	mclient.EnableDcpBufferAck(bufferSize / 2)
+
+	bufferSizeStr := fmt.Sprintf("%d", bufferSize)
+	err := client.ExecDcpControl("connection_buffer_size", bufferSizeStr, deadline)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (client *syncClient) ExecSaslListMechs(deadline time.Time) ([]string, error) {
 	bytes, err := client.doBasicOp(cmdSASLListMechs, nil, nil, nil, deadline)
 	if err != nil {
