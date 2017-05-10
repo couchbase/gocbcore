@@ -298,7 +298,13 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 		if err := initFn(client, deadline); err != nil {
 			return err
 		}
-		return client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline)
+		if err := client.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
+			return err
+		}
+		if err := client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
+			return err
+		}
+		return nil
 	}
 	return createAgent(config, dcpInitFn)
 }

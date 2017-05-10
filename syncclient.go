@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -72,6 +73,11 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 	return resp.Value, err
 }
 
+func (client *syncClient) ExecDcpControl(key string, value string, deadline time.Time) error {
+	_, err := client.doBasicOp(cmdDcpControl, []byte(key), []byte(value), nil, deadline)
+	return err
+}
+
 func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time) ([]helloFeature, error) {
 	appendFeatureCode := func(bytes []byte, feature helloFeature) []byte {
 		bytes = append(bytes, 0, 0)
@@ -108,11 +114,37 @@ func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) ([
 }
 
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
+	_, ok := client.client.(*memdClient)
+	if !ok {
+		return ErrInternalError
+	}
+
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], 0)
 	binary.BigEndian.PutUint32(extraBuf[4:], uint32((openFlags & ^DcpOpenFlag(3))|DcpOpenFlagProducer))
 	_, err := client.doBasicOp(cmdDcpOpenConnection, []byte(streamName), nil, extraBuf, deadline)
 	return err
+}
+
+func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.Time) error {
+	_, ok := client.client.(*memdClient)
+	if !ok {
+		return ErrInternalError
+	}
+	// The client will always reply to No-Op's.  No need to enable it
+
+	err := client.ExecDcpControl("enable_noop", "true", deadline)
+	if err != nil {
+		return err
+	}
+
+	periodStr := fmt.Sprintf("%d", period/time.Second)
+	err = client.ExecDcpControl("set_noop_interval", periodStr, deadline)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (client *syncClient) ExecSaslListMechs(deadline time.Time) ([]string, error) {

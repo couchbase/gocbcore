@@ -84,6 +84,18 @@ func (client *memdClient) run() {
 				break
 			}
 
+			// We handle DCP no-op's directly here so we can reply immediately.
+			if resp.memdPacket.Opcode == cmdDcpNoop {
+				err := client.conn.WritePacket(&memdPacket{
+					Magic:  resMagic,
+					Opcode: cmdDcpNoop,
+				})
+				if err != nil {
+					logWarnf("Failed to dispatch DCP noop reply: %s", err)
+				}
+				continue
+			}
+
 			logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
 			client.resolveRequest(&resp)
 		}
