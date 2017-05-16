@@ -456,6 +456,28 @@ var (
 	// ErrSubDocSuccessDeleted occurs when a multi-operation sub-document operation
 	// is performed on a soft-deleted document.
 	ErrSubDocSuccessDeleted = &memdError{statusSubDocSuccessDeleted}
+
+	// ErrSubDocXattrInvalidFlagCombo occurs when an invalid set of
+	// extended-attribute flags is passed to a sub-document operation.
+	ErrSubDocXattrInvalidFlagCombo = &memdError{statusSubDocXattrInvalidFlagCombo}
+
+	// ErrSubDocXattrInvalidKeyCombo occurs when an invalid set of key operations
+	// are specified for a extended-attribute sub-document operation.
+	ErrSubDocXattrInvalidKeyCombo = &memdError{statusSubDocXattrInvalidKeyCombo}
+
+	// ErrSubDocXattrUnknownMacro occurs when an invalid macro value is specified.
+	ErrSubDocXattrUnknownMacro = &memdError{statusSubDocXattrUnknownMacro}
+
+	// ErrSubDocXattrUnknownVAttr occurs when an invalid virtual attribute is specified.
+	ErrSubDocXattrUnknownVAttr = &memdError{statusSubDocXattrUnknownVAttr}
+
+	// ErrSubDocXattrCannotModifyVAttr occurs when a mutation is attempted upon
+	// a virtual attribute (which are immutable by definition).
+	ErrSubDocXattrCannotModifyVAttr = &memdError{statusSubDocXattrCannotModifyVAttr}
+
+	// ErrSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
+	// a soft-deleted document.
+	ErrSubDocMultiPathFailureDeleted = &memdError{statusSubDocMultiPathFailureDeleted}
 )
 
 func getStreamEndError(code streamEndStatus) error {

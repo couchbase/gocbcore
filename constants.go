@@ -125,6 +125,13 @@ const (
 	statusSubDocBadCombo       = statusCode(0xcb)
 	statusSubDocBadMulti       = statusCode(0xcc)
 	statusSubDocSuccessDeleted = statusCode(0xcd)
+
+	statusSubDocXattrInvalidFlagCombo   = statusCode(0xce)
+	statusSubDocXattrInvalidKeyCombo    = statusCode(0xcf)
+	statusSubDocXattrUnknownMacro       = statusCode(0xd0)
+	statusSubDocXattrUnknownVAttr       = statusCode(0xd1)
+	statusSubDocXattrCannotModifyVAttr  = statusCode(0xd2)
+	statusSubDocMultiPathFailureDeleted = statusCode(0xd3)
 )
 
 type streamEndStatus uint32

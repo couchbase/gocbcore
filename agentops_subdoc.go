@@ -269,7 +269,10 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil && err != ErrSubDocSuccessDeleted && err != ErrSubDocBadMulti {
+		if err != nil &&
+			err != ErrSubDocMultiPathFailureDeleted &&
+			err != ErrSubDocSuccessDeleted &&
+			err != ErrSubDocBadMulti {
 			cb(nil, 0, err)
 			return
 		}
