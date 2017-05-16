@@ -619,6 +619,16 @@ func (agent *Agent) IsSecure() bool {
 	return agent.tlsConfig != nil
 }
 
+// BucketUUID returns the UUID of the bucket we are connected to.
+func (agent *Agent) BucketUUID() string {
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return ""
+	}
+
+	return routingInfo.uuid
+}
+
 // KeyToVbucket translates a particular key to its assigned vbucket.
 func (agent *Agent) KeyToVbucket(key []byte) uint16 {
 	// TODO(brett19): The KeyToVbucket Bucket API should return an error

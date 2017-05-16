@@ -8,6 +8,7 @@ import (
 
 type routeData struct {
 	revId   int64
+	uuid    string
 	bktType bucketType
 
 	ketamaMap *ketamaContinuum

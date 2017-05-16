@@ -173,6 +173,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 
 	newRouting := &routeData{
 		revId:      cfg.revId,
+		uuid:       cfg.uuid,
 		capiEpList: cfg.capiEpList,
 		mgmtEpList: cfg.mgmtEpList,
 		n1qlEpList: cfg.n1qlEpList,

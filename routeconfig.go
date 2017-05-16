@@ -8,6 +8,7 @@ import (
 
 type routeConfig struct {
 	revId        int64
+	uuid         string
 	bktType      bucketType
 	kvServerList []string
 	capiEpList   []string
@@ -128,6 +129,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 
 	rc := &routeConfig{
 		revId:        bk.Rev,
+		uuid:         bk.UUID,
 		kvServerList: kvServerList,
 		capiEpList:   capiEpList,
 		mgmtEpList:   mgmtEpList,
