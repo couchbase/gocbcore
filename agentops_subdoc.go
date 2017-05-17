@@ -315,7 +315,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag
 	valueIter := 0
 	for i, op := range ops {
 		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
-			op.Op != SubDocOpGetDoc {
+			op.Op != SubDocOpGetDoc && op.Op != SubDocOpGetCount {
 			return nil, ErrInvalidArgs
 		}
 		if op.Value != nil {

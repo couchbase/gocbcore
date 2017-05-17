@@ -70,6 +70,7 @@ const (
 	cmdSubDocCounter        = commandCode(0xcf)
 	cmdSubDocMultiLookup    = commandCode(0xd0)
 	cmdSubDocMultiMutation  = commandCode(0xd1)
+	cmdSubDocGetCount       = commandCode(0xd2)
 	cmdGetErrorMap          = commandCode(0xfe)
 )
 
@@ -203,6 +204,9 @@ const (
 
 	// SubDocOpExists indicates the operation is a sub-document `Exists` operation.
 	SubDocOpExists = SubDocOpType(cmdSubDocExists)
+
+	// SubDocOpGetCount indicates the operation is a sub-document `GetCount` operation.
+	SubDocOpGetCount = SubDocOpType(cmdSubDocGetCount)
 
 	// SubDocOpDictAdd indicates the operation is a sub-document `Add` operation.
 	SubDocOpDictAdd = SubDocOpType(cmdSubDocDictAdd)
