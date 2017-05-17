@@ -312,5 +312,6 @@ const (
 	SubdocDocFlagReplaceDoc = SubdocDocFlag(0x02)
 
 	// SubdocDocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
+	// Internal: This should never be used and is not supported.
 	SubdocDocFlagAccessDeleted = SubdocDocFlag(0x04)
 )
