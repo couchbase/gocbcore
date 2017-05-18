@@ -124,7 +124,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 					return doConfigRequest(true)
 				}
 				logDebugf("Failed to connect to host, unexpected status code: %v.", resp.StatusCode)
-				return -1
+				return 0
 			}
 			return 1
 		}
