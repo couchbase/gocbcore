@@ -114,7 +114,13 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 					logDebugf("Failed to connect to host, bad auth.")
 					firstCfgFn(nil, ErrAuthError)
 					return -1
-				} else if resp.StatusCode == 404 && !is2x {
+				} else if resp.StatusCode == 404 {
+					if is2x {
+						logDebugf("Failed to connect to host, bad bucket.")
+						firstCfgFn(nil, ErrAuthError)
+						return -1
+					}
+
 					return doConfigRequest(true)
 				}
 				logDebugf("Failed to connect to host, unexpected status code: %v.", resp.StatusCode)
