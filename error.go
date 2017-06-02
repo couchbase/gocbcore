@@ -102,7 +102,7 @@ func (e memdError) Error() string {
 	case statusKeyNotFound:
 		return "key not found"
 	case statusKeyExists:
-		return "key already exists"
+		return "key already exists, if a cas was provided the key exists with a different cas"
 	case statusTooBig:
 		return "document value was too large"
 	case statusInvalidArgs:
