@@ -27,17 +27,6 @@ func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
 }
 
 func (client *memdClient) maybeSendDcpBufferAck(packet *memdPacket) {
-	switch packet.Opcode {
-	case cmdDcpSnapshotMarker:
-	case cmdDcpMutation:
-	case cmdDcpDeletion:
-	case cmdDcpExpiration:
-	case cmdDcpStreamEnd:
-	default:
-		// This is not a DCP message, ignore.
-		return
-	}
-
 	packetLen := 24 + len(packet.Extras) + len(packet.Key) + len(packet.Value)
 
 	client.dcpFlowRecv += packetLen
@@ -118,9 +107,31 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 }
 
 func (client *memdClient) run() {
+	dcpBufferQ := make(chan *memdQResponse)
+	killSwitch := make(chan bool, 1)
 	go func() {
 		for {
-			resp := memdQResponse{
+			select {
+			case resp, more := <-dcpBufferQ:
+				if !more {
+					return
+				}
+
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
+				client.resolveRequest(resp)
+
+				if client.dcpAckSize > 0 {
+					client.maybeSendDcpBufferAck(&resp.memdPacket)
+				}
+			case <-killSwitch:
+				close(dcpBufferQ)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			resp := &memdQResponse{
 				sourceAddr: client.conn.RemoteAddr(),
 			}
 
@@ -142,12 +153,24 @@ func (client *memdClient) run() {
 				continue
 			}
 
-			if client.dcpAckSize > 0 {
-				client.maybeSendDcpBufferAck(&resp.memdPacket)
+			switch resp.memdPacket.Opcode {
+			case cmdDcpDeletion:
+				fallthrough
+			case cmdDcpExpiration:
+				fallthrough
+			case cmdDcpMutation:
+				fallthrough
+			case cmdDcpSnapshotMarker:
+				fallthrough
+			case cmdDcpStreamEnd:
+				fallthrough
+			case cmdDcpStreamReq:
+				dcpBufferQ <- resp
+				continue
+			default:
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
+				client.resolveRequest(resp)
 			}
-
-			logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
-			client.resolveRequest(&resp)
 		}
 
 		err := client.conn.Close()
@@ -160,6 +183,7 @@ func (client *memdClient) run() {
 			req.tryCallback(nil, ErrNetwork)
 		})
 
+		killSwitch <- true
 		client.closeNotify <- true
 	}()
 }
