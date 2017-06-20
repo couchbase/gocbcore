@@ -146,6 +146,7 @@ func (client *memdClient) run() {
 				err := client.conn.WritePacket(&memdPacket{
 					Magic:  resMagic,
 					Opcode: cmdDcpNoop,
+					Opaque: resp.Opaque,
 				})
 				if err != nil {
 					logWarnf("Failed to dispatch DCP noop reply: %s", err)
