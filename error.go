@@ -170,6 +170,18 @@ func (e memdError) Error() string {
 		return "could not execute one or more multi lookups or mutations"
 	case statusSubDocSuccessDeleted:
 		return "document is soft-deleted"
+	case statusSubDocXattrInvalidFlagCombo:
+		return "invalid xattr flag combination"
+	case statusSubDocXattrInvalidKeyCombo:
+		return "invalid xattr key combination"
+	case statusSubDocXattrUnknownMacro:
+		return "unknown xattr macro"
+	case statusSubDocXattrUnknownVAttr:
+		return "unknown xattr virtual attribute"
+	case statusSubDocXattrCannotModifyVAttr:
+		return "cannot modify virtual attributes"
+	case statusSubDocMultiPathFailureDeleted:
+		return "sub-document multi-path error"
 	default:
 		return fmt.Sprintf("an unknown error occurred (%d)", e.code)
 	}
@@ -571,6 +583,18 @@ func getMemdError(code statusCode, errorMap *kvErrorMap) error {
 		return ErrSubDocBadMulti
 	case statusSubDocSuccessDeleted:
 		return ErrSubDocSuccessDeleted
+	case statusSubDocXattrInvalidFlagCombo:
+		return ErrSubDocXattrInvalidFlagCombo
+	case statusSubDocXattrInvalidKeyCombo:
+		return ErrSubDocXattrInvalidKeyCombo
+	case statusSubDocXattrUnknownMacro:
+		return ErrSubDocXattrUnknownMacro
+	case statusSubDocXattrUnknownVAttr:
+		return ErrSubDocXattrUnknownVAttr
+	case statusSubDocXattrCannotModifyVAttr:
+		return ErrSubDocXattrCannotModifyVAttr
+	case statusSubDocMultiPathFailureDeleted:
+		return ErrSubDocMultiPathFailureDeleted
 	}
 
 	/*
