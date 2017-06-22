@@ -88,7 +88,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 					n1qlEpList = append(n1qlEpList, fmt.Sprintf("https://%s:%d", node.Hostname, node.Services.N1qlSsl))
 				}
 				if node.Services.FtsSsl > 0 {
-					ftsEpList = append(ftsEpList, fmt.Sprintf("http://%s:%d", node.Hostname, node.Services.FtsSsl))
+					ftsEpList = append(ftsEpList, fmt.Sprintf("https://%s:%d", node.Hostname, node.Services.FtsSsl))
 				}
 			}
 		}
