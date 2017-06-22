@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"golang.org/x/net/http2"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 	"io/ioutil"
 	"math/rand"
@@ -315,6 +316,14 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	// TODO(brett19): Put all configurable options in the AgentConfig
 
+	httpTransport := &http.Transport{
+		TLSClientConfig: config.TlsConfig,
+	}
+	err := http2.ConfigureTransport(httpTransport)
+	if err != nil {
+		logDebugf("failed to configure http2: %s", err)
+	}
+
 	c := &Agent{
 		bucket:    config.BucketName,
 		username:  config.Username,
@@ -322,9 +331,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		tlsConfig: config.TlsConfig,
 		initFn:    initFn,
 		httpCli: &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: config.TlsConfig,
-			},
+			Transport: httpTransport,
 		},
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
