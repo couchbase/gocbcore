@@ -247,6 +247,9 @@ const (
 
 	// SubDocOpAddDoc represents a full document add, for use with extended attribute ops.
 	SubDocOpAddDoc = SubDocOpType(cmdAdd)
+
+	// SubDocOpDeleteDoc represents a full document delete, for use with extended attribute ops.
+	SubDocOpDeleteDoc = SubDocOpType(cmdDelete)
 )
 
 // DcpOpenFlag specifies flags for DCP streams configured when the stream is opened.

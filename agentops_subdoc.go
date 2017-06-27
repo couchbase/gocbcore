@@ -423,7 +423,7 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, flags SubdocDocFlag
 			op.Op != SubDocOpArrayPushLast && op.Op != SubDocOpArrayPushFirst &&
 			op.Op != SubDocOpArrayInsert && op.Op != SubDocOpArrayAddUnique &&
 			op.Op != SubDocOpCounter && op.Op != SubDocOpSetDoc &&
-			op.Op != SubDocOpAddDoc {
+			op.Op != SubDocOpAddDoc && op.Op != SubDocOpDeleteDoc {
 			return nil, ErrInvalidArgs
 		}
 
