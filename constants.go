@@ -166,8 +166,9 @@ const (
 type SetMetaOption uint32
 
 const (
-	// SkipConflictResolution disables conflict resolution for the document.
-	SkipConflictResolution = SetMetaOption(0x01)
+	// ForceMetaOp disables conflict resolution for the document and allows the
+	// operation to be applied to an active, pending, or replica vbucket.
+	ForceMetaOp = SetMetaOption(0x01)
 
 	// UseLwwConflictResolution switches to Last-Write-Wins conflict resolution
 	// for the document.
@@ -176,6 +177,9 @@ const (
 	// RegenerateCas causes the server to invalidate the current CAS value for
 	// a document, and to generate a new one.
 	RegenerateCas = SetMetaOption(0x04)
+
+	// SkipConflictResolution disables conflict resolution for the document.
+	SkipConflictResolution = SetMetaOption(0x08)
 )
 
 // KeyState represents the various storage states of a key on the server.
