@@ -116,7 +116,7 @@ func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) ([
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
 	_, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrInternalError
+		return ErrCliInternalError
 	}
 
 	extraBuf := make([]byte, 8)
@@ -129,7 +129,7 @@ func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOp
 func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.Time) error {
 	_, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrInternalError
+		return ErrCliInternalError
 	}
 	// The client will always reply to No-Op's.  No need to enable it
 
@@ -150,7 +150,7 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.Time) error {
 	mclient, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrInternalError
+		return ErrCliInternalError
 	}
 
 	// Enable buffer acknowledgment on the client

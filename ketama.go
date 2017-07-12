@@ -77,7 +77,7 @@ func (continuum ketamaContinuum) nodeByHash(hash uint32) (int, error) {
 
 	if len(continuum.entries) <= 0 {
 		logErrorf("0-length ketama map!  Mapping to node 0.")
-		return 0, ErrInternalError
+		return 0, ErrCliInternalError
 	}
 
 	// Copied from libcouchbase vbucket.c (map_ketama)

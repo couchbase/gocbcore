@@ -296,7 +296,7 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 
 			if len(req.Key) == 0 {
 				// Non-broadcast keyless Memcached bucket request
-				return nil, ErrInternalError
+				return nil, ErrCliInternalError
 			}
 
 			srvIdx, err = routingInfo.ketamaMap.NodeByKey(req.Key)

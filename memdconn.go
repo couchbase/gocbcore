@@ -50,7 +50,7 @@ func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 
 	tcpConn, isTcpConn := baseConn.(*net.TCPConn)
 	if !isTcpConn || tcpConn == nil {
-		return nil, ErrInternalError
+		return nil, ErrCliInternalError
 	}
 
 	err = tcpConn.SetNoDelay(false)

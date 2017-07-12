@@ -105,7 +105,7 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 		// Drain all the requests as an internal error so they are not lost
 		oldPipeline.Drain(func(req *memdQRequest) {
-			req.tryCallback(nil, ErrInternalError)
+			req.tryCallback(nil, ErrCliInternalError)
 		})
 
 		return

@@ -318,6 +318,9 @@ var (
 	// ErrInvalidCert occurs when a certificate that is not useable is passed to an Agent.
 	ErrInvalidCert = errors.New("certificate is invalid")
 
+	// ErrCliInternalError indicates an internal error occurred within the client.
+	ErrCliInternalError = errors.New("client internal error")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
