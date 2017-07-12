@@ -55,14 +55,18 @@ func (mp *multiPendingOp) Cancel() bool {
 	return allCancelled
 }
 
-func (agent *Agent) waitAndRetryOperation(req *memdQRequest) {
-	if agent.nmvRetryDelay == 0 {
+func (agent *Agent) waitAndRetryOperation(req *memdQRequest, waitDura time.Duration) {
+	if waitDura == 0 {
 		agent.requeueDirect(req)
 	} else {
-		time.AfterFunc(agent.nmvRetryDelay, func() {
+		time.AfterFunc(waitDura, func() {
 			agent.requeueDirect(req)
 		})
 	}
+}
+
+func (agent *Agent) waitAndRetryNmv(req *memdQRequest) {
+	agent.waitAndRetryOperation(req, agent.nmvRetryDelay)
 }
 
 func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
@@ -70,7 +74,7 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	sourceHost, _, err := net.SplitHostPort(resp.sourceAddr)
 	if err != nil {
 		logErrorf("NMV response source address was invalid, skipping config update")
-		agent.waitAndRetryOperation(req)
+		agent.waitAndRetryNmv(req)
 		return
 	}
 
@@ -82,13 +86,46 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 
 	// Redirect it!  This may actually come back to this server, but I won't tell
 	//   if you don't ;)
-	agent.waitAndRetryOperation(req)
+	agent.waitAndRetryNmv(req)
+}
+
+func (agent *Agent) getKvErrMapData(code StatusCode) *kvErrorMapError {
+	if agent.useKvErrorMaps {
+		errMap := agent.kvErrorMap.Get()
+		if errMap != nil {
+			if errData, ok := errMap.Errors[uint16(code)]; ok {
+				return &errData
+			}
+		}
+	}
+	return nil
 }
 
 func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) bool {
-	if resp.Magic == resMagic && resp.Status == StatusNotMyVBucket {
-		agent.handleOpNmv(resp, req)
-		return true
+	if resp.Magic == resMagic {
+		if resp.Status == StatusNotMyVBucket {
+			agent.handleOpNmv(resp, req)
+			return true
+		} else if resp.Status == StatusSuccess {
+			return false
+		}
+
+		kvErrData := agent.getKvErrMapData(resp.Status)
+		if kvErrData != nil {
+			for _, attr := range kvErrData.Attributes {
+				if attr == "auto-retry" {
+					retryWait := kvErrData.Retry.CalculateRetryDelay(req.retryCount)
+					maxDura := time.Duration(kvErrData.Retry.MaxDuration) * time.Millisecond
+					if time.Now().Sub(req.dispatchTime)+retryWait > maxDura {
+						break
+					}
+
+					req.retryCount++
+					agent.waitAndRetryOperation(req, retryWait)
+					return true
+				}
+			}
+		}
 	}
 
 	return false
@@ -96,6 +133,7 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) 
 
 func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
 	req.RoutingCallback = agent.handleOpRoutingResp
+	req.dispatchTime = time.Now()
 
 	err := agent.dispatchDirect(req)
 	if err != nil {

@@ -251,6 +251,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.MaxQueueSize = int(val)
 	}
 
+	if valStr, ok := fetchOption("use_kverrmaps"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("use_kverrmaps option must be a boolean")
+		}
+		config.UseKvErrorMaps = val
+	}
+
 	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
@@ -649,6 +657,24 @@ func (agent *Agent) KeyToVbucket(key []byte) uint16 {
 	}
 
 	return routingInfo.vbMap.VbucketByKey(key)
+}
+
+// KeyToServer translates a particular key to its assigned server index.
+func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return 0
+	}
+
+	if routingInfo.vbMap == nil {
+		return 0
+	}
+
+	serverIdx, err := routingInfo.vbMap.NodeByKey(key, replicaIdx)
+	if err != nil {
+		return -1
+	}
+	return serverIdx
 }
 
 // NumVbuckets returns the number of VBuckets configured on the

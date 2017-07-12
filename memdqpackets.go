@@ -49,6 +49,11 @@ type memdQRequest struct {
 	//  which is synonymous with the callback having been invoked.
 	//  This is an integer to allow us to atomically control it.
 	isCompleted uint32
+
+	// This stores the number of times that the item has been
+	// retried, and is used for various non-linear retry
+	// algorithms.
+	retryCount uint32
 }
 
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
