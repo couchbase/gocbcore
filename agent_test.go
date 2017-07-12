@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"gopkg.in/couchbaselabs/gojcbmock.v1"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -100,6 +101,15 @@ func (s *Signaler) Wait(waitSecs int) {
 	case <-time.After(time.Duration(waitSecs) * time.Second):
 		s.t.Fatalf("Wait timeout expired")
 	}
+}
+
+func (s *Signaler) TimeTravel(waitDura time.Duration) {
+	waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
+
+	// TODO: Implement real server support here
+	globalMock.Control(gojcbmock.NewCommand(gojcbmock.CTimeTravel, map[string]interface{}{
+		"Offset": waitSecs,
+	}))
 }
 
 func getSignaler(t *testing.T) *Signaler {
@@ -384,7 +394,7 @@ func TestExpiry(t *testing.T) {
 	})
 	s.Wait(0)
 
-	time.Sleep(1500 * time.Millisecond)
+	s.TimeTravel(1500 * time.Millisecond)
 
 	agent.Get([]byte("testExpiry"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -418,7 +428,7 @@ func TestTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	time.Sleep(1500 * time.Millisecond)
+	s.TimeTravel(1500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -429,7 +439,7 @@ func TestTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	time.Sleep(2500 * time.Millisecond)
+	s.TimeTravel(2500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -463,7 +473,7 @@ func TestGetAndTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	time.Sleep(1500 * time.Millisecond)
+	s.TimeTravel(1500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -474,7 +484,7 @@ func TestGetAndTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	time.Sleep(2500 * time.Millisecond)
+	s.TimeTravel(2500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
