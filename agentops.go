@@ -86,7 +86,7 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 }
 
 func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) bool {
-	if resp.Magic == resMagic && resp.Status == statusNotMyVBucket {
+	if resp.Magic == resMagic && resp.Status == StatusNotMyVBucket {
 		agent.handleOpNmv(resp, req)
 		return true
 	}

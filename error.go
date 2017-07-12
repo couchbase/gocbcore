@@ -91,162 +91,260 @@ func (e shutdownError) ShutdownError() bool {
 	return true
 }
 
-type memdError struct {
-	code statusCode
+// KvError wraps key-value errors that occur within the SDK.
+type KvError struct {
+	Code        StatusCode
+	Name        string
+	Description string
 }
 
-func (e memdError) Error() string {
-	switch e.code {
-	case statusSuccess:
+func getMemdErrorDesc(code StatusCode) string {
+	switch code {
+	case StatusSuccess:
 		return "success"
-	case statusKeyNotFound:
+	case StatusKeyNotFound:
 		return "key not found"
-	case statusKeyExists:
+	case StatusKeyExists:
 		return "key already exists, if a cas was provided the key exists with a different cas"
-	case statusTooBig:
+	case StatusTooBig:
 		return "document value was too large"
-	case statusInvalidArgs:
+	case StatusInvalidArgs:
 		return "invalid arguments"
-	case statusNotStored:
+	case StatusNotStored:
 		return "document could not be stored"
-	case statusBadDelta:
+	case StatusBadDelta:
 		return "invalid delta was passed"
-	case statusNotMyVBucket:
+	case StatusNotMyVBucket:
 		return "operation sent to incorrect server"
-	case statusNoBucket:
+	case StatusNoBucket:
 		return "not connected to a bucket"
-	case statusAuthStale:
-		return "authenication context is stale, try re-authenticating"
-	case statusAuthError:
+	case StatusAuthStale:
+		return "authentication context is stale, try re-authenticating"
+	case StatusAuthError:
 		return "authentication error"
-	case statusAuthContinue:
+	case StatusAuthContinue:
 		return "more authentication steps needed"
-	case statusRangeError:
+	case StatusRangeError:
 		return "requested value is outside range"
-	case statusAccessError:
+	case StatusAccessError:
 		return "no access"
-	case statusNotInitialized:
+	case StatusNotInitialized:
 		return "cluster is being initialized, requests are blocked"
-	case statusRollback:
+	case StatusRollback:
 		return "rollback is required"
-	case statusUnknownCommand:
+	case StatusUnknownCommand:
 		return "unknown command was received"
-	case statusOutOfMemory:
+	case StatusOutOfMemory:
 		return "server is out of memory"
-	case statusNotSupported:
+	case StatusNotSupported:
 		return "server does not support this command"
-	case statusInternalError:
+	case StatusInternalError:
 		return "internal server error"
-	case statusBusy:
+	case StatusBusy:
 		return "server is busy, try again later"
-	case statusTmpFail:
+	case StatusTmpFail:
 		return "temporary failure occurred, try again later"
-	case statusSubDocPathNotFound:
+	case StatusSubDocPathNotFound:
 		return "sub-document path does not exist"
-	case statusSubDocPathMismatch:
+	case StatusSubDocPathMismatch:
 		return "type of element in sub-document path conflicts with type in document"
-	case statusSubDocPathInvalid:
+	case StatusSubDocPathInvalid:
 		return "malformed sub-document path"
-	case statusSubDocPathTooBig:
+	case StatusSubDocPathTooBig:
 		return "sub-document contains too many components"
-	case statusSubDocDocTooDeep:
+	case StatusSubDocDocTooDeep:
 		return "existing document contains too many levels of nesting"
-	case statusSubDocCantInsert:
+	case StatusSubDocCantInsert:
 		return "subdocument operation would invalidate the JSON"
-	case statusSubDocNotJson:
+	case StatusSubDocNotJson:
 		return "existing document is not valid JSON"
-	case statusSubDocBadRange:
+	case StatusSubDocBadRange:
 		return "existing numeric value is too large"
-	case statusSubDocBadDelta:
+	case StatusSubDocBadDelta:
 		return "numeric operation would yield a number that is too large, or " +
 			"a zero delta was specified"
-	case statusSubDocPathExists:
+	case StatusSubDocPathExists:
 		return "given path already exists in the document"
-	case statusSubDocValueTooDeep:
+	case StatusSubDocValueTooDeep:
 		return "value is too deep to insert"
-	case statusSubDocBadCombo:
+	case StatusSubDocBadCombo:
 		return "incorrectly matched subdocument operation types"
-	case statusSubDocBadMulti:
+	case StatusSubDocBadMulti:
 		return "could not execute one or more multi lookups or mutations"
-	case statusSubDocSuccessDeleted:
+	case StatusSubDocSuccessDeleted:
 		return "document is soft-deleted"
-	case statusSubDocXattrInvalidFlagCombo:
+	case StatusSubDocXattrInvalidFlagCombo:
 		return "invalid xattr flag combination"
-	case statusSubDocXattrInvalidKeyCombo:
+	case StatusSubDocXattrInvalidKeyCombo:
 		return "invalid xattr key combination"
-	case statusSubDocXattrUnknownMacro:
+	case StatusSubDocXattrUnknownMacro:
 		return "unknown xattr macro"
-	case statusSubDocXattrUnknownVAttr:
+	case StatusSubDocXattrUnknownVAttr:
 		return "unknown xattr virtual attribute"
-	case statusSubDocXattrCannotModifyVAttr:
+	case StatusSubDocXattrCannotModifyVAttr:
 		return "cannot modify virtual attributes"
-	case statusSubDocMultiPathFailureDeleted:
+	case StatusSubDocMultiPathFailureDeleted:
 		return "sub-document multi-path error"
-	default:
-		return fmt.Sprintf("an unknown error occurred (%d)", e.code)
 	}
-}
-func (e memdError) Temporary() bool {
-	return e.code == statusOutOfMemory || e.code == statusTmpFail || e.code == statusBusy
+
+	return ""
 }
 
-/* Legacy MemdError Handlers */
-func (e memdError) Success() bool {
-	return e.code == statusSuccess
+// Error returns the string representation of a kv error.
+func (e KvError) Error() string {
+	if e.Name != "" && e.Description != "" {
+		return fmt.Sprintf("%s (%s)", e.Description, e.Name)
+	} else if e.Description != "" {
+		return e.Description
+	} else {
+		return fmt.Sprintf("an unknown error occurred (%d)", e.Code)
+	}
 }
-func (e memdError) KeyNotFound() bool {
-	return e.code == statusKeyNotFound
+
+// Temporary indicates whether this error is known to be temporary, and that
+// attempting the operation again after a short delay should succeed.
+func (e KvError) Temporary() bool {
+	return e.Code == StatusOutOfMemory || e.Code == StatusTmpFail || e.Code == StatusBusy
 }
-func (e memdError) KeyExists() bool {
-	return e.code == statusKeyExists
+
+// Success is a method to check if the error represents a successful operation.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) Success() bool {
+	return e.Code == StatusSuccess
 }
-func (e memdError) AuthStale() bool {
-	return e.code == statusAuthStale
+
+// KeyNotFound checks for the StatusKeyNotFound status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) KeyNotFound() bool {
+	return e.Code == StatusKeyNotFound
 }
-func (e memdError) AuthError() bool {
-	return e.code == statusAuthError
+
+// KeyExists checks for the StatusKeyExists status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) KeyExists() bool {
+	return e.Code == StatusKeyExists
 }
-func (e memdError) AuthContinue() bool {
-	return e.code == statusAuthContinue
+
+// AuthStale checks for the StatusAuthStale status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) AuthStale() bool {
+	return e.Code == StatusAuthStale
 }
-func (e memdError) ValueTooBig() bool {
-	return e.code == statusTooBig
+
+// AuthError checks for the StatusAuthError status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) AuthError() bool {
+	return e.Code == StatusAuthError
 }
-func (e memdError) NotStored() bool {
-	return e.code == statusNotStored
+
+// AuthContinue checks for the StatusAuthContinue status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) AuthContinue() bool {
+	return e.Code == StatusAuthContinue
 }
-func (e memdError) BadDelta() bool {
-	return e.code == statusBadDelta
+
+// ValueTooBig checks for the StatusTooBig status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) ValueTooBig() bool {
+	return e.Code == StatusTooBig
 }
-func (e memdError) NotMyVBucket() bool {
-	return e.code == statusNotMyVBucket
+
+// NotStored checks for the StatusNotStored status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) NotStored() bool {
+	return e.Code == StatusNotStored
 }
-func (e memdError) NoBucket() bool {
-	return e.code == statusNoBucket
+
+// BadDelta checks for the StatusBadDelta status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) BadDelta() bool {
+	return e.Code == StatusBadDelta
 }
-func (e memdError) RangeError() bool {
-	return e.code == statusRangeError
+
+// NotMyVBucket checks for the StatusNotMyVBucket status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) NotMyVBucket() bool {
+	return e.Code == StatusNotMyVBucket
 }
-func (e memdError) AccessError() bool {
-	return e.code == statusAccessError
+
+// NoBucket checks for the StatusNoBucket status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) NoBucket() bool {
+	return e.Code == StatusNoBucket
 }
-func (e memdError) NotIntializedError() bool {
-	return e.code == statusNotInitialized
+
+// RangeError checks for the StatusRangeError status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) RangeError() bool {
+	return e.Code == StatusRangeError
 }
-func (e memdError) Rollback() bool {
-	return e.code == statusRollback
+
+// AccessError checks for the StatusAccessError status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) AccessError() bool {
+	return e.Code == StatusAccessError
 }
-func (e memdError) UnknownCommandError() bool {
-	return e.code == statusUnknownCommand
+
+// NotIntializedError checks for the StatusNotInitialized status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) NotIntializedError() bool {
+	return e.Code == StatusNotInitialized
 }
-func (e memdError) NotSupportedError() bool {
-	return e.code == statusNotSupported
+
+// Rollback checks for the StatusRollback status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) Rollback() bool {
+	return e.Code == StatusRollback
 }
-func (e memdError) InternalError() bool {
-	return e.code == statusInternalError
+
+// UnknownCommandError checks for the StatusUnknownCommand status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) UnknownCommandError() bool {
+	return e.Code == StatusUnknownCommand
 }
-func (e memdError) BusyError() bool {
-	return e.code == statusBusy
+
+// NotSupportedError checks for the StatusNotSupported status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) NotSupportedError() bool {
+	return e.Code == StatusNotSupported
+}
+
+// InternalError checks for the StatusInternalError status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) InternalError() bool {
+	return e.Code == StatusInternalError
+}
+
+// BusyError checks for the StatusBusy status code.
+//
+// Deprecated:  This API should no longer be relied on.
+func (e KvError) BusyError() bool {
+	return e.Code == StatusBusy
+}
+
+func newSimpleError(code StatusCode) *KvError {
+	return &KvError{
+		Code:        code,
+		Description: getMemdErrorDesc(code),
+	}
 }
 
 type streamEndError struct {
@@ -347,152 +445,152 @@ var (
 	ErrStreamTooSlow = &streamEndError{streamEndTooSlow}
 
 	// ErrKeyNotFound occurs when an operation is performed on a key that does not exist.
-	ErrKeyNotFound = &memdError{statusKeyNotFound}
+	ErrKeyNotFound = newSimpleError(StatusKeyNotFound)
 
 	// ErrKeyExists occurs when an operation is performed on a key that could not be found.
-	ErrKeyExists = &memdError{statusKeyExists}
+	ErrKeyExists = newSimpleError(StatusKeyExists)
 
 	// ErrTooBig occurs when an operation attempts to store more data in a single document
 	// than the server is capable of storing (by default, this is a 20MB limit).
-	ErrTooBig = &memdError{statusTooBig}
+	ErrTooBig = newSimpleError(StatusTooBig)
 
 	// ErrInvalidArgs occurs when the server receives invalid arguments for an operation.
-	ErrInvalidArgs = &memdError{statusInvalidArgs}
+	ErrInvalidArgs = newSimpleError(StatusInvalidArgs)
 
 	// ErrNotStored occurs when the server fails to store a key.
-	ErrNotStored = &memdError{statusNotStored}
+	ErrNotStored = newSimpleError(StatusNotStored)
 
 	// ErrBadDelta occurs when an invalid delta value is specified to a counter operation.
-	ErrBadDelta = &memdError{statusBadDelta}
+	ErrBadDelta = newSimpleError(StatusBadDelta)
 
 	// ErrNotMyVBucket occurs when an operation is dispatched to a server which is
 	// non-authoritative for a specific vbucket.
-	ErrNotMyVBucket = &memdError{statusNotMyVBucket}
+	ErrNotMyVBucket = newSimpleError(StatusNotMyVBucket)
 
 	// ErrNoBucket occurs when no bucket was selected on a connection.
-	ErrNoBucket = &memdError{statusNoBucket}
+	ErrNoBucket = newSimpleError(StatusNoBucket)
 
 	// ErrAuthStale occurs when authentication credentials have become invalidated.
-	ErrAuthStale = &memdError{statusAuthStale}
+	ErrAuthStale = newSimpleError(StatusAuthStale)
 
 	// ErrAuthError occurs when the authentication information provided was not valid.
-	ErrAuthError = &memdError{statusAuthError}
+	ErrAuthError = newSimpleError(StatusAuthError)
 
 	// ErrAuthContinue occurs in multi-step authentication when more authentication
 	// work needs to be performed in order to complete the authentication process.
-	ErrAuthContinue = &memdError{statusAuthContinue}
+	ErrAuthContinue = newSimpleError(StatusAuthContinue)
 
 	// ErrRangeError occurs when the range specified to the server is not valid.
-	ErrRangeError = &memdError{statusRangeError}
+	ErrRangeError = newSimpleError(StatusRangeError)
 
 	// ErrRollback occurs when a DCP stream fails to open due to a rollback having
 	// previously occurred since the last time the stream was opened.
-	ErrRollback = &memdError{statusRollback}
+	ErrRollback = newSimpleError(StatusRollback)
 
 	// ErrAccessError occurs when an access error occurs.
-	ErrAccessError = &memdError{statusAccessError}
+	ErrAccessError = newSimpleError(StatusAccessError)
 
 	// ErrNotInitialized is sent by servers which are still initializing, and are not
 	// yet ready to accept operations on behalf of a particular bucket.
-	ErrNotInitialized = &memdError{statusNotInitialized}
+	ErrNotInitialized = newSimpleError(StatusNotInitialized)
 
 	// ErrUnknownCommand occurs when an unknown operation is sent to a server.
-	ErrUnknownCommand = &memdError{statusUnknownCommand}
+	ErrUnknownCommand = newSimpleError(StatusUnknownCommand)
 
 	// ErrOutOfMemory occurs when the server cannot service a request due to memory
 	// limitations.
-	ErrOutOfMemory = &memdError{statusOutOfMemory}
+	ErrOutOfMemory = newSimpleError(StatusOutOfMemory)
 
 	// ErrNotSupported occurs when an operation is understood by the server, but that
 	// operation is not supported on this server (occurs for a variety of reasons).
-	ErrNotSupported = &memdError{statusNotSupported}
+	ErrNotSupported = newSimpleError(StatusNotSupported)
 
 	// ErrInternalError occurs when internal errors prevent the server from processing
 	// your request.
-	ErrInternalError = &memdError{statusInternalError}
+	ErrInternalError = newSimpleError(StatusInternalError)
 
 	// ErrBusy occurs when the server is too busy to process your request right away.
 	// Attempting the operation at a later time will likely succeed.
-	ErrBusy = &memdError{statusBusy}
+	ErrBusy = newSimpleError(StatusBusy)
 
 	// ErrTmpFail occurs when a temporary failure is preventing the server from
 	// processing your request.
-	ErrTmpFail = &memdError{statusTmpFail}
+	ErrTmpFail = newSimpleError(StatusTmpFail)
 
 	// ErrSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
-	ErrSubDocPathNotFound = &memdError{statusSubDocPathNotFound}
+	ErrSubDocPathNotFound = newSimpleError(StatusSubDocPathNotFound)
 
 	// ErrSubDocPathMismatch occurs when a sub-document operation specifies a path
 	// which does not match the document structure (field access on an array).
-	ErrSubDocPathMismatch = &memdError{statusSubDocPathMismatch}
+	ErrSubDocPathMismatch = newSimpleError(StatusSubDocPathMismatch)
 
 	// ErrSubDocPathInvalid occurs when a sub-document path could not be parsed.
-	ErrSubDocPathInvalid = &memdError{statusSubDocPathInvalid}
+	ErrSubDocPathInvalid = newSimpleError(StatusSubDocPathInvalid)
 
 	// ErrSubDocPathTooBig occurs when a sub-document path is too big.
-	ErrSubDocPathTooBig = &memdError{statusSubDocPathTooBig}
+	ErrSubDocPathTooBig = newSimpleError(StatusSubDocPathTooBig)
 
 	// ErrSubDocDocTooDeep occurs when an operation would cause a document to be
 	// nested beyond the depth limits allowed by the sub-document specification.
-	ErrSubDocDocTooDeep = &memdError{statusSubDocDocTooDeep}
+	ErrSubDocDocTooDeep = newSimpleError(StatusSubDocDocTooDeep)
 
 	// ErrSubDocCantInsert occurs when a sub-document operation could not insert.
-	ErrSubDocCantInsert = &memdError{statusSubDocCantInsert}
+	ErrSubDocCantInsert = newSimpleError(StatusSubDocCantInsert)
 
 	// ErrSubDocNotJson occurs when a sub-document operation is performed on a
 	// document which is not JSON.
-	ErrSubDocNotJson = &memdError{statusSubDocNotJson}
+	ErrSubDocNotJson = newSimpleError(StatusSubDocNotJson)
 
 	// ErrSubDocBadRange occurs when a sub-document operation is performed with
 	// a bad range.
-	ErrSubDocBadRange = &memdError{statusSubDocBadRange}
+	ErrSubDocBadRange = newSimpleError(StatusSubDocBadRange)
 
 	// ErrSubDocBadDelta occurs when a sub-document counter operation is performed
 	// and the specified delta is not valid.
-	ErrSubDocBadDelta = &memdError{statusSubDocBadDelta}
+	ErrSubDocBadDelta = newSimpleError(StatusSubDocBadDelta)
 
 	// ErrSubDocPathExists occurs when a sub-document operation expects a path not
 	// to exists, but the path was found in the document.
-	ErrSubDocPathExists = &memdError{statusSubDocPathExists}
+	ErrSubDocPathExists = newSimpleError(StatusSubDocPathExists)
 
 	// ErrSubDocValueTooDeep occurs when a sub-document operation specifies a value
 	// which is deeper than the depth limits of the sub-document specification.
-	ErrSubDocValueTooDeep = &memdError{statusSubDocValueTooDeep}
+	ErrSubDocValueTooDeep = newSimpleError(StatusSubDocValueTooDeep)
 
 	// ErrSubDocBadCombo occurs when a multi-operation sub-document operation is
 	// performed and operations within the package of ops conflict with each other.
-	ErrSubDocBadCombo = &memdError{statusSubDocBadCombo}
+	ErrSubDocBadCombo = newSimpleError(StatusSubDocBadCombo)
 
 	// ErrSubDocBadMulti occurs when a multi-operation sub-document operation is
 	// performed and operations within the package of ops conflict with each other.
-	ErrSubDocBadMulti = &memdError{statusSubDocBadMulti}
+	ErrSubDocBadMulti = newSimpleError(StatusSubDocBadMulti)
 
 	// ErrSubDocSuccessDeleted occurs when a multi-operation sub-document operation
 	// is performed on a soft-deleted document.
-	ErrSubDocSuccessDeleted = &memdError{statusSubDocSuccessDeleted}
+	ErrSubDocSuccessDeleted = newSimpleError(StatusSubDocSuccessDeleted)
 
 	// ErrSubDocXattrInvalidFlagCombo occurs when an invalid set of
 	// extended-attribute flags is passed to a sub-document operation.
-	ErrSubDocXattrInvalidFlagCombo = &memdError{statusSubDocXattrInvalidFlagCombo}
+	ErrSubDocXattrInvalidFlagCombo = newSimpleError(StatusSubDocXattrInvalidFlagCombo)
 
 	// ErrSubDocXattrInvalidKeyCombo occurs when an invalid set of key operations
 	// are specified for a extended-attribute sub-document operation.
-	ErrSubDocXattrInvalidKeyCombo = &memdError{statusSubDocXattrInvalidKeyCombo}
+	ErrSubDocXattrInvalidKeyCombo = newSimpleError(StatusSubDocXattrInvalidKeyCombo)
 
 	// ErrSubDocXattrUnknownMacro occurs when an invalid macro value is specified.
-	ErrSubDocXattrUnknownMacro = &memdError{statusSubDocXattrUnknownMacro}
+	ErrSubDocXattrUnknownMacro = newSimpleError(StatusSubDocXattrUnknownMacro)
 
 	// ErrSubDocXattrUnknownVAttr occurs when an invalid virtual attribute is specified.
-	ErrSubDocXattrUnknownVAttr = &memdError{statusSubDocXattrUnknownVAttr}
+	ErrSubDocXattrUnknownVAttr = newSimpleError(StatusSubDocXattrUnknownVAttr)
 
 	// ErrSubDocXattrCannotModifyVAttr occurs when a mutation is attempted upon
 	// a virtual attribute (which are immutable by definition).
-	ErrSubDocXattrCannotModifyVAttr = &memdError{statusSubDocXattrCannotModifyVAttr}
+	ErrSubDocXattrCannotModifyVAttr = newSimpleError(StatusSubDocXattrCannotModifyVAttr)
 
 	// ErrSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
 	// a soft-deleted document.
-	ErrSubDocMultiPathFailureDeleted = &memdError{statusSubDocMultiPathFailureDeleted}
+	ErrSubDocMultiPathFailureDeleted = newSimpleError(StatusSubDocMultiPathFailureDeleted)
 )
 
 func getStreamEndError(code streamEndStatus) error {
@@ -512,91 +610,91 @@ func getStreamEndError(code streamEndStatus) error {
 	}
 }
 
-func getMemdError(code statusCode, errorMap *kvErrorMap) error {
+func getMemdError(code StatusCode, errorMap *kvErrorMap) error {
 	switch code {
-	case statusSuccess:
+	case StatusSuccess:
 		return nil
-	case statusKeyNotFound:
+	case StatusKeyNotFound:
 		return ErrKeyNotFound
-	case statusKeyExists:
+	case StatusKeyExists:
 		return ErrKeyExists
-	case statusTooBig:
+	case StatusTooBig:
 		return ErrTooBig
-	case statusInvalidArgs:
+	case StatusInvalidArgs:
 		return ErrInvalidArgs
-	case statusNotStored:
+	case StatusNotStored:
 		return ErrNotStored
-	case statusBadDelta:
+	case StatusBadDelta:
 		return ErrBadDelta
-	case statusNotMyVBucket:
+	case StatusNotMyVBucket:
 		return ErrNotMyVBucket
-	case statusNoBucket:
+	case StatusNoBucket:
 		return ErrNoBucket
-	case statusAuthStale:
+	case StatusAuthStale:
 		return ErrAuthStale
-	case statusAuthError:
+	case StatusAuthError:
 		return ErrAuthError
-	case statusAuthContinue:
+	case StatusAuthContinue:
 		return ErrAuthContinue
-	case statusRangeError:
+	case StatusRangeError:
 		return ErrRangeError
-	case statusAccessError:
+	case StatusAccessError:
 		return ErrAccessError
-	case statusNotInitialized:
+	case StatusNotInitialized:
 		return ErrNotInitialized
-	case statusRollback:
+	case StatusRollback:
 		return ErrRollback
-	case statusUnknownCommand:
+	case StatusUnknownCommand:
 		return ErrUnknownCommand
-	case statusOutOfMemory:
+	case StatusOutOfMemory:
 		return ErrOutOfMemory
-	case statusNotSupported:
+	case StatusNotSupported:
 		return ErrNotSupported
-	case statusInternalError:
+	case StatusInternalError:
 		return ErrInternalError
-	case statusBusy:
+	case StatusBusy:
 		return ErrBusy
-	case statusTmpFail:
+	case StatusTmpFail:
 		return ErrTmpFail
-	case statusSubDocPathNotFound:
+	case StatusSubDocPathNotFound:
 		return ErrSubDocPathNotFound
-	case statusSubDocPathMismatch:
+	case StatusSubDocPathMismatch:
 		return ErrSubDocPathMismatch
-	case statusSubDocPathInvalid:
+	case StatusSubDocPathInvalid:
 		return ErrSubDocPathInvalid
-	case statusSubDocPathTooBig:
+	case StatusSubDocPathTooBig:
 		return ErrSubDocPathTooBig
-	case statusSubDocDocTooDeep:
+	case StatusSubDocDocTooDeep:
 		return ErrSubDocDocTooDeep
-	case statusSubDocCantInsert:
+	case StatusSubDocCantInsert:
 		return ErrSubDocCantInsert
-	case statusSubDocNotJson:
+	case StatusSubDocNotJson:
 		return ErrSubDocNotJson
-	case statusSubDocBadRange:
+	case StatusSubDocBadRange:
 		return ErrSubDocBadRange
-	case statusSubDocBadDelta:
+	case StatusSubDocBadDelta:
 		return ErrSubDocBadDelta
-	case statusSubDocPathExists:
+	case StatusSubDocPathExists:
 		return ErrSubDocPathExists
-	case statusSubDocValueTooDeep:
+	case StatusSubDocValueTooDeep:
 		return ErrSubDocValueTooDeep
-	case statusSubDocBadCombo:
+	case StatusSubDocBadCombo:
 		return ErrSubDocBadCombo
-	case statusSubDocBadMulti:
+	case StatusSubDocBadMulti:
 		return ErrSubDocBadMulti
-	case statusSubDocSuccessDeleted:
+	case StatusSubDocSuccessDeleted:
 		return ErrSubDocSuccessDeleted
-	case statusSubDocXattrInvalidFlagCombo:
+	case StatusSubDocXattrInvalidFlagCombo:
 		return ErrSubDocXattrInvalidFlagCombo
-	case statusSubDocXattrInvalidKeyCombo:
+	case StatusSubDocXattrInvalidKeyCombo:
 		return ErrSubDocXattrInvalidKeyCombo
-	case statusSubDocXattrUnknownMacro:
+	case StatusSubDocXattrUnknownMacro:
 		return ErrSubDocXattrUnknownMacro
-	case statusSubDocXattrUnknownVAttr:
+	case StatusSubDocXattrUnknownVAttr:
 		return ErrSubDocXattrUnknownVAttr
-	case statusSubDocXattrCannotModifyVAttr:
+	case StatusSubDocXattrCannotModifyVAttr:
 		return ErrSubDocXattrCannotModifyVAttr
-	case statusSubDocMultiPathFailureDeleted:
+	case StatusSubDocMultiPathFailureDeleted:
 		return ErrSubDocMultiPathFailureDeleted
 	}
 
@@ -608,5 +706,15 @@ func getMemdError(code statusCode, errorMap *kvErrorMap) error {
 		}
 	*/
 
-	return &memdError{code}
+	return KvError{Code: code}
+}
+
+// IsErrorStatus is a helper function which allows you to quickly check
+// if a particular error object corresponds with a specific memcached
+// status code in a single operation.
+func IsErrorStatus(err error, code StatusCode) bool {
+	if memdErr, ok := err.(*KvError); ok {
+		return memdErr.Code == code
+	}
+	return false
 }

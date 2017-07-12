@@ -86,53 +86,160 @@ const (
 	featureXerror     = helloFeature(0x07)
 )
 
-// Status field for memcached response.
-type statusCode uint16
+// StatusCode represents a memcached response status.
+type StatusCode uint16
 
 const (
-	statusSuccess              = statusCode(0x00)
-	statusKeyNotFound          = statusCode(0x01)
-	statusKeyExists            = statusCode(0x02)
-	statusTooBig               = statusCode(0x03)
-	statusInvalidArgs          = statusCode(0x04)
-	statusNotStored            = statusCode(0x05)
-	statusBadDelta             = statusCode(0x06)
-	statusNotMyVBucket         = statusCode(0x07)
-	statusNoBucket             = statusCode(0x08)
-	statusAuthStale            = statusCode(0x1f)
-	statusAuthError            = statusCode(0x20)
-	statusAuthContinue         = statusCode(0x21)
-	statusRangeError           = statusCode(0x22)
-	statusRollback             = statusCode(0x23)
-	statusAccessError          = statusCode(0x24)
-	statusNotInitialized       = statusCode(0x25)
-	statusUnknownCommand       = statusCode(0x81)
-	statusOutOfMemory          = statusCode(0x82)
-	statusNotSupported         = statusCode(0x83)
-	statusInternalError        = statusCode(0x84)
-	statusBusy                 = statusCode(0x85)
-	statusTmpFail              = statusCode(0x86)
-	statusSubDocPathNotFound   = statusCode(0xc0)
-	statusSubDocPathMismatch   = statusCode(0xc1)
-	statusSubDocPathInvalid    = statusCode(0xc2)
-	statusSubDocPathTooBig     = statusCode(0xc3)
-	statusSubDocDocTooDeep     = statusCode(0xc4)
-	statusSubDocCantInsert     = statusCode(0xc5)
-	statusSubDocNotJson        = statusCode(0xc6)
-	statusSubDocBadRange       = statusCode(0xc7)
-	statusSubDocBadDelta       = statusCode(0xc8)
-	statusSubDocPathExists     = statusCode(0xc9)
-	statusSubDocValueTooDeep   = statusCode(0xca)
-	statusSubDocBadCombo       = statusCode(0xcb)
-	statusSubDocBadMulti       = statusCode(0xcc)
-	statusSubDocSuccessDeleted = statusCode(0xcd)
+	// StatusSuccess indicates the operation completed successfully.
+	StatusSuccess = StatusCode(0x00)
 
-	statusSubDocXattrInvalidFlagCombo   = statusCode(0xce)
-	statusSubDocXattrInvalidKeyCombo    = statusCode(0xcf)
-	statusSubDocXattrUnknownMacro       = statusCode(0xd0)
-	statusSubDocXattrUnknownVAttr       = statusCode(0xd1)
-	statusSubDocXattrCannotModifyVAttr  = statusCode(0xd2)
-	statusSubDocMultiPathFailureDeleted = statusCode(0xd3)
+	// StatusKeyNotFound occurs when an operation is performed on a key that does not exist.
+	StatusKeyNotFound = StatusCode(0x01)
+
+	// StatusKeyExists occurs when an operation is performed on a key that could not be found.
+	StatusKeyExists = StatusCode(0x02)
+
+	// StatusTooBig occurs when an operation attempts to store more data in a single document
+	// than the server is capable of storing (by default, this is a 20MB limit).
+	StatusTooBig = StatusCode(0x03)
+
+	// StatusInvalidArgs occurs when the server receives invalid arguments for an operation.
+	StatusInvalidArgs = StatusCode(0x04)
+
+	// StatusNotStored occurs when the server fails to store a key.
+	StatusNotStored = StatusCode(0x05)
+
+	// StatusBadDelta occurs when an invalid delta value is specified to a counter operation.
+	StatusBadDelta = StatusCode(0x06)
+
+	// StatusNotMyVBucket occurs when an operation is dispatched to a server which is
+	// non-authoritative for a specific vbucket.
+	StatusNotMyVBucket = StatusCode(0x07)
+
+	// StatusNoBucket occurs when no bucket was selected on a connection.
+	StatusNoBucket = StatusCode(0x08)
+
+	// StatusAuthStale occurs when authentication credentials have become invalidated.
+	StatusAuthStale = StatusCode(0x1f)
+
+	// StatusAuthError occurs when the authentication information provided was not valid.
+	StatusAuthError = StatusCode(0x20)
+
+	// StatusAuthContinue occurs in multi-step authentication when more authentication
+	// work needs to be performed in order to complete the authentication process.
+	StatusAuthContinue = StatusCode(0x21)
+
+	// StatusRangeError occurs when the range specified to the server is not valid.
+	StatusRangeError = StatusCode(0x22)
+
+	// StatusRollback occurs when a DCP stream fails to open due to a rollback having
+	// previously occurred since the last time the stream was opened.
+	StatusRollback = StatusCode(0x23)
+
+	// StatusAccessError occurs when an access error occurs.
+	StatusAccessError = StatusCode(0x24)
+
+	// StatusNotInitialized is sent by servers which are still initializing, and are not
+	// yet ready to accept operations on behalf of a particular bucket.
+	StatusNotInitialized = StatusCode(0x25)
+
+	// StatusUnknownCommand occurs when an unknown operation is sent to a server.
+	StatusUnknownCommand = StatusCode(0x81)
+
+	// StatusOutOfMemory occurs when the server cannot service a request due to memory
+	// limitations.
+	StatusOutOfMemory = StatusCode(0x82)
+
+	// StatusNotSupported occurs when an operation is understood by the server, but that
+	// operation is not supported on this server (occurs for a variety of reasons).
+	StatusNotSupported = StatusCode(0x83)
+
+	// StatusInternalError occurs when internal errors prevent the server from processing
+	// your request.
+	StatusInternalError = StatusCode(0x84)
+
+	// StatusBusy occurs when the server is too busy to process your request right away.
+	// Attempting the operation at a later time will likely succeed.
+	StatusBusy = StatusCode(0x85)
+
+	// StatusTmpFail occurs when a temporary failure is preventing the server from
+	// processing your request.
+	StatusTmpFail = StatusCode(0x86)
+
+	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
+	// which does not exist in the specifie document.
+	StatusSubDocPathNotFound = StatusCode(0xc0)
+
+	// StatusSubDocPathMismatch occurs when a sub-document operation specifies a path
+	// which does not match the document structure (field access on an array).
+	StatusSubDocPathMismatch = StatusCode(0xc1)
+
+	// StatusSubDocPathInvalid occurs when a sub-document path could not be parsed.
+	StatusSubDocPathInvalid = StatusCode(0xc2)
+
+	// StatusSubDocPathTooBig occurs when a sub-document path is too big.
+	StatusSubDocPathTooBig = StatusCode(0xc3)
+
+	// StatusSubDocDocTooDeep occurs when an operation would cause a document to be
+	// nested beyond the depth limits allowed by the sub-document specification.
+	StatusSubDocDocTooDeep = StatusCode(0xc4)
+
+	// StatusSubDocCantInsert occurs when a sub-document operation could not insert.
+	StatusSubDocCantInsert = StatusCode(0xc5)
+
+	// StatusSubDocNotJson occurs when a sub-document operation is performed on a
+	// document which is not JSON.
+	StatusSubDocNotJson = StatusCode(0xc6)
+
+	// StatusSubDocBadRange occurs when a sub-document operation is performed with
+	// a bad range.
+	StatusSubDocBadRange = StatusCode(0xc7)
+
+	// StatusSubDocBadDelta occurs when a sub-document counter operation is performed
+	// and the specified delta is not valid.
+	StatusSubDocBadDelta = StatusCode(0xc8)
+
+	// StatusSubDocPathExists occurs when a sub-document operation expects a path not
+	// to exists, but the path was found in the document.
+	StatusSubDocPathExists = StatusCode(0xc9)
+
+	// StatusSubDocValueTooDeep occurs when a sub-document operation specifies a value
+	// which is deeper than the depth limits of the sub-document specification.
+	StatusSubDocValueTooDeep = StatusCode(0xca)
+
+	// StatusSubDocBadCombo occurs when a multi-operation sub-document operation is
+	// performed and operations within the package of ops conflict with each other.
+	StatusSubDocBadCombo = StatusCode(0xcb)
+
+	// StatusSubDocBadMulti occurs when a multi-operation sub-document operation is
+	// performed and operations within the package of ops conflict with each other.
+	StatusSubDocBadMulti = StatusCode(0xcc)
+
+	// StatusSubDocSuccessDeleted occurs when a multi-operation sub-document operation
+	// is performed on a soft-deleted document.
+	StatusSubDocSuccessDeleted = StatusCode(0xcd)
+
+	// StatusSubDocXattrInvalidFlagCombo occurs when an invalid set of
+	// extended-attribute flags is passed to a sub-document operation.
+	StatusSubDocXattrInvalidFlagCombo = StatusCode(0xce)
+
+	// StatusSubDocXattrInvalidKeyCombo occurs when an invalid set of key operations
+	// are specified for a extended-attribute sub-document operation.
+	StatusSubDocXattrInvalidKeyCombo = StatusCode(0xcf)
+
+	// StatusSubDocXattrUnknownMacro occurs when an invalid macro value is specified.
+	StatusSubDocXattrUnknownMacro = StatusCode(0xd0)
+
+	// StatusSubDocXattrUnknownVAttr occurs when an invalid virtual attribute is specified.
+	StatusSubDocXattrUnknownVAttr = StatusCode(0xd1)
+
+	// StatusSubDocXattrCannotModifyVAttr occurs when a mutation is attempted upon
+	// a virtual attribute (which are immutable by definition).
+	StatusSubDocXattrCannotModifyVAttr = StatusCode(0xd2)
+
+	// StatusSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
+	// a soft-deleted document.
+	StatusSubDocMultiPathFailureDeleted = StatusCode(0xd3)
 )
 
 type streamEndStatus uint32

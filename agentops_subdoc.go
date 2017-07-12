@@ -270,9 +270,9 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil &&
-			err != ErrSubDocMultiPathFailureDeleted &&
-			err != ErrSubDocSuccessDeleted &&
-			err != ErrSubDocBadMulti {
+			!IsErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
+			!IsErrorStatus(err, StatusSubDocSuccessDeleted) &&
+			!IsErrorStatus(err, StatusSubDocBadMulti) {
 			cb(nil, 0, err)
 			return
 		}
@@ -286,7 +286,7 @@ func (agent *Agent) SubDocLookup(key []byte, ops []SubDocOp, flags SubdocDocFlag
 				return
 			}
 
-			resError := statusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
+			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
 			resValueLen := int(binary.BigEndian.Uint32(resp.Value[respIter+2:]))
 
 			if respIter+6+resValueLen > len(resp.Value) {
@@ -357,21 +357,23 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, flags SubdocDocFlag
 	results := make([]SubDocResult, len(ops))
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil && err != ErrSubDocSuccessDeleted && err != ErrSubDocBadMulti {
+		if err != nil &&
+			!IsErrorStatus(err, StatusSubDocSuccessDeleted) &&
+			!IsErrorStatus(err, StatusSubDocBadMulti) {
 			cb(nil, 0, MutationToken{}, err)
 			return
 		}
 
 		errorMap := agent.getErrorMap()
 
-		if err == ErrSubDocBadMulti {
+		if IsErrorStatus(err, StatusSubDocBadMulti) {
 			if len(resp.Value) != 3 {
 				cb(nil, 0, MutationToken{}, ErrProtocol)
 				return
 			}
 
 			opIndex := int(resp.Value[0])
-			resError := statusCode(binary.BigEndian.Uint16(resp.Value[1:]))
+			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
 			err := SubDocMutateError{
 				Err:     getMemdError(resError, errorMap),
@@ -383,11 +385,11 @@ func (agent *Agent) SubDocMutate(key []byte, ops []SubDocOp, flags SubdocDocFlag
 
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
-			opStatus := statusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
+			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 			results[opIndex].Err = getMemdError(opStatus, errorMap)
 			readPos += 3
 
-			if opStatus == statusSuccess {
+			if opStatus == StatusSuccess {
 				valLength := binary.BigEndian.Uint32(resp.Value[readPos:])
 				results[opIndex].Value = resp.Value[readPos+4 : readPos+4+valLength]
 				readPos += 4 + valLength

@@ -776,7 +776,8 @@ func TestMemcachedBucket(t *testing.T) {
 	// Try to use GETL, should also yield unsupported
 	agent.GetAndLock([]byte("key"), 10, func(val []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
-			if err != ErrNotSupported && err != ErrUnknownCommand {
+			if !IsErrorStatus(err, StatusNotSupported) &&
+				!IsErrorStatus(err, StatusUnknownCommand) {
 				t.Fatalf("GETL should fail on memcached buckets: %v", err)
 			}
 		})

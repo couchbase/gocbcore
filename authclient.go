@@ -47,12 +47,12 @@ func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password
 	// Perform the initial SASL step
 	scramMgr.Step(nil)
 	in, err = client.ExecSaslAuth(saslName, scramMgr.Out(), deadline)
-	if err != nil && err != ErrAuthContinue {
+	if err != nil && !IsErrorStatus(err, StatusAuthContinue) {
 		return err
 	}
 
 	// Perform any additional step rounds
-	for err == ErrAuthContinue {
+	for IsErrorStatus(err, StatusAuthContinue) {
 		if !scramMgr.Step(in) {
 			err = scramMgr.Err()
 			if err != nil {
@@ -64,7 +64,8 @@ func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password
 		}
 
 		in, err = client.ExecSaslStep(saslName, scramMgr.Out(), deadline)
-		if err != nil && err != ErrAuthContinue {
+		if err != nil &&
+			!IsErrorStatus(err, StatusAuthContinue) {
 			return err
 		}
 	}

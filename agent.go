@@ -465,7 +465,8 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 
 		logDebugf("Trying to connect")
 		client, err := agent.dialMemdClient(thisHostPort)
-		if err == ErrAuthError || err == ErrAccessError {
+		if IsErrorStatus(err, StatusAuthError) ||
+			IsErrorStatus(err, StatusAccessError) {
 			return err
 		} else if err != nil {
 			logDebugf("Connecting failed! %v", err)

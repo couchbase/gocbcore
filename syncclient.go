@@ -64,7 +64,7 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 	}, deadline)
 
 	// We do it this way as the response value could still be useful even if an
-	// error status code is returned.  For instance, statusAuthContinue still
+	// error status code is returned.  For instance, StatusAuthContinue still
 	// contains authentication stepping information.
 	if resp == nil {
 		return nil, err

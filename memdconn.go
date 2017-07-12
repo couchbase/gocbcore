@@ -13,7 +13,7 @@ type memdPacket struct {
 	Magic    commandMagic
 	Opcode   commandCode
 	Datatype uint8
-	Status   statusCode
+	Status   StatusCode
 	Vbucket  uint16
 	Opaque   uint32
 	Cas      uint64
@@ -163,7 +163,7 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	resp.Opcode = commandCode(s.headerBuf[1])
 	resp.Datatype = s.headerBuf[5]
 	if resp.Magic == resMagic {
-		resp.Status = statusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
+		resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
 	} else {
 		resp.Vbucket = binary.BigEndian.Uint16(s.headerBuf[6:])
 	}
