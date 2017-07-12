@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"encoding/json"
 	"net"
 	"time"
 )
@@ -101,13 +102,70 @@ func (agent *Agent) getKvErrMapData(code StatusCode) *kvErrorMapError {
 	return nil
 }
 
-func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) bool {
+func (agent *Agent) makeMemdError(code StatusCode, errMapData *kvErrorMapError, ehData []byte) error {
+	if code == StatusSuccess {
+		return nil
+	}
+
+	if agent.useEnhancedErrors {
+		var err *KvError
+		if errMapData != nil {
+			err = &KvError{
+				Code:        code,
+				Name:        errMapData.Name,
+				Description: errMapData.Description,
+			}
+		} else {
+			err = newSimpleError(code)
+		}
+
+		if ehData != nil {
+			var enhancedData struct {
+				Context string `json:"context"`
+				Ref     string `json:"ref"`
+			}
+			if parseErr := json.Unmarshal(ehData, &enhancedData); parseErr == nil {
+				err.Context = enhancedData.Context
+				err.Ref = enhancedData.Ref
+			}
+		}
+
+		return err
+	}
+
+	if ok, err := findMemdError(code); ok {
+		return err
+	}
+
+	if errMapData != nil {
+		return KvError{
+			Code:        code,
+			Name:        errMapData.Name,
+			Description: errMapData.Description,
+		}
+	}
+
+	return newSimpleError(code)
+}
+
+func (agent *Agent) makeBasicMemdError(code StatusCode) error {
+	if !agent.useKvErrorMaps {
+		return agent.makeMemdError(code, nil, nil)
+	}
+
+	errMapData := agent.getKvErrMapData(code)
+	return agent.makeMemdError(code, errMapData, nil)
+}
+
+func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) (bool, error) {
+	var err error
+
 	if resp.Magic == resMagic {
 		if resp.Status == StatusNotMyVBucket {
 			agent.handleOpNmv(resp, req)
-			return true
+			return true, nil
 		} else if resp.Status == StatusSuccess {
-			return false
+			return false, nil
 		}
 
 		kvErrData := agent.getKvErrMapData(resp.Status)
@@ -122,13 +180,19 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) 
 
 					req.retryCount++
 					agent.waitAndRetryOperation(req, retryWait)
-					return true
+					return true, nil
 				}
 			}
 		}
+
+		if DatatypeFlag(resp.Datatype)&DatatypeFlagJson != 0 {
+			err = agent.makeMemdError(resp.Status, kvErrData, resp.Value)
+		} else {
+			err = agent.makeMemdError(resp.Status, kvErrData, nil)
+		}
 	}
 
-	return false
+	return false, err
 }
 
 func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {

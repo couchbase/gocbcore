@@ -88,17 +88,26 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
+	// Give the agent an opportunity to intercept the response first
+	var err error
 	if req.RoutingCallback != nil {
-		if req.RoutingCallback(resp, req) {
+		shortCircuited, routeErr := req.RoutingCallback(resp, req)
+		if shortCircuited {
 			logSchedf("Routing callback intercepted response")
 			return
 		}
-	}
 
-	// Grab an error object if one needs to exist.
-	var err error
-	if resp.Magic == resMagic {
-		err = getMemdError(resp.Status, client.errorMap)
+		err = routeErr
+	} else {
+		if resp.Magic == resMagic {
+			if resp.Status != StatusSuccess {
+				if ok, foundErr := findMemdError(resp.Status); ok {
+					err = foundErr
+				} else {
+					err = newSimpleError(resp.Status)
+				}
+			}
+		}
 	}
 
 	// Call the requests callback handler...

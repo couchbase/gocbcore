@@ -96,6 +96,8 @@ type KvError struct {
 	Code        StatusCode
 	Name        string
 	Description string
+	Context     string
+	Ref         string
 }
 
 func getMemdErrorDesc(code StatusCode) string {
@@ -192,13 +194,19 @@ func getMemdErrorDesc(code StatusCode) string {
 
 // Error returns the string representation of a kv error.
 func (e KvError) Error() string {
-	if e.Name != "" && e.Description != "" {
+	if e.Context != "" && e.Ref != "" {
+		return fmt.Sprintf("%s (%s, context: %s, ref: %s)", e.Description, e.Name, e.Context, e.Ref)
+	} else if e.Context != "" {
+		return fmt.Sprintf("%s (%s, context: %s)", e.Description, e.Name, e.Context)
+	} else if e.Ref != "" {
+		return fmt.Sprintf("%s (%s, ref: %s)", e.Description, e.Name, e.Ref)
+	} else if e.Name != "" && e.Description != "" {
 		return fmt.Sprintf("%s (%s)", e.Description, e.Name)
 	} else if e.Description != "" {
 		return e.Description
-	} else {
-		return fmt.Sprintf("an unknown error occurred (%d)", e.Code)
 	}
+
+	return fmt.Sprintf("an unknown error occurred (%d)", e.Code)
 }
 
 // Temporary indicates whether this error is known to be temporary, and that
@@ -610,103 +618,94 @@ func getStreamEndError(code streamEndStatus) error {
 	}
 }
 
-func getMemdError(code StatusCode, errorMap *kvErrorMap) error {
+func findMemdError(code StatusCode) (bool, error) {
 	switch code {
 	case StatusSuccess:
-		return nil
+		return true, nil
 	case StatusKeyNotFound:
-		return ErrKeyNotFound
+		return true, ErrKeyNotFound
 	case StatusKeyExists:
-		return ErrKeyExists
+		return true, ErrKeyExists
 	case StatusTooBig:
-		return ErrTooBig
+		return true, ErrTooBig
 	case StatusInvalidArgs:
-		return ErrInvalidArgs
+		return true, ErrInvalidArgs
 	case StatusNotStored:
-		return ErrNotStored
+		return true, ErrNotStored
 	case StatusBadDelta:
-		return ErrBadDelta
+		return true, ErrBadDelta
 	case StatusNotMyVBucket:
-		return ErrNotMyVBucket
+		return true, ErrNotMyVBucket
 	case StatusNoBucket:
-		return ErrNoBucket
+		return true, ErrNoBucket
 	case StatusAuthStale:
-		return ErrAuthStale
+		return true, ErrAuthStale
 	case StatusAuthError:
-		return ErrAuthError
+		return true, ErrAuthError
 	case StatusAuthContinue:
-		return ErrAuthContinue
+		return true, ErrAuthContinue
 	case StatusRangeError:
-		return ErrRangeError
+		return true, ErrRangeError
 	case StatusAccessError:
-		return ErrAccessError
+		return true, ErrAccessError
 	case StatusNotInitialized:
-		return ErrNotInitialized
+		return true, ErrNotInitialized
 	case StatusRollback:
-		return ErrRollback
+		return true, ErrRollback
 	case StatusUnknownCommand:
-		return ErrUnknownCommand
+		return true, ErrUnknownCommand
 	case StatusOutOfMemory:
-		return ErrOutOfMemory
+		return true, ErrOutOfMemory
 	case StatusNotSupported:
-		return ErrNotSupported
+		return true, ErrNotSupported
 	case StatusInternalError:
-		return ErrInternalError
+		return true, ErrInternalError
 	case StatusBusy:
-		return ErrBusy
+		return true, ErrBusy
 	case StatusTmpFail:
-		return ErrTmpFail
+		return true, ErrTmpFail
 	case StatusSubDocPathNotFound:
-		return ErrSubDocPathNotFound
+		return true, ErrSubDocPathNotFound
 	case StatusSubDocPathMismatch:
-		return ErrSubDocPathMismatch
+		return true, ErrSubDocPathMismatch
 	case StatusSubDocPathInvalid:
-		return ErrSubDocPathInvalid
+		return true, ErrSubDocPathInvalid
 	case StatusSubDocPathTooBig:
-		return ErrSubDocPathTooBig
+		return true, ErrSubDocPathTooBig
 	case StatusSubDocDocTooDeep:
-		return ErrSubDocDocTooDeep
+		return true, ErrSubDocDocTooDeep
 	case StatusSubDocCantInsert:
-		return ErrSubDocCantInsert
+		return true, ErrSubDocCantInsert
 	case StatusSubDocNotJson:
-		return ErrSubDocNotJson
+		return true, ErrSubDocNotJson
 	case StatusSubDocBadRange:
-		return ErrSubDocBadRange
+		return true, ErrSubDocBadRange
 	case StatusSubDocBadDelta:
-		return ErrSubDocBadDelta
+		return true, ErrSubDocBadDelta
 	case StatusSubDocPathExists:
-		return ErrSubDocPathExists
+		return true, ErrSubDocPathExists
 	case StatusSubDocValueTooDeep:
-		return ErrSubDocValueTooDeep
+		return true, ErrSubDocValueTooDeep
 	case StatusSubDocBadCombo:
-		return ErrSubDocBadCombo
+		return true, ErrSubDocBadCombo
 	case StatusSubDocBadMulti:
-		return ErrSubDocBadMulti
+		return true, ErrSubDocBadMulti
 	case StatusSubDocSuccessDeleted:
-		return ErrSubDocSuccessDeleted
+		return true, ErrSubDocSuccessDeleted
 	case StatusSubDocXattrInvalidFlagCombo:
-		return ErrSubDocXattrInvalidFlagCombo
+		return true, ErrSubDocXattrInvalidFlagCombo
 	case StatusSubDocXattrInvalidKeyCombo:
-		return ErrSubDocXattrInvalidKeyCombo
+		return true, ErrSubDocXattrInvalidKeyCombo
 	case StatusSubDocXattrUnknownMacro:
-		return ErrSubDocXattrUnknownMacro
+		return true, ErrSubDocXattrUnknownMacro
 	case StatusSubDocXattrUnknownVAttr:
-		return ErrSubDocXattrUnknownVAttr
+		return true, ErrSubDocXattrUnknownVAttr
 	case StatusSubDocXattrCannotModifyVAttr:
-		return ErrSubDocXattrCannotModifyVAttr
+		return true, ErrSubDocXattrCannotModifyVAttr
 	case StatusSubDocMultiPathFailureDeleted:
-		return ErrSubDocMultiPathFailureDeleted
+		return true, ErrSubDocMultiPathFailureDeleted
 	}
-
-	/*
-		if errorMap != nil {
-			if errMapErr, ok := errorMap.Errors[code]; ok {
-
-			}
-		}
-	*/
-
-	return KvError{Code: code}
+	return false, nil
 }
 
 // IsErrorStatus is a helper function which allows you to quickly check

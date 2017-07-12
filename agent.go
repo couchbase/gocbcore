@@ -29,6 +29,7 @@ type Agent struct {
 	initFn            memdInitFunc
 	useMutationTokens bool
 	useKvErrorMaps    bool
+	useEnhancedErrors bool
 
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
@@ -87,6 +88,7 @@ type AgentConfig struct {
 	AuthHandler       AuthFunc
 	UseMutationTokens bool
 	UseKvErrorMaps    bool
+	UseEnhancedErrors bool
 
 	HttpRedialPeriod time.Duration
 	HttpRetryDelay   time.Duration
@@ -259,6 +261,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseKvErrorMaps = val
 	}
 
+	if valStr, ok := fetchOption("use_enhanced_errors"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("use_enhanced_errors option must be a boolean")
+		}
+		config.UseEnhancedErrors = val
+	}
+
 	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
@@ -341,6 +351,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		},
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
+		useEnhancedErrors:    config.UseEnhancedErrors,
 		serverFailures:       make(map[string]time.Time),
 		serverConnectTimeout: 7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,

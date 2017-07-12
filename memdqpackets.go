@@ -16,7 +16,7 @@ type memdQResponse struct {
 }
 
 type callback func(*memdQResponse, *memdQRequest, error)
-type routingCallback func(*memdQResponse, *memdQRequest) bool
+type routingCallback func(*memdQResponse, *memdQRequest) (bool, error)
 
 // The data for a request that can be queued with a memdqueueconn,
 // and can potentially be rerouted to multiple servers due to

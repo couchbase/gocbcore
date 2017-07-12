@@ -819,6 +819,7 @@ func TestMain(m *testing.M) {
 		ServerConnectTimeout: 1 * time.Second,
 		UseMutationTokens:    true,
 		UseKvErrorMaps:       true,
+		UseEnhancedErrors:    true,
 	}
 
 	globalAgent, err = CreateAgent(agentConfig)
