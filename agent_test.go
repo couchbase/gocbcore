@@ -713,6 +713,7 @@ func TestStats(t *testing.T) {
 			}
 		})
 	})
+	s.Wait(0)
 }
 
 func TestGetHttpEps(t *testing.T) {
