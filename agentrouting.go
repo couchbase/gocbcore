@@ -222,17 +222,15 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 
 		// Gather all the requests from all the old pipelines and then
 		//  sort and redispatch them (which will use the new pipelines)
-		if oldRouting.clientMux != nil {
-			var requestList []*memdQRequest
-			oldRouting.clientMux.Drain(func(req *memdQRequest) {
-				requestList = append(requestList, req)
-			})
+		var requestList []*memdQRequest
+		oldRouting.clientMux.Drain(func(req *memdQRequest) {
+			requestList = append(requestList, req)
+		})
 
-			sort.Sort(memdQRequestSorter(requestList))
+		sort.Sort(memdQRequestSorter(requestList))
 
-			for _, req := range requestList {
-				agent.requeueDirect(req)
-			}
+		for _, req := range requestList {
+			agent.requeueDirect(req)
 		}
 	}
 }
