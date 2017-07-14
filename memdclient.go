@@ -185,7 +185,7 @@ func (client *memdClient) run() {
 		})
 
 		killSwitch <- true
-		client.closeNotify <- true
+		close(client.closeNotify)
 	}()
 }
 
