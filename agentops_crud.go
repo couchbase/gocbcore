@@ -520,12 +520,15 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 					logDebugf("Got additional error for stats: %s: %v", serverName, err)
 				}
 
+				// After an error occurs, we have to stop processing
+				// any more results.
 				req.Cancel()
 
 				remaining := atomic.AddInt32(&op.remaining, -1)
 				if remaining == 0 {
 					callback(stats)
 				}
+				return
 			}
 
 			if len(resp.Key) == 0 {
@@ -536,10 +539,10 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 				if remaining == 0 {
 					callback(stats)
 				}
-			} else {
-				curStats.Stats[string(resp.Key)] = string(resp.Value)
+				return
 			}
 
+			curStats.Stats[string(resp.Key)] = string(resp.Value)
 		}
 
 		// Send the request
