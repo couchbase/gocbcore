@@ -252,13 +252,11 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
-		if valStr == "1" || valStr == "true" {
-			config.UseMutationTokens = true
-		} else if valStr == "0" || valStr == "false" {
-			config.UseMutationTokens = false
-		} else {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
 			return fmt.Errorf("fetch_mutation_tokens option must be a boolean")
 		}
+		config.UseMutationTokens = val
 	}
 
 	return nil
