@@ -717,3 +717,15 @@ func IsErrorStatus(err error, code StatusCode) bool {
 	}
 	return false
 }
+
+// ErrorCause returns an error object representing the underlying cause
+// for an error (without detailed information).
+func ErrorCause(err error) error {
+	if typedErr, ok := err.(*KvError); ok {
+		if ok, err := findMemdError(typedErr.Code); ok {
+			return err
+		}
+		return newSimpleError(typedErr.Code)
+	}
+	return err
+}

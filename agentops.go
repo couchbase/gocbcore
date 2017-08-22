@@ -132,12 +132,14 @@ func (agent *Agent) makeMemdError(code StatusCode, errMapData *kvErrorMapError, 
 
 		if ehData != nil {
 			var enhancedData struct {
-				Context string `json:"context"`
-				Ref     string `json:"ref"`
+				Error struct {
+					Context string `json:"context"`
+					Ref     string `json:"ref"`
+				} `json:"error"`
 			}
 			if parseErr := json.Unmarshal(ehData, &enhancedData); parseErr == nil {
-				err.Context = enhancedData.Context
-				err.Ref = enhancedData.Ref
+				err.Context = enhancedData.Error.Context
+				err.Ref = enhancedData.Error.Ref
 			}
 		}
 
@@ -198,6 +200,12 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) 
 
 		if DatatypeFlag(resp.Datatype)&DatatypeFlagJson != 0 {
 			err = agent.makeMemdError(resp.Status, kvErrData, resp.Value)
+
+			if !IsErrorStatus(err, StatusSuccess) &&
+				!IsErrorStatus(err, StatusKeyNotFound) &&
+				!IsErrorStatus(err, StatusKeyExists) {
+				logDebugf("detailed error: %+v", err)
+			}
 		} else {
 			err = agent.makeMemdError(resp.Status, kvErrData, nil)
 		}
