@@ -688,6 +688,25 @@ func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
 	return serverIdx
 }
 
+// VbucketToServer returns the server index for a particular vbucket.
+func (agent *Agent) VbucketToServer(vbID uint16, replicaIdx uint32) int {
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return -1
+	}
+
+	if routingInfo.vbMap == nil {
+		return -1
+	}
+
+	serverIdx, err := routingInfo.vbMap.NodeByVbucket(vbID, replicaIdx)
+	if err != nil {
+		return -1
+	}
+
+	return serverIdx
+}
+
 // NumVbuckets returns the number of VBuckets configured on the
 // connected cluster.
 func (agent *Agent) NumVbuckets() int {
