@@ -30,6 +30,17 @@ type SingleServerStats struct {
 	Error error
 }
 
+// ObserveSeqNoStats represents the stats returned from an observe operation.
+type ObserveSeqNoStats struct {
+	DidFailover  bool
+	VbId         uint16
+	VbUuid       VbUuid
+	PersistSeqNo SeqNo
+	CurrentSeqNo SeqNo
+	OldVbUuid    VbUuid
+	LastSeqNo    SeqNo
+}
+
 // SubDocResult encapsulates the results from a single subdocument operation.
 type SubDocResult struct {
 	Err   error
@@ -229,6 +240,9 @@ type ObserveCallback func(KeyState, Cas, error)
 
 // ObserveSeqNoCallback is invoked with the results of `ObserveSeqNo` operations.
 type ObserveSeqNoCallback func(SeqNo, SeqNo, error)
+
+// ObserveSeqNoExCallback is invoked with the results of `ObserveSeqNoEx` operations.
+type ObserveSeqNoExCallback func(*ObserveSeqNoStats, error)
 
 // GetRandomCallback is invoked with the results of `GetRandom` operations.
 type GetRandomCallback func([]byte, []byte, uint32, Cas, error)

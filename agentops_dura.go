@@ -59,6 +59,24 @@ func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pen
 
 // ObserveSeqNo retrieves the persistence state sequence numbers for a particular VBucket.
 func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoCallback) (PendingOp, error) {
+	vbId := agent.KeyToVbucket(key)
+	return agent.ObserveSeqNoEx(vbId, vbUuid, replicaIdx, func(stats *ObserveSeqNoStats, err error) {
+		if err != nil {
+			cb(0, 0, err)
+			return
+		}
+
+		if !stats.DidFailover {
+			cb(stats.CurrentSeqNo, stats.PersistSeqNo, nil)
+		} else {
+			cb(stats.LastSeqNo, stats.LastSeqNo, nil)
+		}
+	})
+}
+
+// ObserveSeqNoEx retrieves the persistence state sequence numbers for a particular VBucket
+// and includes additional details not included by the basic version.
+func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoExCallback) (PendingOp, error) {
 	// TODO(mnunberg): Use bktType when implemented
 	if agent.numVbuckets == 0 {
 		return nil, ErrNotSupported
@@ -66,12 +84,12 @@ func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb O
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(0, 0, err)
+			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) < 1 {
-			cb(0, 0, ErrProtocol)
+			cb(nil, ErrProtocol)
 			return
 		}
 
@@ -79,40 +97,52 @@ func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb O
 		if formatType == 0 {
 			// Normal
 			if len(resp.Value) < 27 {
-				cb(0, 0, ErrProtocol)
+				cb(nil, ErrProtocol)
 				return
 			}
 
-			//vbId := binary.BigEndian.Uint16(resp.Value[1:])
-			//vbUuid := binary.BigEndian.Uint64(resp.Value[3:])
+			vbId := binary.BigEndian.Uint16(resp.Value[1:])
+			vbUuid := binary.BigEndian.Uint64(resp.Value[3:])
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
 
-			cb(SeqNo(currentSeqNo), SeqNo(persistSeqNo), nil)
+			cb(&ObserveSeqNoStats{
+				DidFailover:  false,
+				VbId:         vbId,
+				VbUuid:       VbUuid(vbUuid),
+				PersistSeqNo: SeqNo(persistSeqNo),
+				CurrentSeqNo: SeqNo(currentSeqNo),
+			}, nil)
 			return
 		} else if formatType == 1 {
 			// Hard Failover
 			if len(resp.Value) < 43 {
-				cb(0, 0, ErrProtocol)
+				cb(nil, ErrProtocol)
 				return
 			}
 
-			//vbId := binary.BigEndian.Uint16(resp.Value[1:])
-			//newVbUuid := binary.BigEndian.Uint64(resp.Value[3:])
-			//persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
-			//currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
-			//vbUuid := binary.BigEndian.Uint64(resp.Value[27:])
+			vbId := binary.BigEndian.Uint16(resp.Value[1:])
+			vbUuid := binary.BigEndian.Uint64(resp.Value[3:])
+			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
+			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
+			oldVbUuid := binary.BigEndian.Uint64(resp.Value[27:])
 			lastSeqNo := binary.BigEndian.Uint64(resp.Value[35:])
 
-			cb(SeqNo(lastSeqNo), SeqNo(lastSeqNo), nil)
+			cb(&ObserveSeqNoStats{
+				DidFailover:  true,
+				VbId:         vbId,
+				VbUuid:       VbUuid(vbUuid),
+				PersistSeqNo: SeqNo(persistSeqNo),
+				CurrentSeqNo: SeqNo(currentSeqNo),
+				OldVbUuid:    VbUuid(oldVbUuid),
+				LastSeqNo:    SeqNo(lastSeqNo),
+			}, nil)
 			return
 		} else {
-			cb(0, 0, ErrProtocol)
+			cb(nil, ErrProtocol)
 			return
 		}
 	}
-
-	vbId := agent.KeyToVbucket(key)
 
 	valueBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(valueBuf[0:], uint64(vbUuid))
