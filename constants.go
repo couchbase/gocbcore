@@ -260,13 +260,21 @@ const (
 	bktTypeMemcached            = iota
 )
 
-type vbucketState uint32
+// VbucketState represents the state of a particular vbucket on a particular server.
+type VbucketState uint32
 
 const (
-	vbucketStateActive  = vbucketState(0x01)
-	vbucketStateReplica = vbucketState(0x02)
-	vbucketStatePending = vbucketState(0x03)
-	vbucketStateDead    = vbucketState(0x04)
+	// VbucketStateActive indicates the vbucket is active on this server
+	VbucketStateActive = VbucketState(0x01)
+
+	// VbucketStateReplica indicates the vbucket is a replica on this server
+	VbucketStateReplica = VbucketState(0x02)
+
+	// VbucketStatePending indicates the vbucket is preparing to become active on this server.
+	VbucketStatePending = VbucketState(0x03)
+
+	// VbucketStateDead indicates the vbucket is no longer valid on this server.
+	VbucketStateDead = VbucketState(0x04)
 )
 
 // SetMetaOption represents possible option values for a SetMeta operation.

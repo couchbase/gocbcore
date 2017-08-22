@@ -41,8 +41,14 @@ type CloseStreamCallback func(error)
 // GetFailoverLogCallback is invoked with the results of `GetFailoverLog` operations.
 type GetFailoverLogCallback func([]FailoverEntry, error)
 
+// VbSeqNoEntry represents a single GetVbucketSeqnos sequence number entry.
+type VbSeqNoEntry struct {
+	VbId  uint16
+	SeqNo SeqNo
+}
+
 // GetVBucketSeqnosCallback is invoked with the results of `GetVBucketSeqnos` operations.
-type GetVBucketSeqnosCallback func(uint16, SeqNo, error)
+type GetVBucketSeqnosCallback func([]VbSeqNoEntry, error)
 
 // OpenStream opens a DCP stream for a particular VBucket.
 func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
@@ -202,23 +208,28 @@ func (agent *Agent) GetFailoverLog(vbId uint16, cb GetFailoverLogCallback) (Pend
 
 // GetVbucketSeqnos returns the last checkpoint for a particular VBucket.  This is useful
 // for starting a DCP stream from wherever the server currently is.
-func (agent *Agent) GetVbucketSeqnos(serverIdx int, cb GetVBucketSeqnosCallback) (PendingOp, error) {
+func (agent *Agent) GetVbucketSeqnos(serverIdx int, state VbucketState, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(0, 0, err)
+			cb(nil, err)
 			return
 		}
 
-		vbs := len(resp.Value) / 10
-		for i := 0; i < vbs; i++ {
-			vbid := binary.BigEndian.Uint16(resp.Value[i*10:])
-			seqNo := SeqNo(binary.BigEndian.Uint64(resp.Value[i*10+2:]))
-			cb(vbid, seqNo, nil)
+		var vbs []VbSeqNoEntry
+
+		numVbs := len(resp.Value) / 10
+		for i := 0; i < numVbs; i++ {
+			vbs = append(vbs, VbSeqNoEntry{
+				VbId:  binary.BigEndian.Uint16(resp.Value[i*10:]),
+				SeqNo: SeqNo(binary.BigEndian.Uint64(resp.Value[i*10+2:])),
+			})
 		}
+
+		cb(vbs, nil)
 	}
 
 	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], uint32(vbucketStateActive))
+	binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
