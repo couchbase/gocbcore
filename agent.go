@@ -674,11 +674,11 @@ func (agent *Agent) KeyToVbucket(key []byte) uint16 {
 func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
 	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
-		return 0
+		return -1
 	}
 
 	if routingInfo.vbMap == nil {
-		return 0
+		return -1
 	}
 
 	serverIdx, err := routingInfo.vbMap.NodeByKey(key, replicaIdx)
