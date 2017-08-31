@@ -80,7 +80,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	opIndex := resp.Opaque
 
 	// Find the request that goes with this response
-	req := client.opList.FindAndMaybeRemove(opIndex)
+	req := client.opList.FindAndMaybeRemove(opIndex, resp.Status != StatusSuccess)
 
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.

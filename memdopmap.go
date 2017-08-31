@@ -104,14 +104,14 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 // the opaque value that was assigned to it when it was dispatched.
 // It then removes the request from the queue if it is not persistent
 // or if alwaysRemove is set to true.
-func (q *memdOpMap) FindAndMaybeRemove(opaque uint32) *memdQRequest {
+func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, force bool) *memdQRequest {
 	q.lock.Lock()
 
 	cur := q.first
 	var prev *memdOpMapItem
 	for cur != nil {
 		if cur.value.Opaque == opaque {
-			if !cur.value.Persistent {
+			if !cur.value.Persistent || force {
 				q.remove(prev, cur)
 			}
 
