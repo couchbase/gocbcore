@@ -334,6 +334,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	httpTransport := &http.Transport{
 		TLSClientConfig: config.TlsConfig,
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
 	}
 	err := http2.ConfigureTransport(httpTransport)
 	if err != nil {
