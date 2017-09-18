@@ -119,6 +119,9 @@ const (
 	// StatusNoBucket occurs when no bucket was selected on a connection.
 	StatusNoBucket = StatusCode(0x08)
 
+	// StatusLocked occurs when an operation fails due to the document being locked.
+	StatusLocked = StatusCode(0x09)
+
 	// StatusAuthStale occurs when authentication credentials have become invalidated.
 	StatusAuthStale = StatusCode(0x1f)
 

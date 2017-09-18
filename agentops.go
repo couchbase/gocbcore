@@ -174,6 +174,20 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest) 
 	var err error
 
 	if resp.Magic == resMagic {
+		// Temporary backwards compatibility handling...
+		if resp.Status == StatusLocked {
+			switch req.Opcode {
+			case cmdSet:
+				resp.Status = StatusKeyExists
+			case cmdReplace:
+				resp.Status = StatusKeyExists
+			case cmdDelete:
+				resp.Status = StatusKeyExists
+			default:
+				resp.Status = StatusTmpFail
+			}
+		}
+
 		if resp.Status == StatusNotMyVBucket {
 			agent.handleOpNmv(resp, req)
 			return true, nil
