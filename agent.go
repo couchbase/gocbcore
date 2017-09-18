@@ -366,7 +366,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confHttpRetryDelay:   10 * time.Second,
 		confHttpRedialPeriod: 10 * time.Second,
 		confCccpMaxWait:      3 * time.Second,
-		confCccpPollPeriod:   10 * time.Second,
+		confCccpPollPeriod:   2500 * time.Millisecond,
 	}
 
 	connectTimeout := 60000 * time.Millisecond
