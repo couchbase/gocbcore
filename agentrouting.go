@@ -58,6 +58,9 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// Indicate that we understand XATTRs
 	features = append(features, featureXattr)
 
+	// Indicates that we understand select buckets.
+	features = append(features, featureSelectBucket)
+
 	// If the user wants to use KV Error maps, lets enable them
 	if agent.useKvErrorMaps {
 		features = append(features, featureXerror)
@@ -72,6 +75,8 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	if err != nil {
 		logDebugf("Failed to HELLO with server (%s)", err)
 	}
+
+	client.features = srvFeatures
 
 	if checkSupportsFeature(srvFeatures, featureXerror) {
 		errMapData, err := sclient.ExecGetErrorMap(1, deadline)

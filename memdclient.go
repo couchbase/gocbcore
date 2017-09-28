@@ -8,6 +8,7 @@ type memdClient struct {
 	conn        memdConn
 	opList      memdOpMap
 	errorMap    *kvErrorMap
+	features    []helloFeature
 	closeNotify chan bool
 	dcpAckSize  int
 	dcpFlowRecv int
@@ -20,6 +21,10 @@ func newMemdClient(conn memdConn) *memdClient {
 	}
 	client.run()
 	return &client
+}
+
+func (client *memdClient) SupportsFeature(feature helloFeature) bool {
+	return checkSupportsFeature(client.features, feature)
 }
 
 func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {

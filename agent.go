@@ -290,7 +290,7 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 			return err
 		}
 
-		if config.BucketName != config.Username {
+		if client.SupportsFeature(featureSelectBucket) {
 			if err := client.ExecSelectBucket([]byte(config.BucketName), deadline); err != nil {
 				return err
 			}
@@ -437,7 +437,9 @@ func (agent *Agent) cccpLooper() {
 			pipeline := routingInfo.clientMux.GetPipeline(nodeIdx)
 
 			client := syncClient{
-				client: pipeline,
+				client: &memdPipelineSenderWrap{
+					pipeline: pipeline,
+				},
 			}
 			cccpBytes, err := client.ExecCccpRequest(time.Now().Add(maxWaitTime))
 			if err != nil {

@@ -77,13 +77,17 @@ const (
 type helloFeature uint16
 
 const (
-	featureDatatype   = helloFeature(0x01)
-	featureTls        = helloFeature(0x02)
-	featureTcpNoDelay = helloFeature(0x03)
-	featureSeqNo      = helloFeature(0x04)
-	featureTcpDelay   = helloFeature(0x05)
-	featureXattr      = helloFeature(0x06)
-	featureXerror     = helloFeature(0x07)
+	featureDatatype     = helloFeature(0x01)
+	featureTls          = helloFeature(0x02)
+	featureTcpNoDelay   = helloFeature(0x03)
+	featureSeqNo        = helloFeature(0x04)
+	featureTcpDelay     = helloFeature(0x05)
+	featureXattr        = helloFeature(0x06)
+	featureXerror       = helloFeature(0x07)
+	featureSelectBucket = helloFeature(0x08)
+	featureCollections  = helloFeature(0x09)
+	featureSnappy       = helloFeature(0x0a)
+	featureJson         = helloFeature(0x0b)
 )
 
 // StatusCode represents a memcached response status.
