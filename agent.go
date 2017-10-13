@@ -575,6 +575,10 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 				return err
 			}
 		}
+
+		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
+			return err
+		}
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 

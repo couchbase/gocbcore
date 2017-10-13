@@ -27,18 +27,19 @@ func isCompressibleOp(command commandCode) bool {
 }
 
 type memdClient struct {
-	lastActivity int64
-	dcpAckSize   int
-	dcpFlowRecv  int
-	closeNotify  chan bool
-	connId       string
-	closed       bool
-	parent       *Agent
-	conn         memdConn
-	opList       memdOpMap
-	errorMap     *kvErrorMap
-	features     []HelloFeature
-	lock         sync.Mutex
+	lastActivity          int64
+	dcpAckSize            int
+	dcpFlowRecv           int
+	closeNotify           chan bool
+	connId                string
+	closed                bool
+	parent                *Agent
+	conn                  memdConn
+	opList                memdOpMap
+	errorMap              *kvErrorMap
+	features              []HelloFeature
+	lock                  sync.Mutex
+	streamEndNotSupported bool
 }
 
 func newMemdClient(parent *Agent, conn memdConn) *memdClient {
@@ -263,8 +264,11 @@ func (client *memdClient) run() {
 				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
 				client.resolveRequest(resp)
 
-				if client.dcpAckSize > 0 {
-					client.maybeSendDcpBufferAck(&resp.memdPacket)
+				// See below for information on why this is here.
+				if !resp.isInternal {
+					if client.dcpAckSize > 0 {
+						client.maybeSendDcpBufferAck(&resp.memdPacket)
+					}
 				}
 			case <-dcpKillSwitch:
 				close(dcpBufferQ)
@@ -300,6 +304,33 @@ func (client *memdClient) run() {
 					logWarnf("Failed to dispatch DCP noop reply: %s", err)
 				}
 				continue
+			}
+
+			// This is a fix for a bug in the server DCP implementation (MB-26363).  This
+			// bug causes the server to fail to send a stream-end notification.  The server
+			// does however synchronously stop the stream, and thus we can assume no more
+			// packets will be received following the close response.
+			if resp.Magic == resMagic && resp.Opcode == cmdDcpCloseStream && client.streamEndNotSupported {
+				closeReq := client.opList.Find(resp.Opaque)
+				if closeReq != nil {
+					vbId := closeReq.Vbucket
+					streamReq := client.opList.FindOpenStream(vbId)
+					if streamReq != nil {
+						endExtras := make([]byte, 4)
+						binary.BigEndian.PutUint32(endExtras, uint32(streamEndClosed))
+						endResp := &memdQResponse{
+							memdPacket: memdPacket{
+								Magic:   reqMagic,
+								Opcode:  cmdDcpStreamEnd,
+								Vbucket: vbId,
+								Opaque:  streamReq.Opaque,
+								Extras:  endExtras,
+							},
+							isInternal: true,
+						}
+						dcpBufferQ <- endResp
+					}
+				}
 			}
 
 			switch resp.memdPacket.Opcode {
