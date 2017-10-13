@@ -70,6 +70,36 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 	return false
 }
 
+// This allows searching through the list of requests for a specific
+// request.  This is only used by the DCP server bug fix for MB-26363.
+func (q *memdOpMap) FindOpenStream(vbId uint16) *memdQRequest {
+	cur := q.first
+	for cur != nil {
+		if cur.value.Magic == reqMagic &&
+			cur.value.Opcode == cmdDcpStreamReq &&
+			cur.value.Vbucket == vbId {
+			return cur.value
+		}
+		cur = cur.next
+	}
+
+	return nil
+}
+
+// Locates a request (searching FIFO-style) in the op queue using
+// the opaque value that was assigned to it when it was dispatched.
+func (q *memdOpMap) Find(opaque uint32) *memdQRequest {
+	cur := q.first
+	for cur != nil {
+		if cur.value.Opaque == opaque {
+			return cur.value
+		}
+		cur = cur.next
+	}
+
+	return nil
+}
+
 // Locates a request (searching FIFO-style) in the op queue using
 // the opaque value that was assigned to it when it was dispatched.
 // It then removes the request from the queue if it is not persistent

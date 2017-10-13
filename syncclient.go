@@ -166,6 +166,20 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 	return nil
 }
 
+func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
+	memcli, ok := client.client.(*memdClient)
+	if !ok {
+		return ErrCliInternalError
+	}
+
+	err := client.ExecDcpControl("send_stream_end_on_client_close_stream", "true", deadline)
+	if err != nil {
+		memcli.streamEndNotSupported = true
+	}
+
+	return nil
+}
+
 func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.Time) error {
 	mclient, ok := client.client.(*memdClient)
 	if !ok {

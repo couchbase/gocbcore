@@ -17,6 +17,7 @@ type memdQResponse struct {
 
 	sourceAddr   string
 	sourceConnId string
+	isInternal   bool
 }
 
 type callback func(*memdQResponse, *memdQRequest, error)
