@@ -124,12 +124,14 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 func (client *memdClient) run() {
 	dcpBufferQ := make(chan *memdQResponse)
-	killSwitch := make(chan bool, 1)
+	dcpKillSwitch := make(chan bool)
+	dcpKillNotify := make(chan bool)
 	go func() {
 		for {
 			select {
 			case resp, more := <-dcpBufferQ:
 				if !more {
+					dcpKillNotify <- true
 					return
 				}
 
@@ -139,7 +141,7 @@ func (client *memdClient) run() {
 				if client.dcpAckSize > 0 {
 					client.maybeSendDcpBufferAck(&resp.memdPacket)
 				}
-			case <-killSwitch:
+			case <-dcpKillSwitch:
 				close(dcpBufferQ)
 			}
 		}
@@ -194,11 +196,13 @@ func (client *memdClient) run() {
 			logErrorf("Failed to shut down client connection (%s)", err)
 		}
 
+		dcpKillSwitch <- true
+		<-dcpKillNotify
+
 		client.opList.Drain(func(req *memdQRequest) {
 			req.tryCallback(nil, ErrNetwork)
 		})
 
-		killSwitch <- true
 		close(client.closeNotify)
 	}()
 }
