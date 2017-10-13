@@ -31,48 +31,23 @@ func isCompressibleOp(command memd.CmdCode) bool {
 	return false
 }
 
-type postCompleteErrorHandler func(resp *memdQResponse, req *memdQRequest, err error) (bool, error)
-
 type memdClient struct {
 	lastActivity          int64
 	dcpAckSize            int
 	dcpFlowRecv           int
 	closeNotify           chan bool
-	connID                string
+	connId                string
 	closed                bool
+	parent                *Agent
 	conn                  memdConn
 	opList                memdOpMap
-	features              []memd.HelloFeature
+	errorMap              *kvErrorMap
+	features              []HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
-	breaker               circuitBreaker
-	postErrHandler        postCompleteErrorHandler
-	tracer                *tracerComponent
-	zombieLogger          *zombieLoggerComponent
-
-	dcpQueueSize         int
-	compressionMinSize   int
-	compressionMinRatio  float64
-	disableDecompression bool
 }
 
-type dcpBuffer struct {
-	resp       *memdQResponse
-	packetLen  int
-	isInternal bool
-}
-
-type memdClientProps struct {
-	ClientID string
-
-	DCPQueueSize         int
-	CompressionMinSize   int
-	CompressionMinRatio  float64
-	DisableDecompression bool
-}
-
-func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
-	tracer *tracerComponent, zombieLogger *zombieLoggerComponent) *memdClient {
+func newMemdClient(parent *Agent, conn memdConn) *memdClient {
 	client := memdClient{
 		closeNotify:    make(chan bool),
 		connID:         props.ClientID + "/" + formatCbUID(randomCbUID()),
@@ -337,6 +312,16 @@ func (client *memdClient) run() {
 				if !procDcpItem(q, more) {
 					return
 				}
+
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
+				client.resolveRequest(resp)
+
+				// See below for information on why this is here.
+				if !resp.isInternal {
+					if client.dcpAckSize > 0 {
+						client.maybeSendDcpBufferAck(&resp.memdPacket)
+					}
+				}
 			case <-dcpKillSwitch:
 				close(dcpBufferQ)
 			}
@@ -378,38 +363,31 @@ func (client *memdClient) run() {
 			// bug causes the server to fail to send a stream-end notification.  The server
 			// does however synchronously stop the stream, and thus we can assume no more
 			// packets will be received following the close response.
-			if resp.Magic == memd.CmdMagicRes && resp.Command == memd.CmdDcpCloseStream && client.streamEndNotSupported {
+			if resp.Magic == resMagic && resp.Opcode == cmdDcpCloseStream && client.streamEndNotSupported {
 				closeReq := client.opList.Find(resp.Opaque)
 				if closeReq != nil {
-					vbID := closeReq.Vbucket
-					streamReq := client.opList.FindOpenStream(vbID)
+					vbId := closeReq.Vbucket
+					streamReq := client.opList.FindOpenStream(vbId)
 					if streamReq != nil {
 						endExtras := make([]byte, 4)
-						binary.BigEndian.PutUint32(endExtras, uint32(memd.StreamEndClosed))
+						binary.BigEndian.PutUint32(endExtras, uint32(streamEndClosed))
 						endResp := &memdQResponse{
-							Packet: memd.Packet{
-								Magic:   memd.CmdMagicReq,
-								Command: memd.CmdDcpStreamEnd,
-								Vbucket: vbID,
+							memdPacket: memdPacket{
+								Magic:   reqMagic,
+								Opcode:  cmdDcpStreamEnd,
+								Vbucket: vbId,
 								Opaque:  streamReq.Opaque,
 								Extras:  endExtras,
 							},
-						}
-						dcpBufferQ <- &dcpBuffer{
-							resp:       endResp,
-							packetLen:  n,
 							isInternal: true,
 						}
+						dcpBufferQ <- endResp
 					}
 				}
 			}
 
-			switch resp.Packet.Command {
-			case memd.CmdDcpDeletion:
-				fallthrough
-			case memd.CmdDcpExpiration:
-				fallthrough
-			case memd.CmdDcpMutation:
+			switch resp.memdPacket.Opcode {
+			case cmdDcpDeletion:
 				fallthrough
 			case memd.CmdDcpSnapshotMarker:
 				fallthrough

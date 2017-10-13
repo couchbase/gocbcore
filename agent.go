@@ -200,6 +200,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				logWarnf("PLAIN sends credentials in plaintext, this will cause credential leakage on the network")
 			}
 		}
+		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
+			return err
+		}
+		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 
 	authHandler := buildAuthHandler(auth)

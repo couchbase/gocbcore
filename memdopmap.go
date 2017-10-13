@@ -2,8 +2,6 @@ package gocbcore
 
 import (
 	"sync/atomic"
-
-	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 type memdOpMapItem struct {
@@ -78,12 +76,12 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 
 // This allows searching through the list of requests for a specific
 // request.  This is only used by the DCP server bug fix for MB-26363.
-func (q *memdOpMap) FindOpenStream(vbID uint16) *memdQRequest {
+func (q *memdOpMap) FindOpenStream(vbId uint16) *memdQRequest {
 	cur := q.first
 	for cur != nil {
-		if cur.value.Magic == memd.CmdMagicReq &&
-			cur.value.Command == memd.CmdDcpStreamReq &&
-			cur.value.Vbucket == vbID {
+		if cur.value.Magic == reqMagic &&
+			cur.value.Opcode == cmdDcpStreamReq &&
+			cur.value.Vbucket == vbId {
 			return cur.value
 		}
 		cur = cur.next

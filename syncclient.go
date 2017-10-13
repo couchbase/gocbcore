@@ -127,7 +127,7 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
 	memcli, ok := client.client.(*memdClient)
 	if !ok {
-		return errCliInternalError
+		return ErrCliInternalError
 	}
 
 	err := client.ExecDcpControl("send_stream_end_on_client_close_stream", "true", deadline)
