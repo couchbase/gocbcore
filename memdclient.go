@@ -180,8 +180,6 @@ func (client *memdClient) run() {
 			case cmdDcpSnapshotMarker:
 				fallthrough
 			case cmdDcpStreamEnd:
-				fallthrough
-			case cmdDcpStreamReq:
 				dcpBufferQ <- resp
 				continue
 			default:
