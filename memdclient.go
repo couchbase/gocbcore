@@ -71,6 +71,8 @@ func (client *memdClient) CloseNotify() chan bool {
 func (client *memdClient) SendRequest(req *memdQRequest) error {
 	client.opList.Add(req)
 
+	logSchedf("Writing request. %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), req.Opcode, req.Opaque)
+
 	err := client.conn.WritePacket(&req.memdPacket)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
