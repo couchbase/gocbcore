@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"crypto/tls"
-	"net"
 	"sort"
 	"time"
 )
@@ -23,7 +22,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config
 	if agent.tlsConfig != nil {
-		host, _, err := net.SplitHostPort(address)
+		host, err := hostFromHostPort(address)
 		if err != nil {
 			logErrorf("Failed to parse address for TLS config (%s)", err)
 		}

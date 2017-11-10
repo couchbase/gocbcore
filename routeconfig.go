@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"fmt"
-	"net"
 	"strings"
 )
 
@@ -115,7 +114,7 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 
 			if bktType == bktTypeMemcached {
 				// Get the data port. No VBucketServerMap.
-				host, _, err := net.SplitHostPort(node.Hostname)
+				host, err := hostFromHostPort(node.Hostname)
 				if err != nil {
 					logErrorf("Encountered invalid memcached host/port string. Ignoring node.")
 					continue

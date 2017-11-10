@@ -447,7 +447,7 @@ func (agent *Agent) cccpLooper() {
 				continue
 			}
 
-			hostName, _, err := net.SplitHostPort(pipeline.Address())
+			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {
 				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
 				continue
@@ -513,7 +513,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			continue
 		}
 
-		hostName, _, err := net.SplitHostPort(thisHostPort)
+		hostName, err := hostFromHostPort(thisHostPort)
 		if err != nil {
 			logErrorf("Failed to parse CCCP source address. %v", err)
 			disconnectClient()

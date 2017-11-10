@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"encoding/json"
-	"net"
 	"time"
 )
 
@@ -83,7 +82,7 @@ func (agent *Agent) waitAndRetryNmv(req *memdQRequest) {
 
 func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	// Grab just the hostname from the source address
-	sourceHost, _, err := net.SplitHostPort(resp.sourceAddr)
+	sourceHost, err := hostFromHostPort(resp.sourceAddr)
 	if err != nil {
 		logErrorf("NMV response source address was invalid, skipping config update")
 		agent.waitAndRetryNmv(req)

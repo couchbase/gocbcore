@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"net"
 	"strings"
 )
 
@@ -105,6 +106,20 @@ func (cfg *cfgBucket) supports(needleCap string) bool {
 
 func (cfg *cfgBucket) supportsCccp() bool {
 	return cfg.supports("cccp")
+}
+
+func hostFromHostPort(hostport string) (string, error) {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return "", err
+	}
+
+	// If this is an IPv6 address, we need to rewrap it in []
+	if strings.Contains(host, ":") {
+		return "[" + host + "]", nil
+	}
+
+	return host, nil
 }
 
 func parseConfig(config []byte, srcHost string) (*cfgBucket, error) {
