@@ -217,7 +217,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.HttpRetryDelay = time.Duration(val) * time.Millisecond
 	}
 
-	// This option is experimental
+	// This option is deprecated (see config_poll_floor_interval)
 	if valStr, ok := fetchOption("cccp_max_wait"); ok {
 		val, err := strconv.ParseInt(valStr, 10, 64)
 		if err != nil {
@@ -226,11 +226,27 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.CccpMaxWait = time.Duration(val) * time.Millisecond
 	}
 
-	// This option is experimental
+	if valStr, ok := fetchOption("config_poll_floor_interval"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("config pool floor interval option must be a number")
+		}
+		config.CccpMaxWait = time.Duration(val) * time.Millisecond
+	}
+
+	// This option is deprecated (see config_poll_interval)
 	if valStr, ok := fetchOption("cccp_poll_period"); ok {
 		val, err := strconv.ParseInt(valStr, 10, 64)
 		if err != nil {
 			return fmt.Errorf("cccp pool period option must be a number")
+		}
+		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
+	}
+
+	if valStr, ok := fetchOption("config_poll_interval"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("config pool interval option must be a number")
 		}
 		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
 	}
