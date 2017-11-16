@@ -238,6 +238,50 @@ func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
 	return req, nil
 }
 
+func (agent *Agent) dispatchOpToAddress(req *memdQRequest, address string) (PendingOp, error) {
+	req.RoutingCallback = agent.handleOpRoutingResp
+	req.dispatchTime = time.Now()
+
+	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
+	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
+	if req.ReplicaIdx != 0 {
+		return nil, ErrInvalidReplica
+	}
+	req.ReplicaIdx = -999999999
+
+	for {
+		routingInfo := agent.routingInfo.Get()
+		if routingInfo == nil {
+			return nil, ErrShutdown
+		}
+
+		var foundPipeline *memdPipeline
+		for _, pipeline := range routingInfo.clientMux.pipelines {
+			if pipeline.Address() == address {
+				foundPipeline = pipeline
+				break
+			}
+		}
+
+		if foundPipeline == nil {
+			return nil, ErrInvalidServer
+		}
+
+		err := foundPipeline.SendRequest(req)
+		if err == errPipelineClosed {
+			continue
+		} else if err == errPipelineFull {
+			return nil, ErrOverload
+		} else if err != nil {
+			return nil, err
+		}
+
+		break
+	}
+
+	return req, nil
+}
+
 // GetCallback is invoked with the results of `Get` operations.
 type GetCallback func([]byte, uint32, Cas, error)
 

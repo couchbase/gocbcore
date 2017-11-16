@@ -467,13 +467,19 @@ func (agent *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
 	return agent.dispatchOp(req)
 }
 
-// Stats retrieves statistics information from the server.
+// Stats retrieves statistics information from the server.  Note that as this
+// function is an aggregator across numerous servers, there are no guarantees
+// about the consistency of the results.  Occasionally, some nodes may not be
+// represented in the results, or there may be conflicting information between
+// multiple nodes (a vbucket active on two separate nodes at once).
 func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, error) {
 	config := agent.routingInfo.Get()
-	allOk := true
-	// Iterate over each of the configs
+	if config == nil {
+		return nil, ErrShutdown
+	}
 
-	// TODO(brett19): Stop using routingInfo internals to dispatch these
+	stats := make(map[string]SingleServerStats)
+	var statsLock sync.Mutex
 
 	op := new(struct {
 		multiPendingOp
@@ -481,72 +487,70 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 	})
 	op.remaining = int32(config.clientMux.NumPipelines())
 
-	stats := make(map[string]SingleServerStats)
-	var statsLock sync.Mutex
-
-	defer func() {
-		if !allOk {
-			op.Cancel()
+	opHandledLocked := func() {
+		remaining := atomic.AddInt32(&op.remaining, -1)
+		if remaining == 0 {
+			callback(stats)
 		}
-	}()
+	}
 
-	for index := 0; index < config.clientMux.NumPipelines(); index++ {
-		server := config.clientMux.GetPipeline(index)
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		serverAddress := resp.sourceAddr
 
-		var req *memdQRequest
-		serverName := server.Address()
+		statsLock.Lock()
+		defer statsLock.Unlock()
 
-		handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-			statsLock.Lock()
-			defer statsLock.Unlock()
-
-			// No stat key!
-			curStats, ok := stats[serverName]
-
-			if !ok {
-				stats[serverName] = SingleServerStats{
-					Stats: make(map[string]string),
-				}
-				curStats = stats[serverName]
+		// Fetch the specific stats key for this server.  Creating a new entry
+		// for the server if we did not previously have one.
+		curStats, ok := stats[serverAddress]
+		if !ok {
+			stats[serverAddress] = SingleServerStats{
+				Stats: make(map[string]string),
 			}
-
-			if err != nil {
-				if curStats.Error == nil {
-					stats[serverName] = SingleServerStats{
-						Stats: make(map[string]string),
-						Error: err,
-					}
-				} else {
-					logDebugf("Got additional error for stats: %s: %v", serverName, err)
-				}
-
-				// After an error occurs, we have to stop processing
-				// any more results.
-				req.Cancel()
-
-				remaining := atomic.AddInt32(&op.remaining, -1)
-				if remaining == 0 {
-					callback(stats)
-				}
-				return
-			}
-
-			if len(resp.Key) == 0 {
-				// No more request for server!
-				req.Cancel()
-
-				remaining := atomic.AddInt32(&op.remaining, -1)
-				if remaining == 0 {
-					callback(stats)
-				}
-				return
-			}
-
-			curStats.Stats[string(resp.Key)] = string(resp.Value)
+			curStats = stats[serverAddress]
 		}
 
-		// Send the request
-		req = &memdQRequest{
+		if err != nil {
+			// Store the first (and hopefully only) error into the Error field of this
+			// server's stats entry.
+			if curStats.Error == nil {
+				curStats.Error = err
+			} else {
+				logDebugf("Got additional error for stats: %s: %v", serverAddress, err)
+			}
+
+			// When an error occurs, we need to cancel our persistent op.  However, because
+			// a previous error may already have cancelled this and then raced, we should
+			// ensure only a single completion is counted.
+			if req.Cancel() {
+				opHandledLocked()
+			}
+
+			return
+		}
+
+		// Check if the key length is zero.  This indicates that we have reached
+		// the ending of the stats listing by this server.
+		if len(resp.Key) == 0 {
+			// As this is a persistent request, we must manually cancel it to remove
+			// it from the pending ops list.  To ensure we do not race multiple cancels,
+			// we only handle it as completed the one time cancellation succeeds.
+			if req.Cancel() {
+				opHandledLocked()
+			}
+
+			return
+		}
+
+		// Add the stat for this server to the list of stats.
+		curStats.Stats[string(resp.Key)] = string(resp.Value)
+	}
+
+	for serverIdx := 0; serverIdx < config.clientMux.NumPipelines(); serverIdx++ {
+		pipeline := config.clientMux.GetPipeline(serverIdx)
+		serverAddress := pipeline.Address()
+
+		req := &memdQRequest{
 			memdPacket: memdPacket{
 				Magic:    reqMagic,
 				Opcode:   cmdStat,
@@ -556,16 +560,23 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 				Value:    nil,
 			},
 			Persistent: true,
-			ReplicaIdx: (-1) + (-index),
 			Callback:   handler,
 		}
 
-		curOp, err := agent.dispatchOp(req)
+		curOp, err := agent.dispatchOpToAddress(req, serverAddress)
 		if err != nil {
-			return nil, err
+			statsLock.Lock()
+			stats[serverAddress] = SingleServerStats{
+				Error: err,
+			}
+			opHandledLocked()
+			statsLock.Unlock()
+
+			continue
 		}
+
 		op.ops = append(op.ops, curOp)
 	}
-	allOk = true
+
 	return op, nil
 }
