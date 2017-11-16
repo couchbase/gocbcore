@@ -345,6 +345,9 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	// TODO(brett19): Put all configurable options in the AgentConfig
 
+	logDebugf("SDK Version: gocb/%s", goCbCoreVersionStr)
+	logDebugf("Creating new agent: %+v", config)
+
 	httpTransport := &http.Transport{
 		TLSClientConfig: config.TlsConfig,
 		Dial: (&net.Dialer{
