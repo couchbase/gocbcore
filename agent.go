@@ -700,15 +700,25 @@ func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
 		return -1
 	}
 
-	if routingInfo.vbMap == nil {
-		return -1
+	if routingInfo.vbMap != nil {
+		serverIdx, err := routingInfo.vbMap.NodeByKey(key, replicaIdx)
+		if err != nil {
+			return -1
+		}
+
+		return serverIdx
 	}
 
-	serverIdx, err := routingInfo.vbMap.NodeByKey(key, replicaIdx)
-	if err != nil {
-		return -1
+	if routingInfo.ketamaMap != nil {
+		serverIdx, err := routingInfo.ketamaMap.NodeByKey(key)
+		if err != nil {
+			return -1
+		}
+
+		return serverIdx
 	}
-	return serverIdx
+
+	return -1
 }
 
 // VbucketToServer returns the server index for a particular vbucket.
