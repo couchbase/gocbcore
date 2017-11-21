@@ -36,7 +36,7 @@ func newDeadPipeline(maxItems int) *memdPipeline {
 	return newPipeline("", 0, maxItems, nil)
 }
 
-func (pipeline memdPipeline) debugString() string {
+func (pipeline *memdPipeline) debugString() string {
 	var outStr string
 
 	if pipeline.address != "" {
@@ -54,7 +54,7 @@ func (pipeline memdPipeline) debugString() string {
 	return outStr
 }
 
-func (pipeline memdPipeline) Address() string {
+func (pipeline *memdPipeline) Address() string {
 	return pipeline.address
 }
 
