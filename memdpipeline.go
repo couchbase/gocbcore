@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 var (
@@ -19,6 +20,7 @@ type memdPipeline struct {
 	queue       *memdOpQueue
 	maxClients  int
 	clients     []*memdPipelineClient
+	clientsLock sync.Mutex
 }
 
 func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
@@ -58,6 +60,9 @@ func (pipeline *memdPipeline) Address() string {
 }
 
 func (pipeline *memdPipeline) StartClients() {
+	pipeline.clientsLock.Lock()
+	defer pipeline.clientsLock.Unlock()
+
 	for len(pipeline.clients) < pipeline.maxClients {
 		client := newMemdPipelineClient(pipeline)
 		pipeline.clients = append(pipeline.clients, client)
@@ -111,11 +116,17 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 	}
 
 	// Migrate all the clients to the new pipeline
-	pipeline.clients = oldPipeline.clients
+	oldPipeline.clientsLock.Lock()
+	clients := oldPipeline.clients
 	oldPipeline.clients = nil
+	oldPipeline.clientsLock.Unlock()
+
+	pipeline.clientsLock.Lock()
+	pipeline.clients = clients
 	for _, client := range pipeline.clients {
 		client.ReassignTo(pipeline)
 	}
+	pipeline.clientsLock.Unlock()
 
 	// Shut down the old pipelines queue, this will force all the
 	//  clients to 'refresh' their consumer, and pick up the new
@@ -126,7 +137,13 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 func (pipeline *memdPipeline) Close() error {
 	// Shut down all the clients
 	var errs MultiError
-	for _, pipecli := range pipeline.clients {
+
+	pipeline.clientsLock.Lock()
+	clients := pipeline.clients
+	pipeline.clients = nil
+	pipeline.clientsLock.Unlock()
+
+	for _, pipecli := range clients {
 		err := pipecli.Close()
 		if err != nil {
 			errs.add(err)

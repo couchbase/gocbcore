@@ -46,6 +46,13 @@ type SubDocResult struct {
 	Value []byte
 }
 
+// PingResult contains the results of a ping to a single server.
+type PingResult struct {
+	Endpoint string
+	Error    error
+	Latency  time.Duration
+}
+
 // PendingOp represents an outstanding operation within the client.
 // This can be used to cancel an operation before it completes.
 type PendingOp interface {
@@ -338,3 +345,6 @@ type MutateInCallback func([]SubDocResult, Cas, MutationToken, error)
 
 // GetMetaCallback is invoked with the results of `GetMeta` operations.
 type GetMetaCallback func([]byte, uint32, Cas, uint32, SeqNo, uint8, uint32, error)
+
+// PingCallback is invoked with the results of a multi-node ping operation.
+type PingCallback func(services []PingResult)

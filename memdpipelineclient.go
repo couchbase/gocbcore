@@ -7,6 +7,7 @@ import (
 type memdPipelineClient struct {
 	parent     *memdPipeline
 	clientDead bool
+	client     *memdClient
 	consumer   *memdOpConsumer
 	lock       sync.Mutex
 }
@@ -42,7 +43,14 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 		return
 	}
 	address := pipecli.parent.address
+	pipecli.client = client
 	pipecli.lock.Unlock()
+
+	defer func() {
+		pipecli.lock.Lock()
+		pipecli.client = nil
+		pipecli.lock.Unlock()
+	}()
 
 	killSig := make(chan struct{})
 

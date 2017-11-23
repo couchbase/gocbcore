@@ -427,6 +427,9 @@ var (
 	// ErrCliInternalError indicates an internal error occurred within the client.
 	ErrCliInternalError = errors.New("client internal error")
 
+	// ErrCancelled occurs when an operation has been cancelled by the user.
+	ErrCancelled = errors.New("Operation was cancelled by the user.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
