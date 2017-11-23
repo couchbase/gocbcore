@@ -335,3 +335,6 @@ type LookupInCallback func([]SubDocResult, Cas, error)
 
 // MutateInCallback is invoked with the results of `MutateIn` operations.
 type MutateInCallback func([]SubDocResult, Cas, MutationToken, error)
+
+// GetMetaCallback is invoked with the results of `GetMeta` operations.
+type GetMetaCallback func([]byte, uint32, Cas, uint32, SeqNo, uint8, uint32, error)

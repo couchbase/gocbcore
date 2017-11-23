@@ -785,6 +785,49 @@ func TestMemcachedBucket(t *testing.T) {
 	s.Wait(0)
 }
 
+func TestMetaOps(t *testing.T) {
+	// Currently disabled as CouchbaseMock does not support it
+	/*
+		agent, s := getAgentnSignaler(t)
+
+		var currentCas Cas
+
+		// Set
+		agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("Set operation failed")
+				}
+				if cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+
+				currentCas = cas
+			})
+		})
+		s.Wait(0)
+
+		// GetMeta
+		agent.GetMeta([]byte("test"), func(value []byte, flags uint32, cas Cas, expiry uint32, seqNo SeqNo, dataType uint8, deleted uint32, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("GetMeta operation failed")
+				}
+				if expiry != 0 {
+					s.Fatalf("Invalid expiry received")
+				}
+				if deleted != 0 {
+					s.Fatalf("Invalid deleted flag received")
+				}
+				if cas != currentCas {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		})
+		s.Wait(0)
+	*/
+}
+
 func TestMain(m *testing.M) {
 	SetLogger(DefaultStdioLogger())
 	flag.Parse()

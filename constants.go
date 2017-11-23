@@ -53,6 +53,7 @@ const (
 	cmdObserve              = commandCode(0x92)
 	cmdGetLocked            = commandCode(0x94)
 	cmdUnlockKey            = commandCode(0x95)
+	cmdGetMeta              = commandCode(0xa0)
 	cmdSetMeta              = commandCode(0xa2)
 	cmdDelMeta              = commandCode(0xa8)
 	cmdGetClusterConfig     = commandCode(0xb5)

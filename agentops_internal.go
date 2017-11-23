@@ -4,6 +4,46 @@ import (
 	"encoding/binary"
 )
 
+// GetMeta retrieves a document along with some internal Couchbase meta-data.
+func (agent *Agent) GetMeta(key []byte, cb GetMetaCallback) (PendingOp, error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		if err != nil {
+			cb(nil, 0, 0, 0, 0, 0, 0, err)
+			return
+		}
+
+		if len(resp.Extras) != 21 {
+			cb(nil, 0, 0, 0, 0, 0, 0, ErrProtocol)
+			return
+		}
+
+		deleted := binary.BigEndian.Uint32(resp.Extras[0:])
+		flags := binary.BigEndian.Uint32(resp.Extras[4:])
+		expTime := binary.BigEndian.Uint32(resp.Extras[8:])
+		seqNo := SeqNo(binary.BigEndian.Uint64(resp.Extras[12:]))
+		dataType := resp.Extras[20]
+
+		cb(resp.Value, flags, Cas(resp.Cas), expTime, seqNo, dataType, deleted, nil)
+	}
+
+	extraBuf := make([]byte, 1)
+	extraBuf[0] = 2
+
+	req := &memdQRequest{
+		memdPacket: memdPacket{
+			Magic:    reqMagic,
+			Opcode:   cmdGetMeta,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   extraBuf,
+			Key:      key,
+			Value:    nil,
+		},
+		Callback: handler,
+	}
+	return agent.dispatchOp(req)
+}
+
 // SetMeta stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMeta(key, value, extra []byte, datatype uint8, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
