@@ -164,23 +164,47 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 
 	var tlsConfig *tls.Config
 	if spec.UseSsl {
-		certpath, _ := fetchOption("certpath")
+		var certpath string
+		var keypath string
+		var cacertpaths []string
+
+		if len(spec.Options["cacertpath"]) > 0 || len(spec.Options["keypath"]) > 0 {
+			cacertpaths = spec.Options["cacertpath"]
+			certpath, _ = fetchOption("certpath")
+			keypath, _ = fetchOption("keypath")
+		} else {
+			cacertpaths = spec.Options["certpath"]
+		}
 
 		tlsConfig = &tls.Config{}
-		if certpath == "" {
-			tlsConfig.InsecureSkipVerify = true
+
+		if len(cacertpaths) > 0 {
+			roots := x509.NewCertPool()
+
+			for _, path := range cacertpaths {
+				cacert, err := ioutil.ReadFile(path)
+				if err != nil {
+					return err
+				}
+
+				ok := roots.AppendCertsFromPEM(cacert)
+				if !ok {
+					return ErrInvalidCert
+				}
+			}
+
+			tlsConfig.RootCAs = roots
 		} else {
-			cacert, err := ioutil.ReadFile(certpath)
+			tlsConfig.InsecureSkipVerify = true
+		}
+
+		if certpath != "" && keypath != "" {
+			cert, err := tls.LoadX509KeyPair(certpath, keypath)
 			if err != nil {
 				return err
 			}
 
-			roots := x509.NewCertPool()
-			ok := roots.AppendCertsFromPEM(cacert)
-			if !ok {
-				return ErrInvalidCert
-			}
-			tlsConfig.RootCAs = roots
+			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
 	}
 	config.TlsConfig = tlsConfig
