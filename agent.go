@@ -302,8 +302,13 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 			return config.AuthHandler(client, deadline)
 		}
 
-		if err := SaslAuthPlain(config.Username, config.Password, client, deadline); err != nil {
-			return err
+		if config.Username == "" && config.Password == "" {
+			// We assume a blank username and password implies that no
+			// authentication should be performed.
+		} else {
+			if err := SaslAuthPlain(config.Username, config.Password, client, deadline); err != nil {
+				return err
+			}
 		}
 
 		if client.SupportsFeature(featureSelectBucket) {
