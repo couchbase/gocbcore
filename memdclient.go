@@ -8,7 +8,7 @@ type memdClient struct {
 	conn        memdConn
 	opList      memdOpMap
 	errorMap    *kvErrorMap
-	features    []helloFeature
+	features    []HelloFeature
 	closeNotify chan bool
 	dcpAckSize  int
 	dcpFlowRecv int
@@ -23,7 +23,7 @@ func newMemdClient(conn memdConn) *memdClient {
 	return &client
 }
 
-func (client *memdClient) SupportsFeature(feature helloFeature) bool {
+func (client *memdClient) SupportsFeature(feature HelloFeature) bool {
 	return checkSupportsFeature(client.features, feature)
 }
 

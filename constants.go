@@ -76,20 +76,43 @@ const (
 	cmdGetErrorMap          = commandCode(0xfe)
 )
 
-type helloFeature uint16
+// HelloFeature represents a feature code included in a memcached
+// HELLO operation.
+type HelloFeature uint16
 
 const (
-	featureDatatype     = helloFeature(0x01)
-	featureTls          = helloFeature(0x02)
-	featureTcpNoDelay   = helloFeature(0x03)
-	featureSeqNo        = helloFeature(0x04)
-	featureTcpDelay     = helloFeature(0x05)
-	featureXattr        = helloFeature(0x06)
-	featureXerror       = helloFeature(0x07)
-	featureSelectBucket = helloFeature(0x08)
-	featureCollections  = helloFeature(0x09)
-	featureSnappy       = helloFeature(0x0a)
-	featureJson         = helloFeature(0x0b)
+	// FeatureDatatype indicates support for Datatype fields.
+	FeatureDatatype = HelloFeature(0x01)
+
+	// FeatureTls indicates support for TLS
+	FeatureTls = HelloFeature(0x02)
+
+	// FeatureTcpNoDelay indicates support for TCP no-delay.
+	FeatureTcpNoDelay = HelloFeature(0x03)
+
+	// FeatureSeqNo indicates support for mutation tokens.
+	FeatureSeqNo = HelloFeature(0x04)
+
+	// FeatureTcpDelay indicates support for TCP delay.
+	FeatureTcpDelay = HelloFeature(0x05)
+
+	// FeatureXattr indicates support for document xattrs.
+	FeatureXattr = HelloFeature(0x06)
+
+	// FeatureXerror indicates support for extended errors.
+	FeatureXerror = HelloFeature(0x07)
+
+	// FeatureSelectBucket indicates support for the SelectBucket operation.
+	FeatureSelectBucket = HelloFeature(0x08)
+
+	// FeatureCollections indicates support for collections.
+	FeatureCollections = HelloFeature(0x09)
+
+	// FeatureSnappy indicates support for snappy compressed documents.
+	FeatureSnappy = HelloFeature(0x0a)
+
+	// FeatureJson indicates support for JSON datatype data.
+	FeatureJson = HelloFeature(0x0b)
 )
 
 // StatusCode represents a memcached response status.

@@ -8,7 +8,7 @@ import (
 )
 
 type memdSenderClient interface {
-	SupportsFeature(helloFeature) bool
+	SupportsFeature(HelloFeature) bool
 	Address() string
 	SendRequest(*memdQRequest) error
 }
@@ -17,7 +17,7 @@ type memdPipelineSenderWrap struct {
 	pipeline *memdPipeline
 }
 
-func (wrap *memdPipelineSenderWrap) SupportsFeature(feature helloFeature) bool {
+func (wrap *memdPipelineSenderWrap) SupportsFeature(feature HelloFeature) bool {
 	return false
 }
 
@@ -33,7 +33,7 @@ type syncClient struct {
 	client memdSenderClient
 }
 
-func (client *syncClient) SupportsFeature(feature helloFeature) bool {
+func (client *syncClient) SupportsFeature(feature HelloFeature) bool {
 	return client.client.SupportsFeature(feature)
 }
 
@@ -99,8 +99,8 @@ func (client *syncClient) ExecDcpControl(key string, value string, deadline time
 	return err
 }
 
-func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time) ([]helloFeature, error) {
-	appendFeatureCode := func(bytes []byte, feature helloFeature) []byte {
+func (client *syncClient) ExecHello(features []HelloFeature, deadline time.Time) ([]HelloFeature, error) {
+	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
 		bytes = append(bytes, 0, 0)
 		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
 		return bytes
@@ -115,10 +115,10 @@ func (client *syncClient) ExecHello(features []helloFeature, deadline time.Time)
 
 	bytes, err := client.doBasicOp(cmdHello, clientId, featureBytes, nil, deadline)
 
-	var srvFeatures []helloFeature
+	var srvFeatures []HelloFeature
 	for i := 0; i < len(bytes); i += 2 {
 		feature := binary.BigEndian.Uint16(bytes[i:])
-		srvFeatures = append(srvFeatures, helloFeature(feature))
+		srvFeatures = append(srvFeatures, HelloFeature(feature))
 	}
 
 	return srvFeatures, err

@@ -14,6 +14,7 @@ import (
 // connected Couchbase K/V client.
 type AuthClient interface {
 	Address() string
+	SupportsFeature(feature HelloFeature) bool
 
 	ExecSaslListMechs(deadline time.Time) ([]string, error)
 	ExecSaslAuth(k, v []byte, deadline time.Time) ([]byte, error)

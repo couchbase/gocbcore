@@ -311,7 +311,7 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 			}
 		}
 
-		if client.SupportsFeature(featureSelectBucket) {
+		if client.SupportsFeature(FeatureSelectBucket) {
 			if err := client.ExecSelectBucket([]byte(config.BucketName), deadline); err != nil {
 				return err
 			}

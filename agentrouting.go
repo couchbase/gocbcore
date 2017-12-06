@@ -8,7 +8,7 @@ import (
 
 type memdInitFunc func(*syncClient, time.Time) error
 
-func checkSupportsFeature(srvFeatures []helloFeature, feature helloFeature) bool {
+func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
 	for _, srvFeature := range srvFeatures {
 		if srvFeature == feature {
 			return true
@@ -49,25 +49,25 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	}
 
 	logDebugf("Fetching cluster client data")
-	var features []helloFeature
+	var features []HelloFeature
 
 	// Send the TLS flag, which has unknown effects.
-	features = append(features, featureTls)
+	features = append(features, FeatureTls)
 
 	// Indicate that we understand XATTRs
-	features = append(features, featureXattr)
+	features = append(features, FeatureXattr)
 
 	// Indicates that we understand select buckets.
-	features = append(features, featureSelectBucket)
+	features = append(features, FeatureSelectBucket)
 
 	// If the user wants to use KV Error maps, lets enable them
 	if agent.useKvErrorMaps {
-		features = append(features, featureXerror)
+		features = append(features, FeatureXerror)
 	}
 
 	// If the user wants to use mutation tokens, lets enable them
 	if agent.useMutationTokens {
-		features = append(features, featureSeqNo)
+		features = append(features, FeatureSeqNo)
 	}
 
 	srvFeatures, err := sclient.ExecHello(features, deadline)
@@ -77,7 +77,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 
 	client.features = srvFeatures
 
-	if checkSupportsFeature(srvFeatures, featureXerror) {
+	if checkSupportsFeature(srvFeatures, FeatureXerror) {
 		errMapData, err := sclient.ExecGetErrorMap(1, deadline)
 		if err == nil {
 			errMap, err := parseKvErrorMap(errMapData)
