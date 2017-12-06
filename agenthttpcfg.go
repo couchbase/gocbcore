@@ -101,7 +101,13 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 				return 0
 			}
 
-			req.SetBasicAuth(agent.username, agent.password)
+			creds, err := getMgmtAuthCreds(agent.auth, pickedSrv)
+			if err != nil {
+				logDebugf("Failed to build get config credentials. %v", err)
+				return 0
+			}
+
+			req.SetBasicAuth(creds.Username, creds.Password)
 
 			resp, err = agent.httpCli.Do(req)
 			if err != nil {

@@ -469,3 +469,26 @@ const (
 	// Internal: This should never be used and is not supported.
 	SubdocDocFlagAccessDeleted = SubdocDocFlag(0x04)
 )
+
+// ServiceType specifies a particular Couchbase service type.
+type ServiceType int
+
+const (
+	// MemdService represents a memcached service.
+	MemdService = ServiceType(1)
+
+	// MgmtService represents a management service (typically ns_server).
+	MgmtService = ServiceType(2)
+
+	// CapiService represents a CouchAPI service (typically for views).
+	CapiService = ServiceType(3)
+
+	// N1qlService represents a N1QL service (typically for query).
+	N1qlService = ServiceType(4)
+
+	// FtsService represents a full-text-search service.
+	FtsService = ServiceType(5)
+
+	// CbasService represents an analytics service.
+	CbasService = ServiceType(6)
+)

@@ -22,9 +22,8 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
+	auth              AuthProvider
 	bucket            string
-	username          string
-	password          string
 	tlsConfig         *tls.Config
 	initFn            memdInitFunc
 	useMutationTokens bool
@@ -83,9 +82,8 @@ type AgentConfig struct {
 	HttpAddrs         []string
 	TlsConfig         *tls.Config
 	BucketName        string
-	Username          string
-	Password          string
 	AuthHandler       AuthFunc
+	Auth              AuthProvider
 	UseMutationTokens bool
 	UseKvErrorMaps    bool
 	UseEnhancedErrors bool
@@ -100,6 +98,14 @@ type AgentConfig struct {
 	NmvRetryDelay        time.Duration
 	KvPoolSize           int
 	MaxQueueSize         int
+
+	// Username specifies the username to use when connecting.
+	// DEPRECATED
+	Username string
+
+	// Password specifies the password to use when connecting.
+	// DEPRECATED
+	Password string
 }
 
 // FromConnStr populates the AgentConfig with information from a
@@ -296,23 +302,19 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	return nil
 }
 
-func createInitFn(config *AgentConfig) memdInitFunc {
-	return func(client *syncClient, deadline time.Time) error {
-		if config.AuthHandler != nil {
-			return config.AuthHandler(client, deadline)
+func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFunc {
+	return func(client AuthClient, deadline time.Time) error {
+		creds, err := getKvAuthCreds(authProvider, client.Address())
+		if err != nil {
+			return nil
 		}
 
-		if config.Username == "" && config.Password == "" {
-			// We assume a blank username and password implies that no
-			// authentication should be performed.
-		} else {
-			if err := SaslAuthPlain(config.Username, config.Password, client, deadline); err != nil {
-				return err
-			}
+		if err := SaslAuthPlain(creds.Username, creds.Password, client, deadline); err != nil {
+			return err
 		}
 
 		if client.SupportsFeature(FeatureSelectBucket) {
-			if err := client.ExecSelectBucket([]byte(config.BucketName), deadline); err != nil {
+			if err := client.ExecSelectBucket([]byte(bucketName), deadline); err != nil {
 				return err
 			}
 		}
@@ -321,21 +323,48 @@ func createInitFn(config *AgentConfig) memdInitFunc {
 	}
 }
 
+func normalizeAgentConfig(configIn *AgentConfig) *AgentConfig {
+	config := *configIn
+
+	// If the user does not provide an authentication provider, we should use
+	// the deprecated username/password fields to create one.
+	if config.Auth == nil {
+		config.Auth = &PasswordAuthProvider{
+			Username: config.Username,
+			Password: config.Password,
+		}
+	}
+
+	// TODO: The location of this happening is a bit strange
+	if config.AuthHandler == nil {
+		config.AuthHandler = makeDefaultAuthHandler(config.Auth, config.BucketName)
+	}
+
+	return &config
+}
+
 // CreateAgent creates an agent for performing normal operations.
-func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := createInitFn(config)
+func CreateAgent(configIn *AgentConfig) (*Agent, error) {
+	config := normalizeAgentConfig(configIn)
+
+	initFn := func(client *syncClient, deadline time.Time) error {
+		return config.AuthHandler(client, deadline)
+	}
+
 	return createAgent(config, initFn)
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
-func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
+func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
+	config := normalizeAgentConfig(configIn)
+
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	initFn := createInitFn(config)
-	dcpInitFn := func(client *syncClient, deadline time.Time) error {
-		if err := initFn(client, deadline); err != nil {
+	initFn := func(client *syncClient, deadline time.Time) error {
+		if err := config.AuthHandler(client, deadline); err != nil {
 			return err
 		}
+
 		if err := client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
 			return err
 		}
@@ -344,7 +373,8 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 		}
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
-	return createAgent(config, dcpInitFn)
+
+	return createAgent(config, initFn)
 }
 
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
@@ -368,8 +398,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c := &Agent{
 		bucket:    config.BucketName,
-		username:  config.Username,
-		password:  config.Password,
+		auth:      config.Auth,
 		tlsConfig: config.TlsConfig,
 		initFn:    initFn,
 		httpCli: &http.Client{

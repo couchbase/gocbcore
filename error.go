@@ -430,6 +430,9 @@ var (
 	// ErrCancelled occurs when an operation has been cancelled by the user.
 	ErrCancelled = errors.New("Operation was cancelled by the user.")
 
+	// ErrInvalidCredentials is returned when an invalid set of credentials is provided for a service.
+	ErrInvalidCredentials = errors.New("An invalid set of credentials was provided.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
