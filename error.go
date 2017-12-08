@@ -433,6 +433,21 @@ var (
 	// ErrInvalidCredentials is returned when an invalid set of credentials is provided for a service.
 	ErrInvalidCredentials = errors.New("An invalid set of credentials was provided.")
 
+	// ErrInvalidService occurs when an invalid service is specified for an operation.
+	ErrInvalidService = errors.New("Invalid service specified")
+
+	// ErrNoMgmtService occurs when no mgmt services are available for a request.
+	ErrNoMgmtService = errors.New("No available management nodes.")
+
+	// ErrNoCapiService occurs when no capi services are available for a request.
+	ErrNoCapiService = errors.New("No available capi nodes.")
+
+	// ErrNoN1qlService occurs when no N1QL services are available for a request.
+	ErrNoN1qlService = errors.New("No available n1ql nodes.")
+
+	// ErrNoFtsService occurs when no FTS services are available for a request.
+	ErrNoFtsService = errors.New("No available fts nodes.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
