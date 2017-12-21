@@ -52,42 +52,51 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 
 	if bk.NodesExt != nil {
 		for _, node := range bk.NodesExt {
+			hostname := node.Hostname
+
 			// Hostname blank means to use the same one as was connected to
-			if node.Hostname == "" {
-				node.Hostname = bk.SourceHostname
+			if hostname == "" {
+				// Note that the SourceHostname will already be IPv6 wrapped
+				hostname = bk.SourceHostname
+			} else {
+				// We need to detect an IPv6 address here and wrap it in the appropriate
+				// [] block to indicate its IPv6 for the rest of the system.
+				if strings.Contains(hostname, ":") {
+					hostname = "[" + hostname + "]"
+				}
 			}
 
 			if !useSsl {
 				if node.Services.Kv > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", node.Hostname, node.Services.Kv))
+					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, node.Services.Kv))
 				}
 				if node.Services.Capi > 0 {
-					capiEpList = append(capiEpList, fmt.Sprintf("http://%s:%d/%s", node.Hostname, node.Services.Capi, bk.Name))
+					capiEpList = append(capiEpList, fmt.Sprintf("http://%s:%d/%s", hostname, node.Services.Capi, bk.Name))
 				}
 				if node.Services.Mgmt > 0 {
-					mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s:%d", node.Hostname, node.Services.Mgmt))
+					mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.Mgmt))
 				}
 				if node.Services.N1ql > 0 {
-					n1qlEpList = append(n1qlEpList, fmt.Sprintf("http://%s:%d", node.Hostname, node.Services.N1ql))
+					n1qlEpList = append(n1qlEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.N1ql))
 				}
 				if node.Services.Fts > 0 {
-					ftsEpList = append(ftsEpList, fmt.Sprintf("http://%s:%d", node.Hostname, node.Services.Fts))
+					ftsEpList = append(ftsEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.Fts))
 				}
 			} else {
 				if node.Services.KvSsl > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", node.Hostname, node.Services.KvSsl))
+					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, node.Services.KvSsl))
 				}
 				if node.Services.CapiSsl > 0 {
-					capiEpList = append(capiEpList, fmt.Sprintf("https://%s:%d/%s", node.Hostname, node.Services.CapiSsl, bk.Name))
+					capiEpList = append(capiEpList, fmt.Sprintf("https://%s:%d/%s", hostname, node.Services.CapiSsl, bk.Name))
 				}
 				if node.Services.MgmtSsl > 0 {
-					mgmtEpList = append(mgmtEpList, fmt.Sprintf("https://%s:%d", node.Hostname, node.Services.MgmtSsl))
+					mgmtEpList = append(mgmtEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.MgmtSsl))
 				}
 				if node.Services.N1qlSsl > 0 {
-					n1qlEpList = append(n1qlEpList, fmt.Sprintf("https://%s:%d", node.Hostname, node.Services.N1qlSsl))
+					n1qlEpList = append(n1qlEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.N1qlSsl))
 				}
 				if node.Services.FtsSsl > 0 {
-					ftsEpList = append(ftsEpList, fmt.Sprintf("https://%s:%d", node.Hostname, node.Services.FtsSsl))
+					ftsEpList = append(ftsEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.FtsSsl))
 				}
 			}
 		}
