@@ -1,6 +1,6 @@
 package gocbcore
 
-// UserPassPair reprents a username and password pair.
+// UserPassPair represents a username and password pair.
 type UserPassPair struct {
 	Username string
 	Password string
