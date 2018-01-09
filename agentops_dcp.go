@@ -51,7 +51,7 @@ type VbSeqNoEntry struct {
 type GetVBucketSeqnosCallback func([]VbSeqNoEntry, error)
 
 // OpenStream opens a DCP stream for a particular VBucket.
-func (agent *Agent) OpenStream(vbId uint16, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
+func (agent *Agent) OpenStream(vbId uint16, flags DcpStreamAddFlag, vbUuid VbUuid, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if resp != nil && resp.Magic == resMagic {

@@ -399,14 +399,14 @@ const (
 	SubDocOpDeleteDoc = SubDocOpType(cmdDelete)
 )
 
-// DcpOpenFlag specifies flags for DCP streams configured when the stream is opened.
+// DcpOpenFlag specifies flags for DCP connections configured when the stream is opened.
 type DcpOpenFlag uint32
 
 const (
-	// DcpOpenFlagProducer indicates this stream wants the other end to be a producer.
+	// DcpOpenFlagProducer indicates this connection wants the other end to be a producer.
 	DcpOpenFlagProducer = DcpOpenFlag(0x01)
 
-	// DcpOpenFlagNotifier indicates this stream wants the other end to be a notifier.
+	// DcpOpenFlagNotifier indicates this connection wants the other end to be a notifier.
 	DcpOpenFlagNotifier = DcpOpenFlag(0x02)
 
 	// DcpOpenFlagIncludeXattrs indicates the client wishes to receive extended attributes.
@@ -414,6 +414,21 @@ const (
 
 	// DcpOpenFlagNoValue indicates the client does not wish to receive mutation values.
 	DcpOpenFlagNoValue = DcpOpenFlag(0x08)
+)
+
+// DcpStreamAddFlag specifies flags for DCP streams configured when the stream is opened.
+type DcpStreamAddFlag uint32
+
+const (
+	// DcpStreamAddFlagLatest indicates this stream wants to get data up to the latest seqno.
+	DcpStreamAddFlagLatest = DcpStreamAddFlag(0x04)
+
+	// DcpStreamAddFlagActiveOnly indicates this stream should only connect to an active vbucket.
+	DcpStreamAddFlagActiveOnly = DcpStreamAddFlag(0x10)
+
+	// DcpStreamAddFlagStrictVBUUID indicates the vbuuid must match unless the start seqno
+	// is 0 and the vbuuid is also 0.
+	DcpStreamAddFlagStrictVBUUID = DcpStreamAddFlag(0x20)
 )
 
 // DatatypeFlag specifies data flags for the value of a document.
