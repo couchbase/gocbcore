@@ -22,6 +22,7 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
+	userString        string
 	auth              AuthProvider
 	bucket            string
 	tlsConfig         *tls.Config
@@ -78,6 +79,7 @@ type AuthFunc func(client AuthClient, deadline time.Time) error
 
 // AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
+	UserString        string
 	MemdAddrs         []string
 	HttpAddrs         []string
 	TlsConfig         *tls.Config
@@ -421,10 +423,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	c := &Agent{
-		bucket:    config.BucketName,
-		auth:      config.Auth,
-		tlsConfig: config.TlsConfig,
-		initFn:    initFn,
+		userString: config.UserString,
+		bucket:     config.BucketName,
+		auth:       config.Auth,
+		tlsConfig:  config.TlsConfig,
+		initFn:     initFn,
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},

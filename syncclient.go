@@ -99,7 +99,7 @@ func (client *syncClient) ExecDcpControl(key string, value string, deadline time
 	return err
 }
 
-func (client *syncClient) ExecHello(features []HelloFeature, deadline time.Time) ([]HelloFeature, error) {
+func (client *syncClient) ExecHello(clientId string, features []HelloFeature, deadline time.Time) ([]HelloFeature, error) {
 	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
 		bytes = append(bytes, 0, 0)
 		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
@@ -111,9 +111,7 @@ func (client *syncClient) ExecHello(features []HelloFeature, deadline time.Time)
 		featureBytes = appendFeatureCode(featureBytes, feature)
 	}
 
-	clientId := []byte("gocb/" + goCbCoreVersionStr)
-
-	bytes, err := client.doBasicOp(cmdHello, clientId, featureBytes, nil, deadline)
+	bytes, err := client.doBasicOp(cmdHello, []byte(clientId), featureBytes, nil, deadline)
 
 	var srvFeatures []HelloFeature
 	for i := 0; i < len(bytes); i += 2 {

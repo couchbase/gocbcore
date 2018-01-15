@@ -70,7 +70,12 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		features = append(features, FeatureSeqNo)
 	}
 
-	srvFeatures, err := sclient.ExecHello(features, deadline)
+	clientId := "gocbcore/" + goCbCoreVersionStr
+	if agent.userString != "" {
+		clientId += " " + agent.userString
+	}
+
+	srvFeatures, err := sclient.ExecHello(clientId, features, deadline)
 	if err != nil {
 		logDebugf("Failed to HELLO with server (%s)", err)
 	}
