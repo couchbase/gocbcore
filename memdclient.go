@@ -2,16 +2,19 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"sync/atomic"
+	"time"
 )
 
 type memdClient struct {
-	conn        memdConn
-	opList      memdOpMap
-	errorMap    *kvErrorMap
-	features    []HelloFeature
-	closeNotify chan bool
-	dcpAckSize  int
-	dcpFlowRecv int
+	conn         memdConn
+	opList       memdOpMap
+	errorMap     *kvErrorMap
+	features     []HelloFeature
+	closeNotify  chan bool
+	dcpAckSize   int
+	dcpFlowRecv  int
+	lastActivity int64
 }
 
 func newMemdClient(conn memdConn) *memdClient {
@@ -158,6 +161,8 @@ func (client *memdClient) run() {
 				logErrorf("memdClient read failure: %v", err)
 				break
 			}
+
+			atomic.StoreInt64(&client.lastActivity, time.Now().UnixNano())
 
 			// We handle DCP no-op's directly here so we can reply immediately.
 			if resp.memdPacket.Opcode == cmdDcpNoop {

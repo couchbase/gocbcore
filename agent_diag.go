@@ -122,8 +122,9 @@ func (agent *Agent) Ping(callback PingCallback) (PendingOp, error) {
 // MemdConnInfo represents information we know about a particular
 // memcached connection reported in a diagnostics report.
 type MemdConnInfo struct {
-	LocalAddr  string
-	RemoteAddr string
+	LocalAddr    string
+	RemoteAddr   string
+	LastActivity time.Time
 }
 
 // DiagnosticInfo is returned by the Diagnostics method and includes
@@ -151,16 +152,22 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 			pipeline.clientsLock.Lock()
 			for _, pipecli := range pipeline.clients {
 				localAddr := ""
+				var lastActivity time.Time
 
 				pipecli.lock.Lock()
 				if pipecli.client != nil {
 					localAddr = pipecli.client.Address()
+					lastActivityUs := atomic.LoadInt64(&pipecli.client.lastActivity)
+					if lastActivityUs != 0 {
+						lastActivity = time.Unix(0, lastActivityUs)
+					}
 				}
 				pipecli.lock.Unlock()
 
 				conns = append(conns, MemdConnInfo{
-					LocalAddr:  localAddr,
-					RemoteAddr: remoteAddr,
+					LocalAddr:    localAddr,
+					RemoteAddr:   remoteAddr,
+					LastActivity: lastActivity,
 				})
 			}
 			pipeline.clientsLock.Unlock()

@@ -828,6 +828,38 @@ func TestMetaOps(t *testing.T) {
 	*/
 }
 
+func TestPing(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+
+	agent.Ping(func(services []PingResult) {
+		s.Wrap(func() {
+			if len(services) == 0 {
+				s.Fatalf("Ping report contained no results")
+			}
+		})
+	})
+	s.Wait(5)
+}
+
+func TestDiagnostics(t *testing.T) {
+	agent, _ := getAgentnSignaler(t)
+
+	report, err := agent.Diagnostics()
+	if err != nil {
+		t.Fatalf("Failed to fetch diagnostics: %s", err)
+	}
+
+	if len(report.MemdConns) == 0 {
+		t.Fatalf("Diagnostics report contained no results")
+	}
+
+	for _, conn := range report.MemdConns {
+		if conn.RemoteAddr == "" {
+			t.Fatalf("Diagnostic report contained invalid entry")
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	SetLogger(DefaultStdioLogger())
 	flag.Parse()
