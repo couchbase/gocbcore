@@ -118,7 +118,7 @@ func (agent *Agent) OpenStream(vbId uint16, flags DcpStreamAddFlag, vbUuid VbUui
 	}
 
 	extraBuf := make([]byte, 48)
-	binary.BigEndian.PutUint32(extraBuf[0:], 0)
+	binary.BigEndian.PutUint32(extraBuf[0:], uint32(flags))
 	binary.BigEndian.PutUint32(extraBuf[4:], 0)
 	binary.BigEndian.PutUint64(extraBuf[8:], uint64(startSeqNo))
 	binary.BigEndian.PutUint64(extraBuf[16:], uint64(endSeqNo))
