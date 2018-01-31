@@ -70,6 +70,11 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		features = append(features, FeatureSeqNo)
 	}
 
+	// If the user wants on-the-wire compression, lets try to enable it
+	if agent.useCompression {
+		features = append(features, FeatureSnappy)
+	}
+
 	clientId := "gocbcore/" + goCbCoreVersionStr
 	if agent.userString != "" {
 		clientId += " " + agent.userString

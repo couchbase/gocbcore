@@ -2,9 +2,26 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"github.com/golang/snappy"
 	"sync/atomic"
 	"time"
 )
+
+func isCompressibleOp(command commandCode) bool {
+	switch command {
+	case cmdSet:
+		fallthrough
+	case cmdAdd:
+		fallthrough
+	case cmdReplace:
+		fallthrough
+	case cmdAppend:
+		fallthrough
+	case cmdPrepend:
+		return true
+	}
+	return false
+}
 
 type memdClient struct {
 	conn         memdConn
@@ -74,9 +91,20 @@ func (client *memdClient) CloseNotify() chan bool {
 func (client *memdClient) SendRequest(req *memdQRequest) error {
 	client.opList.Add(req)
 
+	packet := &req.memdPacket
+	if client.SupportsFeature(FeatureSnappy) {
+		isCompressed := (packet.Datatype & uint8(DatatypeFlagCompressed)) != 0
+		if !isCompressed && isCompressibleOp(packet.Opcode) {
+			newPacket := *packet
+			newPacket.Value = snappy.Encode(nil, packet.Value)
+			newPacket.Datatype = newPacket.Datatype | uint8(DatatypeFlagCompressed)
+			packet = &newPacket
+		}
+	}
+
 	logSchedf("Writing request. %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), req.Opcode, req.Opaque)
 
-	err := client.conn.WritePacket(&req.memdPacket)
+	err := client.conn.WritePacket(packet)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
 		client.opList.Remove(req)
@@ -96,6 +124,18 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		// There is no known request that goes with this response.  Ignore it.
 		logDebugf("Received response with no corresponding request.")
 		return
+	}
+
+	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
+	if isCompressed {
+		newValue, err := snappy.Decode(nil, resp.Value)
+		if err != nil {
+			logDebugf("Failed to decompress value from the server for key `%s`.", req.Key)
+			return
+		}
+
+		resp.Value = newValue
+		resp.Datatype = resp.Datatype & ^uint8(DatatypeFlagCompressed)
 	}
 
 	// Give the agent an opportunity to intercept the response first

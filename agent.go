@@ -30,6 +30,7 @@ type Agent struct {
 	useMutationTokens bool
 	useKvErrorMaps    bool
 	useEnhancedErrors bool
+	useCompression    bool
 
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
@@ -89,6 +90,7 @@ type AgentConfig struct {
 	UseMutationTokens bool
 	UseKvErrorMaps    bool
 	UseEnhancedErrors bool
+	UseCompression    bool
 
 	HttpRedialPeriod time.Duration
 	HttpRetryDelay   time.Duration
@@ -325,6 +327,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseMutationTokens = val
 	}
 
+	if valStr, ok := fetchOption("compression"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("compression option must be a boolean")
+		}
+		config.UseCompression = val
+	}
+
 	return nil
 }
 
@@ -434,6 +444,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
 		useEnhancedErrors:    config.UseEnhancedErrors,
+		useCompression:       config.UseCompression,
 		serverFailures:       make(map[string]time.Time),
 		serverConnectTimeout: 7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,
