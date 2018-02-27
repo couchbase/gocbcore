@@ -1,10 +1,18 @@
 package gocbcore
 
 import (
+	"github.com/opentracing/opentracing-go"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// PingResult contains the results of a ping to a single server.
+type PingResult struct {
+	Endpoint string
+	Error    error
+	Latency  time.Duration
+}
 
 type pingSubOp struct {
 	op       PendingOp
@@ -16,7 +24,7 @@ type pingOp struct {
 	subops    []pingSubOp
 	remaining int32
 	results   []PingResult
-	callback  PingCallback
+	callback  PingKvExCallback
 }
 
 func (pop *pingOp) Cancel() bool {
@@ -38,20 +46,35 @@ func (pop *pingOp) Cancel() bool {
 func (pop *pingOp) handledOneLocked() {
 	remaining := atomic.AddInt32(&pop.remaining, -1)
 	if remaining == 0 {
-		pop.callback(pop.results)
+		pop.callback(&PingKvResult{
+			Services: pop.results,
+		}, nil)
 	}
 }
 
-// Ping pings all of the servers we are connected to and returns
+// PingKvOptions encapsulates the parameters for a PingKvEx operation.
+type PingKvOptions struct {
+	TraceContext opentracing.SpanContext
+}
+
+// PingKvResult encapsulates the result of a PingKvEx operation.
+type PingKvResult struct {
+	Services []PingResult
+}
+
+// PingKvExCallback is invoked upon completion of a PingKvEx operation.
+type PingKvExCallback func(*PingKvResult, error)
+
+// PingKvEx pings all of the servers we are connected to and returns
 // a report regarding the pings that were performed.
-func (agent *Agent) Ping(callback PingCallback) (PendingOp, error) {
+func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
 	config := agent.routingInfo.Get()
 	if config == nil {
 		return nil, ErrShutdown
 	}
 
 	op := &pingOp{
-		callback:  callback,
+		callback:  cb,
 		remaining: 1,
 	}
 

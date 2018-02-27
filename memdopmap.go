@@ -26,19 +26,19 @@ type memdOpMap struct {
 }
 
 // Add a new request to the bottom of the op queue.
-func (q *memdOpMap) Add(req *memdQRequest) {
+func (q *memdOpMap) Add(req *memdQRequest) bool {
 	q.lock.Lock()
 
 	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(q)) {
 		logDebugf("Attempted to put dispatched op in new opmap")
 		q.lock.Unlock()
-		return
+		return false
 	}
 
 	if req.isCancelled() {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(q), nil)
 		q.lock.Unlock()
-		return
+		return false
 	}
 
 	q.opIndex++
@@ -58,6 +58,7 @@ func (q *memdOpMap) Add(req *memdQRequest) {
 	}
 
 	q.lock.Unlock()
+	return true
 }
 
 // Removes a request from the op queue.  Expects to be passed

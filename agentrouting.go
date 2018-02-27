@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"sort"
 	"time"
 )
@@ -42,7 +43,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		return nil, err
 	}
 
-	client := newMemdClient(memdConn)
+	client := newMemdClient(agent, memdConn)
 
 	sclient := syncClient{
 		client: client,
@@ -75,15 +76,35 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		features = append(features, FeatureSnappy)
 	}
 
-	clientId := "gocbcore/" + goCbCoreVersionStr
-	if agent.userString != "" {
-		clientId += " " + agent.userString
+	if agent.useDurations {
+		features = append(features, FeatureDurations)
 	}
 
-	srvFeatures, err := sclient.ExecHello(clientId, features, deadline)
+	agentName := "gocbcore/" + goCbCoreVersionStr
+	if agent.userString != "" {
+		agentName += " " + agent.userString
+	}
+
+	clientInfo := struct {
+		Agent  string `json:"a"`
+		ConnId string `json:"i"`
+	}{
+		Agent:  agentName,
+		ConnId: client.connId,
+	}
+	clientInfoBytes, err := json.Marshal(clientInfo)
+	if err != nil {
+		logDebugf("Failed to generate client info string: %s", err)
+	}
+	clientInfoStr := string(clientInfoBytes)
+
+	srvFeatures, err := sclient.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
 		logDebugf("Failed to HELLO with server (%s)", err)
 	}
+
+	logDebugf("Client Features: %+v", features)
+	logDebugf("Server Features: %+v", srvFeatures)
 
 	client.features = srvFeatures
 
@@ -322,6 +343,8 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 }
 
 func (agent *Agent) dispatchDirect(req *memdQRequest) error {
+	agent.startCmdTrace(req)
+
 	for {
 		pipeline, err := agent.routeRequest(req)
 		if err != nil {
@@ -343,7 +366,53 @@ func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 	return nil
 }
 
+func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) error {
+	agent.startCmdTrace(req)
+
+	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
+	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
+	if req.ReplicaIdx != 0 {
+		return ErrInvalidReplica
+	}
+	req.ReplicaIdx = -999999999
+
+	for {
+		routingInfo := agent.routingInfo.Get()
+		if routingInfo == nil {
+			return ErrShutdown
+		}
+
+		var foundPipeline *memdPipeline
+		for _, pipeline := range routingInfo.clientMux.pipelines {
+			if pipeline.Address() == address {
+				foundPipeline = pipeline
+				break
+			}
+		}
+
+		if foundPipeline == nil {
+			return ErrInvalidServer
+		}
+
+		err := foundPipeline.SendRequest(req)
+		if err == errPipelineClosed {
+			continue
+		} else if err == errPipelineFull {
+			return ErrOverload
+		} else if err != nil {
+			return err
+		}
+
+		break
+	}
+
+	return nil
+}
+
 func (agent *Agent) requeueDirect(req *memdQRequest) {
+	agent.stopCmdTrace(req)
+	agent.startCmdTrace(req)
+
 	handleError := func(err error) {
 		logErrorf("Reschedule failed, failing request (%s)", err)
 

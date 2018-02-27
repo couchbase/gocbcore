@@ -2,18 +2,43 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"github.com/opentracing/opentracing-go"
 )
 
-// GetMeta retrieves a document along with some internal Couchbase meta-data.
-func (agent *Agent) GetMeta(key []byte, cb GetMetaCallback) (PendingOp, error) {
+// GetMetaOptions encapsulates the parameters for a GetMetaEx operation.
+type GetMetaOptions struct {
+	Key          []byte
+	TraceContext opentracing.SpanContext
+}
+
+// GetMetaResult encapsulates the result of a GetMetaEx operation.
+type GetMetaResult struct {
+	Value    []byte
+	Flags    uint32
+	Cas      Cas
+	Expiry   uint32
+	SeqNo    SeqNo
+	Datatype uint8
+	Deleted  uint32
+}
+
+// GetMetaExCallback is invoked upon completion of a GetMetaEx operation.
+type GetMetaExCallback func(*GetMetaResult, error)
+
+// GetMetaEx retrieves a document along with some internal Couchbase meta-data.
+func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, 0, 0, 0, 0, 0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 21 {
-			cb(nil, 0, 0, 0, 0, 0, 0, ErrProtocol)
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 
@@ -23,7 +48,16 @@ func (agent *Agent) GetMeta(key []byte, cb GetMetaCallback) (PendingOp, error) {
 		seqNo := SeqNo(binary.BigEndian.Uint64(resp.Extras[12:]))
 		dataType := resp.Extras[20]
 
-		cb(resp.Value, flags, Cas(resp.Cas), expTime, seqNo, dataType, deleted, nil)
+		tracer.Finish()
+		cb(&GetMetaResult{
+			Value:    resp.Value,
+			Flags:    flags,
+			Cas:      Cas(resp.Cas),
+			Expiry:   expTime,
+			SeqNo:    seqNo,
+			Datatype: dataType,
+			Deleted:  deleted,
+		}, nil)
 	}
 
 	extraBuf := make([]byte, 1)
@@ -36,19 +70,46 @@ func (agent *Agent) GetMeta(key []byte, cb GetMetaCallback) (PendingOp, error) {
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// SetMeta stores a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) SetMeta(key, value, extra []byte, datatype uint8, options, flags, expiry uint32, cas, revseqno uint64, cb StoreCallback) (PendingOp, error) {
+// SetMetaOptions encapsulates the parameters for a SetMetaEx operation.
+type SetMetaOptions struct {
+	Key          []byte
+	Value        []byte
+	Extra        []byte
+	Datatype     uint8
+	Options      uint32
+	Flags        uint32
+	Expiry       uint32
+	Cas          Cas
+	RevNo        uint64
+	TraceContext opentracing.SpanContext
+}
+
+// SetMetaResult encapsulates the result of a SetMetaEx operation.
+type SetMetaResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// SetMetaExCallback is invoked upon completion of a SetMetaEx operation.
+type SetMetaExCallback func(*SetMetaResult, error)
+
+// SetMetaEx stores a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -59,37 +120,68 @@ func (agent *Agent) SetMeta(key, value, extra []byte, datatype uint8, options, f
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&SetMetaResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
-	extraBuf := make([]byte, 30+len(extra))
-	binary.BigEndian.PutUint32(extraBuf[0:], flags)
-	binary.BigEndian.PutUint32(extraBuf[4:], expiry)
-	binary.BigEndian.PutUint64(extraBuf[8:], revseqno)
-	binary.BigEndian.PutUint64(extraBuf[16:], cas)
-	binary.BigEndian.PutUint32(extraBuf[24:], options)
-	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(extra)))
-	copy(extraBuf[30:], extra)
+	extraBuf := make([]byte, 30+len(opts.Extra))
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
+	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
+	binary.BigEndian.PutUint64(extraBuf[8:], uint64(opts.RevNo))
+	binary.BigEndian.PutUint64(extraBuf[16:], uint64(opts.Cas))
+	binary.BigEndian.PutUint32(extraBuf[24:], opts.Options)
+	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(opts.Extra)))
+	copy(extraBuf[30:], opts.Extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdSetMeta,
-			Datatype: datatype,
+			Datatype: opts.Datatype,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
-			Value:    value,
+			Key:      opts.Key,
+			Value:    opts.Value,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// DeleteMeta deletes a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) DeleteMeta(key, value, extra []byte, datatype uint8, options, flags, expiry uint32, cas, revseqno uint64, cb RemoveCallback) (PendingOp, error) {
+// DeleteMetaOptions encapsulates the parameters for a DeleteMetaEx operation.
+type DeleteMetaOptions struct {
+	Key          []byte
+	Value        []byte
+	Extra        []byte
+	Datatype     uint8
+	Options      uint32
+	Flags        uint32
+	Expiry       uint32
+	Cas          Cas
+	RevNo        uint64
+	TraceContext opentracing.SpanContext
+}
+
+// DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
+type DeleteMetaResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// DeleteMetaExCallback is invoked upon completion of a DeleteMetaEx operation.
+type DeleteMetaExCallback func(*DeleteMetaResult, error)
+
+// DeleteMetaEx deletes a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -100,28 +192,33 @@ func (agent *Agent) DeleteMeta(key, value, extra []byte, datatype uint8, options
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&DeleteMetaResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
-	extraBuf := make([]byte, 30+len(extra))
-	binary.BigEndian.PutUint32(extraBuf[0:], flags)
-	binary.BigEndian.PutUint32(extraBuf[4:], expiry)
-	binary.BigEndian.PutUint64(extraBuf[8:], revseqno)
-	binary.BigEndian.PutUint64(extraBuf[16:], cas)
-	binary.BigEndian.PutUint32(extraBuf[24:], options)
-	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(extra)))
-	copy(extraBuf[30:], extra)
+	extraBuf := make([]byte, 30+len(opts.Extra))
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
+	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
+	binary.BigEndian.PutUint64(extraBuf[8:], opts.RevNo)
+	binary.BigEndian.PutUint64(extraBuf[16:], uint64(opts.Cas))
+	binary.BigEndian.PutUint32(extraBuf[24:], opts.Options)
+	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(opts.Extra)))
+	copy(extraBuf[30:], opts.Extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdDelMeta,
-			Datatype: datatype,
+			Datatype: opts.Datatype,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
-			Value:    value,
+			Key:      opts.Key,
+			Value:    opts.Value,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }

@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"github.com/opentracing/opentracing-go"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -12,11 +13,11 @@ import (
 type memdQResponse struct {
 	memdPacket
 
-	sourceAddr string
+	sourceAddr   string
+	sourceConnId string
 }
 
 type callback func(*memdQResponse, *memdQRequest, error)
-type routingCallback func(*memdQResponse, *memdQRequest) (bool, error)
 
 // The data for a request that can be queued with a memdqueueconn,
 // and can potentially be rerouted to multiple servers due to
@@ -25,10 +26,14 @@ type memdQRequest struct {
 	memdPacket
 
 	// Static routing properties
-	ReplicaIdx      int
-	Callback        callback
-	Persistent      bool
-	RoutingCallback routingCallback
+	ReplicaIdx int
+	Callback   callback
+	Persistent bool
+
+	// Owner represents the agent which created and currently owns
+	// this request.  This is used for specialized routing such as
+	// not-my-vbucket and enhanced errors.
+	owner *Agent
 
 	// This tracks when the request was dispatched so that we can
 	//  properly prioritize older requests to try and meet timeout
@@ -54,6 +59,10 @@ type memdQRequest struct {
 	// retried, and is used for various non-linear retry
 	// algorithms.
 	retryCount uint32
+
+	RootTraceContext opentracing.SpanContext
+	cmdTraceSpan     opentracing.Span
+	netTraceSpan     opentracing.Span
 }
 
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
@@ -92,5 +101,6 @@ func (req *memdQRequest) Cancel() bool {
 		waitingIn.Remove(req)
 	}
 
+	req.owner.cancelReqTrace(req, ErrCancelled)
 	return true
 }

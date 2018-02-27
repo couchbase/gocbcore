@@ -9,6 +9,14 @@ type commandMagic uint8
 const (
 	reqMagic = commandMagic(0x80)
 	resMagic = commandMagic(0x81)
+
+	altResMagic = commandMagic(0x18)
+)
+
+type frameExtraType uint16
+
+const (
+	srvDurationFrameExtra = frameExtraType(0)
 )
 
 // commandCode for memcached packets.
@@ -113,6 +121,9 @@ const (
 
 	// FeatureJson indicates support for JSON datatype data.
 	FeatureJson = HelloFeature(0x0b)
+
+	// FeatureDurations indicates support for server durations.
+	FeatureDurations = HelloFeature(0xf)
 )
 
 // StatusCode represents a memcached response status.

@@ -2,19 +2,45 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"github.com/opentracing/opentracing-go"
 	"sync"
 	"sync/atomic"
 )
 
-// Get retrieves a document.
-func (agent *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+// GetOptions encapsulates the parameters for a GetEx operation.
+type GetOptions struct {
+	Key          []byte
+	TraceContext opentracing.SpanContext
+}
+
+// GetResult encapsulates the result of a GetEx operation.
+type GetResult struct {
+	Value []byte
+	Flags uint32
+	Cas   Cas
+}
+
+// GetExCallback is invoked upon completion of a GetEx operation.
+type GetExCallback func(*GetResult, error)
+
+// GetEx retrieves a document.
+func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetEx", opts.TraceContext)
+
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, 0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
-		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-		cb(resp.Value, flags, Cas(resp.Cas), nil)
+
+		res := GetResult{}
+		res.Value = resp.Value
+		res.Flags = binary.BigEndian.Uint32(resp.Extras[0:])
+		res.Cas = Cas(resp.Cas)
+
+		tracer.Finish()
+		cb(&res, nil)
 	}
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -23,27 +49,55 @@ func (agent *Agent) Get(key []byte, cb GetCallback) (PendingOp, error) {
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// GetAndTouch retrieves a document and updates its expiry.
-func (agent *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (PendingOp, error) {
+// GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
+type GetAndTouchOptions struct {
+	Key          []byte
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
+}
+
+// GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
+type GetAndTouchResult struct {
+	Value []byte
+	Flags uint32
+	Cas   Cas
+}
+
+// GetAndTouchExCallback is invoked upon completion of a GetAndTouchEx operation.
+type GetAndTouchExCallback func(*GetAndTouchResult, error)
+
+// GetAndTouchEx retrieves a document and updates its expiry.
+func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetAndTouchEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, 0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
+
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-		cb(resp.Value, flags, Cas(resp.Cas), nil)
+
+		tracer.Finish()
+		cb(&GetAndTouchResult{
+			Value: resp.Value,
+			Flags: flags,
+			Cas:   Cas(resp.Cas),
+		}, nil)
 	}
 
 	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], expiry)
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -52,7 +106,7 @@ func (agent *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (Pend
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
 		Callback: handler,
@@ -60,19 +114,46 @@ func (agent *Agent) GetAndTouch(key []byte, expiry uint32, cb GetCallback) (Pend
 	return agent.dispatchOp(req)
 }
 
-// GetAndLock retrieves a document and locks it.
-func (agent *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (PendingOp, error) {
+// GetAndLockOptions encapsulates the parameters for a GetAndLockEx operation.
+type GetAndLockOptions struct {
+	Key          []byte
+	LockTime     uint32
+	TraceContext opentracing.SpanContext
+}
+
+// GetAndLockResult encapsulates the result of a GetAndLockEx operation.
+type GetAndLockResult struct {
+	Value []byte
+	Flags uint32
+	Cas   Cas
+}
+
+// GetAndLockExCallback is invoked upon completion of a GetAndLockEx operation.
+type GetAndLockExCallback func(*GetAndLockResult, error)
+
+// GetAndLockEx retrieves a document and locks it.
+func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetAndLockEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, 0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
+
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-		cb(resp.Value, flags, Cas(resp.Cas), nil)
+
+		tracer.Finish()
+		cb(&GetAndLockResult{
+			Value: resp.Value,
+			Flags: flags,
+			Cas:   Cas(resp.Cas),
+		}, nil)
 	}
 
 	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], lockTime)
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.LockTime)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -81,26 +162,50 @@ func (agent *Agent) GetAndLock(key []byte, lockTime uint32, cb GetCallback) (Pen
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-func (agent *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
-	if replicaIdx <= 0 {
+// GetReplicaOptions encapsulates the parameters for a GetReplicaEx operation.
+type GetReplicaOptions struct {
+	Key          []byte
+	ReplicaIdx   int
+	TraceContext opentracing.SpanContext
+}
+
+// GetReplicaResult encapsulates the result of a GetReplicaEx operation.
+type GetReplicaResult struct {
+	Value []byte
+	Flags uint32
+	Cas   Cas
+}
+
+// GetReplicaExCallback is invoked upon completion of a GetReplicaEx operation.
+type GetReplicaExCallback func(*GetReplicaResult, error)
+
+func (agent *Agent) getOneReplica(tracer *opTracer, opts GetReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+	if opts.ReplicaIdx <= 0 {
 		return nil, ErrInvalidReplica
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, 0, 0, err)
+			cb(nil, err)
 			return
 		}
+
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-		cb(resp.Value, flags, Cas(resp.Cas), nil)
+
+		cb(&GetReplicaResult{
+			Value: resp.Value,
+			Flags: flags,
+			Cas:   Cas(resp.Cas),
+		}, nil)
 	}
 
 	req := &memdQRequest{
@@ -110,86 +215,137 @@ func (agent *Agent) getOneReplica(key []byte, replicaIdx int, cb GetCallback) (P
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback:   handler,
-		ReplicaIdx: replicaIdx,
+		Callback:         handler,
+		ReplicaIdx:       opts.ReplicaIdx,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-func (agent *Agent) getAnyReplica(key []byte, cb GetCallback) (PendingOp, error) {
-	opRes := &multiPendingOp{}
+// GetReplicaEx retrieves a document from a replica server.
+func (agent *Agent) GetReplicaEx(opts GetReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetReplicaEx", opts.TraceContext)
 
-	// We use a lock here to guard from concurrent modification by
-	//  operation completion cancellation and op dispatch / insertion.
-	var lock sync.Mutex
+	if opts.ReplicaIdx > 0 {
+		return agent.getOneReplica(tracer, opts, func(resp *GetReplicaResult, err error) {
+			tracer.Finish()
+			cb(resp, err)
+		})
+	}
 
-	// 0/1 depending on whether a result was received.
-	var cbCalled uint32
-	handler := func(value []byte, flags uint32, cas Cas, err error) {
-		lock.Lock()
+	if opts.ReplicaIdx < 0 {
+		tracer.Finish()
+		return nil, ErrInvalidReplica
+	}
 
-		if cbCalled == 1 {
-			// Do nothing if we already got an answer
-			lock.Unlock()
+	numReplicas := agent.NumReplicas()
+
+	if numReplicas == 0 {
+		tracer.Finish()
+		return nil, ErrInvalidReplica
+	}
+
+	var resultLock sync.Mutex
+	var firstResult *GetReplicaResult
+
+	op := new(struct {
+		multiPendingOp
+		remaining int32
+	})
+	op.remaining = int32(numReplicas)
+
+	opHandledLocked := func() {
+		remaining := atomic.AddInt32(&op.remaining, -1)
+		if remaining == 0 {
+			if firstResult == nil {
+				tracer.Finish()
+				cb(nil, ErrNoReplicas)
+				return
+			}
+
+			tracer.Finish()
+			cb(firstResult, nil)
+		}
+	}
+
+	handler := func(resp *GetReplicaResult, err error) {
+		resultLock.Lock()
+
+		if err != nil {
+			opHandledLocked()
 			return
 		}
 
-		// Mark the callback as having been invoked
-		cbCalled = 1
+		if firstResult == nil {
+			newReplica := *resp
+			firstResult = &newReplica
+		}
 
-		// Cancel any remaining operation
-		opRes.Cancel()
+		// Mark this op as completed
+		opHandledLocked()
 
-		lock.Unlock()
+		// Try to cancel every other operation so we can
+		// return as soon as possible to the user (and close
+		// any open tracing spans)
+		for _, op := range op.ops {
+			if op.Cancel() {
+				opHandledLocked()
+			}
+		}
 
-		// Dispatch Callback
-		cb(value, flags, cas, err)
+		resultLock.Unlock()
 	}
 
 	// Dispatch a getReplica for each replica server
-	numReplicas := agent.NumReplicas()
 	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
-		op, err := agent.getOneReplica(key, repIdx, handler)
-		if err == nil {
-			lock.Lock()
-			if cbCalled == 1 {
-				op.Cancel()
-				lock.Unlock()
-				break
-			}
+		subOp, err := agent.getOneReplica(tracer, GetReplicaOptions{
+			Key:        opts.Key,
+			ReplicaIdx: repIdx,
+		}, handler)
 
-			opRes.ops = append(opRes.ops, op)
-			lock.Unlock()
+		resultLock.Lock()
+
+		if err != nil {
+			opHandledLocked()
+			resultLock.Unlock()
+			continue
 		}
+
+		op.ops = append(op.ops, subOp)
+		resultLock.Unlock()
 	}
 
-	// If we have no pending ops, no requests were successful
-	if len(opRes.ops) == 0 {
-		return nil, ErrNoReplicas
-	}
-
-	return opRes, nil
+	return op, nil
 }
 
-// GetReplica retrieves a document from a replica server.
-func (agent *Agent) GetReplica(key []byte, replicaIdx int, cb GetCallback) (PendingOp, error) {
-	if replicaIdx > 0 {
-		return agent.getOneReplica(key, replicaIdx, cb)
-	} else if replicaIdx == 0 {
-		return agent.getAnyReplica(key, cb)
-	} else {
-		return nil, ErrInvalidReplica
-	}
+// TouchOptions encapsulates the parameters for a TouchEx operation.
+type TouchOptions struct {
+	Key          []byte
+	Cas          Cas
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
 }
 
-// Touch updates the expiry for a document.
-func (agent *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) (PendingOp, error) {
+// TouchResult encapsulates the result of a TouchEx operation.
+type TouchResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// TouchExCallback is invoked upon completion of a TouchEx operation.
+type TouchExCallback func(*TouchResult, error)
+
+// TouchEx updates the expiry for a document.
+func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("TouchEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -200,32 +356,56 @@ func (agent *Agent) Touch(key []byte, cas Cas, expiry uint32, cb TouchCallback) 
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&TouchResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], expiry)
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   cmdTouch,
 			Datatype: 0,
-			Cas:      uint64(cas),
+			Cas:      uint64(opts.Cas),
 			Extras:   extraBuf,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Unlock unlocks a locked document.
-func (agent *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, error) {
+// UnlockOptions encapsulates the parameters for a UnlockEx operation.
+type UnlockOptions struct {
+	Key          []byte
+	Cas          Cas
+	TraceContext opentracing.SpanContext
+}
+
+// UnlockResult encapsulates the result of a UnlockEx operation.
+type UnlockResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// UnlockExCallback is invoked upon completion of a UnlockEx operation.
+type UnlockExCallback func(*UnlockResult, error)
+
+// UnlockEx unlocks a locked document.
+func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("UnlockEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -236,7 +416,11 @@ func (agent *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, e
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&UnlockResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	req := &memdQRequest{
@@ -244,21 +428,41 @@ func (agent *Agent) Unlock(key []byte, cas Cas, cb UnlockCallback) (PendingOp, e
 			Magic:    reqMagic,
 			Opcode:   cmdUnlockKey,
 			Datatype: 0,
-			Cas:      uint64(cas),
+			Cas:      uint64(opts.Cas),
 			Extras:   nil,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Remove removes a document.
-func (agent *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, error) {
+// DeleteOptions encapsulates the parameters for a DeleteEx operation.
+type DeleteOptions struct {
+	Key          []byte
+	Cas          Cas
+	TraceContext opentracing.SpanContext
+}
+
+// DeleteResult encapsulates the result of a DeleteEx operation.
+type DeleteResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// DeleteExCallback is invoked upon completion of a DeleteEx operation.
+type DeleteExCallback func(*DeleteResult, error)
+
+// DeleteEx removes a document.
+func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("DeleteEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -269,7 +473,11 @@ func (agent *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, e
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&DeleteResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	req := &memdQRequest{
@@ -277,20 +485,42 @@ func (agent *Agent) Remove(key []byte, cas Cas, cb RemoveCallback) (PendingOp, e
 			Magic:    reqMagic,
 			Opcode:   cmdDelete,
 			Datatype: 0,
-			Cas:      uint64(cas),
+			Cas:      uint64(opts.Cas),
 			Extras:   nil,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-func (agent *Agent) store(opcode commandCode, key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
+type storeOptions struct {
+	Key          []byte
+	Value        []byte
+	Flags        uint32
+	Cas          Cas
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
+}
+
+// StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
+type StoreResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// StoreExCallback is invoked upon completion of a AddEx, SetEx or ReplaceEx operation.
+type StoreExCallback func(*StoreResult, error)
+
+func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions, cb StoreExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -301,46 +531,119 @@ func (agent *Agent) store(opcode commandCode, key, value []byte, flags uint32, c
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&StoreResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	extraBuf := make([]byte, 8)
-	binary.BigEndian.PutUint32(extraBuf[0:], flags)
-	binary.BigEndian.PutUint32(extraBuf[4:], expiry)
+	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
+	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   opcode,
 			Datatype: 0,
-			Cas:      uint64(cas),
+			Cas:      uint64(opts.Cas),
 			Extras:   extraBuf,
-			Key:      key,
-			Value:    value,
+			Key:      opts.Key,
+			Value:    opts.Value,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Add stores a document as long as it does not already exist.
-func (agent *Agent) Add(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return agent.store(cmdAdd, key, value, flags, 0, expiry, cb)
+// AddOptions encapsulates the parameters for a AddEx operation.
+type AddOptions struct {
+	Key          []byte
+	Value        []byte
+	Flags        uint32
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
 }
 
-// Set stores a document.
-func (agent *Agent) Set(key, value []byte, flags uint32, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return agent.store(cmdSet, key, value, flags, 0, expiry, cb)
+// AddEx stores a document as long as it does not already exist.
+func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
+	return agent.storeEx("AddEx", cmdAdd, storeOptions{
+		Key:          opts.Key,
+		Value:        opts.Value,
+		Flags:        opts.Flags,
+		Cas:          0,
+		Expiry:       opts.Expiry,
+		TraceContext: opts.TraceContext,
+	}, cb)
 }
 
-// Replace replaces the value of a Couchbase document with another value.
-func (agent *Agent) Replace(key, value []byte, flags uint32, cas Cas, expiry uint32, cb StoreCallback) (PendingOp, error) {
-	return agent.store(cmdReplace, key, value, flags, cas, expiry, cb)
+// SetOptions encapsulates the parameters for a SetEx operation.
+type SetOptions struct {
+	Key          []byte
+	Value        []byte
+	Flags        uint32
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
 }
 
-func (agent *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallback) (PendingOp, error) {
+// SetEx stores a document.
+func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
+	return agent.storeEx("SetEx", cmdSet, storeOptions{
+		Key:          opts.Key,
+		Value:        opts.Value,
+		Flags:        opts.Flags,
+		Cas:          0,
+		Expiry:       opts.Expiry,
+		TraceContext: opts.TraceContext,
+	}, cb)
+}
+
+// ReplaceOptions encapsulates the parameters for a ReplaceEx operation.
+type ReplaceOptions struct {
+	Key          []byte
+	Value        []byte
+	Flags        uint32
+	Cas          Cas
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
+}
+
+// ReplaceEx replaces the value of a Couchbase document with another value.
+func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
+	return agent.storeEx("ReplaceEx", cmdSet, storeOptions{
+		Key:          opts.Key,
+		Value:        opts.Value,
+		Flags:        opts.Flags,
+		Cas:          opts.Cas,
+		Expiry:       opts.Expiry,
+		TraceContext: opts.TraceContext,
+	}, cb)
+}
+
+// AdjoinOptions encapsulates the parameters for a AppendEx or PrependEx operation.
+type AdjoinOptions struct {
+	Key          []byte
+	Value        []byte
+	TraceContext opentracing.SpanContext
+}
+
+// AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
+type AdjoinResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// AdjoinExCallback is invoked upon completion of a AppendEx or PrependEx operation.
+type AdjoinExCallback func(*AdjoinResult, error)
+
+func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
@@ -351,7 +654,11 @@ func (agent *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallba
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&AdjoinResult{
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	req := &memdQRequest{
@@ -361,33 +668,64 @@ func (agent *Agent) adjoin(opcode commandCode, key, value []byte, cb StoreCallba
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
-			Key:      key,
-			Value:    value,
+			Key:      opts.Key,
+			Value:    opts.Value,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Append appends some bytes to a document.
-func (agent *Agent) Append(key, value []byte, cb StoreCallback) (PendingOp, error) {
-	return agent.adjoin(cmdAppend, key, value, cb)
+// AppendEx appends some bytes to a document.
+func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+	return agent.adjoinEx("AppendEx", cmdAppend, opts, cb)
 }
 
-// Prepend prepends some bytes to a document.
-func (agent *Agent) Prepend(key, value []byte, cb StoreCallback) (PendingOp, error) {
-	return agent.adjoin(cmdPrepend, key, value, cb)
+// PrependOptions encapsulates the parameters for a ReplaceEx operation.
+type PrependOptions struct {
+	Key          []byte
+	Value        []byte
+	TraceContext opentracing.SpanContext
 }
 
-func (agent *Agent) counter(opcode commandCode, key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
+// PrependEx prepends some bytes to a document.
+func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+	return agent.adjoinEx("PrependEx", cmdPrepend, opts, cb)
+}
+
+// CounterOptions encapsulates the parameters for a IncrementEx or DecrementEx operation.
+type CounterOptions struct {
+	Key          []byte
+	Delta        uint64
+	Initial      uint64
+	Expiry       uint32
+	TraceContext opentracing.SpanContext
+}
+
+// CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
+type CounterResult struct {
+	Value         uint64
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// CounterExCallback is invoked upon completion of a IncrementEx or DecrementEx operation.
+type CounterExCallback func(*CounterResult, error)
+
+func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
-			cb(0, 0, MutationToken{}, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) != 8 {
-			cb(0, 0, MutationToken{}, ErrProtocol)
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 		intVal := binary.BigEndian.Uint64(resp.Value)
@@ -399,19 +737,24 @@ func (agent *Agent) counter(opcode commandCode, key []byte, delta, initial uint6
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		cb(intVal, Cas(resp.Cas), mutToken, nil)
+		tracer.Finish()
+		cb(&CounterResult{
+			Value:         intVal,
+			Cas:           Cas(resp.Cas),
+			MutationToken: mutToken,
+		}, nil)
 	}
 
 	// You cannot have an expiry when you do not want to create the document.
-	if initial == uint64(0xFFFFFFFFFFFFFFFF) && expiry != 0 {
+	if opts.Initial == uint64(0xFFFFFFFFFFFFFFFF) && opts.Expiry != 0 {
 		return nil, ErrInvalidArgs
 	}
 
 	extraBuf := make([]byte, 20)
-	binary.BigEndian.PutUint64(extraBuf[0:], delta)
-	if initial != uint64(0xFFFFFFFFFFFFFFFF) {
-		binary.BigEndian.PutUint64(extraBuf[8:], initial)
-		binary.BigEndian.PutUint32(extraBuf[16:], expiry)
+	binary.BigEndian.PutUint64(extraBuf[0:], opts.Delta)
+	if opts.Initial != uint64(0xFFFFFFFFFFFFFFFF) {
+		binary.BigEndian.PutUint64(extraBuf[8:], opts.Initial)
+		binary.BigEndian.PutUint32(extraBuf[16:], opts.Expiry)
 	} else {
 		binary.BigEndian.PutUint64(extraBuf[8:], 0x0000000000000000)
 		binary.BigEndian.PutUint32(extraBuf[16:], 0xFFFFFFFF)
@@ -424,33 +767,61 @@ func (agent *Agent) counter(opcode commandCode, key []byte, delta, initial uint6
 			Datatype: 0,
 			Cas:      0,
 			Extras:   extraBuf,
-			Key:      key,
+			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Increment increments the unsigned integer value in a document.
-func (agent *Agent) Increment(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
-	return agent.counter(cmdIncrement, key, delta, initial, expiry, cb)
+// IncrementEx increments the unsigned integer value in a document.
+func (agent *Agent) IncrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+	return agent.counterEx("IncrementEx", cmdIncrement, opts, cb)
 }
 
-// Decrement decrements the unsigned integer value in a document.
-func (agent *Agent) Decrement(key []byte, delta, initial uint64, expiry uint32, cb CounterCallback) (PendingOp, error) {
-	return agent.counter(cmdDecrement, key, delta, initial, expiry, cb)
+// DecrementEx decrements the unsigned integer value in a document.
+func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+	return agent.counterEx("DecrementEx", cmdDecrement, opts, cb)
 }
 
-// GetRandom retrieves the key and value of a random document stored within Couchbase Server.
-func (agent *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
+// GetRandomOptions encapsulates the parameters for a GetRandomEx operation.
+type GetRandomOptions struct {
+	TraceContext opentracing.SpanContext
+}
+
+// GetRandomResult encapsulates the result of a GetRandomEx operation.
+type GetRandomResult struct {
+	Key   []byte
+	Value []byte
+	Flags uint32
+	Cas   Cas
+}
+
+// GetRandomExCallback is invoked upon completion of a GetRandomEx operation.
+type GetRandomExCallback func(*GetRandomResult, error)
+
+// GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
+func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetRandomEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(nil, nil, 0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
+
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-		cb(resp.Key, resp.Value, flags, Cas(resp.Cas), nil)
+
+		tracer.Finish()
+		cb(&GetRandomResult{
+			Key:   resp.Key,
+			Value: resp.Value,
+			Flags: flags,
+			Cas:   Cas(resp.Cas),
+		}, nil)
 	}
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -462,19 +833,43 @@ func (agent *Agent) GetRandom(cb GetRandomCallback) (PendingOp, error) {
 			Key:      nil,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// Stats retrieves statistics information from the server.  Note that as this
+// SingleServerStats represents the stats returned from a single server.
+type SingleServerStats struct {
+	Stats map[string]string
+	Error error
+}
+
+// StatsOptions encapsulates the parameters for a StatsEx operation.
+type StatsOptions struct {
+	Key          string
+	TraceContext opentracing.SpanContext
+}
+
+// StatsResult encapsulates the result of a StatsEx operation.
+type StatsResult struct {
+	Servers map[string]SingleServerStats
+}
+
+// StatsExCallback is invoked upon completion of a StatsEx operation.
+type StatsExCallback func(*StatsResult, error)
+
+// StatsEx retrieves statistics information from the server.  Note that as this
 // function is an aggregator across numerous servers, there are no guarantees
 // about the consistency of the results.  Occasionally, some nodes may not be
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
-func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, error) {
+func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("StatsEx", opts.TraceContext)
+
 	config := agent.routingInfo.Get()
 	if config == nil {
+		tracer.Finish()
 		return nil, ErrShutdown
 	}
 
@@ -490,7 +885,10 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 	opHandledLocked := func() {
 		remaining := atomic.AddInt32(&op.remaining, -1)
 		if remaining == 0 {
-			callback(stats)
+			tracer.Finish()
+			cb(&StatsResult{
+				Servers: stats,
+			}, nil)
 		}
 	}
 
@@ -556,11 +954,12 @@ func (agent *Agent) Stats(key string, callback ServerStatsCallback) (PendingOp, 
 				Opcode:   cmdStat,
 				Datatype: 0,
 				Cas:      0,
-				Key:      []byte(key),
+				Key:      []byte(opts.Key),
 				Value:    nil,
 			},
-			Persistent: true,
-			Callback:   handler,
+			Persistent:       true,
+			Callback:         handler,
+			RootTraceContext: tracer.RootContext(),
 		}
 
 		curOp, err := agent.dispatchOpToAddress(req, serverAddress)

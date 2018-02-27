@@ -2,43 +2,70 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"github.com/opentracing/opentracing-go"
 )
 
-// Observe retrieves the current CAS and persistence state for a document.
-func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (PendingOp, error) {
-	// TODO(mnunberg): Use bktType when implemented
-	if agent.numVbuckets == 0 {
+// ObserveOptions encapsulates the parameters for a ObserveEx operation.
+type ObserveOptions struct {
+	Key          []byte
+	ReplicaIdx   int
+	TraceContext opentracing.SpanContext
+}
+
+// ObserveResult encapsulates the result of a ObserveEx operation.
+type ObserveResult struct {
+	KeyState KeyState
+	Cas      Cas
+}
+
+// ObserveExCallback is invoked upon completion of a ObserveEx operation.
+type ObserveExCallback func(*ObserveResult, error)
+
+// ObserveEx retrieves the current CAS and persistence state for a document.
+func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("ObserveEx", opts.TraceContext)
+
+	if agent.bucketType() != bktTypeCouchbase {
+		tracer.Finish()
 		return nil, ErrNotSupported
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
-			cb(0, 0, err)
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) < 4 {
-			cb(0, 0, ErrProtocol)
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 		keyLen := int(binary.BigEndian.Uint16(resp.Value[2:]))
 
 		if len(resp.Value) != 2+2+keyLen+1+8 {
-			cb(0, 0, ErrProtocol)
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 		keyState := KeyState(resp.Value[2+2+keyLen])
 		cas := binary.BigEndian.Uint64(resp.Value[2+2+keyLen+1:])
 
-		cb(keyState, Cas(cas), nil)
+		tracer.Finish()
+		cb(&ObserveResult{
+			KeyState: keyState,
+			Cas:      Cas(cas),
+		}, nil)
 	}
 
-	vbId := agent.KeyToVbucket(key)
+	vbId := agent.KeyToVbucket(opts.Key)
+	keyLen := len(opts.Key)
 
-	valueBuf := make([]byte, 2+2+len(key))
+	valueBuf := make([]byte, 2+2+keyLen)
 	binary.BigEndian.PutUint16(valueBuf[0:], vbId)
-	binary.BigEndian.PutUint16(valueBuf[2:], uint16(len(key)))
-	copy(valueBuf[4:], key)
+	binary.BigEndian.PutUint16(valueBuf[2:], uint16(keyLen))
+	copy(valueBuf[4:], opts.Key)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -51,44 +78,54 @@ func (agent *Agent) Observe(key []byte, replicaIdx int, cb ObserveCallback) (Pen
 			Value:    valueBuf,
 			Vbucket:  vbId,
 		},
-		ReplicaIdx: replicaIdx,
-		Callback:   handler,
+		ReplicaIdx:       opts.ReplicaIdx,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }
 
-// ObserveSeqNo retrieves the persistence state sequence numbers for a particular VBucket.
-func (agent *Agent) ObserveSeqNo(key []byte, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoCallback) (PendingOp, error) {
-	vbId := agent.KeyToVbucket(key)
-	return agent.ObserveSeqNoEx(vbId, vbUuid, replicaIdx, func(stats *ObserveSeqNoStats, err error) {
-		if err != nil {
-			cb(0, 0, err)
-			return
-		}
-
-		if !stats.DidFailover {
-			cb(stats.CurrentSeqNo, stats.PersistSeqNo, nil)
-		} else {
-			cb(stats.LastSeqNo, stats.LastSeqNo, nil)
-		}
-	})
+// ObserveVbOptions encapsulates the parameters for a ObserveVbEx operation.
+type ObserveVbOptions struct {
+	VbId         uint16
+	VbUuid       VbUuid
+	ReplicaIdx   int
+	TraceContext opentracing.SpanContext
 }
 
-// ObserveSeqNoEx retrieves the persistence state sequence numbers for a particular VBucket
+// ObserveVbResult encapsulates the result of a ObserveVbEx operation.
+type ObserveVbResult struct {
+	DidFailover  bool
+	VbId         uint16
+	VbUuid       VbUuid
+	PersistSeqNo SeqNo
+	CurrentSeqNo SeqNo
+	OldVbUuid    VbUuid
+	LastSeqNo    SeqNo
+}
+
+// ObserveVbExCallback is invoked upon completion of a ObserveVbEx operation.
+type ObserveVbExCallback func(*ObserveVbResult, error)
+
+// ObserveVbEx retrieves the persistence state sequence numbers for a particular VBucket
 // and includes additional details not included by the basic version.
-func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, cb ObserveSeqNoExCallback) (PendingOp, error) {
-	// TODO(mnunberg): Use bktType when implemented
-	if agent.numVbuckets == 0 {
+func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("ObserveVbEx", nil)
+
+	if agent.bucketType() != bktTypeCouchbase {
+		tracer.Finish()
 		return nil, ErrNotSupported
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) < 1 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -97,6 +134,7 @@ func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, c
 		if formatType == 0 {
 			// Normal
 			if len(resp.Value) < 27 {
+				tracer.Finish()
 				cb(nil, ErrProtocol)
 				return
 			}
@@ -106,7 +144,8 @@ func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, c
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
 
-			cb(&ObserveSeqNoStats{
+			tracer.Finish()
+			cb(&ObserveVbResult{
 				DidFailover:  false,
 				VbId:         vbId,
 				VbUuid:       VbUuid(vbUuid),
@@ -128,7 +167,8 @@ func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, c
 			oldVbUuid := binary.BigEndian.Uint64(resp.Value[27:])
 			lastSeqNo := binary.BigEndian.Uint64(resp.Value[35:])
 
-			cb(&ObserveSeqNoStats{
+			tracer.Finish()
+			cb(&ObserveVbResult{
 				DidFailover:  true,
 				VbId:         vbId,
 				VbUuid:       VbUuid(vbUuid),
@@ -139,13 +179,14 @@ func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, c
 			}, nil)
 			return
 		} else {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 	}
 
 	valueBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(valueBuf[0:], uint64(vbUuid))
+	binary.BigEndian.PutUint64(valueBuf[0:], uint64(opts.VbUuid))
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
@@ -156,10 +197,11 @@ func (agent *Agent) ObserveSeqNoEx(vbId uint16, vbUuid VbUuid, replicaIdx int, c
 			Extras:   nil,
 			Key:      nil,
 			Value:    valueBuf,
-			Vbucket:  vbId,
+			Vbucket:  opts.VbId,
 		},
-		ReplicaIdx: replicaIdx,
-		Callback:   handler,
+		ReplicaIdx:       opts.ReplicaIdx,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
 	}
 	return agent.dispatchOp(req)
 }

@@ -4,10 +4,17 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"math"
 	"net"
 	"time"
 )
+
+type memdFrameExtras struct {
+	HasSrvDuration bool
+	SrvDuration    time.Duration
+}
 
 type memdPacket struct {
 	Magic    commandMagic
@@ -20,6 +27,8 @@ type memdPacket struct {
 	Key      []byte
 	Extras   []byte
 	Value    []byte
+
+	FrameExtras *memdFrameExtras
 }
 
 type memdConn interface {
@@ -93,6 +102,10 @@ func (s *memdTcpConn) Close() error {
 }
 
 func (s *memdTcpConn) WritePacket(req *memdPacket) error {
+	if req.FrameExtras != nil {
+		return fmt.Errorf("cannot write framing extras")
+	}
+
 	extLen := len(req.Extras)
 	keyLen := len(req.Key)
 	valLen := len(req.Value)
@@ -156,9 +169,6 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 		return err
 	}
 
-	keyLen := int(binary.BigEndian.Uint16(s.headerBuf[2:]))
-	extLen := int(s.headerBuf[4])
-
 	resp.Magic = commandMagic(s.headerBuf[0])
 	resp.Opcode = commandCode(s.headerBuf[1])
 	resp.Datatype = s.headerBuf[5]
@@ -169,8 +179,52 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	}
 	resp.Opaque = binary.BigEndian.Uint32(s.headerBuf[12:])
 	resp.Cas = binary.BigEndian.Uint64(s.headerBuf[16:])
-	resp.Extras = bodyBuf[:extLen]
-	resp.Key = bodyBuf[extLen : extLen+keyLen]
-	resp.Value = bodyBuf[extLen+keyLen:]
+
+	var keyLen int
+	var frameExtrasLen int
+	if resp.Magic == altResMagic {
+		resp.Magic = resMagic
+		keyLen = int(s.headerBuf[3])
+		frameExtrasLen = int(s.headerBuf[2])
+	} else {
+		keyLen = int(binary.BigEndian.Uint16(s.headerBuf[2:]))
+	}
+	extLen := int(s.headerBuf[4])
+
+	if frameExtrasLen > 0 {
+		resp.FrameExtras = &memdFrameExtras{}
+
+		frameExtras := bodyBuf[:frameExtrasLen]
+		framePos := 0
+		for framePos < len(frameExtras) {
+			extraHeader := frameExtras[framePos]
+			framePos++
+			extraType := frameExtraType((extraHeader & 0xF0) >> 4)
+			if extraType == 15 {
+				extraType = 15 + frameExtraType(frameExtras[framePos])
+				framePos++
+			}
+			extraLen := int(extraHeader & 0x0F)
+			if extraLen == 15 {
+				extraLen = int(15 + frameExtras[framePos])
+				framePos++
+			}
+
+			extraBody := frameExtras[framePos : framePos+extraLen]
+			framePos = framePos + extraLen
+
+			if extraType == srvDurationFrameExtra {
+				srvDurEncoded := binary.BigEndian.Uint16(extraBody)
+				srvDurMicros := math.Pow(float64(srvDurEncoded), 1.74) / 2
+
+				resp.FrameExtras.HasSrvDuration = true
+				resp.FrameExtras.SrvDuration = time.Duration(srvDurMicros) * time.Microsecond
+			}
+		}
+	}
+
+	resp.Extras = bodyBuf[:frameExtrasLen+extLen]
+	resp.Key = bodyBuf[frameExtrasLen+extLen : frameExtrasLen+extLen+keyLen]
+	resp.Value = bodyBuf[frameExtrasLen+extLen+keyLen:]
 	return nil
 }

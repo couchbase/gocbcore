@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/http2"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
+	clientId          string
 	userString        string
 	auth              AuthProvider
 	bucket            string
@@ -31,11 +33,15 @@ type Agent struct {
 	useKvErrorMaps    bool
 	useEnhancedErrors bool
 	useCompression    bool
+	useDurations      bool
 
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
 	kvErrorMap  kvErrorMapPtr
 	numVbuckets int
+
+	tracer           opentracing.Tracer
+	noRootTraceSpans bool
 
 	serverFailuresLock sync.Mutex
 	serverFailures     map[string]time.Time
@@ -91,6 +97,7 @@ type AgentConfig struct {
 	UseKvErrorMaps    bool
 	UseEnhancedErrors bool
 	UseCompression    bool
+	UseDurations      bool
 
 	HttpRedialPeriod time.Duration
 	HttpRetryDelay   time.Duration
@@ -102,6 +109,9 @@ type AgentConfig struct {
 	NmvRetryDelay        time.Duration
 	KvPoolSize           int
 	MaxQueueSize         int
+
+	Tracer           opentracing.Tracer
+	NoRootTraceSpans bool
 
 	// Username specifies the username to use when connecting.
 	// DEPRECATED
@@ -335,6 +345,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseCompression = val
 	}
 
+	if valStr, ok := fetchOption("server_duration"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("server_duration option must be a boolean")
+		}
+		config.UseDurations = val
+	}
+
 	return nil
 }
 
@@ -432,7 +450,13 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		logDebugf("failed to configure http2: %s", err)
 	}
 
+	tracer := config.Tracer
+	if tracer == nil {
+		tracer = opentracing.NoopTracer{}
+	}
+
 	c := &Agent{
+		clientId:   formatCbUid(randomCbUid()),
 		userString: config.UserString,
 		bucket:     config.BucketName,
 		auth:       config.Auth,
@@ -441,10 +465,13 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},
+		tracer:               tracer,
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
 		useEnhancedErrors:    config.UseEnhancedErrors,
 		useCompression:       config.UseCompression,
+		useDurations:         config.UseDurations,
+		noRootTraceSpans:     config.NoRootTraceSpans,
 		serverFailures:       make(map[string]time.Time),
 		serverConnectTimeout: 7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,
@@ -816,6 +843,15 @@ func (agent *Agent) VbucketToServer(vbID uint16, replicaIdx uint32) int {
 // connected cluster.
 func (agent *Agent) NumVbuckets() int {
 	return agent.numVbuckets
+}
+
+func (agent *Agent) bucketType() bucketType {
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return bktTypeInvalid
+	}
+
+	return routingInfo.bktType
 }
 
 // NumReplicas returns the number of replicas configured on the

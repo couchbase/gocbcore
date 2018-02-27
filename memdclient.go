@@ -24,6 +24,7 @@ func isCompressibleOp(command commandCode) bool {
 }
 
 type memdClient struct {
+	parent       *Agent
 	conn         memdConn
 	opList       memdOpMap
 	errorMap     *kvErrorMap
@@ -32,12 +33,15 @@ type memdClient struct {
 	dcpAckSize   int
 	dcpFlowRecv  int
 	lastActivity int64
+	connId       string
 }
 
-func newMemdClient(conn memdConn) *memdClient {
+func newMemdClient(parent *Agent, conn memdConn) *memdClient {
 	client := memdClient{
+		parent:      parent,
 		conn:        conn,
 		closeNotify: make(chan bool),
+		connId:      parent.clientId + "/" + formatCbUid(randomCbUid()),
 	}
 	client.run()
 	return &client
@@ -89,7 +93,10 @@ func (client *memdClient) CloseNotify() chan bool {
 }
 
 func (client *memdClient) SendRequest(req *memdQRequest) error {
-	client.opList.Add(req)
+	addSuccess := client.opList.Add(req)
+	if !addSuccess {
+		return ErrCancelled
+	}
 
 	packet := &req.memdPacket
 	if client.SupportsFeature(FeatureSnappy) {
@@ -103,6 +110,8 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 	}
 
 	logSchedf("Writing request. %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), req.Opcode, req.Opaque)
+
+	client.parent.startNetTrace(req)
 
 	err := client.conn.WritePacket(packet)
 	if err != nil {
@@ -126,6 +135,12 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
+	logDebugf("%+v", resp.FrameExtras)
+
+	if !req.Persistent {
+		client.parent.stopNetTrace(req, resp, client)
+	}
+
 	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
 	if isCompressed {
 		newValue, err := snappy.Decode(nil, resp.Value)
@@ -140,24 +155,24 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	// Give the agent an opportunity to intercept the response first
 	var err error
-	if req.RoutingCallback != nil {
-		shortCircuited, routeErr := req.RoutingCallback(resp, req)
+	if resp.Magic == resMagic {
+		if resp.Status != StatusSuccess {
+			if ok, foundErr := findMemdError(resp.Status); ok {
+				err = foundErr
+			} else {
+				err = newSimpleError(resp.Status)
+			}
+		}
+	}
+
+	if client.parent != nil {
+		shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
 		if shortCircuited {
 			logSchedf("Routing callback intercepted response")
 			return
 		}
 
 		err = routeErr
-	} else {
-		if resp.Magic == resMagic {
-			if resp.Status != StatusSuccess {
-				if ok, foundErr := findMemdError(resp.Status); ok {
-					err = foundErr
-				} else {
-					err = newSimpleError(resp.Status)
-				}
-			}
-		}
 	}
 
 	// Call the requests callback handler...
@@ -193,7 +208,8 @@ func (client *memdClient) run() {
 	go func() {
 		for {
 			resp := &memdQResponse{
-				sourceAddr: client.conn.RemoteAddr(),
+				sourceAddr:   client.conn.RemoteAddr(),
+				sourceConnId: client.connId,
 			}
 
 			err := client.conn.ReadPacket(&resp.memdPacket)
