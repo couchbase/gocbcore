@@ -25,7 +25,7 @@ checkiea:
 	ineffassign ./
 
 checkspell:
-	misspell -error ./
+	find . -type f -name '*.go' | grep -v vendor/ | xargs misspell -error
 
 lint: checkfmt checkerrs checkvet checkiea checkspell
 	golint -set_exit_status -min_confidence 0.81 ./
