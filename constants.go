@@ -122,6 +122,15 @@ const (
 	// FeatureJson indicates support for JSON datatype data.
 	FeatureJson = HelloFeature(0x0b)
 
+	// FeatureDuplex indicates support for duplex communications.
+	FeatureDuplex = HelloFeature(0x0c)
+
+	// FeatureClusterMapNotif indicates support for cluster-map update notifications.
+	FeatureClusterMapNotif = HelloFeature(0x0d)
+
+	// FeatureUnorderedExec indicates support for unordered execution of operations.
+	FeatureUnorderedExec = HelloFeature(0x0e)
+
 	// FeatureDurations indicates support for server durations.
 	FeatureDurations = HelloFeature(0xf)
 )
