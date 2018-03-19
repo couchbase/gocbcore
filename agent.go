@@ -124,6 +124,23 @@ type AgentConfig struct {
 
 // FromConnStr populates the AgentConfig with information from a
 // Couchbase Connection String.
+// Supported options are:
+//   cacertpath (string) - Path to the CA certificate
+//   certpath (string) - Path to your authentication certificate
+//   keypath (string) - Path to your authentication key
+//   config_total_timeout (int) - Maximum period to attempt to connect to cluster in ms.
+//   config_node_timeout (int) - Maximum period to attempt to connect to a node in ms.
+//   http_redial_period (int) - Maximum period to keep HTTP config connections open in ms.
+//   http_retry_delay (int) - Period to wait between retrying nodes for HTTP config in ms.
+//   config_poll_floor_interval (int) - Minimum time to wait between fetching configs via CCCP in ms.
+//   config_poll_interval (int) - Period to wait between CCCP config polling in ms.
+//   kv_pool_size (int) - The number of connections to establish per node.
+//   max_queue_size (int) - The maximum size of the operation queues per node.
+//   use_kverrmaps (bool) - Whether to enable error maps from the server.
+//   use_enhanced_errors (bool) - Whether to enable enhanced error information.
+//   fetch_mutation_tokens (bool) - Whether to fetch mutation tokens for operations.
+//   compression (bool) - Whether to enable network-wise compression of documents.
+//   server_duration (bool) - Whether to enable fetching server operation durations.
 func (config *AgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := gocbconnstr.Parse(connStr)
 	if err != nil {
