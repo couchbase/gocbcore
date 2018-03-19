@@ -15,9 +15,10 @@ type GetOptions struct {
 
 // GetResult encapsulates the result of a GetEx operation.
 type GetResult struct {
-	Value []byte
-	Flags uint32
-	Cas   Cas
+	Value    []byte
+	Flags    uint32
+	Datatype uint8
+	Cas      Cas
 }
 
 // GetExCallback is invoked upon completion of a GetEx operation.
@@ -38,6 +39,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		res.Value = resp.Value
 		res.Flags = binary.BigEndian.Uint32(resp.Extras[0:])
 		res.Cas = Cas(resp.Cas)
+		res.Datatype = resp.Datatype
 
 		tracer.Finish()
 		cb(&res, nil)
@@ -67,9 +69,10 @@ type GetAndTouchOptions struct {
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
 type GetAndTouchResult struct {
-	Value []byte
-	Flags uint32
-	Cas   Cas
+	Value    []byte
+	Flags    uint32
+	Datatype uint8
+	Cas      Cas
 }
 
 // GetAndTouchExCallback is invoked upon completion of a GetAndTouchEx operation.
@@ -90,9 +93,10 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 
 		tracer.Finish()
 		cb(&GetAndTouchResult{
-			Value: resp.Value,
-			Flags: flags,
-			Cas:   Cas(resp.Cas),
+			Value:    resp.Value,
+			Flags:    flags,
+			Cas:      Cas(resp.Cas),
+			Datatype: resp.Datatype,
 		}, nil)
 	}
 
@@ -123,9 +127,10 @@ type GetAndLockOptions struct {
 
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
 type GetAndLockResult struct {
-	Value []byte
-	Flags uint32
-	Cas   Cas
+	Value    []byte
+	Flags    uint32
+	Datatype uint8
+	Cas      Cas
 }
 
 // GetAndLockExCallback is invoked upon completion of a GetAndLockEx operation.
@@ -146,9 +151,10 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 
 		tracer.Finish()
 		cb(&GetAndLockResult{
-			Value: resp.Value,
-			Flags: flags,
-			Cas:   Cas(resp.Cas),
+			Value:    resp.Value,
+			Flags:    flags,
+			Cas:      Cas(resp.Cas),
+			Datatype: resp.Datatype,
 		}, nil)
 	}
 
@@ -180,9 +186,10 @@ type GetReplicaOptions struct {
 
 // GetReplicaResult encapsulates the result of a GetReplicaEx operation.
 type GetReplicaResult struct {
-	Value []byte
-	Flags uint32
-	Cas   Cas
+	Value    []byte
+	Flags    uint32
+	Datatype uint8
+	Cas      Cas
 }
 
 // GetReplicaExCallback is invoked upon completion of a GetReplicaEx operation.
@@ -202,9 +209,10 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetReplicaOptions, cb G
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
 		cb(&GetReplicaResult{
-			Value: resp.Value,
-			Flags: flags,
-			Cas:   Cas(resp.Cas),
+			Value:    resp.Value,
+			Flags:    flags,
+			Cas:      Cas(resp.Cas),
+			Datatype: resp.Datatype,
 		}, nil)
 	}
 
@@ -500,6 +508,7 @@ type storeOptions struct {
 	Key          []byte
 	Value        []byte
 	Flags        uint32
+	Datatype     uint8
 	Cas          Cas
 	Expiry       uint32
 	TraceContext opentracing.SpanContext
@@ -545,7 +554,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
 			Opcode:   opcode,
-			Datatype: 0,
+			Datatype: opts.Datatype,
 			Cas:      uint64(opts.Cas),
 			Extras:   extraBuf,
 			Key:      opts.Key,
@@ -562,6 +571,7 @@ type AddOptions struct {
 	Key          []byte
 	Value        []byte
 	Flags        uint32
+	Datatype     uint8
 	Expiry       uint32
 	TraceContext opentracing.SpanContext
 }
@@ -572,6 +582,7 @@ func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error
 		Key:          opts.Key,
 		Value:        opts.Value,
 		Flags:        opts.Flags,
+		Datatype:     opts.Datatype,
 		Cas:          0,
 		Expiry:       opts.Expiry,
 		TraceContext: opts.TraceContext,
@@ -583,6 +594,7 @@ type SetOptions struct {
 	Key          []byte
 	Value        []byte
 	Flags        uint32
+	Datatype     uint8
 	Expiry       uint32
 	TraceContext opentracing.SpanContext
 }
@@ -593,6 +605,7 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 		Key:          opts.Key,
 		Value:        opts.Value,
 		Flags:        opts.Flags,
+		Datatype:     opts.Datatype,
 		Cas:          0,
 		Expiry:       opts.Expiry,
 		TraceContext: opts.TraceContext,
@@ -604,6 +617,7 @@ type ReplaceOptions struct {
 	Key          []byte
 	Value        []byte
 	Flags        uint32
+	Datatype     uint8
 	Cas          Cas
 	Expiry       uint32
 	TraceContext opentracing.SpanContext
@@ -615,6 +629,7 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 		Key:          opts.Key,
 		Value:        opts.Value,
 		Flags:        opts.Flags,
+		Datatype:     opts.Datatype,
 		Cas:          opts.Cas,
 		Expiry:       opts.Expiry,
 		TraceContext: opts.TraceContext,
@@ -793,10 +808,11 @@ type GetRandomOptions struct {
 
 // GetRandomResult encapsulates the result of a GetRandomEx operation.
 type GetRandomResult struct {
-	Key   []byte
-	Value []byte
-	Flags uint32
-	Cas   Cas
+	Key      []byte
+	Value    []byte
+	Flags    uint32
+	Datatype uint8
+	Cas      Cas
 }
 
 // GetRandomExCallback is invoked upon completion of a GetRandomEx operation.
@@ -817,10 +833,11 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 
 		tracer.Finish()
 		cb(&GetRandomResult{
-			Key:   resp.Key,
-			Value: resp.Value,
-			Flags: flags,
-			Cas:   Cas(resp.Cas),
+			Key:      resp.Key,
+			Value:    resp.Value,
+			Flags:    flags,
+			Cas:      Cas(resp.Cas),
+			Datatype: resp.Datatype,
 		}, nil)
 	}
 	req := &memdQRequest{
