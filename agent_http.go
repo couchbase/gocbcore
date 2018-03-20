@@ -123,37 +123,24 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 	if req.Username != "" || req.Password != "" {
 		hreq.SetBasicAuth(req.Username, req.Password)
 	} else {
+		creds, err := agent.auth.Credentials(AuthCredsRequest{
+			Service:  req.Service,
+			Endpoint: endpoint,
+		})
+		if err != nil {
+			return nil, err
+		}
+
 		if req.Service == N1qlService || req.Service == CbasService ||
 			req.Service == FtsService {
 			// Handle service which support multi-bucket authentication using
 			// injection into the body of the request.
-
-			creds, err := agent.auth.Credentials(AuthCredsRequest{
-				Service:  req.Service,
-				Endpoint: endpoint,
-			})
-			if err != nil {
-				return nil, err
-			}
-
 			if len(creds) == 1 {
 				hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
 			} else {
 				body = injectJsonCreds(body, creds)
 			}
 		} else {
-			// Handle normal services which are only able to deal with a single
-			// username and password for authentication.  Errors if the auth
-			// provider returns multiple credentials.
-
-			creds, err := agent.auth.Credentials(AuthCredsRequest{
-				Service:  req.Service,
-				Endpoint: endpoint,
-			})
-			if err != nil {
-				return nil, err
-			}
-
 			if len(creds) != 1 {
 				return nil, ErrInvalidCredentials
 			}
