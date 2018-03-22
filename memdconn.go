@@ -223,7 +223,7 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 		}
 	}
 
-	resp.Extras = bodyBuf[:frameExtrasLen+extLen]
+	resp.Extras = bodyBuf[frameExtrasLen : frameExtrasLen+extLen]
 	resp.Key = bodyBuf[frameExtrasLen+extLen : frameExtrasLen+extLen+keyLen]
 	resp.Value = bodyBuf[frameExtrasLen+extLen+keyLen:]
 	return nil

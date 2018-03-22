@@ -785,6 +785,33 @@ func TestMemcachedBucket(t *testing.T) {
 	s.Wait(0)
 }
 
+func TestFlagsRoundTrip(t *testing.T) {
+	// Ensure flags are round-tripped with the server correctly.
+	agent := globalAgent
+	s := getSignaler(t)
+
+	agent.Set([]byte("flagskey"), []byte(""), 0x99889988, 0, func(cas Cas, mt MutationToken, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				t.Fatalf("Got error for Set: %v", err)
+			}
+		})
+	})
+	s.Wait(0)
+
+	agent.Get([]byte("flagskey"), func(value []byte, flags uint32, cas Cas, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				t.Fatalf("Couldn't get back key: %v", err)
+			}
+			if flags != 0x99889988 {
+				t.Fatalf("flags failed to round-trip")
+			}
+		})
+	})
+	s.Wait(0)
+}
+
 func TestMetaOps(t *testing.T) {
 	// Currently disabled as CouchbaseMock does not support it
 	/*
