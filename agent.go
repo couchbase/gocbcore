@@ -377,7 +377,7 @@ func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFu
 	return func(client AuthClient, deadline time.Time) error {
 		creds, err := getKvAuthCreds(authProvider, client.Address())
 		if err != nil {
-			return nil
+			return err
 		}
 
 		if err := SaslAuthPlain(creds.Username, creds.Password, client, deadline); err != nil {
