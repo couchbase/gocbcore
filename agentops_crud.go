@@ -35,6 +35,12 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 			return
 		}
 
+		if len(resp.Extras) != 4 {
+			tracer.Finish()
+			cb(nil, ErrProtocol)
+			return
+		}
+
 		res := GetResult{}
 		res.Value = resp.Value
 		res.Flags = binary.BigEndian.Uint32(resp.Extras[0:])
@@ -86,6 +92,12 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
+			return
+		}
+
+		if len(resp.Extras) != 4 {
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 
@@ -147,6 +159,12 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 			return
 		}
 
+		if len(resp.Extras) != 4 {
+			tracer.Finish()
+			cb(nil, ErrProtocol)
+			return
+		}
+
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
 		tracer.Finish()
@@ -203,6 +221,11 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetReplicaOptions, cb G
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
+			return
+		}
+
+		if len(resp.Extras) != 4 {
+			cb(nil, ErrProtocol)
 			return
 		}
 
@@ -826,6 +849,12 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
+			return
+		}
+
+		if len(resp.Extras) != 4 {
+			tracer.Finish()
+			cb(nil, ErrProtocol)
 			return
 		}
 
