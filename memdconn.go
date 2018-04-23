@@ -172,7 +172,7 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	resp.Magic = commandMagic(s.headerBuf[0])
 	resp.Opcode = commandCode(s.headerBuf[1])
 	resp.Datatype = s.headerBuf[5]
-	if resp.Magic == resMagic {
+	if resp.Magic == resMagic || resp.Magic == altResMagic {
 		resp.Status = StatusCode(binary.BigEndian.Uint16(s.headerBuf[6:]))
 	} else {
 		resp.Vbucket = binary.BigEndian.Uint16(s.headerBuf[6:])
