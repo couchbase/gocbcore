@@ -28,11 +28,8 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 			logErrorf("Failed to parse address for TLS config (%s)", err)
 		}
 
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: agent.tlsConfig.InsecureSkipVerify,
-			RootCAs:            agent.tlsConfig.RootCAs,
-			ServerName:         host,
-		}
+		tlsConfig = cloneTLSConfig(agent.tlsConfig)
+		tlsConfig.ServerName = host
 	}
 
 	deadline := time.Now().Add(agent.serverConnectTimeout)

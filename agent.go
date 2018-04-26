@@ -380,8 +380,10 @@ func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFu
 			return err
 		}
 
-		if err := SaslAuthPlain(creds.Username, creds.Password, client, deadline); err != nil {
-			return err
+		if creds.Username != "" || creds.Password != "" {
+			if err := SaslAuthPlain(creds.Username, creds.Password, client, deadline); err != nil {
+				return err
+			}
 		}
 
 		if client.SupportsFeature(FeatureSelectBucket) {
