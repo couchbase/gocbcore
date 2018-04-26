@@ -135,8 +135,6 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
-	logDebugf("%+v", resp.FrameExtras)
-
 	if !req.Persistent {
 		client.parent.stopNetTrace(req, resp, client)
 	}
