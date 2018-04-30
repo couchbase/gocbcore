@@ -129,6 +129,7 @@ func (q *memdOpMap) FindAndMaybeRemove(opaque uint32) *memdQRequest {
 // Clears the queue of all requests and calls the passed function
 // once for each request found in the queue.
 func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
+	q.lock.Lock()
 	for cur := q.first; cur != nil; cur = cur.next {
 		// TODO(brett19): Maybe should ensure this was meant to be in this opmap.
 		atomic.CompareAndSwapPointer(&cur.value.waitingIn, unsafe.Pointer(q), nil)
@@ -136,4 +137,5 @@ func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
 	}
 	q.first = nil
 	q.last = nil
+	q.lock.Unlock()
 }
