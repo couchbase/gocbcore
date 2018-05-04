@@ -110,6 +110,10 @@ type AgentConfig struct {
 	KvPoolSize           int
 	MaxQueueSize         int
 
+	HttpMaxIdleConns        int
+	HttpMaxIdleConnsPerHost int
+	HttpIdleConnTimeout     time.Duration
+
 	Tracer           opentracing.Tracer
 	NoRootTraceSpans bool
 
@@ -141,6 +145,9 @@ type AgentConfig struct {
 //   fetch_mutation_tokens (bool) - Whether to fetch mutation tokens for operations.
 //   compression (bool) - Whether to enable network-wise compression of documents.
 //   server_duration (bool) - Whether to enable fetching server operation durations.
+//   http_max_idle_conns (int) - Maximum number of idle http connections in the pool.
+//   http_max_idle_conns_per_host (int) - Maximum number of idle http connections in the pool per host.
+//   http_idle_conn_timeout (int) - Maximum length of time for an idle connection to stay in the pool in ms.
 func (config *AgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := gocbconnstr.Parse(connStr)
 	if err != nil {
@@ -370,6 +377,30 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseDurations = val
 	}
 
+	if valStr, ok := fetchOption("http_max_idle_conns"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http max idle connections option must be a number")
+		}
+		config.HttpMaxIdleConns = int(val)
+	}
+
+	if valStr, ok := fetchOption("http_max_idle_conns_per_host"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http max idle connections per host option must be a number")
+		}
+		config.HttpMaxIdleConnsPerHost = int(val)
+	}
+
+	if valStr, ok := fetchOption("http_idle_conn_timeout"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http idle connection timeout option must be a number")
+		}
+		config.HttpIdleConnTimeout = time.Duration(val) * time.Millisecond
+	}
+
 	return nil
 }
 
@@ -463,6 +494,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			KeepAlive: 30 * time.Second,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
+		MaxIdleConns:        config.HttpMaxIdleConns,
+		MaxIdleConnsPerHost: config.HttpMaxIdleConnsPerHost,
+		IdleConnTimeout:     config.HttpIdleConnTimeout,
 	}
 	err := http2.ConfigureTransport(httpTransport)
 	if err != nil {
