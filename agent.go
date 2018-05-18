@@ -62,6 +62,10 @@ type Agent struct {
 	nmvRetryDelay        time.Duration
 	kvPoolSize           int
 	maxQueueSize         int
+
+	zombieLock      sync.RWMutex
+	zombieOps       []*zombieLogEntry
+	useZombieLogger bool
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -121,8 +125,11 @@ type AgentConfig struct {
 	HttpMaxIdleConnsPerHost int
 	HttpIdleConnTimeout     time.Duration
 
-	Tracer           opentracing.Tracer
-	NoRootTraceSpans bool
+	Tracer                 opentracing.Tracer
+	NoRootTraceSpans       bool
+	UseZombieLogger        bool
+	ZombieLoggerInterval   time.Duration
+	ZombieLoggerSampleSize int
 
 	// Username specifies the username to use when connecting.
 	// DEPRECATED
@@ -426,6 +433,31 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.HttpIdleConnTimeout = time.Duration(val) * time.Millisecond
 	}
 
+	config.UseZombieLogger = true
+	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("orphaned_response_logging option must be a boolean")
+		}
+		config.UseZombieLogger = val
+	}
+
+	if valStr, ok := fetchOption("orphaned_response_logging_interval"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("orphaned_response_logging_interval option must be a number")
+		}
+		config.ZombieLoggerInterval = time.Duration(val) * time.Millisecond
+	}
+
+	if valStr, ok := fetchOption("orphaned_response_logging_sample_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("orphaned_response_logging_sample_size option must be a number")
+		}
+		config.ZombieLoggerSampleSize = int(val)
+	}
+
 	return nil
 }
 
@@ -543,6 +575,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},
+		useZombieLogger:      config.UseZombieLogger,
 		tracer:               tracer,
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
@@ -607,6 +640,20 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if err := c.connect(config.MemdAddrs, config.HttpAddrs, deadline); err != nil {
 		return nil, err
 	}
+
+	if config.UseZombieLogger {
+		zombieLoggerInterval := 10 * time.Second
+		zombieLoggerSampleSize := 10
+		if config.ZombieLoggerInterval > 0 {
+			zombieLoggerInterval = config.ZombieLoggerInterval
+		}
+		if config.ZombieLoggerSampleSize > 0 {
+			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
+		}
+		c.zombieOps = make([]*zombieLogEntry, 0, zombieLoggerSampleSize)
+		go c.zombieLogger(zombieLoggerInterval)
+	}
+
 	return c, nil
 }
 
