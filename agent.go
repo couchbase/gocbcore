@@ -7,9 +7,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/opentracing/opentracing-go"
-	"golang.org/x/net/http2"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -17,6 +14,10 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
+	"golang.org/x/net/http2"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.

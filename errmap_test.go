@@ -1,9 +1,10 @@
 package gocbcore
 
 import (
-	"github.com/couchbaselabs/gojcbmock"
 	"testing"
 	"time"
+
+	"github.com/couchbaselabs/gojcbmock"
 )
 
 func TestKvErrorConstantRetry(t *testing.T) {

@@ -1,10 +1,11 @@
 package gocbcore
 
 import (
-	"github.com/opentracing/opentracing-go"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/opentracing/opentracing-go"
 )
 
 // The data for a response from a server.  This includes the

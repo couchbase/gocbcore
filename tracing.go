@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"fmt"
+
 	"github.com/opentracing/opentracing-go"
 )
 

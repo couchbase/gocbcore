@@ -1,10 +1,11 @@
 package gocbcore
 
 import (
-	"github.com/opentracing/opentracing-go"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
 )
 
 // PingResult contains the results of a ping to a single server.

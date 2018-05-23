@@ -2,9 +2,10 @@ package gocbcore
 
 import (
 	"encoding/binary"
-	"github.com/golang/snappy"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang/snappy"
 )
 
 func isCompressibleOp(command commandCode) bool {

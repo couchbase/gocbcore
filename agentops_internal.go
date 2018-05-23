@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+
 	"github.com/opentracing/opentracing-go"
 )
 

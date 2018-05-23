@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"gopkg.in/couchbaselabs/gojcbmock.v1"
 	"math"
 	"os"
 	"testing"
 	"time"
+
+	"gopkg.in/couchbaselabs/gojcbmock.v1"
 )
 
 // Gets a set of keys evenly distributed across all server nodes.

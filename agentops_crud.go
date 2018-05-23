@@ -2,9 +2,10 @@ package gocbcore
 
 import (
 	"encoding/binary"
-	"github.com/opentracing/opentracing-go"
 	"sync"
 	"sync/atomic"
+
+	"github.com/opentracing/opentracing-go"
 )
 
 // GetOptions encapsulates the parameters for a GetEx operation.

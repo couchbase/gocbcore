@@ -1,8 +1,9 @@
 package gocbcore
 
 import (
-	"github.com/couchbaselabs/gojcbmock"
 	"testing"
+
+	"github.com/couchbaselabs/gojcbmock"
 )
 
 func TestBasicErrors(t *testing.T) {
