@@ -102,11 +102,15 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 	packet := &req.memdPacket
 	if client.SupportsFeature(FeatureSnappy) {
 		isCompressed := (packet.Datatype & uint8(DatatypeFlagCompressed)) != 0
-		if !isCompressed && isCompressibleOp(packet.Opcode) {
-			newPacket := *packet
-			newPacket.Value = snappy.Encode(nil, packet.Value)
-			newPacket.Datatype = newPacket.Datatype | uint8(DatatypeFlagCompressed)
-			packet = &newPacket
+		packetSize := len(packet.Value)
+		if !isCompressed && packetSize > client.parent.compressionMinSize && isCompressibleOp(packet.Opcode) {
+			compressedValue := snappy.Encode(nil, packet.Value)
+			if float64(len(compressedValue))/float64(packetSize) <= client.parent.compressionMinRatio {
+				newPacket := *packet
+				newPacket.Value = compressedValue
+				newPacket.Datatype = newPacket.Datatype | uint8(DatatypeFlagCompressed)
+				packet = &newPacket
+			}
 		}
 	}
 

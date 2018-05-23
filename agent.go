@@ -36,6 +36,9 @@ type Agent struct {
 	useCompression    bool
 	useDurations      bool
 
+	compressionMinSize  int
+	compressionMinRatio float64
+
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
 	kvErrorMap  kvErrorMapPtr
@@ -100,6 +103,9 @@ type AgentConfig struct {
 	UseCompression    bool
 	UseDurations      bool
 
+	CompressionMinSize  int
+	CompressionMinRatio float64
+
 	HttpRedialPeriod time.Duration
 	HttpRetryDelay   time.Duration
 	CccpMaxWait      time.Duration
@@ -145,6 +151,8 @@ type AgentConfig struct {
 //   use_enhanced_errors (bool) - Whether to enable enhanced error information.
 //   fetch_mutation_tokens (bool) - Whether to fetch mutation tokens for operations.
 //   compression (bool) - Whether to enable network-wise compression of documents.
+//   compression_min_size (int) - The minimal size of the document to consider compression.
+//   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
 //   server_duration (bool) - Whether to enable fetching server operation durations.
 //   http_max_idle_conns (int) - Maximum number of idle http connections in the pool.
 //   http_max_idle_conns_per_host (int) - Maximum number of idle http connections in the pool per host.
@@ -370,6 +378,22 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseCompression = val
 	}
 
+	if valStr, ok := fetchOption("compression_min_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("compression_min_size option must be an int")
+		}
+		config.CompressionMinSize = int(val)
+	}
+
+	if valStr, ok := fetchOption("compression_min_ratio"); ok {
+		val, err := strconv.ParseFloat(valStr, 64)
+		if err != nil {
+			return fmt.Errorf("compression_min_size option must be an int")
+		}
+		config.CompressionMinRatio = val
+	}
+
 	if valStr, ok := fetchOption("server_duration"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
@@ -524,6 +548,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useKvErrorMaps:       config.UseKvErrorMaps,
 		useEnhancedErrors:    config.UseEnhancedErrors,
 		useCompression:       config.UseCompression,
+		compressionMinSize:   32,
+		compressionMinRatio:  0.83,
 		useDurations:         config.UseDurations,
 		noRootTraceSpans:     config.NoRootTraceSpans,
 		serverFailures:       make(map[string]time.Time),
@@ -566,6 +592,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 	if config.CccpPollPeriod > 0 {
 		c.confCccpPollPeriod = config.CccpPollPeriod
+	}
+	if config.CompressionMinSize > 0 {
+		c.compressionMinSize = config.CompressionMinSize
+	}
+	if config.CompressionMinRatio > 0 {
+		c.compressionMinRatio = config.CompressionMinRatio
+		if c.compressionMinRatio >= 1.0 {
+			c.compressionMinRatio = 1.0
+		}
 	}
 
 	deadline := time.Now().Add(connectTimeout)
