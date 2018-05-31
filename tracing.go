@@ -106,7 +106,8 @@ func (agent *Agent) stopNetTrace(req *memdQRequest, resp *memdQResponse, client 
 		return
 	}
 
-	req.netTraceSpan.SetTag("couchbase.operation_id", resp.sourceConnId+"/"+fmt.Sprintf("%08x", resp.Opaque))
+	req.netTraceSpan.SetTag("couchbase.operation_id", fmt.Sprintf("0x%x", resp.Opaque))
+	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnId)
 	req.netTraceSpan.SetTag("local.address", client.conn.LocalAddr())
 	req.netTraceSpan.SetTag("peer.address", client.conn.RemoteAddr())
 	if resp.FrameExtras != nil && resp.FrameExtras.HasSrvDuration {
