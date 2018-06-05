@@ -32,7 +32,7 @@ func (config *routeConfig) IsValid() bool {
 	}
 }
 
-func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
+func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConfig {
 	var kvServerList []string
 	var capiEpList []string
 	var mgmtEpList []string
@@ -53,6 +53,17 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 	if bk.NodesExt != nil {
 		for _, node := range bk.NodesExt {
 			hostname := node.Hostname
+			ports := node.Services
+
+			if networkType != "default" {
+				if altAddr, ok := node.AltAddresses[networkType]; ok {
+					hostname = altAddr.Hostname
+					ports = altAddr.Ports
+				} else {
+					logDebugf("Invalid config network type %s", networkType)
+					continue
+				}
+			}
 
 			// Hostname blank means to use the same one as was connected to
 			if hostname == "" {
@@ -67,36 +78,36 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool) *routeConfig {
 			}
 
 			if !useSsl {
-				if node.Services.Kv > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, node.Services.Kv))
+				if ports.Kv > 0 {
+					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.Kv))
 				}
-				if node.Services.Capi > 0 {
-					capiEpList = append(capiEpList, fmt.Sprintf("http://%s:%d/%s", hostname, node.Services.Capi, bk.Name))
+				if ports.Capi > 0 {
+					capiEpList = append(capiEpList, fmt.Sprintf("http://%s:%d/%s", hostname, ports.Capi, bk.Name))
 				}
-				if node.Services.Mgmt > 0 {
-					mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.Mgmt))
+				if ports.Mgmt > 0 {
+					mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt))
 				}
-				if node.Services.N1ql > 0 {
-					n1qlEpList = append(n1qlEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.N1ql))
+				if ports.N1ql > 0 {
+					n1qlEpList = append(n1qlEpList, fmt.Sprintf("http://%s:%d", hostname, ports.N1ql))
 				}
-				if node.Services.Fts > 0 {
-					ftsEpList = append(ftsEpList, fmt.Sprintf("http://%s:%d", hostname, node.Services.Fts))
+				if ports.Fts > 0 {
+					ftsEpList = append(ftsEpList, fmt.Sprintf("http://%s:%d", hostname, ports.Fts))
 				}
 			} else {
-				if node.Services.KvSsl > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, node.Services.KvSsl))
+				if ports.KvSsl > 0 {
+					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.KvSsl))
 				}
-				if node.Services.CapiSsl > 0 {
-					capiEpList = append(capiEpList, fmt.Sprintf("https://%s:%d/%s", hostname, node.Services.CapiSsl, bk.Name))
+				if ports.CapiSsl > 0 {
+					capiEpList = append(capiEpList, fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, bk.Name))
 				}
-				if node.Services.MgmtSsl > 0 {
-					mgmtEpList = append(mgmtEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.MgmtSsl))
+				if ports.MgmtSsl > 0 {
+					mgmtEpList = append(mgmtEpList, fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl))
 				}
-				if node.Services.N1qlSsl > 0 {
-					n1qlEpList = append(n1qlEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.N1qlSsl))
+				if ports.N1qlSsl > 0 {
+					n1qlEpList = append(n1qlEpList, fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl))
 				}
-				if node.Services.FtsSsl > 0 {
-					ftsEpList = append(ftsEpList, fmt.Sprintf("https://%s:%d", hostname, node.Services.FtsSsl))
+				if ports.FtsSsl > 0 {
+					ftsEpList = append(ftsEpList, fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl))
 				}
 			}
 		}

@@ -280,7 +280,7 @@ func (agent *Agent) updateConfig(bk *cfgBucket) {
 		agent.applyConfig(oldRouting.source)
 	} else {
 		// Normalize the cfgBucket to a routeConfig and apply it.
-		routeCfg := buildRouteConfig(bk, agent.IsSecure())
+		routeCfg := buildRouteConfig(bk, agent.IsSecure(), agent.networkType)
 		if !routeCfg.IsValid() {
 			// We received an invalid configuration, lets shutdown.
 			err := agent.Close()

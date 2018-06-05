@@ -30,6 +30,7 @@ type Agent struct {
 	bucket            string
 	tlsConfig         *tls.Config
 	initFn            memdInitFunc
+	networkType       string
 	useMutationTokens bool
 	useKvErrorMaps    bool
 	useEnhancedErrors bool
@@ -99,6 +100,7 @@ type AgentConfig struct {
 	HttpAddrs         []string
 	TlsConfig         *tls.Config
 	BucketName        string
+	NetworkType       string
 	AuthHandler       AuthFunc
 	Auth              AuthProvider
 	UseMutationTokens bool
@@ -164,6 +166,7 @@ type AgentConfig struct {
 //   http_max_idle_conns (int) - Maximum number of idle http connections in the pool.
 //   http_max_idle_conns_per_host (int) - Maximum number of idle http connections in the pool per host.
 //   http_idle_conn_timeout (int) - Maximum length of time for an idle connection to stay in the pool in ms.
+//   network (string) - The network type to use
 func (config *AgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := gocbconnstr.Parse(connStr)
 	if err != nil {
@@ -458,6 +461,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.ZombieLoggerSampleSize = int(val)
 	}
 
+	if valStr, ok := fetchOption("network"); ok {
+		if valStr == "default" {
+			valStr = ""
+		}
+
+		config.NetworkType = valStr
+	}
+
 	return nil
 }
 
@@ -566,12 +577,13 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	c := &Agent{
-		clientId:   formatCbUid(randomCbUid()),
-		userString: config.UserString,
-		bucket:     config.BucketName,
-		auth:       config.Auth,
-		tlsConfig:  config.TlsConfig,
-		initFn:     initFn,
+		clientId:    formatCbUid(randomCbUid()),
+		userString:  config.UserString,
+		bucket:      config.BucketName,
+		auth:        config.Auth,
+		tlsConfig:   config.TlsConfig,
+		initFn:      initFn,
+		networkType: config.NetworkType,
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},
@@ -787,9 +799,9 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			break
 		}
 
-		routeCfg := buildRouteConfig(bk, agent.IsSecure())
+		routeCfg := agent.buildFirstRouteConfig(bk, thisHostPort)
 		if !routeCfg.IsValid() {
-			logDebugf("Configuration was deemed invalid")
+			logDebugf("Configuration was deemed invalid %+v", routeCfg)
 			disconnectClient()
 			continue
 		}
@@ -836,13 +848,13 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 	var routeCfg *routeConfig
 
 	logDebugf("Starting HTTP looper! %v", epList)
-	go agent.httpLooper(func(cfg *cfgBucket, err error) bool {
+	go agent.httpLooper(func(cfg *cfgBucket, srcServer string, err error) bool {
 		if err != nil {
 			signal <- err
 			return true
 		}
 
-		newRouteCfg := buildRouteConfig(cfg, agent.IsSecure())
+		newRouteCfg := agent.buildFirstRouteConfig(cfg, srcServer)
 		if !newRouteCfg.IsValid() {
 			// Something is invalid about this config, keep trying
 			return false
@@ -867,6 +879,38 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 	agent.applyConfig(routeCfg)
 
 	return nil
+}
+
+func (agent *Agent) buildFirstRouteConfig(bk *cfgBucket, srcServer string) *routeConfig {
+	defaultRouteConfig := buildRouteConfig(bk, agent.IsSecure(), "default")
+
+	// First we check if the source server is from the defaults list
+	srcInDefaultConfig := false
+	for _, endpoint := range defaultRouteConfig.kvServerList {
+		if endpoint == srcServer {
+			srcInDefaultConfig = true
+		}
+	}
+	for _, endpoint := range defaultRouteConfig.mgmtEpList {
+		if endpoint == srcServer {
+			srcInDefaultConfig = true
+		}
+	}
+	if srcInDefaultConfig {
+		agent.networkType = "default"
+		return defaultRouteConfig
+	}
+
+	// Next lets see if we have an external config, if so, default to that
+	externalRouteCfg := buildRouteConfig(bk, agent.IsSecure(), "external")
+	if externalRouteCfg.IsValid() {
+		agent.networkType = "external"
+		return externalRouteCfg
+	}
+
+	// If all else fails, default to the implicit default config
+	agent.networkType = "default"
+	return defaultRouteConfig
 }
 
 // Close shuts down the agent, disconnecting from all servers and failing

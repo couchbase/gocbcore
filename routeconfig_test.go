@@ -16,7 +16,7 @@ func getConfig(t *testing.T, filename string) (cfg *routeConfig) {
 		t.Fatal(err.Error())
 	}
 
-	cfg = buildRouteConfig(rawCfg, false)
+	cfg = buildRouteConfig(rawCfg, false, "default")
 	return
 }
 

@@ -27,7 +27,7 @@ func hostnameFromUri(uri string) string {
 	return strings.Split(uriInfo.Host, ":")[0]
 }
 
-func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
+func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) {
 	waitPeriod := agent.confHttpRetryDelay
 	maxConnPeriod := agent.confHttpRedialPeriod
 
@@ -58,7 +58,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 			// All servers have been visited during this iteration
 			if isFirstTry {
 				logDebugf("Could not find any alive http hosts.")
-				firstCfgFn(nil, ErrBadHosts)
+				firstCfgFn(nil, "", ErrBadHosts)
 				return
 			}
 
@@ -118,12 +118,12 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 			if resp.StatusCode != 200 {
 				if resp.StatusCode == 401 {
 					logDebugf("Failed to connect to host, bad auth.")
-					firstCfgFn(nil, ErrAuthError)
+					firstCfgFn(nil, "", ErrAuthError)
 					return -1
 				} else if resp.StatusCode == 404 {
 					if is2x {
 						logDebugf("Failed to connect to host, bad bucket.")
-						firstCfgFn(nil, ErrAuthError)
+						firstCfgFn(nil, "", ErrAuthError)
 						return -1
 					}
 
@@ -189,7 +189,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, error) bool) {
 			iterSawConfig = true
 			if isFirstTry {
 				logDebugf("HTTP Config Init")
-				if !firstCfgFn(bkCfg, nil) {
+				if !firstCfgFn(bkCfg, pickedSrv, nil) {
 					logDebugf("Got error while activating first config")
 
 					err = resp.Body.Close()
