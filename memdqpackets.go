@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -56,6 +57,10 @@ type memdQRequest struct {
 	//  This is an integer to allow us to atomically control it.
 	isCompleted uint32
 
+	// This is used to lock access to the request when processing
+	// a timeout, a response or spans
+	processingLock sync.Mutex
+
 	// This stores the number of times that the item has been
 	// retried, and is used for various non-linear retry
 	// algorithms.
@@ -87,8 +92,11 @@ func (req *memdQRequest) isCancelled() bool {
 }
 
 func (req *memdQRequest) Cancel() bool {
+	req.processingLock.Lock()
+
 	if atomic.SwapUint32(&req.isCompleted, 1) != 0 {
 		// Someone already completed this request
+		req.processingLock.Unlock()
 		return false
 	}
 
@@ -103,5 +111,6 @@ func (req *memdQRequest) Cancel() bool {
 	}
 
 	req.owner.cancelReqTrace(req, ErrCancelled)
+	req.processingLock.Unlock()
 	return true
 }

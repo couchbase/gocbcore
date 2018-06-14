@@ -56,10 +56,12 @@ func (agent *Agent) startCmdTrace(req *memdQRequest) {
 		return
 	}
 
+	req.processingLock.Lock()
 	req.cmdTraceSpan = agent.tracer.StartSpan(
 		getCommandName(req.memdPacket.Opcode),
 		opentracing.ChildOf(req.RootTraceContext),
 		opentracing.Tag{Key: "retry", Value: req.retryCount})
+	req.processingLock.Unlock()
 }
 
 func (agent *Agent) stopCmdTrace(req *memdQRequest) {
@@ -86,10 +88,12 @@ func (agent *Agent) startNetTrace(req *memdQRequest) {
 		return
 	}
 
+	req.processingLock.Lock()
 	req.netTraceSpan = agent.tracer.StartSpan(
 		"rpc",
 		opentracing.ChildOf(req.cmdTraceSpan.Context()),
 		opentracing.Tag{Key: "span.kind", Value: "client"})
+	req.processingLock.Unlock()
 }
 
 func (agent *Agent) stopNetTrace(req *memdQRequest, resp *memdQResponse, client *memdClient) {

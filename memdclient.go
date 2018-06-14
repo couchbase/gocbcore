@@ -140,6 +140,8 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
+	req.processingLock.Lock()
+
 	if !req.Persistent {
 		client.parent.stopNetTrace(req, resp, client)
 	}
@@ -148,6 +150,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	if isCompressed {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
+			req.processingLock.Unlock()
 			logDebugf("Failed to decompress value from the server for key `%s`.", req.Key)
 			return
 		}
@@ -171,6 +174,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	if client.parent != nil {
 		shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
 		if shortCircuited {
+			req.processingLock.Unlock()
 			logSchedf("Routing callback intercepted response")
 			return
 		}
@@ -179,6 +183,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	// Call the requests callback handler...
+	req.processingLock.Unlock()
 	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
 	req.tryCallback(resp, err)
 }
