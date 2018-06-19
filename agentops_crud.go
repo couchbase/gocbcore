@@ -373,6 +373,10 @@ type TouchExCallback func(*TouchResult, error)
 // TouchEx updates the expiry for a document.
 func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("TouchEx", opts.TraceContext)
+	if opts.Cas != 0 {
+		tracer.Finish()
+		return nil, ErrNonZeroCas
+	}
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -403,7 +407,7 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 			Magic:    reqMagic,
 			Opcode:   cmdTouch,
 			Datatype: 0,
-			Cas:      uint64(opts.Cas),
+			Cas:      0,
 			Extras:   extraBuf,
 			Key:      opts.Key,
 			Value:    nil,

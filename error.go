@@ -448,6 +448,9 @@ var (
 	// ErrNoFtsService occurs when no FTS services are available for a request.
 	ErrNoFtsService = errors.New("No available fts nodes.")
 
+	// ErrNonZeroCas occurs when an operation that require a CAS value of 0 is used with a non-zero value.
+	ErrNonZeroCas = errors.New("Cas value must be 0.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
