@@ -262,6 +262,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 		sort.Sort(memdQRequestSorter(requestList))
 
 		for _, req := range requestList {
+			agent.stopCmdTrace(req)
 			agent.requeueDirect(req)
 		}
 	}
@@ -407,7 +408,6 @@ func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) e
 }
 
 func (agent *Agent) requeueDirect(req *memdQRequest) {
-	agent.stopCmdTrace(req)
 	agent.startCmdTrace(req)
 
 	handleError := func(err error) {

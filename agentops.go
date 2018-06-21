@@ -147,16 +147,6 @@ func (agent *Agent) makeBasicMemdError(code StatusCode) error {
 }
 
 func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
-	if !req.Persistent {
-		agent.stopCmdTrace(req)
-	}
-
-	if err == ErrCancelled {
-		// If this is a cancelled operation, we are essentially only here
-		// in this callback to close the command span.
-		return false, err
-	}
-
 	if resp.Magic == resMagic {
 		// Temporary backwards compatibility handling...
 		if resp.Status == StatusLocked {

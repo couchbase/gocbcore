@@ -171,19 +171,25 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 	}
 
-	if client.parent != nil {
-		shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
-		if shortCircuited {
-			req.processingLock.Unlock()
-			logSchedf("Routing callback intercepted response")
-			return
+	if client.parent == nil {
+		req.processingLock.Unlock()
+	} else {
+		if !req.Persistent {
+			client.parent.stopCmdTrace(req)
 		}
 
-		err = routeErr
+		req.processingLock.Unlock()
+		if err != ErrCancelled {
+			shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
+			if shortCircuited {
+				logSchedf("Routing callback intercepted response")
+				return
+			}
+			err = routeErr
+		}
 	}
 
 	// Call the requests callback handler...
-	req.processingLock.Unlock()
 	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
 	req.tryCallback(resp, err)
 }
@@ -222,7 +228,9 @@ func (client *memdClient) run() {
 
 			err := client.conn.ReadPacket(&resp.memdPacket)
 			if err != nil {
-				logErrorf("memdClient read failure: %v", err)
+				if !client.conn.Closed() {
+					logErrorf("memdClient read failure: %v", err)
+				}
 				break
 			}
 
@@ -260,7 +268,7 @@ func (client *memdClient) run() {
 		}
 
 		err := client.conn.Close()
-		if err != nil {
+		if err != nil && !client.conn.Closed() {
 			// Lets log an error, as this is non-fatal
 			logErrorf("Failed to shut down client connection (%s)", err)
 		}
