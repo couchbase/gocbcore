@@ -115,7 +115,7 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 		}
 	}
 
-	logSchedf("Writing request. %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), req.Opcode, req.Opaque)
+	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
 
 	client.parent.startNetTrace(req)
 
