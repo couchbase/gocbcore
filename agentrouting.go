@@ -140,7 +140,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	if err != nil {
 		logDebugf("Failed to authenticate. %v", err)
 
-		closeErr := memdConn.Close()
+		closeErr := client.Close()
 		if closeErr != nil {
 			logWarnf("Failed to close authentication client (%s)", closeErr)
 		}

@@ -35,6 +35,7 @@ type memdClient struct {
 	dcpFlowRecv  int
 	lastActivity int64
 	connId       string
+	closed       bool
 }
 
 func newMemdClient(parent *Agent, conn memdConn) *memdClient {
@@ -231,7 +232,7 @@ func (client *memdClient) run() {
 
 			err := client.conn.ReadPacket(&resp.memdPacket)
 			if err != nil {
-				if !client.conn.Closed() {
+				if !client.closed {
 					logErrorf("memdClient read failure: %v", err)
 				}
 				break
@@ -270,10 +271,12 @@ func (client *memdClient) run() {
 			}
 		}
 
-		err := client.conn.Close()
-		if err != nil && !client.conn.Closed() {
-			// Lets log an error, as this is non-fatal
-			logErrorf("Failed to shut down client connection (%s)", err)
+		if !client.closed {
+			err := client.conn.Close()
+			if err != nil {
+				// Lets log an error, as this is non-fatal
+				logErrorf("Failed to shut down client connection (%s)", err)
+			}
 		}
 
 		dcpKillSwitch <- true
@@ -288,5 +291,6 @@ func (client *memdClient) run() {
 }
 
 func (client *memdClient) Close() error {
+	client.closed = true
 	return client.conn.Close()
 }

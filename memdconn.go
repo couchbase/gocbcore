@@ -37,7 +37,6 @@ type memdConn interface {
 	WritePacket(*memdPacket) error
 	ReadPacket(*memdPacket) error
 	Close() error
-	Closed() bool
 }
 
 type memdTcpConn struct {
@@ -46,7 +45,6 @@ type memdTcpConn struct {
 	headerBuf  []byte
 	localAddr  string
 	remoteAddr string
-	closed     bool
 }
 
 func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {
@@ -100,7 +98,6 @@ func (s *memdTcpConn) RemoteAddr() string {
 }
 
 func (s *memdTcpConn) Close() error {
-	s.closed = true
 	return s.conn.Close()
 }
 
@@ -230,8 +227,4 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 	resp.Key = bodyBuf[frameExtrasLen+extLen : frameExtrasLen+extLen+keyLen]
 	resp.Value = bodyBuf[frameExtrasLen+extLen+keyLen:]
 	return nil
-}
-
-func (s *memdTcpConn) Closed() bool {
-	return s.closed
 }
