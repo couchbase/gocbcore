@@ -439,7 +439,6 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.HttpIdleConnTimeout = time.Duration(val) * time.Millisecond
 	}
 
-	config.UseZombieLogger = true
 	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
