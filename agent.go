@@ -662,8 +662,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		if config.ZombieLoggerSampleSize > 0 {
 			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
 		}
+		// zombieOps must have a static capacity for its lifetime, the capacity should
+		// never be altered so that it is consistent across the zombieLogger and
+		// recordZombieResponse.
 		c.zombieOps = make([]*zombieLogEntry, 0, zombieLoggerSampleSize)
-		go c.zombieLogger(zombieLoggerInterval)
+		go c.zombieLogger(zombieLoggerInterval, zombieLoggerSampleSize)
 	}
 
 	return c, nil

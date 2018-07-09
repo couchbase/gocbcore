@@ -154,7 +154,7 @@ type zombieLogService struct {
 	Top     []zombieLogItem `json:"top"`
 }
 
-func (agent *Agent) zombieLogger(interval time.Duration) {
+func (agent *Agent) zombieLogger(interval time.Duration, sampleSize int) {
 	lastTick := time.Now()
 
 	for {
@@ -173,9 +173,6 @@ func (agent *Agent) zombieLogger(interval time.Duration) {
 		}
 
 		lastTick = lastTick.Add(interval)
-
-		// capacity is static for the group, no need for a lock
-		sampleSize := cap(agent.zombieOps)
 
 		// Preallocate space to copy the ops into...
 		oldOps := make([]*zombieLogEntry, sampleSize)
