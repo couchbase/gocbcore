@@ -105,9 +105,9 @@ func (req *memdQRequest) Cancel() bool {
 		queuedWith.Remove(req)
 	}
 
-	waitingIn := (*memdOpMap)(atomic.LoadPointer(&req.waitingIn))
+	waitingIn := (*memdClient)(atomic.LoadPointer(&req.waitingIn))
 	if waitingIn != nil {
-		waitingIn.Remove(req)
+		waitingIn.CancelRequest(req)
 	}
 
 	req.owner.cancelReqTrace(req, ErrCancelled)

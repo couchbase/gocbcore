@@ -2,8 +2,10 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/golang/snappy"
 )
@@ -36,6 +38,7 @@ type memdClient struct {
 	lastActivity int64
 	connId       string
 	closed       bool
+	lock         sync.Mutex
 }
 
 func newMemdClient(parent *Agent, conn memdConn) *memdClient {
@@ -94,8 +97,48 @@ func (client *memdClient) CloseNotify() chan bool {
 	return client.closeNotify
 }
 
+func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
+	client.lock.Lock()
+	defer client.lock.Unlock()
+
+	if client.closed {
+		logDebugf("Attempted to put dispatched op in drained opmap")
+		return false
+	}
+
+	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(client)) {
+		logDebugf("Attempted to put dispatched op in new opmap")
+		return false
+	}
+
+	if req.isCancelled() {
+		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
+		return false
+	}
+
+	client.opList.Add(req)
+	return true
+}
+
+func (client *memdClient) CancelRequest(req *memdQRequest) bool {
+	client.lock.Lock()
+	defer client.lock.Unlock()
+
+	if client.closed {
+		logDebugf("Attempted to remove op from drained opmap")
+		return false
+	}
+
+	removed := client.opList.Remove(req)
+	if removed {
+		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
+	}
+
+	return removed
+}
+
 func (client *memdClient) SendRequest(req *memdQRequest) error {
-	addSuccess := client.opList.Add(req)
+	addSuccess := client.takeRequestOwnership(req)
 	if !addSuccess {
 		return ErrCancelled
 	}
@@ -122,7 +165,7 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 	err := client.conn.WritePacket(packet)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
-		client.opList.Remove(req)
+		client.CancelRequest(req)
 		return err
 	}
 
@@ -132,8 +175,11 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	opIndex := resp.Opaque
 
-	// Find the request that goes with this response
+	client.lock.Lock()
+	// Find the request that goes with this response, don't check if the client is
+	// closed so that we can handle orphaned responses.
 	req := client.opList.FindAndMaybeRemove(opIndex, resp.Status != StatusSuccess)
+	client.lock.Unlock()
 
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
@@ -142,6 +188,9 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 			client.parent.recordZombieResponse(resp, client)
 		}
 		return
+	}
+	if !req.Persistent {
+		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
 	req.processingLock.Lock()
@@ -271,7 +320,13 @@ func (client *memdClient) run() {
 			}
 		}
 
-		if !client.closed {
+		client.lock.Lock()
+		if client.closed {
+			client.lock.Unlock()
+		} else {
+			client.closed = true
+			client.lock.Unlock()
+
 			err := client.conn.Close()
 			if err != nil {
 				// Lets log an error, as this is non-fatal
@@ -283,6 +338,10 @@ func (client *memdClient) run() {
 		<-dcpKillNotify
 
 		client.opList.Drain(func(req *memdQRequest) {
+			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {
+				logWarnf("Encountered an unowned request in a client opMap")
+			}
+
 			req.tryCallback(nil, ErrNetwork)
 		})
 
@@ -291,6 +350,9 @@ func (client *memdClient) run() {
 }
 
 func (client *memdClient) Close() error {
+	client.lock.Lock()
 	client.closed = true
+	client.lock.Unlock()
+
 	return client.conn.Close()
 }
