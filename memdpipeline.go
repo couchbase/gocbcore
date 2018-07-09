@@ -130,7 +130,9 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 	// Shut down the old pipelines queue, this will force all the
 	//  clients to 'refresh' their consumer, and pick up the new
-	//  pipeline queue from the new pipeline.
+	//  pipeline queue from the new pipeline.  This will also block
+	//  any writers from sending new requests here if they have an
+	//  out of date route config.
 	oldPipeline.queue.Close()
 }
 
