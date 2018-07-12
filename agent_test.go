@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"math"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -888,8 +890,31 @@ func TestDiagnostics(t *testing.T) {
 	}
 }
 
+type testLogger struct {
+	Parent   Logger
+	LogCount []uint64
+}
+
+func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
+	if level >= 0 && level < LogMaxVerbosity {
+		atomic.AddUint64(&logger.LogCount[level], 1)
+	}
+
+	return logger.Parent.Log(level, offset+1, format, v...)
+}
+
+func createTestLogger() *testLogger {
+	return &testLogger{
+		Parent:   VerboseStdioLogger(),
+		LogCount: make([]uint64, LogMaxVerbosity),
+	}
+}
+
 func TestMain(m *testing.M) {
-	SetLogger(DefaultStdioLogger())
+	// Set up our special logger which logs the log level count
+	logger := createTestLogger()
+	SetLogger(logger)
+
 	flag.Parse()
 	mpath, err := gojcbmock.GetMockPath()
 	if err != nil {
@@ -950,6 +975,17 @@ func TestMain(m *testing.M) {
 	err = globalMemdAgent.Close()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
+	}
+
+	log.Printf("Log Messages Emitted:")
+	for i := 0; i < int(LogMaxVerbosity); i++ {
+		log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
+	}
+
+	abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
+	if abnormalLogCount > 0 {
+		log.Printf("Detected unexpected logging, failing")
+		result = 1
 	}
 
 	os.Exit(result)

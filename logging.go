@@ -22,6 +22,25 @@ const (
 	LogMaxVerbosity
 )
 
+func logLevelToString(level LogLevel) string {
+	switch level {
+	case LogError:
+		return "error"
+	case LogWarn:
+		return "warn"
+	case LogInfo:
+		return "info"
+	case LogDebug:
+		return "debug"
+	case LogTrace:
+		return "trace"
+	case LogSched:
+		return "sched"
+	}
+
+	return fmt.Sprintf("unknown (%d)", level)
+}
+
 // Logger defines a logging interface. You can either use one of the default loggers
 // (DefaultStdioLogger(), VerboseStdioLogger()) or implement your own.
 type Logger interface {
