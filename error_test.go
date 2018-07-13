@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"testing"
 
-	"github.com/couchbaselabs/gojcbmock"
+	"gopkg.in/couchbaselabs/gojcbmock.v1"
 )
 
 func TestBasicErrors(t *testing.T) {
