@@ -7,6 +7,8 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -911,6 +913,8 @@ func createTestLogger() *testLogger {
 }
 
 func TestMain(m *testing.M) {
+	initialGoroutineCount := runtime.NumGoroutine()
+
 	// Set up our special logger which logs the log level count
 	logger := createTestLogger()
 	SetLogger(logger)
@@ -986,6 +990,15 @@ func TestMain(m *testing.M) {
 	if abnormalLogCount > 0 {
 		log.Printf("Detected unexpected logging, failing")
 		result = 1
+	}
+
+	finalGoroutineCount := runtime.NumGoroutine()
+	if finalGoroutineCount != initialGoroutineCount {
+		log.Printf("Detected a goroutine leak (%d before != %d after), failing", initialGoroutineCount, finalGoroutineCount)
+		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+		result = 1
+	} else {
+		log.Printf("No goroutines appear to have leaked (%d before == %d after)", initialGoroutineCount, finalGoroutineCount)
 	}
 
 	os.Exit(result)
