@@ -39,6 +39,10 @@ type Agent struct {
 	compressionMinSize  int
 	compressionMinRatio float64
 
+	closeNotify       chan struct{}
+	cccpLooperDoneSig chan struct{}
+	httpLooperDoneSig chan struct{}
+
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
 	kvErrorMap  kvErrorMapPtr
@@ -586,6 +590,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},
+		closeNotify:          make(chan struct{}),
 		useZombieLogger:      config.UseZombieLogger,
 		tracer:               tracer,
 		useMutationTokens:    config.UseMutationTokens,
@@ -757,6 +762,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 
 		agent.applyConfig(routeCfg)
 
+		agent.cccpLooperDoneSig = make(chan struct{})
 		go agent.cccpLooper()
 
 		return nil
@@ -780,6 +786,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 	var routeCfg *routeConfig
 
 	logDebugf("Starting HTTP looper! %v", epList)
+	agent.httpLooperDoneSig = make(chan struct{})
 	go agent.httpLooper(func(cfg *cfgBucket, srcServer string, err error) bool {
 		if err != nil {
 			signal <- err
@@ -858,6 +865,9 @@ func (agent *Agent) Close() error {
 		return ErrShutdown
 	}
 
+	// Notify everyone that we are shutting down
+	close(agent.closeNotify)
+
 	// Shut down the client multiplexer which will close all its queues
 	// effectively causing all the clients to shut down.
 	muxCloseErr := routingInfo.clientMux.Close()
@@ -869,6 +879,16 @@ func (agent *Agent) Close() error {
 	})
 
 	agent.configLock.Unlock()
+
+	// Wait for our external looper goroutines to finish, note that if the
+	// specific looper wasn't used, it will be a nil value otherwise it
+	// will be an open channel till its closed to signal completion.
+	if agent.cccpLooperDoneSig != nil {
+		<-agent.cccpLooperDoneSig
+	}
+	if agent.httpLooperDoneSig != nil {
+		<-agent.httpLooperDoneSig
+	}
 
 	return muxCloseErr
 }

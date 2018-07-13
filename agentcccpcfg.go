@@ -13,8 +13,11 @@ func (agent *Agent) cccpLooper() {
 
 	nodeIdx := -1
 	for {
-		// Wait 10 seconds
-		time.Sleep(tickTime)
+		// Wait for either the agent to be shut down, or our tick time to expire
+		select {
+		case <-time.After(tickTime):
+		case <-agent.closeNotify:
+		}
 
 		routingInfo := agent.routingInfo.Get()
 		if routingInfo == nil {
@@ -73,4 +76,6 @@ func (agent *Agent) cccpLooper() {
 		logDebugf("CCCPPOLL: Received new config")
 		agent.updateConfig(foundConfig)
 	}
+
+	close(agent.cccpLooperDoneSig)
 }

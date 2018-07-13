@@ -59,13 +59,17 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 			if isFirstTry {
 				logDebugf("Could not find any alive http hosts.")
 				firstCfgFn(nil, "", ErrBadHosts)
-				return
+				break
 			}
 
 			if !iterSawConfig {
 				logDebugf("Looper waiting...")
 				// Wait for a period before trying again if there was a problem...
-				<-time.After(waitPeriod)
+				// We also watch for the client being shut down.
+				select {
+				case <-time.After(waitPeriod):
+				case <-agent.closeNotify:
+				}
 			}
 			logDebugf("Looping again.")
 			// Go to next iteration and try all servers again
@@ -139,15 +143,19 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 		case 0:
 			continue
 		case -1:
-			return
+			break
 		}
 
 		logDebugf("Connected.")
 
 		// Autodisconnect eventually
 		go func() {
-			<-time.After(maxConnPeriod)
-			logDebugf("Auto DC!")
+			select {
+			case <-time.After(maxConnPeriod):
+			case <-agent.closeNotify:
+			}
+
+			logDebugf("Automatically resetting our HTTP connection")
 
 			err := resp.Body.Close()
 			if err != nil {
@@ -208,4 +216,6 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)
 	}
+
+	close(agent.httpLooperDoneSig)
 }
