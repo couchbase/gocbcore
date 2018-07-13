@@ -3,9 +3,11 @@ package gocbcore
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -148,6 +150,8 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 
 		logDebugf("Connected.")
 
+		var autoDisconnected int32
+
 		// Autodisconnect eventually
 		go func() {
 			select {
@@ -156,6 +160,8 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 			}
 
 			logDebugf("Automatically resetting our HTTP connection")
+
+			atomic.StoreInt32(&autoDisconnected, 1)
 
 			err := resp.Body.Close()
 			if err != nil {
@@ -168,11 +174,20 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 		for {
 			err := dec.Decode(configBlock)
 			if err != nil {
+				if atomic.LoadInt32(&autoDisconnected) == 1 {
+					// If we know we intentionally disconnected, we know we do not
+					// need to close the client, nor log an error, since this was
+					// expected behaviour
+					break
+				}
+
 				logWarnf("Config block decode failure (%s)", err)
 
-				err = resp.Body.Close()
-				if err != nil {
-					logErrorf("Socket close failed after decode fail (%s)", err)
+				if err != io.EOF {
+					err = resp.Body.Close()
+					if err != nil {
+						logErrorf("Socket close failed after decode fail (%s)", err)
+					}
 				}
 
 				break
