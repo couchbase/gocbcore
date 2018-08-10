@@ -889,6 +889,13 @@ func (agent *Agent) Close() error {
 		<-agent.httpLooperDoneSig
 	}
 
+	// Close the transports so that they don't hold open goroutines.
+	if tsport, ok := agent.httpCli.Transport.(*http.Transport); ok {
+		tsport.CloseIdleConnections()
+	} else {
+		logDebugf("Could not close idle connections for transport")
+	}
+
 	return muxCloseErr
 }
 
