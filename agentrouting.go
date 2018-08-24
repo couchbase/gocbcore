@@ -210,6 +210,7 @@ func (agent *Agent) applyConfig(cfg *routeConfig) {
 		mgmtEpList: cfg.mgmtEpList,
 		n1qlEpList: cfg.n1qlEpList,
 		ftsEpList:  cfg.ftsEpList,
+		cbasEpList: cfg.cbasEpList,
 		vbMap:      cfg.vbMap,
 		ketamaMap:  cfg.ketamaMap,
 		bktType:    cfg.bktType,

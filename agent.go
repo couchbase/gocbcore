@@ -1041,6 +1041,11 @@ func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	return vbList[index]
 }
 
+// ClientId returns the unique id for this agent
+func (agent *Agent) ClientId() string {
+	return agent.clientId
+}
+
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
@@ -1079,4 +1084,14 @@ func (agent *Agent) FtsEps() []string {
 		return nil
 	}
 	return routingInfo.ftsEpList
+}
+
+// CbasEps returns all the available endpoints for performing
+// CBAS queries.
+func (agent *Agent) CbasEps() []string {
+	routingInfo := agent.routingInfo.Get()
+	if routingInfo == nil {
+		return nil
+	}
+	return routingInfo.cbasEpList
 }

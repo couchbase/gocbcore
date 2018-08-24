@@ -82,6 +82,14 @@ func (agent *Agent) getFtsEp() (string, error) {
 	return ftsEps[rand.Intn(len(ftsEps))], nil
 }
 
+func (agent *Agent) getCbasEp() (string, error) {
+	cbasEps := agent.CbasEps()
+	if len(cbasEps) == 0 {
+		return "", ErrNoCbasService
+	}
+	return cbasEps[rand.Intn(len(cbasEps))], nil
+}
+
 // DoHttpRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
 func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
@@ -102,6 +110,8 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 			endpoint, err = agent.getN1qlEp()
 		case FtsService:
 			endpoint, err = agent.getFtsEp()
+		case CbasService:
+			endpoint, err = agent.getCbasEp()
 		}
 		if err != nil {
 			return nil, err

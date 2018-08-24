@@ -19,6 +19,7 @@ type routeData struct {
 	mgmtEpList []string
 	n1qlEpList []string
 	ftsEpList  []string
+	cbasEpList []string
 
 	source *routeConfig
 }
@@ -48,6 +49,11 @@ func (rd *routeData) DebugString() string {
 
 	outStr += "FTS Eps:\n"
 	for _, ep := range rd.ftsEpList {
+		outStr += fmt.Sprintf("  - %s\n", ep)
+	}
+
+	outStr += "CBAS Eps:\n"
+	for _, ep := range rd.cbasEpList {
 		outStr += fmt.Sprintf("  - %s\n", ep)
 	}
 

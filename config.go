@@ -47,11 +47,13 @@ type cfgNodeServices struct {
 	Mgmt    uint16 `json:"mgmt"`
 	N1ql    uint16 `json:"n1ql"`
 	Fts     uint16 `json:"fts"`
+	Cbas    uint16 `json:"cbas"`
 	KvSsl   uint16 `json:"kvSSL"`
 	CapiSsl uint16 `json:"capiSSL"`
 	MgmtSsl uint16 `json:"mgmtSSL"`
 	N1qlSsl uint16 `json:"n1qlSSL"`
 	FtsSsl  uint16 `json:"ftsSSL"`
+	CbasSsl uint16 `json:"cbasSSL"`
 }
 
 type cfgNodeAltAddress struct {
