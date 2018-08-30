@@ -51,7 +51,8 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConf
 	}
 
 	if bk.NodesExt != nil {
-		for _, node := range bk.NodesExt {
+		lenNodes := len(bk.Nodes)
+		for i, node := range bk.NodesExt {
 			hostname := node.Hostname
 			ports := node.Services
 
@@ -79,7 +80,11 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConf
 
 			if !useSsl {
 				if ports.Kv > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.Kv))
+					if i >= lenNodes {
+						logDebugf("KV node present in nodesext but not in nodes for %s:%d", hostname, ports.Kv)
+					} else {
+						kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.Kv))
+					}
 				}
 				if ports.Capi > 0 {
 					capiEpList = append(capiEpList, fmt.Sprintf("http://%s:%d/%s", hostname, ports.Capi, bk.Name))
@@ -95,7 +100,11 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConf
 				}
 			} else {
 				if ports.KvSsl > 0 {
-					kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.KvSsl))
+					if i >= lenNodes {
+						logDebugf("KV node present in nodesext but not in nodes for %s:%d", hostname, ports.KvSsl)
+					} else {
+						kvServerList = append(kvServerList, fmt.Sprintf("%s:%d", hostname, ports.KvSsl))
+					}
 				}
 				if ports.CapiSsl > 0 {
 					capiEpList = append(capiEpList, fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, bk.Name))

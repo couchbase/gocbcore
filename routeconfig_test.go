@@ -78,3 +78,12 @@ func TestKetama(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeExtConfig(t *testing.T) {
+	// Scenario when a node is in nodesext but not nodes
+	cfg := getConfig(t, "testdata/map_node_present_nodesext_missing_nodes.json")
+
+	if len(cfg.kvServerList) != 3 {
+		t.Fatalf("Expected 3 kv nodes, got %d", len(cfg.kvServerList))
+	}
+}
