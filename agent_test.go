@@ -992,6 +992,9 @@ func TestMain(m *testing.M) {
 		result = 1
 	}
 
+	// Yield and short sleep to give goroutines that are finishing a chance to fully terminate
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
 	finalGoroutineCount := runtime.NumGoroutine()
 	if finalGoroutineCount != initialGoroutineCount {
 		log.Printf("Detected a goroutine leak (%d before != %d after), failing", initialGoroutineCount, finalGoroutineCount)
