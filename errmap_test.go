@@ -74,17 +74,20 @@ func TestKvErrorExponentialRetry(t *testing.T) {
 }
 
 func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
+	if !globalAgent.SupportsFeature(TestErrMapFeature) {
+		t.Skip("Cannot test error map with real server")
+	}
 	agent, s := getAgentnSignaler(t)
 
 	testKey := "hello"
 	serverIdx := globalAgent.KeyToServer([]byte(testKey), 0)
 
-	globalMock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
 		"bucket": globalAgent.bucket,
 		"code":   errCode,
 		"count":  -1,
 	}))
-	globalMock.Control(gojcbmock.NewCommand(gojcbmock.CStartRetryVerify, map[string]interface{}{
+	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CStartRetryVerify, map[string]interface{}{
 		"idx":    serverIdx,
 		"bucket": globalAgent.bucket,
 	}))
@@ -94,7 +97,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	})
 	s.Wait(0)
 
-	resp := globalMock.Control(gojcbmock.NewCommand(gojcbmock.CCheckRetryVerify, map[string]interface{}{
+	resp := globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CCheckRetryVerify, map[string]interface{}{
 		"idx":     serverIdx,
 		"bucket":  globalAgent.bucket,
 		"opcode":  0,
@@ -105,7 +108,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		t.Fatalf("Failed to verify retry intervals")
 	}
 
-	globalMock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
 		"bucket": globalAgent.bucket,
 		"code":   errCode,
 		"count":  0,

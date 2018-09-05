@@ -39,9 +39,12 @@ func TestEnhancedErrors(t *testing.T) {
 }
 
 func TestEnhancedErrorOp(t *testing.T) {
+	if !globalAgent.SupportsFeature(TestErrMapFeature) {
+		t.Skip("Cannot test enhanced error ops with real server")
+	}
 	agent, s := getAgentnSignaler(t)
 
-	globalMock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	globalAgent.Mock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": true,
 		"bucket":  globalAgent.bucket,
 	}))
@@ -50,29 +53,29 @@ func TestEnhancedErrorOp(t *testing.T) {
 		s.Wrap(func() {
 			typedErr, ok := err.(*KvError)
 			if !ok {
-				t.Fatalf("error should be a KvError")
+				s.Fatalf("error should be a KvError")
 			}
 
 			if typedErr.Context == "" {
-				t.Fatalf("error should have a context")
+				s.Fatalf("error should have a context")
 			}
 
 			if typedErr.Description == "" {
-				t.Fatalf("error should have a description")
+				s.Fatalf("error should have a description")
 			}
 
 			if typedErr.Code != StatusKeyNotFound {
-				t.Fatalf("status code should have been StatusKeyNotFound")
+				s.Fatalf("status code should have been StatusKeyNotFound")
 			}
 
 			if ErrorCause(err) != ErrKeyNotFound {
-				t.Fatalf("error cause should have been ErrKeyNotFound")
+				s.Fatalf("error cause should have been ErrKeyNotFound")
 			}
 		})
 	})
 	s.Wait(0)
 
-	globalMock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	globalAgent.Mock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": false,
 		"bucket":  globalAgent.bucket,
 	}))

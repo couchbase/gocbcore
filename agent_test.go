@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -57,104 +57,20 @@ func saslAuthFn(bucket, password string) func(AuthClient, time.Time) error {
 	}
 }
 
-type Signaler struct {
-	t      *testing.T
-	signal chan int
-}
+const (
+	defaultServerVersion = "5.1.0"
+)
 
-func (s *Signaler) Continue() {
-	s.signal <- 0
-}
+var globalAgent *testNode
+var globalMemdAgent *testNode
 
-func (s *Signaler) Wrap(fn func()) {
-	defer func() {
-		if r := recover(); r != nil {
-			// Rethrow actual panics
-			if r != s {
-				panic(r)
-			}
-		}
-	}()
-	fn()
-	s.signal <- 0
-}
-
-func (s *Signaler) Fatalf(fmt string, args ...interface{}) {
-	s.t.Logf(fmt, args...)
-	s.signal <- 1
-	panic(s)
-}
-
-func (s *Signaler) Skipf(fmt string, args ...interface{}) {
-	s.t.Logf(fmt, args...)
-	s.signal <- 2
-	panic(s)
-}
-
-func (s *Signaler) Wait(waitSecs int) {
-	if waitSecs <= 0 {
-		waitSecs = 5
-	}
-
-	select {
-	case v := <-s.signal:
-		if v == 1 {
-			s.t.FailNow()
-		} else if v == 2 {
-			s.t.SkipNow()
-		}
-	case <-time.After(time.Duration(waitSecs) * time.Second):
-		s.t.Fatalf("Wait timeout expired")
-	}
-}
-
-func (s *Signaler) TimeTravel(waitDura time.Duration) {
-	waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
-
-	// TODO: Implement real server support here
-	globalMock.Control(gojcbmock.NewCommand(gojcbmock.CTimeTravel, map[string]interface{}{
-		"Offset": waitSecs,
-	}))
-}
-
-func getSignaler(t *testing.T) *Signaler {
-	signaler := &Signaler{
-		t:      t,
-		signal: make(chan int),
-	}
-	return signaler
-}
-
-var globalAgent *Agent
-var globalMemdAgent *Agent
-var globalMock *gojcbmock.Mock
-
-func getAgent(t *testing.T) *Agent {
+func getAgent(t *testing.T) *testNode {
 	return globalAgent
 }
 
-func TestHttpAgent(t *testing.T) {
-	agentConfig := &AgentConfig{
-		MemdAddrs:            []string{},
-		HttpAddrs:            []string{fmt.Sprintf("127.0.0.1:%d", globalMock.EntryPort)},
-		TlsConfig:            nil,
-		BucketName:           "default",
-		Password:             "",
-		AuthHandler:          saslAuthFn("default", ""),
-		ConnectTimeout:       5 * time.Second,
-		ServerConnectTimeout: 1 * time.Second,
-	}
-
-	agent, err := CreateAgent(agentConfig)
-	if err != nil {
-		t.Fatalf("Failed to connect to server")
-	}
-	logDebugf("Agent created...")
-	agent.Close()
-}
-
-func getAgentnSignaler(t *testing.T) (*Agent, *Signaler) {
-	return getAgent(t), getSignaler(t)
+func getAgentnSignaler(t *testing.T) (*testNode, *Signaler) {
+	agent := getAgent(t)
+	return agent, agent.getSignaler(t)
 }
 
 func TestBasicOps(t *testing.T) {
@@ -265,10 +181,10 @@ func TestBasicInsert(t *testing.T) {
 	agent.Add([]byte("testz"), []byte("[]"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				t.Fatalf("Add operation failed")
+				s.Fatalf("Add operation failed")
 			}
 			if cas == Cas(0) {
-				t.Fatalf("Invalid cas received")
+				s.Fatalf("Invalid cas received")
 			}
 		})
 	})
@@ -331,6 +247,9 @@ func TestBasicCounters(t *testing.T) {
 }
 
 func TestBasicAdjoins(t *testing.T) {
+	if !globalAgent.SupportsFeature(TestAdjoinFeature) {
+		t.Skip("Test does not work against server version due to serverside bug")
+	}
 	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("testAdjoins"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
@@ -387,8 +306,7 @@ func isKeyNotFoundError(err error) bool {
 }
 
 func TestExpiry(t *testing.T) {
-	agent := getAgent(t)
-	s := getSignaler(t)
+	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("testExpiry"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
@@ -399,7 +317,7 @@ func TestExpiry(t *testing.T) {
 	})
 	s.Wait(0)
 
-	s.TimeTravel(1500 * time.Millisecond)
+	agent.TimeTravel(2000 * time.Millisecond)
 
 	agent.Get([]byte("testExpiry"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -412,8 +330,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestTouch(t *testing.T) {
-	agent := getAgent(t)
-	s := getSignaler(t)
+	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
@@ -433,7 +350,7 @@ func TestTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	s.TimeTravel(1500 * time.Millisecond)
+	agent.TimeTravel(1500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -444,7 +361,7 @@ func TestTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	s.TimeTravel(2500 * time.Millisecond)
+	agent.TimeTravel(2500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -457,8 +374,7 @@ func TestTouch(t *testing.T) {
 }
 
 func TestGetAndTouch(t *testing.T) {
-	agent := getAgent(t)
-	s := getSignaler(t)
+	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
@@ -478,7 +394,7 @@ func TestGetAndTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	s.TimeTravel(1500 * time.Millisecond)
+	agent.TimeTravel(1500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -489,7 +405,7 @@ func TestGetAndTouch(t *testing.T) {
 	})
 	s.Wait(0)
 
-	s.TimeTravel(2500 * time.Millisecond)
+	agent.TimeTravel(2500 * time.Millisecond)
 
 	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
@@ -502,15 +418,14 @@ func TestGetAndTouch(t *testing.T) {
 }
 
 func TestObserve(t *testing.T) {
-	agent := getAgent(t)
-	s := getSignaler(t)
+	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
 	})
 	s.Wait(0)
 
-	agent.Observe([]byte("testObserve"), 1, func(ks KeyState, cas Cas, err error) {
+	op, _ := agent.Observe([]byte("testObserve"), 1, func(ks KeyState, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
@@ -518,6 +433,8 @@ func TestObserve(t *testing.T) {
 		})
 	})
 	s.Wait(0)
+
+	op.Cancel()
 }
 
 func TestObserveSeqNo(t *testing.T) {
@@ -702,18 +619,15 @@ func TestStats(t *testing.T) {
 	agent.Stats("", func(stats map[string]SingleServerStats) {
 		s.Wrap(func() {
 			if len(stats) != numServers {
-				t.Fatalf("Didn't get all stats!")
+				s.Fatalf("Didn't get all stats!")
 			}
-			numPerServer := 0
 			for srv, curStats := range stats {
 				if curStats.Error != nil {
-					t.Fatalf("Got error %v in stats for %s", curStats.Error, srv)
+					s.Fatalf("Got error %v in stats for %s", curStats.Error, srv)
 				}
-				if numPerServer == 0 {
-					numPerServer = len(curStats.Stats)
-				}
-				if numPerServer != len(curStats.Stats) {
-					t.Fatalf("Got different number of stats for %s. Got %d, expected %d", srv, len(curStats.Stats), numPerServer)
+
+				if curStats.Stats == nil || len(curStats.Stats) == 0 {
+					s.Fatalf("Got no stats in stats for %s", srv)
 				}
 			}
 		})
@@ -744,12 +658,12 @@ func TestGetHttpEps(t *testing.T) {
 func TestMemcachedBucket(t *testing.T) {
 	// Ensure we can do upserts..
 	agent := globalMemdAgent
-	s := getSignaler(t)
+	s := agent.getSignaler(t)
 
 	agent.Set([]byte("key"), []byte("value"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				t.Fatalf("Got error for Set: %v", err)
+				s.Fatalf("Got error for Set: %v", err)
 			}
 		})
 	})
@@ -758,10 +672,10 @@ func TestMemcachedBucket(t *testing.T) {
 	agent.Get([]byte("key"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				t.Fatalf("Couldn't get back key: %v", err)
+				s.Fatalf("Couldn't get back key: %v", err)
 			}
 			if string(value) != "value" {
-				t.Fatalf("Got back wrong value!")
+				s.Fatalf("Got back wrong value!")
 			}
 		})
 	})
@@ -770,35 +684,23 @@ func TestMemcachedBucket(t *testing.T) {
 	// Try to perform Observe: should fail since this isn't supported on Memcached buckets
 	_, err := agent.Observe([]byte("key"), 0, func(ks KeyState, cas Cas, err error) {
 		s.Wrap(func() {
-			t.Fatalf("Scheduling should fail on memcached buckets!")
+			s.Fatalf("Scheduling should fail on memcached buckets!")
 		})
 	})
 
 	if err != ErrNotSupported {
 		t.Fatalf("Expected observe error for memcached bucket!")
 	}
-
-	// Try to use GETL, should also yield unsupported
-	agent.GetAndLock([]byte("key"), 10, func(val []byte, flags uint32, cas Cas, err error) {
-		s.Wrap(func() {
-			if !IsErrorStatus(err, StatusNotSupported) &&
-				!IsErrorStatus(err, StatusUnknownCommand) {
-				t.Fatalf("GETL should fail on memcached buckets: %v", err)
-			}
-		})
-	})
-	s.Wait(0)
 }
 
 func TestFlagsRoundTrip(t *testing.T) {
 	// Ensure flags are round-tripped with the server correctly.
-	agent := globalAgent
-	s := getSignaler(t)
+	agent, s := getAgentnSignaler(t)
 
 	agent.Set([]byte("flagskey"), []byte(""), 0x99889988, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				t.Fatalf("Got error for Set: %v", err)
+				s.Fatalf("Got error for Set: %v", err)
 			}
 		})
 	})
@@ -807,10 +709,10 @@ func TestFlagsRoundTrip(t *testing.T) {
 	agent.Get([]byte("flagskey"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				t.Fatalf("Couldn't get back key: %v", err)
+				s.Fatalf("Couldn't get back key: %v", err)
 			}
 			if flags != 0x99889988 {
-				t.Fatalf("flags failed to round-trip")
+				s.Fatalf("flags failed to round-trip")
 			}
 		})
 	})
@@ -919,34 +821,75 @@ func TestMain(m *testing.M) {
 	logger := createTestLogger()
 	SetLogger(logger)
 
+	memdservers := flag.String("memdservers", "", "Comma separated list of connection strings to connect to for real memd servers")
+	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
+	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
+	memdBucketName := flag.String("memd-bucket", "memd", "The memd bucket to use to test against")
+	user := flag.String("user", "", "The username to use to authenticate when using a real server")
+	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
+	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
 	flag.Parse()
-	mpath, err := gojcbmock.GetMockPath()
-	if err != nil {
-		panic(err.Error())
+
+	if (*memdservers == "") != (*httpservers == "") {
+		panic("If one of memdservers or httpservers is present then both must be present")
 	}
 
-	globalMock, err = gojcbmock.NewMock(mpath, 4, 1, 64, []gojcbmock.BucketSpec{
-		{Name: "default", Type: gojcbmock.BCouchbase},
-		{Name: "memd", Type: gojcbmock.BMemcached},
-	}...)
-
-	if err != nil {
-		panic(err.Error())
-	}
+	var err error
+	var httpAuthHandler func(AuthClient, time.Time) error
+	var memdAuthHandler func(AuthClient, time.Time) error
 	var memdAddrs []string
-	for _, mcport := range globalMock.MemcachedPorts() {
-		memdAddrs = append(memdAddrs, fmt.Sprintf("127.0.0.1:%d", mcport))
+	var httpAddrs []string
+
+	var mock *gojcbmock.Mock
+	if *memdservers == "" {
+		if *version != "" {
+			panic("Version cannot be specified with mock")
+		}
+		mpath, err := gojcbmock.GetMockPath()
+		if err != nil {
+			panic(err.Error())
+		}
+
+		mock, err = gojcbmock.NewMock(mpath, 4, 1, 64, []gojcbmock.BucketSpec{
+			{Name: "default", Type: gojcbmock.BCouchbase},
+			{Name: "memd", Type: gojcbmock.BMemcached},
+		}...)
+
+		if err != nil {
+			panic(err.Error())
+		}
+		for _, mcport := range mock.MemcachedPorts() {
+			memdAddrs = append(memdAddrs, fmt.Sprintf("127.0.0.1:%d", mcport))
+		}
+
+		httpAddrs = []string{fmt.Sprintf("127.0.0.1:%d", mock.EntryPort)}
+
+		httpAuthHandler = saslAuthFn("default", "")
+		memdAuthHandler = saslAuthFn("memd", "")
+
+		*version = mock.Version()
+	} else {
+		memdAddrs = strings.Split(*memdservers, ",")
+		httpAddrs = strings.Split(*httpservers, ",")
+
+		if *version == "" {
+			*version = defaultServerVersion
+		}
 	}
 
-	httpAddrs := []string{fmt.Sprintf("127.0.0.1:%d", globalMock.EntryPort)}
+	nodeVersion, err := nodeVersionFromString(*version)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to get node version from string: %v", err))
+	}
 
 	agentConfig := &AgentConfig{
 		MemdAddrs:            memdAddrs,
 		HttpAddrs:            httpAddrs,
 		TlsConfig:            nil,
-		BucketName:           "default",
-		Password:             "",
-		AuthHandler:          saslAuthFn("default", ""),
+		BucketName:           *bucketName,
+		Username:             *user,
+		Password:             *password,
+		AuthHandler:          httpAuthHandler,
 		ConnectTimeout:       5 * time.Second,
 		ServerConnectTimeout: 1 * time.Second,
 		UseMutationTokens:    true,
@@ -954,19 +897,31 @@ func TestMain(m *testing.M) {
 		UseEnhancedErrors:    true,
 	}
 
-	globalAgent, err = CreateAgent(agentConfig)
+	agent, err := CreateAgent(agentConfig)
 	if err != nil {
 		panic("Failed to connect to server")
+	}
+	globalAgent = &testNode{
+		Agent:   agent,
+		Mock:    mock,
+		Version: nodeVersion,
 	}
 
 	memdAgentConfig := &AgentConfig{}
 	*memdAgentConfig = *agentConfig
 	memdAgentConfig.MemdAddrs = nil
-	memdAgentConfig.BucketName = "memd"
-	memdAgentConfig.AuthHandler = saslAuthFn("memd", "")
-	globalMemdAgent, err = CreateAgent(memdAgentConfig)
+	memdAgentConfig.BucketName = *memdBucketName
+	memdAgentConfig.Username = *user
+	memdAgentConfig.Password = *password
+	memdAgentConfig.AuthHandler = memdAuthHandler
+	memdAgent, err := CreateAgent(memdAgentConfig)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to memcached bucket!: %v", err))
+	}
+	globalMemdAgent = &testNode{
+		Agent:   memdAgent,
+		Mock:    mock,
+		Version: nodeVersion,
 	}
 
 	result := m.Run()
