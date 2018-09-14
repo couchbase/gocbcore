@@ -22,6 +22,37 @@ const (
 	LogMaxVerbosity
 )
 
+// LogRedactLevel specifies the degree with which to redact the logs.
+type LogRedactLevel int
+
+const (
+	// RedactNone indicates to perform no redactions
+	RedactNone LogRedactLevel = iota
+
+	// RedactPartial indicates to redact all possible user-identifying information from logs.
+	RedactPartial
+
+	// RedactFull indicates to fully redact all possible identifying information from logs.
+	RedactFull
+)
+
+// SetLogRedactionLevel specifies the level with which logs should be redacted.
+func SetLogRedactionLevel(level LogRedactLevel) {
+	globalLogRedactionLevel = level
+}
+
+func isLogRedactionLevelNone() bool {
+	return globalLogRedactionLevel == RedactNone
+}
+
+func isLogRedactionLevelPartial() bool {
+	return globalLogRedactionLevel == RedactPartial
+}
+
+func isLogRedactionLevelFull() bool {
+	return globalLogRedactionLevel == RedactFull
+}
+
 func logLevelToString(level LogLevel) string {
 	switch level {
 	case LogError:
@@ -74,7 +105,8 @@ var (
 		GoLogger: globalDefaultLogger.GoLogger, Level: LogMaxVerbosity,
 	}
 
-	globalLogger Logger
+	globalLogger            Logger
+	globalLogRedactionLevel LogRedactLevel
 )
 
 // DefaultStdOutLogger gets the default logger. This actually logs to stderr
