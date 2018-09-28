@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -26,7 +25,13 @@ func hostnameFromUri(uri string) string {
 	if err != nil {
 		return uri
 	}
-	return strings.Split(uriInfo.Host, ":")[0]
+
+	hostname, err := hostFromHostPort(uriInfo.Host)
+	if err != nil {
+		return uri
+	}
+
+	return hostname
 }
 
 func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) {
@@ -85,8 +90,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 		seenNodes[pickedSrv] = iterNum
 
 		hostname := hostnameFromUri(pickedSrv)
-
-		logDebugf("HTTP Hostname: %s.", pickedSrv)
+		logDebugf("HTTP Hostname: %s.", hostname)
 
 		var resp *http.Response
 		// 1 on success, 0 on failure for node, -1 for generic failure
