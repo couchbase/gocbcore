@@ -820,7 +820,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 }
 
 func (agent *Agent) buildFirstRouteConfig(bk *cfgBucket, srcServer string) *routeConfig {
-	defaultRouteConfig := buildRouteConfig(bk, agent.IsSecure(), "default")
+	defaultRouteConfig := buildRouteConfig(bk, agent.IsSecure(), "default", true)
 
 	// First we check if the source server is from the defaults list
 	srcInDefaultConfig := false
@@ -840,7 +840,7 @@ func (agent *Agent) buildFirstRouteConfig(bk *cfgBucket, srcServer string) *rout
 	}
 
 	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := buildRouteConfig(bk, agent.IsSecure(), "external")
+	externalRouteCfg := buildRouteConfig(bk, agent.IsSecure(), "external", true)
 	if externalRouteCfg.IsValid() {
 		agent.networkType = "external"
 		return externalRouteCfg

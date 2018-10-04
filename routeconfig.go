@@ -33,7 +33,7 @@ func (config *routeConfig) IsValid() bool {
 	}
 }
 
-func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConfig {
+func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string, firstConnect bool) *routeConfig {
 	var kvServerList []string
 	var capiEpList []string
 	var mgmtEpList []string
@@ -63,7 +63,9 @@ func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string) *routeConf
 					hostname = altAddr.Hostname
 					ports = altAddr.Ports
 				} else {
-					logDebugf("Invalid config network type %s", networkType)
+					if !firstConnect {
+						logDebugf("Invalid config network type %s", networkType)
+					}
 					continue
 				}
 			}
