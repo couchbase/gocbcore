@@ -70,6 +70,8 @@ type Agent struct {
 	zombieLock      sync.RWMutex
 	zombieOps       []*zombieLogEntry
 	useZombieLogger bool
+
+	dcpPriority DcpAgentPriority
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -135,6 +137,8 @@ type AgentConfig struct {
 	UseZombieLogger        bool
 	ZombieLoggerInterval   time.Duration
 	ZombieLoggerSampleSize int
+
+	DcpAgentPriority DcpAgentPriority
 
 	// Username specifies the username to use when connecting.
 	// DEPRECATED
@@ -471,6 +475,23 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.NetworkType = valStr
 	}
 
+	if valStr, ok := fetchOption("dcp_priority"); ok {
+		var priority DcpAgentPriority
+		switch valStr {
+		case "":
+			priority = DcpAgentPriorityLow
+		case "low":
+			priority = DcpAgentPriorityLow
+		case "medium":
+			priority = DcpAgentPriorityMed
+		case "high":
+			priority = DcpAgentPriorityHigh
+		default:
+			return fmt.Errorf("dcp_priority must be one of low, medium or high")
+		}
+		config.DcpAgentPriority = priority
+	}
+
 	return nil
 }
 
@@ -545,6 +566,18 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 		if err := client.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
 			return err
 		}
+		var priority string
+		switch config.DcpAgentPriority {
+		case DcpAgentPriorityLow:
+			priority = "low"
+		case DcpAgentPriorityMed:
+			priority = "medium"
+		case DcpAgentPriorityHigh:
+			priority = "high"
+		}
+		if err := client.ExecDcpControl("set_priority", priority, deadline); err != nil {
+			return err
+		}
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 
@@ -610,6 +643,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confHttpRedialPeriod: 10 * time.Second,
 		confCccpMaxWait:      3 * time.Second,
 		confCccpPollPeriod:   2500 * time.Millisecond,
+		dcpPriority:          config.DcpAgentPriority,
 	}
 
 	connectTimeout := 60000 * time.Millisecond

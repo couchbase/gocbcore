@@ -527,3 +527,17 @@ const (
 	// CbasService represents an analytics service.
 	CbasService = ServiceType(6)
 )
+
+// DcpAgentPriority specifies the priority level for a dcp stream
+type DcpAgentPriority uint8
+
+const (
+	// DcpAgentPriorityLow sets the priority for the dcp stream to low
+	DcpAgentPriorityLow = DcpAgentPriority(0)
+
+	// DcpAgentPriorityMed sets the priority for the dcp stream to medium
+	DcpAgentPriorityMed = DcpAgentPriority(1)
+
+	// DcpAgentPriorityHigh sets the priority for the dcp stream to high
+	DcpAgentPriorityHigh = DcpAgentPriority(2)
+)
