@@ -62,13 +62,27 @@ type memdQRequest struct {
 	processingLock sync.Mutex
 
 	// This stores the number of times that the item has been
-	// retried, and is used for various non-linear retry
+	// retried. It is used for various non-linear retry
 	// algorithms.
 	retryCount uint32
 
 	RootTraceContext opentracing.SpanContext
 	cmdTraceSpan     opentracing.Span
 	netTraceSpan     opentracing.Span
+
+	CollectionName string
+	ScopeName      string
+}
+
+func (req *memdQRequest) cloneNew() *memdQRequest {
+	return &memdQRequest{
+		memdPacket:       req.memdPacket,
+		ReplicaIdx:       req.ReplicaIdx,
+		Callback:         req.Callback,
+		Persistent:       req.Persistent,
+		owner:            req.owner,
+		RootTraceContext: req.RootTraceContext,
+	}
 }
 
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {

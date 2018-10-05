@@ -14,10 +14,12 @@ type SubDocResult struct {
 
 // GetInOptions encapsulates the parameters for a GetInEx operation.
 type GetInOptions struct {
-	Key          []byte
-	Path         string
-	Flags        SubdocFlag
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Path           string
+	Flags          SubdocFlag
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // GetInResult encapsulates the result of a GetInEx operation.
@@ -65,16 +67,21 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // ExistsInOptions encapsulates the parameters for a ExistsInEx operation.
 type ExistsInOptions struct {
-	Key          []byte
-	Path         string
-	Flags        SubdocFlag
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Path           string
+	Flags          SubdocFlag
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // ExistsInResult encapsulates the result of a ExistsInEx operation.
@@ -120,20 +127,25 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // StoreInOptions encapsulates the parameters for a SetInEx, AddInEx, ReplaceInEx,
 // PushFrontInEx, PushBackInEx, ArrayInsertInEx or AddUniqueInEx operation.
 type StoreInOptions struct {
-	Key          []byte
-	Path         string
-	Value        []byte
-	Flags        SubdocFlag
-	Cas          Cas
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Path           string
+	Value          []byte
+	Flags          SubdocFlag
+	Cas            Cas
+	Expiry         uint32
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // StoreInResult encapsulates the result of a SetInEx, AddInEx, ReplaceInEx,
@@ -202,8 +214,11 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // SetInEx sets the value at a path within a document.
@@ -314,18 +329,23 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // DeleteInOptions encapsulates the parameters for a DeleteInEx operation.
 type DeleteInOptions struct {
-	Key          []byte
-	Path         string
-	Cas          Cas
-	Expiry       uint32
-	Flags        SubdocFlag
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Path           string
+	Cas            Cas
+	Expiry         uint32
+	Flags          SubdocFlag
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // DeleteInResult encapsulates the result of a DeleteInEx operation.
@@ -388,8 +408,11 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // SubDocOp defines a per-operation structure to be passed to MutateIn
@@ -403,10 +426,12 @@ type SubDocOp struct {
 
 // LookupInOptions encapsulates the parameters for a LookupInEx operation.
 type LookupInOptions struct {
-	Key          []byte
-	Flags        SubdocDocFlag
-	Ops          []SubDocOp
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Flags          SubdocDocFlag
+	Ops            []SubDocOp
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // LookupInResult encapsulates the result of a LookupInEx operation.
@@ -451,7 +476,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 				return
 			}
 
-			results[i].Err = agent.makeBasicMemdError(resError)
+			results[i].Err = agent.makeBasicMemdError(resError, resp.Opaque)
 			results[i].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
 			respIter += 6 + resValueLen
 		}
@@ -510,18 +535,23 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // MutateInOptions encapsulates the parameters for a MutateInEx operation.
 type MutateInOptions struct {
-	Key          []byte
-	Flags        SubdocDocFlag
-	Cas          Cas
-	Expiry       uint32
-	Ops          []SubDocOp
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Flags          SubdocDocFlag
+	Cas            Cas
+	Expiry         uint32
+	Ops            []SubDocOp
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // MutateInResult encapsulates the result of a MutateInEx operation.
@@ -560,7 +590,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
 			err := SubDocMutateError{
-				Err:     agent.makeBasicMemdError(resError),
+				Err:     agent.makeBasicMemdError(resError, resp.Opaque),
 				OpIndex: opIndex,
 			}
 			tracer.Finish()
@@ -571,7 +601,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
-			results[opIndex].Err = agent.makeBasicMemdError(opStatus)
+			results[opIndex].Err = agent.makeBasicMemdError(opStatus, resp.Opaque)
 			readPos += 3
 
 			if opStatus == StatusSuccess {
@@ -654,6 +684,9 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }

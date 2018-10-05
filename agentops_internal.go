@@ -8,8 +8,10 @@ import (
 
 // GetMetaOptions encapsulates the parameters for a GetMetaEx operation.
 type GetMetaOptions struct {
-	Key          []byte
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // GetMetaResult encapsulates the result of a GetMetaEx operation.
@@ -76,22 +78,27 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // SetMetaOptions encapsulates the parameters for a SetMetaEx operation.
 type SetMetaOptions struct {
-	Key          []byte
-	Value        []byte
-	Extra        []byte
-	Datatype     uint8
-	Options      uint32
-	Flags        uint32
-	Expiry       uint32
-	Cas          Cas
-	RevNo        uint64
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Value          []byte
+	Extra          []byte
+	Datatype       uint8
+	Options        uint32
+	Flags          uint32
+	Expiry         uint32
+	Cas            Cas
+	RevNo          uint64
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // SetMetaResult encapsulates the result of a SetMetaEx operation.
@@ -148,22 +155,27 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // DeleteMetaOptions encapsulates the parameters for a DeleteMetaEx operation.
 type DeleteMetaOptions struct {
-	Key          []byte
-	Value        []byte
-	Extra        []byte
-	Datatype     uint8
-	Options      uint32
-	Flags        uint32
-	Expiry       uint32
-	Cas          Cas
-	RevNo        uint64
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Value          []byte
+	Extra          []byte
+	Datatype       uint8
+	Options        uint32
+	Flags          uint32
+	Expiry         uint32
+	Cas            Cas
+	RevNo          uint64
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
@@ -220,6 +232,9 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }

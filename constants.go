@@ -1,7 +1,7 @@
 package gocbcore
 
 const (
-	goCbCoreVersionStr = "v7.1.12"
+	goCbCoreVersionStr = "v8.0.0-dev"
 )
 
 type commandMagic uint8
@@ -10,6 +10,7 @@ const (
 	reqMagic = commandMagic(0x80)
 	resMagic = commandMagic(0x81)
 
+	altReqMagic = commandMagic(0x08)
 	altResMagic = commandMagic(0x18)
 )
 
@@ -17,71 +18,75 @@ type frameExtraType uint16
 
 const (
 	srvDurationFrameExtra = frameExtraType(0)
+	streamIdFrameExtra    = frameExtraType(2)
 )
 
 // commandCode for memcached packets.
 type commandCode uint8
 
 const (
-	cmdGet                  = commandCode(0x00)
-	cmdSet                  = commandCode(0x01)
-	cmdAdd                  = commandCode(0x02)
-	cmdReplace              = commandCode(0x03)
-	cmdDelete               = commandCode(0x04)
-	cmdIncrement            = commandCode(0x05)
-	cmdDecrement            = commandCode(0x06)
-	cmdNoop                 = commandCode(0x0a)
-	cmdAppend               = commandCode(0x0e)
-	cmdPrepend              = commandCode(0x0f)
-	cmdStat                 = commandCode(0x10)
-	cmdTouch                = commandCode(0x1c)
-	cmdGAT                  = commandCode(0x1d)
-	cmdHello                = commandCode(0x1f)
-	cmdSASLListMechs        = commandCode(0x20)
-	cmdSASLAuth             = commandCode(0x21)
-	cmdSASLStep             = commandCode(0x22)
-	cmdGetAllVBSeqnos       = commandCode(0x48)
-	cmdDcpOpenConnection    = commandCode(0x50)
-	cmdDcpAddStream         = commandCode(0x51)
-	cmdDcpCloseStream       = commandCode(0x52)
-	cmdDcpStreamReq         = commandCode(0x53)
-	cmdDcpGetFailoverLog    = commandCode(0x54)
-	cmdDcpStreamEnd         = commandCode(0x55)
-	cmdDcpSnapshotMarker    = commandCode(0x56)
-	cmdDcpMutation          = commandCode(0x57)
-	cmdDcpDeletion          = commandCode(0x58)
-	cmdDcpExpiration        = commandCode(0x59)
-	cmdDcpFlush             = commandCode(0x5a)
-	cmdDcpSetVbucketState   = commandCode(0x5b)
-	cmdDcpNoop              = commandCode(0x5c)
-	cmdDcpBufferAck         = commandCode(0x5d)
-	cmdDcpControl           = commandCode(0x5e)
-	cmdGetReplica           = commandCode(0x83)
-	cmdSelectBucket         = commandCode(0x89)
-	cmdObserveSeqNo         = commandCode(0x91)
-	cmdObserve              = commandCode(0x92)
-	cmdGetLocked            = commandCode(0x94)
-	cmdUnlockKey            = commandCode(0x95)
-	cmdGetMeta              = commandCode(0xa0)
-	cmdSetMeta              = commandCode(0xa2)
-	cmdDelMeta              = commandCode(0xa8)
-	cmdGetClusterConfig     = commandCode(0xb5)
-	cmdGetRandom            = commandCode(0xb6)
-	cmdSubDocGet            = commandCode(0xc5)
-	cmdSubDocExists         = commandCode(0xc6)
-	cmdSubDocDictAdd        = commandCode(0xc7)
-	cmdSubDocDictSet        = commandCode(0xc8)
-	cmdSubDocDelete         = commandCode(0xc9)
-	cmdSubDocReplace        = commandCode(0xca)
-	cmdSubDocArrayPushLast  = commandCode(0xcb)
-	cmdSubDocArrayPushFirst = commandCode(0xcc)
-	cmdSubDocArrayInsert    = commandCode(0xcd)
-	cmdSubDocArrayAddUnique = commandCode(0xce)
-	cmdSubDocCounter        = commandCode(0xcf)
-	cmdSubDocMultiLookup    = commandCode(0xd0)
-	cmdSubDocMultiMutation  = commandCode(0xd1)
-	cmdSubDocGetCount       = commandCode(0xd2)
-	cmdGetErrorMap          = commandCode(0xfe)
+	cmdGet                    = commandCode(0x00)
+	cmdSet                    = commandCode(0x01)
+	cmdAdd                    = commandCode(0x02)
+	cmdReplace                = commandCode(0x03)
+	cmdDelete                 = commandCode(0x04)
+	cmdIncrement              = commandCode(0x05)
+	cmdDecrement              = commandCode(0x06)
+	cmdNoop                   = commandCode(0x0a)
+	cmdAppend                 = commandCode(0x0e)
+	cmdPrepend                = commandCode(0x0f)
+	cmdStat                   = commandCode(0x10)
+	cmdTouch                  = commandCode(0x1c)
+	cmdGAT                    = commandCode(0x1d)
+	cmdHello                  = commandCode(0x1f)
+	cmdSASLListMechs          = commandCode(0x20)
+	cmdSASLAuth               = commandCode(0x21)
+	cmdSASLStep               = commandCode(0x22)
+	cmdGetAllVBSeqnos         = commandCode(0x48)
+	cmdDcpOpenConnection      = commandCode(0x50)
+	cmdDcpAddStream           = commandCode(0x51)
+	cmdDcpCloseStream         = commandCode(0x52)
+	cmdDcpStreamReq           = commandCode(0x53)
+	cmdDcpGetFailoverLog      = commandCode(0x54)
+	cmdDcpStreamEnd           = commandCode(0x55)
+	cmdDcpSnapshotMarker      = commandCode(0x56)
+	cmdDcpMutation            = commandCode(0x57)
+	cmdDcpDeletion            = commandCode(0x58)
+	cmdDcpExpiration          = commandCode(0x59)
+	cmdDcpFlush               = commandCode(0x5a)
+	cmdDcpSetVbucketState     = commandCode(0x5b)
+	cmdDcpNoop                = commandCode(0x5c)
+	cmdDcpBufferAck           = commandCode(0x5d)
+	cmdDcpControl             = commandCode(0x5e)
+	cmdDcpEvent               = commandCode(0x5f)
+	cmdGetReplica             = commandCode(0x83)
+	cmdSelectBucket           = commandCode(0x89)
+	cmdObserveSeqNo           = commandCode(0x91)
+	cmdObserve                = commandCode(0x92)
+	cmdGetLocked              = commandCode(0x94)
+	cmdUnlockKey              = commandCode(0x95)
+	cmdGetMeta                = commandCode(0xa0)
+	cmdSetMeta                = commandCode(0xa2)
+	cmdDelMeta                = commandCode(0xa8)
+	cmdGetClusterConfig       = commandCode(0xb5)
+	cmdGetRandom              = commandCode(0xb6)
+	cmdCollectionsGetManifest = commandCode(0xba)
+	cmdCollectionsGetID       = commandCode(0xbb)
+	cmdSubDocGet              = commandCode(0xc5)
+	cmdSubDocExists           = commandCode(0xc6)
+	cmdSubDocDictAdd          = commandCode(0xc7)
+	cmdSubDocDictSet          = commandCode(0xc8)
+	cmdSubDocDelete           = commandCode(0xc9)
+	cmdSubDocReplace          = commandCode(0xca)
+	cmdSubDocArrayPushLast    = commandCode(0xcb)
+	cmdSubDocArrayPushFirst   = commandCode(0xcc)
+	cmdSubDocArrayInsert      = commandCode(0xcd)
+	cmdSubDocArrayAddUnique   = commandCode(0xce)
+	cmdSubDocCounter          = commandCode(0xcf)
+	cmdSubDocMultiLookup      = commandCode(0xd0)
+	cmdSubDocMultiMutation    = commandCode(0xd1)
+	cmdSubDocGetCount         = commandCode(0xd2)
+	cmdGetErrorMap            = commandCode(0xfe)
 )
 
 // HelloFeature represents a feature code included in a memcached
@@ -114,7 +119,7 @@ const (
 	FeatureSelectBucket = HelloFeature(0x08)
 
 	// FeatureCollections indicates support for collections.
-	FeatureCollections = HelloFeature(0x09)
+	FeatureCollections = HelloFeature(0x12)
 
 	// FeatureSnappy indicates support for snappy compressed documents.
 	FeatureSnappy = HelloFeature(0x0a)
@@ -218,6 +223,12 @@ const (
 	// processing your request.
 	StatusTmpFail = StatusCode(0x86)
 
+	// StatusCollectionUnknown occurs when a Collection cannot be found.
+	StatusCollectionUnknown = StatusCode(0x88)
+
+	// StatusScopeUnknown occurs when a Scope cannot be found.
+	StatusScopeUnknown = StatusCode(0x8c)
+
 	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
 	StatusSubDocPathNotFound = StatusCode(0xc0)
@@ -302,6 +313,30 @@ const (
 	streamEndStateChanged = streamEndStatus(0x02)
 	streamEndDisconnected = streamEndStatus(0x03)
 	streamEndTooSlow      = streamEndStatus(0x04)
+	streamEndFilterEmpty  = streamEndStatus(0x07)
+)
+
+// StreamEventCode is the code for a DCP Stream event
+type StreamEventCode uint32
+
+const (
+	// StreamEventCollectionCreate is the StreamEventCode for a collection create event
+	StreamEventCollectionCreate = StreamEventCode(0x00)
+
+	// StreamEventCollectionDelete is the StreamEventCode for a collection delete event
+	StreamEventCollectionDelete = StreamEventCode(0x01)
+
+	// StreamEventCollectionFlush is the StreamEventCode for a collection flush event
+	StreamEventCollectionFlush = StreamEventCode(0x02)
+
+	// StreamEventScopeCreate is the StreamEventCode for a scope create event
+	StreamEventScopeCreate = StreamEventCode(0x03)
+
+	// StreamEventScopeDelete is the StreamEventCode for a scope delete event
+	StreamEventScopeDelete = StreamEventCode(0x04)
+
+	// StreamEventCollectionChanged is the StreamEventCode for a collection changed event
+	StreamEventCollectionChanged = StreamEventCode(0x05)
 )
 
 type bucketType int

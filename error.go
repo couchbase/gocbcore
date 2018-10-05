@@ -98,6 +98,7 @@ type KvError struct {
 	Description string
 	Context     string
 	Ref         string
+	Opaque      uint32
 }
 
 func getMemdErrorDesc(code StatusCode) string {
@@ -146,6 +147,10 @@ func getMemdErrorDesc(code StatusCode) string {
 		return "server is busy, try again later"
 	case StatusTmpFail:
 		return "temporary failure occurred, try again later"
+	case StatusCollectionUnknown:
+		return "the requested collection cannot be found"
+	case StatusScopeUnknown:
+		return "the requested scope cannot be found."
 	case StatusSubDocPathNotFound:
 		return "sub-document path does not exist"
 	case StatusSubDocPathMismatch:
@@ -454,6 +459,10 @@ var (
 	// ErrNonZeroCas occurs when an operation that require a CAS value of 0 is used with a non-zero value.
 	ErrNonZeroCas = errors.New("Cas value must be 0.")
 
+	// ErrCollectionsUnsupported occurs when collections are used but either server does not support them or the agent
+	// was created without them enabled.
+	ErrCollectionsUnsupported = errors.New("Collections are not enabled.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
@@ -478,6 +487,10 @@ var (
 	// ErrStreamTooSlow occurs when a DCP stream is cancelled due to the application
 	// not keeping up with the rate of flow of DCP events sent by the server.
 	ErrStreamTooSlow = &streamEndError{streamEndTooSlow}
+
+	// ErrStreamFilterEmpty occurs when all of the collections for a DCP stream are
+	// dropped.
+	ErrStreamFilterEmpty = &streamEndError{streamEndFilterEmpty}
 
 	// ErrKeyNotFound occurs when an operation is performed on a key that does not exist.
 	ErrKeyNotFound = newSimpleError(StatusKeyNotFound)
@@ -551,6 +564,12 @@ var (
 	// ErrTmpFail occurs when a temporary failure is preventing the server from
 	// processing your request.
 	ErrTmpFail = newSimpleError(StatusTmpFail)
+
+	// ErrCollectionUnknown occurs when a Collection cannot be found.
+	ErrCollectionUnknown = newSimpleError(StatusCollectionUnknown)
+
+	// ErrScopeUnknown occurs when a Collection cannot be found.
+	ErrScopeUnknown = newSimpleError(StatusScopeUnknown)
 
 	// ErrSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
@@ -691,6 +710,10 @@ func findMemdError(code StatusCode) (bool, error) {
 		return true, ErrBusy
 	case StatusTmpFail:
 		return true, ErrTmpFail
+	case StatusCollectionUnknown:
+		return true, ErrCollectionUnknown
+	case StatusScopeUnknown:
+		return true, ErrScopeUnknown
 	case StatusSubDocPathNotFound:
 		return true, ErrSubDocPathNotFound
 	case StatusSubDocPathMismatch:

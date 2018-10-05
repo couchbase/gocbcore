@@ -13,6 +13,8 @@ type TestFeatureCode int
 var (
 	srvVer551  = NodeVersion{5, 5, 1, 0, ""}
 	srvVer552  = NodeVersion{5, 5, 2, 0, ""}
+	srvVer553  = NodeVersion{5, 5, 3, 0, ""}
+	srvVer650  = NodeVersion{6, 5, 0, 0, ""}
 	mockVer156 = NodeVersion{1, 5, 6, 0, ""}
 )
 
@@ -20,30 +22,51 @@ var (
 	TestAdjoinFeature     = TestFeatureCode(1)
 	TestErrMapFeature     = TestFeatureCode(2)
 	TestTimeTravelFeature = TestFeatureCode(3)
+	TestCollectionFeature = TestFeatureCode(4)
 )
 
 type testNode struct {
 	*Agent
-	Mock    *gojcbmock.Mock
-	Version *NodeVersion
+	Mock           *gojcbmock.Mock
+	Version        *NodeVersion
+	collectionName string
 }
 
 func (c *testNode) isMock() bool {
 	return c.Mock != nil
 }
 
+func (c *testNode) CollectionName() string {
+	return c.collectionName
+}
+
+func (c *testNode) ScopeName() string {
+	if c.collectionName != "" {
+		return "_default"
+	}
+
+	return ""
+}
+
 func (c *testNode) supportsMockFeature(feature TestFeatureCode) bool {
+	switch feature {
+	case TestCollectionFeature:
+		return false
+	}
+
 	return true
 }
 
 func (c *testNode) supportsServerFeature(feature TestFeatureCode) bool {
 	switch feature {
 	case TestAdjoinFeature:
-		return !c.Version.Equal(srvVer551) && !c.Version.Equal(srvVer552)
+		return !c.Version.Equal(srvVer551) && !c.Version.Equal(srvVer552) && !c.Version.Equal(srvVer553)
 	case TestErrMapFeature:
 		return false
 	case TestTimeTravelFeature:
 		return false
+	case TestCollectionFeature:
+		return !c.Version.Lower(srvVer650)
 	}
 
 	return false

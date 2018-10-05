@@ -77,6 +77,10 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		features = append(features, FeatureDurations)
 	}
 
+	if agent.useCollections {
+		features = append(features, FeatureCollections)
+	}
+
 	agentName := "gocbcore/" + goCbCoreVersionStr
 	if agent.userString != "" {
 		agentName += " " + agent.userString
@@ -133,6 +137,14 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		} else {
 			logDebugf("Failed to fetch kv error map (%s)", err)
 		}
+	}
+
+	if checkSupportsFeature(srvFeatures, FeatureCollections) {
+		memdConn.EnableCollections(true)
+	}
+
+	if checkSupportsFeature(srvFeatures, FeatureDurations) {
+		memdConn.EnableFramingExtras(true)
 	}
 
 	logDebugf("Authenticating...")

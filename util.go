@@ -20,6 +20,44 @@ func formatCbUid(data []byte) string {
 		data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7])
 }
 
+func appendUleb128_32(b []byte, v uint32) []byte {
+	for {
+		c := uint8(v & 0x7f)
+		v >>= 7
+		if v != 0 {
+			c |= 0x80
+		}
+		b = append(b, c)
+		if c&0x80 == 0 {
+			break
+		}
+	}
+	return b
+}
+
+func leb128EncodeKey(key []byte, cid uint32) []byte {
+	encodedKey := make([]byte, 0, len(key)+5)
+	encodedKey = appendUleb128_32(encodedKey, cid)
+	encodedKey = append(encodedKey, key...)
+	return encodedKey
+}
+
+func decodeleb128_32(b []byte) (u uint32, n uint8) {
+	l := uint8(len(b) & 0xff)
+	if l > 10 {
+		l = 10
+	}
+	var i uint8
+	for i = 0; i < l; i++ {
+		u |= uint32(b[i]&0x7f) << (7 * i)
+		if b[i]&0x80 == 0 {
+			n = uint8(i + 1)
+			return
+		}
+	}
+	return
+}
+
 func getCommandName(command commandCode) string {
 	switch command {
 	case cmdGet:

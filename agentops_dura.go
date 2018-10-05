@@ -8,9 +8,11 @@ import (
 
 // ObserveOptions encapsulates the parameters for a ObserveEx operation.
 type ObserveOptions struct {
-	Key          []byte
-	ReplicaIdx   int
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	ReplicaIdx     int
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // ObserveResult encapsulates the result of a ObserveEx operation.
@@ -82,8 +84,11 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 		ReplicaIdx:       opts.ReplicaIdx,
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // ObserveVbOptions encapsulates the parameters for a ObserveVbEx operation.

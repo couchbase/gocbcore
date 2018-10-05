@@ -11,8 +11,8 @@ func TestBasicErrors(t *testing.T) {
 	globalAgent.useEnhancedErrors = false
 
 	checkTwice := func(code StatusCode) {
-		err1 := globalAgent.makeBasicMemdError(code)
-		err2 := globalAgent.makeBasicMemdError(code)
+		err1 := globalAgent.makeBasicMemdError(code, 0)
+		err2 := globalAgent.makeBasicMemdError(code, 0)
 		if err1 != err2 {
 			t.Fatalf("Status code %d should return a constant error", code)
 		}
@@ -27,8 +27,8 @@ func TestBasicErrors(t *testing.T) {
 
 func TestEnhancedErrors(t *testing.T) {
 	checkTwice := func(code StatusCode) {
-		err1 := globalAgent.makeBasicMemdError(code)
-		err2 := globalAgent.makeBasicMemdError(code)
+		err1 := globalAgent.makeBasicMemdError(code, 0)
+		err2 := globalAgent.makeBasicMemdError(code, 0)
 		if err1 == err2 {
 			t.Fatalf("Status code %d should not return a constant error", code)
 		}

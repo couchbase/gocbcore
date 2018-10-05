@@ -2,14 +2,16 @@ package gocbcore
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,8 +80,10 @@ func TestBasicOps(t *testing.T) {
 
 	// Set
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("test"),
-		Value: []byte("{}"),
+		Key:            []byte("test"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -94,7 +98,9 @@ func TestBasicOps(t *testing.T) {
 
 	// Get
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("test"),
+		Key:            []byte("test"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -113,8 +119,10 @@ func TestGetReplica(t *testing.T) {
 
 	// Set
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testReplica"),
-		Value: []byte("{}"),
+		Key:            []byte("testReplica"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -132,8 +140,10 @@ func TestGetReplica(t *testing.T) {
 	for {
 		// GetReplica Specific
 		s.PushOp(agent.GetReplicaEx(GetReplicaOptions{
-			Key:        []byte("testReplica"),
-			ReplicaIdx: 1,
+			Key:            []byte("testReplica"),
+			ReplicaIdx:     1,
+			CollectionName: agent.CollectionName(),
+			ScopeName:      agent.ScopeName(),
 		}, func(res *GetReplicaResult, err error) {
 			s.Wrap(func() {
 				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
@@ -142,7 +152,7 @@ func TestGetReplica(t *testing.T) {
 				} else if err != nil && !keyNotFound {
 					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
 				}
-				if res.Cas == Cas(0) && !keyNotFound {
+				if err == nil && res.Cas == Cas(0) {
 					s.Fatalf("Invalid cas received")
 				}
 			})
@@ -165,8 +175,10 @@ func TestGetAnyReplica(t *testing.T) {
 
 	// Set
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testReplica"),
-		Value: []byte("{}"),
+		Key:            []byte("testReplica"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -184,8 +196,10 @@ func TestGetAnyReplica(t *testing.T) {
 	for {
 		// GetReplica Any
 		s.PushOp(agent.GetReplicaEx(GetReplicaOptions{
-			Key:        []byte("testReplica"),
-			ReplicaIdx: 0,
+			Key:            []byte("testReplica"),
+			ReplicaIdx:     0,
+			CollectionName: agent.CollectionName(),
+			ScopeName:      agent.ScopeName(),
 		}, func(res *GetReplicaResult, err error) {
 			s.Wrap(func() {
 				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
@@ -217,8 +231,10 @@ func TestBasicReplace(t *testing.T) {
 
 	oldCas := Cas(0)
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testx"),
-		Value: []byte("{}"),
+		Key:            []byte("testx"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		oldCas = res.Cas
 		s.Continue()
@@ -226,9 +242,11 @@ func TestBasicReplace(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.ReplaceEx(ReplaceOptions{
-		Key:   []byte("testx"),
-		Value: []byte("[]"),
-		Cas:   oldCas,
+		Key:            []byte("testx"),
+		Value:          []byte("[]"),
+		Cas:            oldCas,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -246,15 +264,19 @@ func TestBasicRemove(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testy"),
-		Value: []byte("{}"),
+		Key:            []byte("testy"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
 	s.Wait(0)
 
 	s.PushOp(agent.DeleteEx(DeleteOptions{
-		Key: []byte("testy"),
+		Key:            []byte("testy"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *DeleteResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -269,15 +291,19 @@ func TestBasicInsert(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.DeleteEx(DeleteOptions{
-		Key: []byte("testz"),
+		Key:            []byte("testz"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
 	s.Wait(0)
 
 	s.PushOp(agent.AddEx(AddOptions{
-		Key:   []byte("testz"),
-		Value: []byte("[]"),
+		Key:            []byte("testz"),
+		Value:          []byte("[]"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -296,16 +322,20 @@ func TestBasicCounters(t *testing.T) {
 
 	// Counters
 	s.PushOp(agent.DeleteEx(DeleteOptions{
-		Key: []byte("testCounters"),
+		Key:            []byte("testCounters"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
 	s.Wait(0)
 
 	s.PushOp(agent.IncrementEx(CounterOptions{
-		Key:     []byte("testCounters"),
-		Delta:   5,
-		Initial: 11,
+		Key:            []byte("testCounters"),
+		Delta:          5,
+		Initial:        11,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -322,9 +352,11 @@ func TestBasicCounters(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.IncrementEx(CounterOptions{
-		Key:     []byte("testCounters"),
-		Delta:   5,
-		Initial: 22,
+		Key:            []byte("testCounters"),
+		Delta:          5,
+		Initial:        22,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -341,9 +373,11 @@ func TestBasicCounters(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.DecrementEx(CounterOptions{
-		Key:     []byte("testCounters"),
-		Delta:   3,
-		Initial: 65,
+		Key:            []byte("testCounters"),
+		Delta:          3,
+		Initial:        65,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -368,16 +402,20 @@ func TestBasicAdjoins(t *testing.T) {
 	}
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testAdjoins"),
-		Value: []byte("there"),
+		Key:            []byte("testAdjoins"),
+		Value:          []byte("there"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
 	s.Wait(0)
 
 	s.PushOp(agent.AppendEx(AdjoinOptions{
-		Key:   []byte("testAdjoins"),
-		Value: []byte(" Frank!"),
+		Key:            []byte("testAdjoins"),
+		Value:          []byte(" Frank!"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -391,8 +429,10 @@ func TestBasicAdjoins(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.PrependEx(AdjoinOptions{
-		Key:   []byte("testAdjoins"),
-		Value: []byte("Hello "),
+		Key:            []byte("testAdjoins"),
+		Value:          []byte("Hello "),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -406,7 +446,9 @@ func TestBasicAdjoins(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testAdjoins"),
+		Key:            []byte("testAdjoins"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -435,9 +477,11 @@ func TestExpiry(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:    []byte("testExpiry"),
-		Value:  []byte("{}"),
-		Expiry: 1,
+		Key:            []byte("testExpiry"),
+		Value:          []byte("{}"),
+		Expiry:         1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -450,7 +494,9 @@ func TestExpiry(t *testing.T) {
 	agent.TimeTravel(2000 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testExpiry"),
+		Key:            []byte("testExpiry"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
@@ -465,9 +511,11 @@ func TestTouch(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:    []byte("testTouch"),
-		Value:  []byte("{}"),
-		Expiry: 1,
+		Key:            []byte("testTouch"),
+		Value:          []byte("{}"),
+		Expiry:         1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -478,8 +526,10 @@ func TestTouch(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.TouchEx(TouchOptions{
-		Key:    []byte("testTouch"),
-		Expiry: 3,
+		Key:            []byte("testTouch"),
+		Expiry:         3,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *TouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -492,7 +542,9 @@ func TestTouch(t *testing.T) {
 	agent.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testTouch"),
+		Key:            []byte("testTouch"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -505,7 +557,9 @@ func TestTouch(t *testing.T) {
 	agent.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testTouch"),
+		Key:            []byte("testTouch"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
@@ -520,9 +574,11 @@ func TestGetAndTouch(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:    []byte("testGetAndTouch"),
-		Value:  []byte("{}"),
-		Expiry: 1,
+		Key:            []byte("testGetAndTouch"),
+		Value:          []byte("{}"),
+		Expiry:         1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -533,8 +589,10 @@ func TestGetAndTouch(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.GetAndTouchEx(GetAndTouchOptions{
-		Key:    []byte("testGetAndTouch"),
-		Expiry: 3,
+		Key:            []byte("testGetAndTouch"),
+		Expiry:         3,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetAndTouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -547,7 +605,9 @@ func TestGetAndTouch(t *testing.T) {
 	agent.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testGetAndTouch"),
+		Key:            []byte("testGetAndTouch"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -560,7 +620,9 @@ func TestGetAndTouch(t *testing.T) {
 	agent.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("testGetAndTouch"),
+		Key:            []byte("testGetAndTouch"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
@@ -575,16 +637,20 @@ func TestObserve(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testObserve"),
-		Value: []byte("there"),
+		Key:            []byte("testObserve"),
+		Value:          []byte("there"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
 	s.Wait(0)
 
 	s.PushOp(agent.ObserveEx(ObserveOptions{
-		Key:        []byte("testObserve"),
-		ReplicaIdx: 1,
+		Key:            []byte("testObserve"),
+		ReplicaIdx:     1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *ObserveResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -600,8 +666,10 @@ func TestObserveSeqNo(t *testing.T) {
 
 	origMt := MutationToken{}
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testObserve"),
-		Value: []byte("there"),
+		Key:            []byte("testObserve"),
+		Value:          []byte("there"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -637,8 +705,10 @@ func TestObserveSeqNo(t *testing.T) {
 
 	newMt := MutationToken{}
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testObserve"),
-		Value: []byte("there"),
+		Key:            []byte("testObserve"),
+		Value:          []byte("there"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -674,8 +744,10 @@ func TestRandomGet(t *testing.T) {
 	distkeys := agent.makeDistKeys()
 	for _, k := range distkeys {
 		s.PushOp(agent.SetEx(SetOptions{
-			Key:   []byte(k),
-			Value: []byte("Hello World!"),
+			Key:            []byte(k),
+			Value:          []byte("Hello World!"),
+			CollectionName: agent.CollectionName(),
+			ScopeName:      agent.ScopeName(),
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -709,8 +781,10 @@ func TestSubdocXattrs(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("testXattr"),
-		Value: []byte("{\"x\":\"xattrs\"}"),
+		Key:            []byte("testXattr"),
+		Value:          []byte("{\"x\":\"xattrs\"}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -742,8 +816,10 @@ func TestSubdocXattrs(t *testing.T) {
 		},
 	}
 	s.PushOp(agent.MutateInEx(MutateInOptions{
-		Key: []byte("testXattr"),
-		Ops: mutateOps,
+		Key:            []byte("testXattr"),
+		Ops:            mutateOps,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *MutateInResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -769,8 +845,10 @@ func TestSubdocXattrs(t *testing.T) {
 		},
 	}
 	s.PushOp(agent.LookupInEx(LookupInOptions{
-		Key: []byte("testXattr"),
-		Ops: lookupOps,
+		Key:            []byte("testXattr"),
+		Ops:            lookupOps,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *LookupInResult, err error) {
 		s.Wrap(func() {
 			if len(res.Ops) != 2 {
@@ -896,9 +974,11 @@ func TestFlagsRoundTrip(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
-		Key:   []byte("flagskey"),
-		Value: []byte(""),
-		Flags: 0x99889988,
+		Key:            []byte("flagskey"),
+		Value:          []byte(""),
+		Flags:          0x99889988,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -909,7 +989,9 @@ func TestFlagsRoundTrip(t *testing.T) {
 	s.Wait(0)
 
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte("flagskey"),
+		Key:            []byte("flagskey"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1134,11 +1216,12 @@ type testLogger struct {
 }
 
 func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
-	if level >= 0 && level < LogMaxVerbosity {
-		atomic.AddUint64(&logger.LogCount[level], 1)
-	}
-
-	return logger.Parent.Log(level, offset+1, format, v...)
+	// if level >= 0 && level < LogMaxVerbosity {
+	// 	atomic.AddUint64(&logger.LogCount[level], 1)
+	// }
+	//
+	// return logger.Parent.Log(level, offset+1, format, v...)
+	return nil
 }
 
 func createTestLogger() *testLogger {
@@ -1162,6 +1245,7 @@ func TestMain(m *testing.M) {
 	user := flag.String("user", "", "The username to use to authenticate when using a real server")
 	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
 	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
+	collectionName := flag.String("collection-name", "", "The collection name to use to test with collections")
 	flag.Parse()
 
 	if (*memdservers == "") != (*httpservers == "") {
@@ -1216,6 +1300,11 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("Failed to get node version from string: %v", err))
 	}
 
+	useCollections := false
+	if *collectionName != "" {
+		useCollections = true
+	}
+
 	agentConfig := &AgentConfig{
 		MemdAddrs:  memdAddrs,
 		HttpAddrs:  httpAddrs,
@@ -1231,6 +1320,7 @@ func TestMain(m *testing.M) {
 		UseMutationTokens:    true,
 		UseKvErrorMaps:       true,
 		UseEnhancedErrors:    true,
+		UseCollections:       useCollections,
 	}
 
 	agent, err := CreateAgent(agentConfig)
@@ -1238,9 +1328,16 @@ func TestMain(m *testing.M) {
 		panic("Failed to connect to server")
 	}
 	globalAgent = &testNode{
-		Agent:   agent,
-		Mock:    mock,
-		Version: nodeVersion,
+		Agent:          agent,
+		Mock:           mock,
+		Version:        nodeVersion,
+		collectionName: *collectionName,
+	}
+
+	if useCollections {
+		if err != nil {
+			panic("Failed to create collection, " + err.Error())
+		}
 	}
 
 	memdAgentConfig := &AgentConfig{}
@@ -1305,4 +1402,134 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(result)
+}
+
+// These functions are likely temporary.
+
+func testCreateCollection(name, scopeName, bucketName string, agent *Agent) error {
+	data := url.Values{}
+	data.Set("name", name)
+
+	req := &HttpRequest{
+		Service: MgmtService,
+		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/", bucketName, scopeName),
+		Method:  "POST",
+		Body:    []byte(data.Encode()),
+		Headers: make(map[string]string),
+	}
+
+	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
+
+	resp, err := agent.DoHttpRequest(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+	}
+
+	respBody := struct {
+		Uid uint64 `json:"uid"`
+	}{}
+	jsonDec := json.NewDecoder(resp.Body)
+	err = jsonDec.Decode(&respBody)
+	if err != nil {
+		return err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	timer := time.NewTimer(20 * time.Second)
+	waitCh := make(chan error)
+	go waitForManifest(agent, respBody.Uid, waitCh)
+
+	for {
+		select {
+		case <-timer.C:
+			return errors.New("wait time for collection to become available expired")
+		case err := <-waitCh:
+			return err
+		}
+	}
+}
+
+func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) error {
+	data := url.Values{}
+	data.Set("name", name)
+
+	req := &HttpRequest{
+		Service: MgmtService,
+		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
+		Method:  "DELETE",
+		Headers: make(map[string]string),
+	}
+
+	resp, err := agent.DoHttpRequest(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+	}
+
+	respBody := struct {
+		Uid uint64 `json:"uid"`
+	}{}
+	jsonDec := json.NewDecoder(resp.Body)
+	err = jsonDec.Decode(&respBody)
+	if err != nil {
+		return err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	timer := time.NewTimer(20 * time.Second)
+	waitCh := make(chan error)
+	go waitForManifest(agent, respBody.Uid, waitCh)
+
+	for {
+		select {
+		case <-timer.C:
+			return errors.New("wait time for collection to become deleted expired")
+		case err := <-waitCh:
+			return err
+		}
+	}
+
+}
+
+func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan error) {
+	var manifest Manifest
+	for manifest.UID != manifestId {
+		setCh := make(chan struct{})
+		agent.GetCollectionManifest(func(bytes []byte, err error) {
+			if err != nil {
+				log.Println(err.Error())
+				close(setCh)
+				manifestCh <- err
+				return
+			}
+
+			err = json.Unmarshal(bytes, &manifest)
+			if err != nil {
+				log.Println(err.Error())
+				close(setCh)
+				manifestCh <- err
+				return
+			}
+
+			if manifest.UID == manifestId {
+				close(setCh)
+				manifestCh <- nil
+				return
+			}
+			setCh <- struct{}{}
+		})
+		<-setCh
+		time.Sleep(500 * time.Millisecond)
+	}
 }

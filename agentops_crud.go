@@ -9,8 +9,10 @@ import (
 
 // GetOptions encapsulates the parameters for a GetEx operation.
 type GetOptions struct {
-	Key          []byte
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
 }
 
 // GetResult encapsulates the result of a GetEx operation.
@@ -50,6 +52,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		tracer.Finish()
 		cb(&res, nil)
 	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
@@ -62,15 +65,20 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
 type GetAndTouchOptions struct {
-	Key          []byte
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -125,16 +133,22 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 			Key:      opts.Key,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // GetAndLockOptions encapsulates the parameters for a GetAndLockEx operation.
 type GetAndLockOptions struct {
-	Key          []byte
-	LockTime     uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	LockTime       uint32
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
@@ -191,15 +205,20 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // GetReplicaOptions encapsulates the parameters for a GetReplicaEx operation.
 type GetReplicaOptions struct {
-	Key          []byte
-	ReplicaIdx   int
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	ReplicaIdx     int
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // GetReplicaResult encapsulates the result of a GetReplicaEx operation.
@@ -252,8 +271,11 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetReplicaOptions, cb G
 		Callback:         handler,
 		ReplicaIdx:       opts.ReplicaIdx,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // GetReplicaEx retrieves a document from a replica server.
@@ -330,8 +352,10 @@ func (agent *Agent) GetReplicaEx(opts GetReplicaOptions, cb GetReplicaExCallback
 	// Dispatch a getReplica for each replica server
 	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
 		subOp, err := agent.getOneReplica(tracer, GetReplicaOptions{
-			Key:        opts.Key,
-			ReplicaIdx: repIdx,
+			Key:            opts.Key,
+			ReplicaIdx:     repIdx,
+			CollectionName: opts.CollectionName,
+			ScopeName:      opts.ScopeName,
 		}, handler)
 
 		resultLock.Lock()
@@ -351,10 +375,12 @@ func (agent *Agent) GetReplicaEx(opts GetReplicaOptions, cb GetReplicaExCallback
 
 // TouchOptions encapsulates the parameters for a TouchEx operation.
 type TouchOptions struct {
-	Key          []byte
-	Cas          Cas
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Cas            Cas
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -410,15 +436,20 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // UnlockOptions encapsulates the parameters for a UnlockEx operation.
 type UnlockOptions struct {
-	Key          []byte
-	Cas          Cas
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Cas            Cas
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // UnlockResult encapsulates the result of a UnlockEx operation.
@@ -467,15 +498,20 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // DeleteOptions encapsulates the parameters for a DeleteEx operation.
 type DeleteOptions struct {
-	Key          []byte
-	Cas          Cas
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	Cas            Cas
+	TraceContext   opentracing.SpanContext
 }
 
 // DeleteResult encapsulates the result of a DeleteEx operation.
@@ -524,18 +560,23 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 type storeOptions struct {
-	Key          []byte
-	Value        []byte
-	Flags        uint32
-	Datatype     uint8
-	Cas          Cas
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	Value          []byte
+	Flags          uint32
+	Datatype       uint8
+	Cas            Cas
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
 }
 
 // StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
@@ -586,85 +627,103 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // AddOptions encapsulates the parameters for a AddEx operation.
 type AddOptions struct {
-	Key          []byte
-	Value        []byte
-	Flags        uint32
-	Datatype     uint8
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	Value          []byte
+	Flags          uint32
+	Datatype       uint8
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
 }
 
 // AddEx stores a document as long as it does not already exist.
 func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("AddEx", cmdAdd, storeOptions{
-		Key:          opts.Key,
-		Value:        opts.Value,
-		Flags:        opts.Flags,
-		Datatype:     opts.Datatype,
-		Cas:          0,
-		Expiry:       opts.Expiry,
-		TraceContext: opts.TraceContext,
+		Key:            opts.Key,
+		CollectionName: opts.CollectionName,
+		ScopeName:      opts.ScopeName,
+		Value:          opts.Value,
+		Flags:          opts.Flags,
+		Datatype:       opts.Datatype,
+		Cas:            0,
+		Expiry:         opts.Expiry,
+		TraceContext:   opts.TraceContext,
 	}, cb)
 }
 
 // SetOptions encapsulates the parameters for a SetEx operation.
 type SetOptions struct {
-	Key          []byte
-	Value        []byte
-	Flags        uint32
-	Datatype     uint8
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	Value          []byte
+	Flags          uint32
+	Datatype       uint8
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
 }
 
 // SetEx stores a document.
 func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("SetEx", cmdSet, storeOptions{
-		Key:          opts.Key,
-		Value:        opts.Value,
-		Flags:        opts.Flags,
-		Datatype:     opts.Datatype,
-		Cas:          0,
-		Expiry:       opts.Expiry,
-		TraceContext: opts.TraceContext,
+		Key:            opts.Key,
+		CollectionName: opts.CollectionName,
+		ScopeName:      opts.ScopeName,
+		Value:          opts.Value,
+		Flags:          opts.Flags,
+		Datatype:       opts.Datatype,
+		Cas:            0,
+		Expiry:         opts.Expiry,
+		TraceContext:   opts.TraceContext,
 	}, cb)
 }
 
 // ReplaceOptions encapsulates the parameters for a ReplaceEx operation.
 type ReplaceOptions struct {
-	Key          []byte
-	Value        []byte
-	Flags        uint32
-	Datatype     uint8
-	Cas          Cas
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	Value          []byte
+	Flags          uint32
+	Datatype       uint8
+	Cas            Cas
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
 }
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
 func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("ReplaceEx", cmdSet, storeOptions{
-		Key:          opts.Key,
-		Value:        opts.Value,
-		Flags:        opts.Flags,
-		Datatype:     opts.Datatype,
-		Cas:          opts.Cas,
-		Expiry:       opts.Expiry,
-		TraceContext: opts.TraceContext,
+		Key:            opts.Key,
+		CollectionName: opts.CollectionName,
+		ScopeName:      opts.ScopeName,
+		Value:          opts.Value,
+		Flags:          opts.Flags,
+		Datatype:       opts.Datatype,
+		Cas:            opts.Cas,
+		Expiry:         opts.Expiry,
+		TraceContext:   opts.TraceContext,
 	}, cb)
 }
 
 // AdjoinOptions encapsulates the parameters for a AppendEx or PrependEx operation.
 type AdjoinOptions struct {
-	Key          []byte
-	Value        []byte
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Value          []byte
+	CollectionName string
+	ScopeName      string
+	TraceContext   opentracing.SpanContext
+	Cas            Cas
 }
 
 // AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
@@ -705,27 +764,23 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 			Magic:    reqMagic,
 			Opcode:   opcode,
 			Datatype: 0,
-			Cas:      0,
+			Cas:      uint64(opts.Cas),
 			Extras:   nil,
 			Key:      opts.Key,
 			Value:    opts.Value,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // AppendEx appends some bytes to a document.
 func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
 	return agent.adjoinEx("AppendEx", cmdAppend, opts, cb)
-}
-
-// PrependOptions encapsulates the parameters for a ReplaceEx operation.
-type PrependOptions struct {
-	Key          []byte
-	Value        []byte
-	TraceContext opentracing.SpanContext
 }
 
 // PrependEx prepends some bytes to a document.
@@ -735,11 +790,14 @@ func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingO
 
 // CounterOptions encapsulates the parameters for a IncrementEx or DecrementEx operation.
 type CounterOptions struct {
-	Key          []byte
-	Delta        uint64
-	Initial      uint64
-	Expiry       uint32
-	TraceContext opentracing.SpanContext
+	Key            []byte
+	Delta          uint64
+	Initial        uint64
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
+	Cas            Cas
 }
 
 // CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
@@ -804,15 +862,18 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 			Magic:    reqMagic,
 			Opcode:   opcode,
 			Datatype: 0,
-			Cas:      0,
+			Cas:      uint64(opts.Cas),
 			Extras:   extraBuf,
 			Key:      opts.Key,
 			Value:    nil,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
-	return agent.dispatchOp(req)
+
+	return agent.cidMgr.dispatch(req)
 }
 
 // IncrementEx increments the unsigned integer value in a document.
@@ -883,6 +944,7 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
 	}
+
 	return agent.dispatchOp(req)
 }
 

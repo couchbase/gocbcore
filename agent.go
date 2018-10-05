@@ -36,6 +36,7 @@ type Agent struct {
 	useCompression       bool
 	useDurations         bool
 	disableDecompression bool
+	useCollections       bool
 
 	compressionMinSize  int
 	compressionMinRatio float64
@@ -74,6 +75,8 @@ type Agent struct {
 
 	dcpPriority  DcpAgentPriority
 	useDcpExpiry bool
+
+	cidMgr *collectionIdManager
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -116,6 +119,7 @@ type AgentConfig struct {
 	UseCompression       bool
 	UseDurations         bool
 	DisableDecompression bool
+	UseCollections       bool
 
 	CompressionMinSize  int
 	CompressionMinRatio float64
@@ -151,6 +155,8 @@ type AgentConfig struct {
 	// Password specifies the password to use when connecting.
 	// DEPRECATED
 	Password string
+
+	EnableStreamId bool
 }
 
 // FromConnStr populates the AgentConfig with information from a
@@ -590,8 +596,15 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 		if err := client.ExecDcpControl("set_priority", priority, deadline); err != nil {
 			return err
 		}
+
 		if agent.useDcpExpiry {
 			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if configIn.EnableStreamId {
+			if err := client.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
 		}
@@ -650,6 +663,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		compressionMinRatio:  0.83,
 		useDurations:         config.UseDurations,
 		noRootTraceSpans:     config.NoRootTraceSpans,
+		useCollections:       config.UseCollections,
 		serverFailures:       make(map[string]time.Time),
 		serverConnectTimeout: 7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,
@@ -664,6 +678,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		disableDecompression: config.DisableDecompression,
 		useDcpExpiry:         config.UseDcpExpiry,
 	}
+	c.cidMgr = newCollectionIdManager(c)
 
 	connectTimeout := 60000 * time.Millisecond
 	if config.ConnectTimeout > 0 {
@@ -747,6 +762,11 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		} else if err != nil {
 			logDebugf("Connecting failed! %v", err)
 			continue
+		}
+
+		if agent.useCollections && !checkSupportsFeature(client.features, FeatureCollections) {
+			logDebugf("Disabling collections as unsupported")
+			agent.useCollections = false
 		}
 
 		disconnectClient := func() {
@@ -844,6 +864,11 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		if err != nil {
 			signal <- err
 			return true
+		}
+
+		if agent.useCollections && !cfg.supports("collections") {
+			logDebugf("Disabling collections as unsupported")
+			agent.useCollections = false
 		}
 
 		newRouteCfg := agent.buildFirstRouteConfig(cfg, srcServer)
@@ -1152,4 +1177,9 @@ func (agent *Agent) CbasEps() []string {
 		return nil
 	}
 	return routingInfo.cbasEpList
+}
+
+// HasCollectionsSupport verifies whether or not collections are available on the agent.
+func (agent *Agent) HasCollectionsSupport() bool {
+	return agent.useCollections
 }

@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -11,13 +12,16 @@ import (
 
 // HttpRequest contains the description of an HTTP request to perform.
 type HttpRequest struct {
-	Service  ServiceType
-	Method   string
-	Endpoint string
-	Path     string
-	Username string
-	Password string
-	Body     []byte
+	Service     ServiceType
+	Method      string
+	Endpoint    string
+	Path        string
+	Username    string
+	Password    string
+	Body        []byte
+	Context     context.Context
+	Headers     map[string]string
+	ContentType string
 }
 
 // HttpResponse encapsulates the response from an HTTP request.
@@ -116,6 +120,8 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		req.Endpoint = endpoint
 	}
 
 	// Generate a request URI
@@ -126,6 +132,11 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	// hreq.WithContext will panic if ctx is nil so make absolutely sure it isn't
+	if req.Context == nil {
+		req.Context = context.Background()
+	}
+	hreq = hreq.WithContext(req.Context)
 
 	body := req.Body
 
@@ -160,6 +171,15 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 	}
 
 	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	if req.ContentType != "" {
+		hreq.Header.Set("Content-Type", req.ContentType)
+	} else {
+		hreq.Header.Set("Content-Type", "application/json")
+	}
+	for key, val := range req.Headers {
+		hreq.Header.Set(key, val)
+	}
 
 	hresp, err := agent.httpCli.Do(hreq)
 	if err != nil {
