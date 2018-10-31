@@ -3,7 +3,6 @@ package gocbcore
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 
 	"github.com/opentracing/opentracing-go"
 )
@@ -283,15 +282,12 @@ func (agent *Agent) GetReplicaEx(opts GetReplicaOptions, cb GetReplicaExCallback
 	var resultLock sync.Mutex
 	var firstResult *GetReplicaResult
 
-	op := new(struct {
-		multiPendingOp
-		remaining int32
-	})
-	op.remaining = int32(numReplicas)
+	op := new(multiPendingOp)
+	expected := uint32(numReplicas)
 
 	opHandledLocked := func() {
-		remaining := atomic.AddInt32(&op.remaining, -1)
-		if remaining == 0 {
+		completed := op.IncrementCompletedOps()
+		if expected-completed == 0 {
 			if firstResult == nil {
 				tracer.Finish()
 				cb(nil, ErrNoReplicas)
@@ -927,15 +923,12 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 	stats := make(map[string]SingleServerStats)
 	var statsLock sync.Mutex
 
-	op := new(struct {
-		multiPendingOp
-		remaining int32
-	})
-	op.remaining = int32(config.clientMux.NumPipelines())
+	op := new(multiPendingOp)
+	expected := uint32(config.clientMux.NumPipelines())
 
 	opHandledLocked := func() {
-		remaining := atomic.AddInt32(&op.remaining, -1)
-		if remaining == 0 {
+		completed := op.IncrementCompletedOps()
+		if expected-completed == 0 {
 			tracer.Finish()
 			cb(&StatsResult{
 				Servers: stats,

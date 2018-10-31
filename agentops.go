@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,17 +31,26 @@ type PendingOp interface {
 }
 
 type multiPendingOp struct {
-	ops []PendingOp
+	ops          []PendingOp
+	completedOps uint32
 }
 
 func (mp *multiPendingOp) Cancel() bool {
-	allCancelled := true
+	var failedCancels uint32
 	for _, op := range mp.ops {
 		if !op.Cancel() {
-			allCancelled = false
+			failedCancels++
 		}
 	}
-	return allCancelled
+	return mp.CompletedOps()-failedCancels == 0
+}
+
+func (mp *multiPendingOp) CompletedOps() uint32 {
+	return atomic.LoadUint32(&mp.completedOps)
+}
+
+func (mp *multiPendingOp) IncrementCompletedOps() uint32 {
+	return atomic.AddUint32(&mp.completedOps, 1)
 }
 
 func (agent *Agent) waitAndRetryOperation(req *memdQRequest, waitDura time.Duration) {
