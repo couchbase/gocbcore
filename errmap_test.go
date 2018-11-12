@@ -92,9 +92,9 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		"bucket": globalAgent.bucket,
 	}))
 
-	agent.Get([]byte(testKey), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte(testKey), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {})
-	})
+	}))
 	s.Wait(0)
 
 	resp := globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CCheckRetryVerify, map[string]interface{}{

@@ -77,7 +77,7 @@ func TestBasicOps(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	// Set
-	agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Set operation failed")
@@ -86,11 +86,11 @@ func TestBasicOps(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	// Get
-	agent.Get([]byte("test"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("test"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
@@ -99,11 +99,11 @@ func TestBasicOps(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	// GetReplica Specific
-	agent.GetReplica([]byte("test"), 1, func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetReplica([]byte("test"), 1, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
@@ -112,11 +112,11 @@ func TestBasicOps(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	// GetReplica Any
-	agent.GetReplica([]byte("test"), 0, func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetReplica([]byte("test"), 0, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
@@ -125,7 +125,7 @@ func TestBasicOps(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
@@ -133,13 +133,13 @@ func TestBasicReplace(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	oldCas := Cas(0)
-	agent.Set([]byte("testx"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testx"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		oldCas = cas
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	agent.Replace([]byte("testx"), []byte("[]"), 0, oldCas, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Replace([]byte("testx"), []byte("[]"), 0, oldCas, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Replace operation failed")
@@ -148,37 +148,37 @@ func TestBasicReplace(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestBasicRemove(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testy"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testy"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	agent.Remove([]byte("testy"), 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Remove([]byte("testy"), 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Remove operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestBasicInsert(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Remove([]byte("testz"), 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Remove([]byte("testz"), 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	agent.Add([]byte("testz"), []byte("[]"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Add([]byte("testz"), []byte("[]"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Add operation failed")
@@ -187,7 +187,7 @@ func TestBasicInsert(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
@@ -195,12 +195,12 @@ func TestBasicCounters(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	// Counters
-	agent.Remove([]byte("testCounters"), 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Remove([]byte("testCounters"), 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	agent.Increment([]byte("testCounters"), 5, 11, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Increment([]byte("testCounters"), 5, 11, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Increment operation failed")
@@ -212,10 +212,10 @@ func TestBasicCounters(t *testing.T) {
 				s.Fatalf("Increment did not operate properly")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Increment([]byte("testCounters"), 5, 22, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Increment([]byte("testCounters"), 5, 22, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Increment operation failed")
@@ -227,10 +227,10 @@ func TestBasicCounters(t *testing.T) {
 				s.Fatalf("Increment did not operate properly")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Decrement([]byte("testCounters"), 3, 65, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Decrement([]byte("testCounters"), 3, 65, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Increment operation failed")
@@ -242,22 +242,23 @@ func TestBasicCounters(t *testing.T) {
 				s.Fatalf("Increment did not operate properly")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestBasicAdjoins(t *testing.T) {
-	if !globalAgent.SupportsFeature(TestAdjoinFeature) {
-		t.Skip("Test does not work against server version due to serverside bug")
-	}
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testAdjoins"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	if !agent.SupportsFeature(TestAdjoinFeature) {
+		t.Skip("Test does not work against server version due to serverside bug")
+	}
+
+	s.PushOp(agent.Set([]byte("testAdjoins"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	agent.Append([]byte("testAdjoins"), []byte(" Frank!"), func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Append([]byte("testAdjoins"), []byte(" Frank!"), func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Append operation failed")
@@ -266,10 +267,10 @@ func TestBasicAdjoins(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Prepend([]byte("testAdjoins"), []byte("Hello "), func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Prepend([]byte("testAdjoins"), []byte("Hello "), func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Prepend operation failed")
@@ -278,10 +279,10 @@ func TestBasicAdjoins(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Get([]byte("testAdjoins"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testAdjoins"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
@@ -294,7 +295,7 @@ func TestBasicAdjoins(t *testing.T) {
 				s.Fatalf("Adjoin operations did not behave")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
@@ -308,140 +309,138 @@ func isKeyNotFoundError(err error) bool {
 func TestExpiry(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testExpiry"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testExpiry"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Set operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	agent.TimeTravel(2000 * time.Millisecond)
 
-	agent.Get([]byte("testExpiry"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testExpiry"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestTouch(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Set operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Touch([]byte("testTouch"), 0, 3, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Touch([]byte("testTouch"), 0, 3, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Touch operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	agent.TimeTravel(1500 * time.Millisecond)
 
-	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get should have been successful")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	agent.TimeTravel(2500 * time.Millisecond)
 
-	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestGetAndTouch(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Set operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.GetAndTouch([]byte("testTouch"), 3, func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetAndTouch([]byte("testTouch"), 3, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Touch operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	agent.TimeTravel(1500 * time.Millisecond)
 
-	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get should have been successful")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	agent.TimeTravel(2500 * time.Millisecond)
 
-	agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if !isKeyNotFoundError(err) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestObserve(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Continue()
-	})
+	}))
 	s.Wait(0)
 
-	op, _ := agent.Observe([]byte("testObserve"), 1, func(ks KeyState, cas Cas, err error) {
+	s.PushOp(agent.Observe([]byte("testObserve"), 1, func(ks KeyState, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
-
-	op.Cancel()
 }
 
 func TestObserveSeqNo(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
 	origMt := MutationToken{}
-	agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Initial set operation failed")
@@ -453,11 +452,11 @@ func TestObserveSeqNo(t *testing.T) {
 
 			origMt = mt
 		})
-	})
+	}))
 	s.Wait(0)
 
 	origCurSeqNo := SeqNo(0)
-	agent.ObserveSeqNo([]byte("testObserve"), origMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
+	s.PushOp(agent.ObserveSeqNo([]byte("testObserve"), origMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("ObserveSeqNo operation failed")
@@ -465,11 +464,11 @@ func TestObserveSeqNo(t *testing.T) {
 
 			origCurSeqNo = curSeqNo
 		})
-	})
+	}))
 	s.Wait(0)
 
 	newMt := MutationToken{}
-	agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Second set operation failed")
@@ -477,10 +476,10 @@ func TestObserveSeqNo(t *testing.T) {
 
 			newMt = mt
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.ObserveSeqNo([]byte("testObserve"), newMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
+	s.PushOp(agent.ObserveSeqNo([]byte("testObserve"), newMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("ObserveSeqNo operation failed")
@@ -489,25 +488,26 @@ func TestObserveSeqNo(t *testing.T) {
 				s.Fatalf("SeqNo does not appear to be working")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestRandomGet(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
+
 	distkeys := agent.makeDistKeys()
 	for _, k := range distkeys {
-		agent.Set([]byte(k), []byte("Hello World!"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+		s.PushOp(agent.Set([]byte(k), []byte("Hello World!"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 			s.Wrap(func() {
 				if err != nil {
 					s.Fatalf("Couldn't store some items: %v", err)
 				}
 			})
-		})
+		}))
 		s.Wait(0)
 	}
 
-	agent.GetRandom(func(key, value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetRandom(func(key, value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed: %v", err)
@@ -522,20 +522,20 @@ func TestRandomGet(t *testing.T) {
 				s.Fatalf("No value returned")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestSubdocXattrs(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("testXattr"), []byte("{\"x\":\"xattrs\"}"), 0, 0, func(cas Cas, token MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("testXattr"), []byte("{\"x\":\"xattrs\"}"), 0, 0, func(cas Cas, token MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Set operation failed: %v", err)
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	mutateOps := []SubDocOp{
@@ -559,7 +559,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Value: []byte("\"x value\""),
 		},
 	}
-	agent.SubDocMutate([]byte("testXattr"), mutateOps, 0, 0, 0, func(res []SubDocResult, cas Cas, token MutationToken, err error) {
+	s.PushOp(agent.SubDocMutate([]byte("testXattr"), mutateOps, 0, 0, 0, func(res []SubDocResult, cas Cas, token MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Mutate operation failed: %v", err)
@@ -568,7 +568,7 @@ func TestSubdocXattrs(t *testing.T) {
 				s.Fatalf("Invalid cas received")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	lookupOps := []SubDocOp{
@@ -583,7 +583,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Path:  "x",
 		},
 	}
-	agent.SubDocLookup([]byte("testXattr"), lookupOps, 0, func(res []SubDocResult, cas Cas, err error) {
+	s.PushOp(agent.SubDocLookup([]byte("testXattr"), lookupOps, 0, func(res []SubDocResult, cas Cas, err error) {
 		s.Wrap(func() {
 			if len(res) != 2 {
 				s.Fatalf("Lookup operation wrong count")
@@ -608,15 +608,16 @@ func TestSubdocXattrs(t *testing.T) {
 				s.Fatalf("Unexpected document value %s", res[1].Value)
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
 func TestStats(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
+
 	numServers := agent.routingInfo.Get().clientMux.NumPipelines()
 
-	agent.Stats("", func(stats map[string]SingleServerStats) {
+	s.PushOp(agent.Stats("", func(stats map[string]SingleServerStats) {
 		s.Wrap(func() {
 			if len(stats) != numServers {
 				s.Fatalf("Didn't get all stats!")
@@ -631,7 +632,7 @@ func TestStats(t *testing.T) {
 				}
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
@@ -660,16 +661,16 @@ func TestMemcachedBucket(t *testing.T) {
 	agent := globalMemdAgent
 	s := agent.getSignaler(t)
 
-	agent.Set([]byte("key"), []byte("value"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("key"), []byte("value"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Got error for Set: %v", err)
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Get([]byte("key"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("key"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Couldn't get back key: %v", err)
@@ -678,7 +679,7 @@ func TestMemcachedBucket(t *testing.T) {
 				s.Fatalf("Got back wrong value!")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	// Try to perform Observe: should fail since this isn't supported on Memcached buckets
@@ -697,16 +698,16 @@ func TestFlagsRoundTrip(t *testing.T) {
 	// Ensure flags are round-tripped with the server correctly.
 	agent, s := getAgentnSignaler(t)
 
-	agent.Set([]byte("flagskey"), []byte(""), 0x99889988, 0, func(cas Cas, mt MutationToken, err error) {
+	s.PushOp(agent.Set([]byte("flagskey"), []byte(""), 0x99889988, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Got error for Set: %v", err)
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
-	agent.Get([]byte("flagskey"), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.Get([]byte("flagskey"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Couldn't get back key: %v", err)
@@ -715,7 +716,7 @@ func TestFlagsRoundTrip(t *testing.T) {
 				s.Fatalf("flags failed to round-trip")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 }
 
@@ -727,7 +728,7 @@ func TestMetaOps(t *testing.T) {
 		var currentCas Cas
 
 		// Set
-		agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
+		s.PushOp(agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 			s.Wrap(func() {
 				if err != nil {
 					s.Fatalf("Set operation failed")
@@ -742,7 +743,7 @@ func TestMetaOps(t *testing.T) {
 		s.Wait(0)
 
 		// GetMeta
-		agent.GetMeta([]byte("test"), func(value []byte, flags uint32, cas Cas, expiry uint32, seqNo SeqNo, dataType uint8, deleted uint32, err error) {
+		s.PushOp(agent.GetMeta([]byte("test"), func(value []byte, flags uint32, cas Cas, expiry uint32, seqNo SeqNo, dataType uint8, deleted uint32, err error) {
 			s.Wrap(func() {
 				if err != nil {
 					s.Fatalf("GetMeta operation failed")
@@ -765,13 +766,13 @@ func TestMetaOps(t *testing.T) {
 func TestPing(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
-	agent.Ping(func(services []PingResult) {
+	s.PushOp(agent.Ping(func(services []PingResult) {
 		s.Wrap(func() {
 			if len(services) == 0 {
 				s.Fatalf("Ping report contained no results")
 			}
 		})
-	})
+	}))
 	s.Wait(5)
 }
 
@@ -926,7 +927,7 @@ func TestMain(m *testing.M) {
 
 	result := m.Run()
 
-	err = globalAgent.Close()
+	err = agent.Close()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to shut down global agent: %s", err))
 	}

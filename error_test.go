@@ -49,7 +49,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 		"bucket":  globalAgent.bucket,
 	}))
 
-	agent.GetAndLock([]byte("testEnhancedErrs"), 10, func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetAndLock([]byte("testEnhancedErrs"), 10, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			typedErr, ok := err.(*KvError)
 			if !ok {
@@ -72,7 +72,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 				s.Fatalf("error cause should have been ErrKeyNotFound")
 			}
 		})
-	})
+	}))
 	s.Wait(0)
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
