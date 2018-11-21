@@ -53,7 +53,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 		s.Wrap(func() {
 			typedErr, ok := err.(*KvError)
 			if !ok {
-				s.Fatalf("error should be a KvError")
+				s.Fatalf("error should be a KvError: %v", err)
 			}
 
 			if typedErr.Context == "" {

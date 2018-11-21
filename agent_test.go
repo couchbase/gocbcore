@@ -80,7 +80,7 @@ func TestBasicOps(t *testing.T) {
 	s.PushOp(agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Set operation failed")
+				s.Fatalf("Set operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -93,7 +93,7 @@ func TestBasicOps(t *testing.T) {
 	s.PushOp(agent.Get([]byte("test"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed")
+				s.Fatalf("Get operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -106,7 +106,7 @@ func TestBasicOps(t *testing.T) {
 	s.PushOp(agent.GetReplica([]byte("test"), 1, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed")
+				s.Fatalf("Get operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -119,7 +119,7 @@ func TestBasicOps(t *testing.T) {
 	s.PushOp(agent.GetReplica([]byte("test"), 0, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed")
+				s.Fatalf("Get operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -142,7 +142,7 @@ func TestBasicReplace(t *testing.T) {
 	s.PushOp(agent.Replace([]byte("testx"), []byte("[]"), 0, oldCas, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Replace operation failed")
+				s.Fatalf("Replace operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -163,7 +163,7 @@ func TestBasicRemove(t *testing.T) {
 	s.PushOp(agent.Remove([]byte("testy"), 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Remove operation failed")
+				s.Fatalf("Remove operation failed: %v", err)
 			}
 		})
 	}))
@@ -181,7 +181,7 @@ func TestBasicInsert(t *testing.T) {
 	s.PushOp(agent.Add([]byte("testz"), []byte("[]"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Add operation failed")
+				s.Fatalf("Add operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -203,7 +203,7 @@ func TestBasicCounters(t *testing.T) {
 	s.PushOp(agent.Increment([]byte("testCounters"), 5, 11, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Increment operation failed")
+				s.Fatalf("Increment operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -218,7 +218,7 @@ func TestBasicCounters(t *testing.T) {
 	s.PushOp(agent.Increment([]byte("testCounters"), 5, 22, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Increment operation failed")
+				s.Fatalf("Increment operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -233,7 +233,7 @@ func TestBasicCounters(t *testing.T) {
 	s.PushOp(agent.Decrement([]byte("testCounters"), 3, 65, 0, func(val uint64, cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Increment operation failed")
+				s.Fatalf("Increment operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -261,7 +261,7 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.Append([]byte("testAdjoins"), []byte(" Frank!"), func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Append operation failed")
+				s.Fatalf("Append operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -273,7 +273,7 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.Prepend([]byte("testAdjoins"), []byte("Hello "), func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Prepend operation failed")
+				s.Fatalf("Prepend operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -285,7 +285,7 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.Get([]byte("testAdjoins"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed")
+				s.Fatalf("Get operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -312,7 +312,7 @@ func TestExpiry(t *testing.T) {
 	s.PushOp(agent.Set([]byte("testExpiry"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Set operation failed")
+				s.Fatalf("Set operation failed: %v", err)
 			}
 		})
 	}))
@@ -336,7 +336,7 @@ func TestTouch(t *testing.T) {
 	s.PushOp(agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Set operation failed")
+				s.Fatalf("Set operation failed: %v", err)
 			}
 		})
 	}))
@@ -345,7 +345,7 @@ func TestTouch(t *testing.T) {
 	s.PushOp(agent.Touch([]byte("testTouch"), 0, 3, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Touch operation failed")
+				s.Fatalf("Touch operation failed: %v", err)
 			}
 		})
 	}))
@@ -380,7 +380,7 @@ func TestGetAndTouch(t *testing.T) {
 	s.PushOp(agent.Set([]byte("testTouch"), []byte("{}"), 0, 1, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Set operation failed")
+				s.Fatalf("Set operation failed: %v", err)
 			}
 		})
 	}))
@@ -389,7 +389,7 @@ func TestGetAndTouch(t *testing.T) {
 	s.PushOp(agent.GetAndTouch([]byte("testTouch"), 3, func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Touch operation failed")
+				s.Fatalf("Touch operation failed: %v", err)
 			}
 		})
 	}))
@@ -400,7 +400,7 @@ func TestGetAndTouch(t *testing.T) {
 	s.PushOp(agent.Get([]byte("testTouch"), func(value []byte, flags uint32, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get should have been successful")
+				s.Fatalf("Get should have been successful: %v", err)
 			}
 		})
 	}))
@@ -429,7 +429,7 @@ func TestObserve(t *testing.T) {
 	s.PushOp(agent.Observe([]byte("testObserve"), 1, func(ks KeyState, cas Cas, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed")
+				s.Fatalf("Get operation failed: %v", err)
 			}
 		})
 	}))
@@ -443,7 +443,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Initial set operation failed")
+				s.Fatalf("Initial set operation failed: %v", err)
 			}
 
 			if mt.VbUuid == 0 && mt.SeqNo == 0 {
@@ -459,7 +459,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.ObserveSeqNo([]byte("testObserve"), origMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("ObserveSeqNo operation failed")
+				s.Fatalf("ObserveSeqNo operation failed: %v", err)
 			}
 
 			origCurSeqNo = curSeqNo
@@ -471,7 +471,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.Set([]byte("testObserve"), []byte("there"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Second set operation failed")
+				s.Fatalf("Second set operation failed: %v", err)
 			}
 
 			newMt = mt
@@ -482,7 +482,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.ObserveSeqNo([]byte("testObserve"), newMt.VbUuid, 1, func(curSeqNo, persistSeqNo SeqNo, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("ObserveSeqNo operation failed")
+				s.Fatalf("ObserveSeqNo operation failed: %v", err)
 			}
 			if curSeqNo < origCurSeqNo {
 				s.Fatalf("SeqNo does not appear to be working")
