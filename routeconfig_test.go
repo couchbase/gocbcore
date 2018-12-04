@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func getConfig(t *testing.T, filename string) (cfg *routeConfig) {
+func loadConfigFromFile(t *testing.T, filename string) (cfg *cfgBucket) {
 	s, err := ioutil.ReadFile(filename)
 	if err != nil {
 		t.Fatal(err.Error())
@@ -16,7 +16,13 @@ func getConfig(t *testing.T, filename string) (cfg *routeConfig) {
 		t.Fatal(err.Error())
 	}
 
-	cfg = buildRouteConfig(rawCfg, false, "default", false)
+	cfg = rawCfg
+	return
+}
+
+func getConfig(t *testing.T, filename string) (cfg *routeConfig) {
+	cfgBk := loadConfigFromFile(t, filename)
+	cfg = buildRouteConfig(cfgBk, false, "default", false)
 	return
 }
 

@@ -770,6 +770,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		}
 
 		routeCfg := agent.buildFirstRouteConfig(bk, thisHostPort)
+		logDebugf("Using network type %s for connections", agent.networkType)
 		if !routeCfg.IsValid() {
 			logDebugf("Configuration was deemed invalid %+v", routeCfg)
 			disconnectClient()
@@ -854,6 +855,10 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 }
 
 func (agent *Agent) buildFirstRouteConfig(bk *cfgBucket, srcServer string) *routeConfig {
+	if agent.networkType != "" && agent.networkType != "auto" {
+		return buildRouteConfig(bk, agent.IsSecure(), agent.networkType, true)
+	}
+
 	defaultRouteConfig := buildRouteConfig(bk, agent.IsSecure(), "default", true)
 
 	// First we check if the source server is from the defaults list

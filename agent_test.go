@@ -795,6 +795,136 @@ func TestDiagnostics(t *testing.T) {
 	}
 }
 
+func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = ""
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesAutoConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "auto"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "auto"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "172.17.0.4:11210")
+
+	if globalAgent.networkType != "default" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesDefaultConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "default"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "default" {
+		t.Fatalf("Expected agent networkType to be default, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesExternalConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "external"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesInvalidConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "invalid"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "invalid" {
+		t.Fatalf("Expected agent networkType to be invalid, was %s", globalAgent.networkType)
+	}
+
+	if cfg.IsValid() {
+		t.Fatalf("Expected route config to be invalid, was valid")
+	}
+	if len(cfg.kvServerList) != 0 {
+		t.Fatalf("Expected kvServerList to be empty, had %d items", len(cfg.kvServerList))
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
 type testLogger struct {
 	Parent   Logger
 	LogCount []uint64
