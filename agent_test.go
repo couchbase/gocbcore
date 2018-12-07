@@ -101,12 +101,16 @@ func TestBasicOps(t *testing.T) {
 		})
 	}))
 	s.Wait(0)
+}
 
-	// GetReplica Specific
-	s.PushOp(agent.GetReplica([]byte("test"), 1, func(value []byte, flags uint32, cas Cas, err error) {
+func TestGetReplica(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+
+	// Set
+	s.PushOp(agent.Set([]byte("testReplica"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed: %v", err)
+				s.Fatalf("Set operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -115,11 +119,44 @@ func TestBasicOps(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	// GetReplica Any
-	s.PushOp(agent.GetReplica([]byte("test"), 0, func(value []byte, flags uint32, cas Cas, err error) {
+	retries := 0
+	keyExists := false
+	for {
+		// GetReplica Specific
+		s.PushOp(agent.GetReplica([]byte("testReplica"), 1, func(value []byte, flags uint32, cas Cas, err error) {
+			s.Wrap(func() {
+				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
+				}
+				if cas == Cas(0) && !keyNotFound {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			t.Fatalf("GetReplica could not locate key")
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestGetAnyReplica(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+
+	// Set
+	s.PushOp(agent.Set([]byte("testReplica"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Get operation failed: %v", err)
+				s.Fatalf("Set operation failed: %v", err)
 			}
 			if cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
@@ -127,6 +164,35 @@ func TestBasicOps(t *testing.T) {
 		})
 	}))
 	s.Wait(0)
+
+	retries := 0
+	keyExists := false
+	for {
+		// GetReplica Any
+		s.PushOp(agent.GetReplica([]byte("testReplica"), 0, func(value []byte, flags uint32, cas Cas, err error) {
+			s.Wrap(func() {
+				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("GetReplica any returned error that was not key not found: %v", err)
+				}
+				if cas == Cas(0) && !keyNotFound {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			t.Fatalf("GetReplica could not locate key")
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func TestBasicReplace(t *testing.T) {
