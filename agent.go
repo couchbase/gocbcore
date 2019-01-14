@@ -23,18 +23,19 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
-	clientId          string
-	userString        string
-	auth              AuthProvider
-	bucket            string
-	tlsConfig         *tls.Config
-	initFn            memdInitFunc
-	networkType       string
-	useMutationTokens bool
-	useKvErrorMaps    bool
-	useEnhancedErrors bool
-	useCompression    bool
-	useDurations      bool
+	clientId             string
+	userString           string
+	auth                 AuthProvider
+	bucket               string
+	tlsConfig            *tls.Config
+	initFn               memdInitFunc
+	networkType          string
+	useMutationTokens    bool
+	useKvErrorMaps       bool
+	useEnhancedErrors    bool
+	useCompression       bool
+	useDurations         bool
+	disableDecompression bool
 
 	compressionMinSize  int
 	compressionMinRatio float64
@@ -100,19 +101,20 @@ type AuthFunc func(client AuthClient, deadline time.Time) error
 
 // AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
-	UserString        string
-	MemdAddrs         []string
-	HttpAddrs         []string
-	TlsConfig         *tls.Config
-	BucketName        string
-	NetworkType       string
-	AuthHandler       AuthFunc
-	Auth              AuthProvider
-	UseMutationTokens bool
-	UseKvErrorMaps    bool
-	UseEnhancedErrors bool
-	UseCompression    bool
-	UseDurations      bool
+	UserString           string
+	MemdAddrs            []string
+	HttpAddrs            []string
+	TlsConfig            *tls.Config
+	BucketName           string
+	NetworkType          string
+	AuthHandler          AuthFunc
+	Auth                 AuthProvider
+	UseMutationTokens    bool
+	UseKvErrorMaps       bool
+	UseEnhancedErrors    bool
+	UseCompression       bool
+	UseDurations         bool
+	DisableDecompression bool
 
 	CompressionMinSize  int
 	CompressionMinRatio float64
@@ -644,6 +646,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confCccpMaxWait:      3 * time.Second,
 		confCccpPollPeriod:   2500 * time.Millisecond,
 		dcpPriority:          config.DcpAgentPriority,
+		disableDecompression: config.DisableDecompression,
 	}
 
 	connectTimeout := 60000 * time.Millisecond

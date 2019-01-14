@@ -200,7 +200,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
-	if isCompressed {
+	if isCompressed && !client.parent.disableDecompression {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
 			req.processingLock.Unlock()
