@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type memdInitFunc func(*syncClient, time.Time) error
+type memdInitFunc func(*syncClient, time.Time, *Agent) error
 
 func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
 	for _, srvFeature := range srvFeatures {
@@ -136,7 +136,7 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	}
 
 	logDebugf("Authenticating...")
-	err = agent.initFn(&sclient, deadline)
+	err = agent.initFn(&sclient, deadline, agent)
 	if err != nil {
 		logDebugf("Failed to authenticate. %v", err)
 

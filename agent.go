@@ -72,7 +72,8 @@ type Agent struct {
 	zombieOps       []*zombieLogEntry
 	useZombieLogger bool
 
-	dcpPriority DcpAgentPriority
+	dcpPriority  DcpAgentPriority
+	useDcpExpiry bool
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -141,6 +142,7 @@ type AgentConfig struct {
 	ZombieLoggerSampleSize int
 
 	DcpAgentPriority DcpAgentPriority
+	UseDcpExpiry     bool
 
 	// Username specifies the username to use when connecting.
 	// DEPRECATED
@@ -494,6 +496,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.DcpAgentPriority = priority
 	}
 
+	if valStr, ok := fetchOption("enable_expiry_opcode"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("enable_expiry_opcode option must be a boolean")
+		}
+		config.UseDcpExpiry = val
+	}
+
 	return nil
 }
 
@@ -544,7 +554,7 @@ func normalizeAgentConfig(configIn *AgentConfig) *AgentConfig {
 func CreateAgent(configIn *AgentConfig) (*Agent, error) {
 	config := normalizeAgentConfig(configIn)
 
-	initFn := func(client *syncClient, deadline time.Time) error {
+	initFn := func(client *syncClient, deadline time.Time, agent *Agent) error {
 		return config.AuthHandler(client, deadline)
 	}
 
@@ -557,7 +567,7 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	initFn := func(client *syncClient, deadline time.Time) error {
+	initFn := func(client *syncClient, deadline time.Time, agent *Agent) error {
 		if err := config.AuthHandler(client, deadline); err != nil {
 			return err
 		}
@@ -569,7 +579,7 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 			return err
 		}
 		var priority string
-		switch config.DcpAgentPriority {
+		switch agent.dcpPriority {
 		case DcpAgentPriorityLow:
 			priority = "low"
 		case DcpAgentPriorityMed:
@@ -579,6 +589,11 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 		}
 		if err := client.ExecDcpControl("set_priority", priority, deadline); err != nil {
 			return err
+		}
+		if agent.useDcpExpiry {
+			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+				agent.useDcpExpiry = false
+			}
 		}
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
@@ -647,6 +662,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confCccpPollPeriod:   2500 * time.Millisecond,
 		dcpPriority:          config.DcpAgentPriority,
 		disableDecompression: config.DisableDecompression,
+		useDcpExpiry:         config.UseDcpExpiry,
 	}
 
 	connectTimeout := 60000 * time.Millisecond
@@ -1136,4 +1152,10 @@ func (agent *Agent) CbasEps() []string {
 		return nil
 	}
 	return routingInfo.cbasEpList
+}
+
+// DcpExpiryEnabled returns whether or not the enable_expiry_opcode dcp control was successfully
+// sent to the server.
+func (agent *Agent) DcpExpiryEnabled() bool {
+	return agent.useDcpExpiry
 }
