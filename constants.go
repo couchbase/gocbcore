@@ -347,6 +347,9 @@ const (
 
 	// SkipConflictResolution disables conflict resolution for the document.
 	SkipConflictResolution = SetMetaOption(0x08)
+
+	// IsExpiration indicates that the message is for an expired document.
+	IsExpiration = SetMetaOption(0x10)
 )
 
 // KeyState represents the various storage states of a key on the server.
