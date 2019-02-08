@@ -92,7 +92,9 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		"bucket": globalAgent.bucket,
 	}))
 
-	s.PushOp(agent.Get([]byte(testKey), func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetEx(GetOptions{
+		Key: []byte(testKey),
+	}, func(res *GetResult, err error) {
 		s.Wrap(func() {})
 	}))
 	s.Wait(0)

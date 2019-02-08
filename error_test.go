@@ -49,7 +49,10 @@ func TestEnhancedErrorOp(t *testing.T) {
 		"bucket":  globalAgent.bucket,
 	}))
 
-	s.PushOp(agent.GetAndLock([]byte("testEnhancedErrs"), 10, func(value []byte, flags uint32, cas Cas, err error) {
+	s.PushOp(agent.GetAndLockEx(GetAndLockOptions{
+		Key:      []byte("testEnhancedErrs"),
+		LockTime: 10,
+	}, func(res *GetAndLockResult, err error) {
 		s.Wrap(func() {
 			typedErr, ok := err.(*KvError)
 			if !ok {
