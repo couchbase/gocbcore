@@ -77,6 +77,8 @@ type Agent struct {
 	useDcpExpiry bool
 
 	cidMgr *collectionIdManager
+
+	durabilityLevelStatus durabilityLevelStatus
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -652,31 +654,32 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		httpCli: &http.Client{
 			Transport: httpTransport,
 		},
-		closeNotify:          make(chan struct{}),
-		useZombieLogger:      config.UseZombieLogger,
-		tracer:               tracer,
-		useMutationTokens:    config.UseMutationTokens,
-		useKvErrorMaps:       config.UseKvErrorMaps,
-		useEnhancedErrors:    config.UseEnhancedErrors,
-		useCompression:       config.UseCompression,
-		compressionMinSize:   32,
-		compressionMinRatio:  0.83,
-		useDurations:         config.UseDurations,
-		noRootTraceSpans:     config.NoRootTraceSpans,
-		useCollections:       config.UseCollections,
-		serverFailures:       make(map[string]time.Time),
-		serverConnectTimeout: 7000 * time.Millisecond,
-		serverWaitTimeout:    5 * time.Second,
-		nmvRetryDelay:        100 * time.Millisecond,
-		kvPoolSize:           1,
-		maxQueueSize:         2048,
-		confHttpRetryDelay:   10 * time.Second,
-		confHttpRedialPeriod: 10 * time.Second,
-		confCccpMaxWait:      3 * time.Second,
-		confCccpPollPeriod:   2500 * time.Millisecond,
-		dcpPriority:          config.DcpAgentPriority,
-		disableDecompression: config.DisableDecompression,
-		useDcpExpiry:         config.UseDcpExpiry,
+		closeNotify:           make(chan struct{}),
+		useZombieLogger:       config.UseZombieLogger,
+		tracer:                tracer,
+		useMutationTokens:     config.UseMutationTokens,
+		useKvErrorMaps:        config.UseKvErrorMaps,
+		useEnhancedErrors:     config.UseEnhancedErrors,
+		useCompression:        config.UseCompression,
+		compressionMinSize:    32,
+		compressionMinRatio:   0.83,
+		useDurations:          config.UseDurations,
+		noRootTraceSpans:      config.NoRootTraceSpans,
+		useCollections:        config.UseCollections,
+		serverFailures:        make(map[string]time.Time),
+		serverConnectTimeout:  7000 * time.Millisecond,
+		serverWaitTimeout:     5 * time.Second,
+		nmvRetryDelay:         100 * time.Millisecond,
+		kvPoolSize:            1,
+		maxQueueSize:          2048,
+		confHttpRetryDelay:    10 * time.Second,
+		confHttpRedialPeriod:  10 * time.Second,
+		confCccpMaxWait:       3 * time.Second,
+		confCccpPollPeriod:    2500 * time.Millisecond,
+		dcpPriority:           config.DcpAgentPriority,
+		disableDecompression:  config.DisableDecompression,
+		useDcpExpiry:          config.UseDcpExpiry,
+		durabilityLevelStatus: durabilityLevelStatusUnknown,
 	}
 	c.cidMgr = newCollectionIdManager(c)
 
@@ -767,6 +770,12 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		if agent.useCollections && !checkSupportsFeature(client.features, FeatureCollections) {
 			logDebugf("Disabling collections as unsupported")
 			agent.useCollections = false
+		}
+
+		if checkSupportsFeature(client.features, FeatureEnhancedDurability) {
+			agent.durabilityLevelStatus = durabilityLevelStatusSupported
+		} else {
+			agent.durabilityLevelStatus = durabilityLevelStatusUnsupported
 		}
 
 		disconnectClient := func() {
@@ -869,6 +878,12 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 		if agent.useCollections && !cfg.supports("collections") {
 			logDebugf("Disabling collections as unsupported")
 			agent.useCollections = false
+		}
+
+		if cfg.supports("syncreplication") {
+			agent.durabilityLevelStatus = durabilityLevelStatusSupported
+		} else {
+			agent.durabilityLevelStatus = durabilityLevelStatusUnsupported
 		}
 
 		newRouteCfg := agent.buildFirstRouteConfig(cfg, srcServer)

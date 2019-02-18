@@ -74,11 +74,13 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 
 // GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
 type GetAndTouchOptions struct {
-	Key            []byte
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
-	CollectionName string
-	ScopeName      string
+	Key                    []byte
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	CollectionName         string
+	ScopeName              string
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -120,18 +122,31 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGAT,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:       magic,
+			Opcode:      cmdGAT,
+			Datatype:    0,
+			Cas:         0,
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       nil,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -375,12 +390,14 @@ func (agent *Agent) GetReplicaEx(opts GetReplicaOptions, cb GetReplicaExCallback
 
 // TouchOptions encapsulates the parameters for a TouchEx operation.
 type TouchOptions struct {
-	Key            []byte
-	Cas            Cas
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
-	CollectionName string
-	ScopeName      string
+	Key                    []byte
+	Cas                    Cas
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	CollectionName         string
+	ScopeName              string
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -421,18 +438,31 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdTouch,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:       magic,
+			Opcode:      cmdTouch,
+			Datatype:    0,
+			Cas:         0,
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       nil,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -507,11 +537,13 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 
 // DeleteOptions encapsulates the parameters for a DeleteEx operation.
 type DeleteOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	Cas            Cas
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	CollectionName         string
+	ScopeName              string
+	Cas                    Cas
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // DeleteResult encapsulates the result of a DeleteEx operation.
@@ -548,15 +580,28 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdDelete,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   nil,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:       magic,
+			Opcode:      cmdDelete,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      nil,
+			Key:         opts.Key,
+			Value:       nil,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -568,15 +613,17 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 }
 
 type storeOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	Value          []byte
-	Flags          uint32
-	Datatype       uint8
-	Cas            Cas
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	CollectionName         string
+	ScopeName              string
+	Value                  []byte
+	Flags                  uint32
+	Datatype               uint8
+	Cas                    Cas
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
@@ -612,18 +659,31 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   opcode,
-			Datatype: opts.Datatype,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    opts.Value,
+			Magic:       magic,
+			Opcode:      opcode,
+			Datatype:    opts.Datatype,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       opts.Value,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -636,94 +696,108 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 
 // AddOptions encapsulates the parameters for a AddEx operation.
 type AddOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	Value          []byte
-	Flags          uint32
-	Datatype       uint8
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	CollectionName         string
+	ScopeName              string
+	Value                  []byte
+	Flags                  uint32
+	Datatype               uint8
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // AddEx stores a document as long as it does not already exist.
 func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("AddEx", cmdAdd, storeOptions{
-		Key:            opts.Key,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		Value:          opts.Value,
-		Flags:          opts.Flags,
-		Datatype:       opts.Datatype,
-		Cas:            0,
-		Expiry:         opts.Expiry,
-		TraceContext:   opts.TraceContext,
+		Key:                    opts.Key,
+		CollectionName:         opts.CollectionName,
+		ScopeName:              opts.ScopeName,
+		Value:                  opts.Value,
+		Flags:                  opts.Flags,
+		Datatype:               opts.Datatype,
+		Cas:                    0,
+		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
+		DurabilityLevel:        opts.DurabilityLevel,
+		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 	}, cb)
 }
 
 // SetOptions encapsulates the parameters for a SetEx operation.
 type SetOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	Value          []byte
-	Flags          uint32
-	Datatype       uint8
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	CollectionName         string
+	ScopeName              string
+	Value                  []byte
+	Flags                  uint32
+	Datatype               uint8
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // SetEx stores a document.
 func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("SetEx", cmdSet, storeOptions{
-		Key:            opts.Key,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		Value:          opts.Value,
-		Flags:          opts.Flags,
-		Datatype:       opts.Datatype,
-		Cas:            0,
-		Expiry:         opts.Expiry,
-		TraceContext:   opts.TraceContext,
+		Key:                    opts.Key,
+		CollectionName:         opts.CollectionName,
+		ScopeName:              opts.ScopeName,
+		Value:                  opts.Value,
+		Flags:                  opts.Flags,
+		Datatype:               opts.Datatype,
+		Cas:                    0,
+		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
+		DurabilityLevel:        opts.DurabilityLevel,
+		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 	}, cb)
 }
 
 // ReplaceOptions encapsulates the parameters for a ReplaceEx operation.
 type ReplaceOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	Value          []byte
-	Flags          uint32
-	Datatype       uint8
-	Cas            Cas
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	CollectionName         string
+	ScopeName              string
+	Value                  []byte
+	Flags                  uint32
+	Datatype               uint8
+	Cas                    Cas
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
 func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.storeEx("ReplaceEx", cmdReplace, storeOptions{
-		Key:            opts.Key,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		Value:          opts.Value,
-		Flags:          opts.Flags,
-		Datatype:       opts.Datatype,
-		Cas:            opts.Cas,
-		Expiry:         opts.Expiry,
-		TraceContext:   opts.TraceContext,
+		Key:                    opts.Key,
+		CollectionName:         opts.CollectionName,
+		ScopeName:              opts.ScopeName,
+		Value:                  opts.Value,
+		Flags:                  opts.Flags,
+		Datatype:               opts.Datatype,
+		Cas:                    opts.Cas,
+		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
+		DurabilityLevel:        opts.DurabilityLevel,
+		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 	}, cb)
 }
 
 // AdjoinOptions encapsulates the parameters for a AppendEx or PrependEx operation.
 type AdjoinOptions struct {
-	Key            []byte
-	Value          []byte
-	CollectionName string
-	ScopeName      string
-	TraceContext   opentracing.SpanContext
-	Cas            Cas
+	Key                    []byte
+	Value                  []byte
+	CollectionName         string
+	ScopeName              string
+	TraceContext           opentracing.SpanContext
+	Cas                    Cas
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
@@ -759,15 +833,28 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   opcode,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   nil,
-			Key:      opts.Key,
-			Value:    opts.Value,
+			Magic:       magic,
+			Opcode:      opcode,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      nil,
+			Key:         opts.Key,
+			Value:       opts.Value,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -790,14 +877,16 @@ func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingO
 
 // CounterOptions encapsulates the parameters for a IncrementEx or DecrementEx operation.
 type CounterOptions struct {
-	Key            []byte
-	Delta          uint64
-	Initial        uint64
-	Expiry         uint32
-	TraceContext   opentracing.SpanContext
-	CollectionName string
-	ScopeName      string
-	Cas            Cas
+	Key                    []byte
+	Delta                  uint64
+	Initial                uint64
+	Expiry                 uint32
+	TraceContext           opentracing.SpanContext
+	CollectionName         string
+	ScopeName              string
+	Cas                    Cas
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
@@ -847,6 +936,18 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 		return nil, ErrInvalidArgs
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	extraBuf := make([]byte, 20)
 	binary.BigEndian.PutUint64(extraBuf[0:], opts.Delta)
 	if opts.Initial != uint64(0xFFFFFFFFFFFFFFFF) {
@@ -859,13 +960,14 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   opcode,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:       magic,
+			Opcode:      opcode,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       nil,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

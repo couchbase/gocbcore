@@ -17,8 +17,9 @@ const (
 type frameExtraType uint16
 
 const (
-	srvDurationFrameExtra = frameExtraType(0)
-	streamIdFrameExtra    = frameExtraType(2)
+	srvDurationFrameExtra        = frameExtraType(0)
+	enhancedDurabilityFrameExtra = frameExtraType(1)
+	streamIdFrameExtra           = frameExtraType(2)
 )
 
 // commandCode for memcached packets.
@@ -138,6 +139,12 @@ const (
 
 	// FeatureDurations indicates support for server durations.
 	FeatureDurations = HelloFeature(0xf)
+
+	// FeatureAltRequests indicates support for requests with flexible frame extras.
+	FeatureAltRequests = HelloFeature(0x10)
+
+	// FeatureEnhancedDurability indicates support for requests synchronous durability requirements.
+	FeatureEnhancedDurability = HelloFeature(0x11)
 )
 
 // StatusCode represents a memcached response status.
@@ -228,6 +235,21 @@ const (
 
 	// StatusScopeUnknown occurs when a Scope cannot be found.
 	StatusScopeUnknown = StatusCode(0x8c)
+
+	// StatusDurabilityInvalidLevel occurs when an invalid durability level was requested.
+	StatusDurabilityInvalidLevel = StatusCode(0xa0)
+
+	// StatusDurabilityImpossible occurs when a request is performed with impossible
+	// durability level requirements.
+	StatusDurabilityImpossible = StatusCode(0xa1)
+
+	// StatusSyncWriteInProgress occurs when an attempt is made to write to a key that has
+	// a SyncWrite pending.
+	StatusSyncWriteInProgress = StatusCode(0xa2)
+
+	// StatusSyncWriteAmbiguous occurs when an SyncWrite does not complete in the specified
+	// time and the result is ambiguous.
+	StatusSyncWriteAmbiguous = StatusCode(0xa3)
 
 	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
@@ -578,4 +600,29 @@ const (
 
 	// DcpAgentPriorityHigh sets the priority for the dcp stream to high
 	DcpAgentPriorityHigh = DcpAgentPriority(2)
+)
+
+// DurabilityLevel specifies the level to use for enhanced durability requirements.
+type DurabilityLevel uint8
+
+const (
+	// Majority specifies that a change must be replicated to (held in memory)
+	// a majority of the nodes for the bucket.
+	Majority = DurabilityLevel(0x01)
+
+	// MajorityAndPersistOnMaster specifies that a change must be replicated to (held in memory)
+	// a majority of the nodes for the bucket and additionally persisted to disk on the active node.
+	MajorityAndPersistOnMaster = DurabilityLevel(0x02)
+
+	// PersistToMajority specifies that a change must be persisted to (written to disk)
+	// a majority for the bucket.
+	PersistToMajority = DurabilityLevel(0x03)
+)
+
+type durabilityLevelStatus uint8
+
+const (
+	durabilityLevelStatusUnknown     = durabilityLevelStatus(0x00)
+	durabilityLevelStatusSupported   = durabilityLevelStatus(0x01)
+	durabilityLevelStatusUnsupported = durabilityLevelStatus(0x02)
 )

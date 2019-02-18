@@ -137,15 +137,17 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 // StoreInOptions encapsulates the parameters for a SetInEx, AddInEx, ReplaceInEx,
 // PushFrontInEx, PushBackInEx, ArrayInsertInEx or AddUniqueInEx operation.
 type StoreInOptions struct {
-	Key            []byte
-	Path           string
-	Value          []byte
-	Flags          SubdocFlag
-	Cas            Cas
-	Expiry         uint32
-	CollectionName string
-	ScopeName      string
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	Path                   string
+	Value                  []byte
+	Flags                  SubdocFlag
+	Cas                    Cas
+	Expiry                 uint32
+	CollectionName         string
+	ScopeName              string
+	TraceContext           opentracing.SpanContext
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 // StoreInResult encapsulates the result of a SetInEx, AddInEx, ReplaceInEx,
@@ -184,6 +186,15 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	pathBytes := []byte(opts.Path)
 
 	valueBuf := make([]byte, len(pathBytes)+len(opts.Value))
@@ -204,13 +215,14 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   opcode,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    valueBuf,
+			Magic:       magic,
+			Opcode:      opcode,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       valueBuf,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -305,6 +317,15 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 	copy(valueBuf[0:], pathBytes)
 	copy(valueBuf[len(pathBytes):], opts.Value)
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	var extraBuf []byte
 	if opts.Expiry != 0 {
 		extraBuf = make([]byte, 7)
@@ -319,13 +340,14 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocCounter,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    valueBuf,
+			Magic:       magic,
+			Opcode:      cmdSubDocCounter,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       valueBuf,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -338,14 +360,16 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 
 // DeleteInOptions encapsulates the parameters for a DeleteInEx operation.
 type DeleteInOptions struct {
-	Key            []byte
-	Path           string
-	Cas            Cas
-	Expiry         uint32
-	Flags          SubdocFlag
-	CollectionName string
-	ScopeName      string
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	Path                   string
+	Cas                    Cas
+	Expiry                 uint32
+	Flags                  SubdocFlag
+	CollectionName         string
+	ScopeName              string
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
+	TraceContext           opentracing.SpanContext
 }
 
 // DeleteInResult encapsulates the result of a DeleteInEx operation.
@@ -384,6 +408,15 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 
 	pathBytes := []byte(opts.Path)
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	var extraBuf []byte
 	if opts.Expiry != 0 {
 		extraBuf = make([]byte, 7)
@@ -398,13 +431,14 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocDelete,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    pathBytes,
+			Magic:       magic,
+			Opcode:      cmdSubDocDelete,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       pathBytes,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -544,14 +578,16 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 
 // MutateInOptions encapsulates the parameters for a MutateInEx operation.
 type MutateInOptions struct {
-	Key            []byte
-	Flags          SubdocDocFlag
-	Cas            Cas
-	Expiry         uint32
-	Ops            []SubDocOp
-	CollectionName string
-	ScopeName      string
-	TraceContext   opentracing.SpanContext
+	Key                    []byte
+	Flags                  SubdocDocFlag
+	Cas                    Cas
+	Expiry                 uint32
+	Ops                    []SubDocOp
+	CollectionName         string
+	ScopeName              string
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
+	TraceContext           opentracing.SpanContext
 }
 
 // MutateInResult encapsulates the result of a MutateInEx operation.
@@ -626,6 +662,18 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		}, nil)
 	}
 
+	magic := reqMagic
+	var flexibleFrameExtras *memdFrameExtras
+	if opts.DurabilityLevel > 0 {
+		if agent.durabilityLevelStatus == 2 {
+			return nil, ErrEnhancedDurabilityUnsupported
+		}
+		flexibleFrameExtras = &memdFrameExtras{}
+		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
+		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
+		magic = altReqMagic
+	}
+
 	pathBytesList := make([][]byte, len(opts.Ops))
 	pathBytesTotal := 0
 	valueBytesTotal := 0
@@ -674,13 +722,14 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocMultiMutation,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    valueBuf,
+			Magic:       magic,
+			Opcode:      cmdSubDocMultiMutation,
+			Datatype:    0,
+			Cas:         uint64(opts.Cas),
+			Extras:      extraBuf,
+			Key:         opts.Key,
+			Value:       valueBuf,
+			FrameExtras: flexibleFrameExtras,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

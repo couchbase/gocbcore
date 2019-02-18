@@ -81,6 +81,12 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		features = append(features, FeatureCollections)
 	}
 
+	// These flags are informational so don't actually enable anything
+	// but the enhanced durability flag tells us if the server supports
+	// the feature
+	features = append(features, FeatureAltRequests)
+	features = append(features, FeatureEnhancedDurability)
+
 	agentName := "gocbcore/" + goCbCoreVersionStr
 	if agent.userString != "" {
 		agentName += " " + agent.userString

@@ -151,6 +151,14 @@ func getMemdErrorDesc(code StatusCode) string {
 		return "the requested collection cannot be found"
 	case StatusScopeUnknown:
 		return "the requested scope cannot be found."
+	case StatusDurabilityInvalidLevel:
+		return "invalid request, invalid durability level specified."
+	case StatusDurabilityImpossible:
+		return "the requested durability requirements are impossible."
+	case StatusSyncWriteInProgress:
+		return "key already has syncwrite pending."
+	case StatusSyncWriteAmbiguous:
+		return "the syncwrite request did not complete in time."
 	case StatusSubDocPathNotFound:
 		return "sub-document path does not exist"
 	case StatusSubDocPathMismatch:
@@ -463,6 +471,10 @@ var (
 	// was created without them enabled.
 	ErrCollectionsUnsupported = errors.New("Collections are not enabled.")
 
+	// ErrEnhancedDurabilityUnsupported occurs when a request is performed with enhanced durability but the server version
+	// being used does not support it.
+	ErrEnhancedDurabilityUnsupported = errors.New("Enhanced durability is not supported by this server version.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
@@ -570,6 +582,21 @@ var (
 
 	// ErrScopeUnknown occurs when a Collection cannot be found.
 	ErrScopeUnknown = newSimpleError(StatusScopeUnknown)
+
+	// ErrDurabilityInvalidLevel occurs when an invalid durability level was requested.
+	ErrDurabilityInvalidLevel = newSimpleError(StatusDurabilityInvalidLevel)
+
+	// ErrDurabilityImpossible occurs when a request is performed with impossible
+	//  durability level requirements.
+	ErrDurabilityImpossible = newSimpleError(StatusDurabilityImpossible)
+
+	// ErrSyncWriteInProgess occurs when an attempt is made to write to a key that has
+	//  a SyncWrite pending.
+	ErrSyncWriteInProgess = newSimpleError(StatusSyncWriteInProgress)
+
+	// ErrSyncWriteAmbiguous occurs when an SyncWrite does not complete in the specified
+	// time and the result is ambiguous.
+	ErrSyncWriteAmbiguous = newSimpleError(StatusSyncWriteAmbiguous)
 
 	// ErrSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
@@ -714,6 +741,14 @@ func findMemdError(code StatusCode) (bool, error) {
 		return true, ErrCollectionUnknown
 	case StatusScopeUnknown:
 		return true, ErrScopeUnknown
+	case StatusDurabilityInvalidLevel:
+		return true, ErrDurabilityInvalidLevel
+	case StatusDurabilityImpossible:
+		return true, ErrDurabilityImpossible
+	case StatusSyncWriteInProgress:
+		return true, ErrSyncWriteInProgess
+	case StatusSyncWriteAmbiguous:
+		return true, ErrSyncWriteAmbiguous
 	case StatusSubDocPathNotFound:
 		return true, ErrSubDocPathNotFound
 	case StatusSubDocPathMismatch:

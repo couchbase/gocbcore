@@ -11,10 +11,12 @@ import (
 )
 
 type memdFrameExtras struct {
-	HasSrvDuration bool
-	SrvDuration    time.Duration
-	HasStreamId    bool
-	StreamId       uint16
+	HasSrvDuration         bool
+	SrvDuration            time.Duration
+	HasStreamId            bool
+	StreamId               uint16
+	DurabilityLevel        DurabilityLevel
+	DurabilityLevelTimeout uint16
 }
 
 type memdPacket struct {
@@ -142,6 +144,14 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 		if req.FrameExtras.HasStreamId {
 			frameLen += 3
 		}
+
+		if req.FrameExtras.DurabilityLevel > 0 {
+			frameLen += 2
+
+			if req.FrameExtras.DurabilityLevelTimeout > 0 {
+				frameLen += 2
+			}
+		}
 	}
 
 	// Go appears to do some clever things in regards to writing data
@@ -176,6 +186,22 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 
 			binary.BigEndian.PutUint16(buffer[extrasStart+1:], uint16(req.FrameExtras.StreamId))
 			extrasStart = extrasStart + 3
+		}
+
+		if req.FrameExtras.DurabilityLevel > 0 {
+			duraFrameLen := 1
+			if req.FrameExtras.DurabilityLevelTimeout > 0 {
+				duraFrameLen = 3
+			}
+			buffer[extrasStart] = byte(((int(enhancedDurabilityFrameExtra) & 0xF) << 4) | (duraFrameLen & 0xF))
+			extrasStart = extrasStart + 1
+			buffer[extrasStart] = byte(req.FrameExtras.DurabilityLevel)
+			extrasStart = extrasStart + 1
+
+			if req.FrameExtras.DurabilityLevelTimeout > 0 {
+				binary.BigEndian.PutUint16(buffer[extrasStart:], uint16(req.FrameExtras.DurabilityLevelTimeout))
+				extrasStart = extrasStart + 2
+			}
 		}
 	}
 	copy(buffer[extrasStart:], req.Extras)
