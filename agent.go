@@ -592,7 +592,7 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 		}
 		if agent.useDcpExpiry {
 			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
-				agent.useDcpExpiry = false
+				return err
 			}
 		}
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
@@ -1152,10 +1152,4 @@ func (agent *Agent) CbasEps() []string {
 		return nil
 	}
 	return routingInfo.cbasEpList
-}
-
-// DcpExpiryEnabled returns whether or not the enable_expiry_opcode dcp control was successfully
-// sent to the server.
-func (agent *Agent) DcpExpiryEnabled() bool {
-	return agent.useDcpExpiry
 }
