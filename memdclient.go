@@ -26,18 +26,19 @@ func isCompressibleOp(command commandCode) bool {
 	return false
 }
 
+
 type memdClient struct {
+	lastActivity int64
+	dcpAckSize   int
+	dcpFlowRecv  int
+	closeNotify  chan bool
+	connId       string
+	closed       bool
 	parent       *Agent
 	conn         memdConn
 	opList       memdOpMap
 	errorMap     *kvErrorMap
 	features     []HelloFeature
-	closeNotify  chan bool
-	dcpAckSize   int
-	dcpFlowRecv  int
-	lastActivity int64
-	connId       string
-	closed       bool
 	lock         sync.Mutex
 }
 
