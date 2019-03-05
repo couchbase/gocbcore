@@ -69,7 +69,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
@@ -154,7 +154,7 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // GetAndLockOptions encapsulates the parameters for a GetAndLockEx operation.
@@ -224,7 +224,7 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // GetReplicaOptions encapsulates the parameters for a GetReplicaEx operation.
@@ -290,7 +290,7 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetReplicaOptions, cb G
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // GetReplicaEx retrieves a document from a replica server.
@@ -470,7 +470,7 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // UnlockOptions encapsulates the parameters for a UnlockEx operation.
@@ -532,7 +532,7 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // DeleteOptions encapsulates the parameters for a DeleteEx operation.
@@ -609,7 +609,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 type storeOptions struct {
@@ -691,7 +691,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // AddOptions encapsulates the parameters for a AddEx operation.
@@ -862,7 +862,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // AppendEx appends some bytes to a document.
@@ -975,7 +975,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // IncrementEx increments the unsigned integer value in a document.

@@ -82,7 +82,7 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // SetMetaOptions encapsulates the parameters for a SetMetaEx operation.
@@ -159,7 +159,7 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // DeleteMetaOptions encapsulates the parameters for a DeleteMetaEx operation.
@@ -236,5 +236,5 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }

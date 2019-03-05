@@ -10,6 +10,12 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
+const (
+	unknownCid = uint32(0xFFFFFFFF)
+	pendingCid = uint32(0xFFFFFFFE)
+	invalidCid = uint32(0xFFFFFFFD)
+)
+
 // ManifestCollection is the representation of a collection within a manifest.
 type ManifestCollection struct {
 	UID  uint32
@@ -135,7 +141,18 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 	tracer := agent.createOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		cidCache, ok := agent.cidMgr.Get(scopeName, collectionName)
+		if !ok {
+			cidCache = agent.cidMgr.newCollectionIdCache()
+			agent.cidMgr.Add(cidCache, scopeName, collectionName)
+		}
+
 		if err != nil {
+			cidCache.lock.Lock()
+			cidCache.id = invalidCid
+			cidCache.err = err
+			cidCache.lock.Unlock()
+
 			tracer.Finish()
 			cb(0, 0, err)
 			return
@@ -144,7 +161,9 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 		manifestID := binary.BigEndian.Uint64(resp.Extras[0:])
 		collectionID := binary.BigEndian.Uint32(resp.Extras[8:])
 
-		agent.cidMgr.Add(collectionID, scopeName, collectionName)
+		cidCache.lock.Lock()
+		cidCache.id = collectionID
+		cidCache.lock.Unlock()
 
 		tracer.Finish()
 		cb(manifestID, collectionID, nil)
@@ -175,37 +194,39 @@ func (cidMgr *collectionIdManager) createKey(scopeName, collectionName string) s
 }
 
 type collectionIdManager struct {
-	idMap   map[string]uint32
-	mapLock sync.Mutex
-	agent   *Agent
+	idMap        map[string]*collectionIdCache
+	mapLock      sync.Mutex
+	agent        *Agent
+	maxQueueSize int
 }
 
-func newCollectionIdManager(agent *Agent) *collectionIdManager {
+func newCollectionIdManager(agent *Agent, maxQueueSize int) *collectionIdManager {
 	cidMgr := &collectionIdManager{
-		agent: agent,
-		idMap: make(map[string]uint32),
+		agent:        agent,
+		idMap:        make(map[string]*collectionIdCache),
+		maxQueueSize: maxQueueSize,
 	}
 
 	return cidMgr
 }
 
-func (cidMgr *collectionIdManager) Add(id uint32, scopeName, collectionName string) {
+func (cidMgr *collectionIdManager) Add(id *collectionIdCache, scopeName, collectionName string) {
 	key := cidMgr.createKey(scopeName, collectionName)
 	cidMgr.mapLock.Lock()
 	cidMgr.idMap[key] = id
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionIdManager) Get(scopeName, collectionName string) (uint32, bool) {
+func (cidMgr *collectionIdManager) Get(scopeName, collectionName string) (*collectionIdCache, bool) {
 	if scopeName == "_default" && collectionName == "_default" {
-		return 0, true
+		return nil, true
 	}
 
 	cidMgr.mapLock.Lock()
 	id, ok := cidMgr.idMap[cidMgr.createKey(scopeName, collectionName)]
 	cidMgr.mapLock.Unlock()
 	if !ok {
-		return 0, false
+		return nil, false
 	}
 
 	return id, true
@@ -217,29 +238,89 @@ func (cidMgr *collectionIdManager) Remove(scopeName, collectionName string) {
 	cidMgr.mapLock.Unlock()
 }
 
-type collectionPendingOp struct {
-	pendingOp PendingOp
-	currentOp PendingOp
-	lock      sync.Mutex
-	cancelled bool
+func (cidMgr *collectionIdManager) newCollectionIdCache() *collectionIdCache {
+	return &collectionIdCache{
+		agent:        cidMgr.agent,
+		maxQueueSize: cidMgr.maxQueueSize,
+	}
 }
 
-func (op *collectionPendingOp) Cancel() bool {
-	op.lock.Lock()
-	op.cancelled = true
-	pendingOp := op.pendingOp
-	currentOp := op.currentOp
-	op.lock.Unlock()
+type collectionIdCache struct {
+	opQueue        *memdOpQueue
+	id             uint32
+	collectionName string
+	scopeName      string
+	agent          *Agent
+	lock           sync.Mutex
+	err            error
+	maxQueueSize   int
+}
 
-	if pendingOp != nil {
-		pendingOp.Cancel()
+func (cid *collectionIdCache) sendWithCid(req *memdQRequest) error {
+	cid.lock.Lock()
+	req.CollectionID = cid.id
+	cid.lock.Unlock()
+	return cid.agent.dispatchDirect(req)
+}
+
+func (cid *collectionIdCache) rejectRequest(req *memdQRequest) error {
+	return cid.err
+}
+
+func (cid *collectionIdCache) queueRequest(req *memdQRequest) error {
+	return cid.opQueue.Push(req, cid.maxQueueSize)
+}
+
+func (cid *collectionIdCache) refreshCid(req *memdQRequest) error {
+	err := cid.opQueue.Push(req, cid.maxQueueSize)
+	if err != nil {
+		return err
 	}
+	_, err = cid.agent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
+		func(manifestID uint64, collectionID uint32, err error) {
+			// GetCollectionID will handle updating the id cache so we don't need to do it here
+			if err != nil {
+				cid.opQueue.Close()
+				cid.opQueue.Drain(func(request *memdQRequest) {
+					request.tryCallback(nil, err)
+				})
+				cid.opQueue = nil
+				return
+			}
 
-	if currentOp != nil {
-		return currentOp.Cancel()
+			cid.opQueue.Close()
+			cid.opQueue.Drain(func(request *memdQRequest) {
+				request.CollectionID = collectionID
+				cid.agent.requeueDirect(request)
+			})
+		},
+	)
+
+	return err
+}
+
+func (cid *collectionIdCache) dispatch(req *memdQRequest) error {
+	cid.lock.Lock()
+	// if the cid is unknown then mark the request pending and refresh cid first
+	// if it's pending then queue the request
+	// if it's invalid then reject the request
+	// otherwise send the request
+	switch cid.id {
+	case unknownCid:
+		cid.id = pendingCid
+		cid.opQueue = newMemdOpQueue()
+		cid.lock.Unlock()
+		return cid.refreshCid(req)
+	case pendingCid:
+		cid.lock.Unlock()
+		return cid.queueRequest(req)
+	case invalidCid:
+		cid.lock.Unlock()
+		return cid.rejectRequest(req)
+	default:
+		cid.lock.Unlock()
+		return cid.sendWithCid(req)
 	}
-
-	return false
 }
 
 func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error) {
@@ -247,48 +328,52 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error
 		if (req.CollectionName != "" || req.ScopeName != "") && (req.CollectionName != "_default" || req.ScopeName != "_default") {
 			return nil, ErrCollectionsUnsupported
 		}
-		return cidMgr.agent.dispatchOp(req)
+		err := cidMgr.agent.dispatchDirect(req)
+		if err != nil {
+			return nil, err
+		}
+
+		return req, nil
 	}
 
-	cid, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
-	if ok {
-		req.CollectionID = cid
-		return cidMgr.agent.dispatchOp(req)
+	// some operations do not support cid
+	if req.CollectionName == "" && req.ScopeName == "" {
+		err := cidMgr.agent.dispatchDirect(req)
+		if err != nil {
+			return nil, err
+		}
+
+		return req, nil
 	}
 
-	collectionOp := collectionPendingOp{}
-	op, err := cidMgr.agent.GetCollectionID(
-		req.ScopeName,
-		req.CollectionName,
-		GetCollectionIDOptions{TraceContext: req.RootTraceContext},
-		func(manifestID uint64, collectionID uint32, err error) {
-			if err != nil {
-				if err == ErrCollectionUnknown {
-					cidMgr.Remove(req.ScopeName, req.CollectionName)
-				}
-				req.tryCallback(nil, err)
-			}
-
-			cidMgr.Add(collectionID, req.ScopeName, req.CollectionName)
-			req.CollectionID = collectionID
-			op, err := cidMgr.agent.dispatchOp(req)
-			if err != nil {
-				req.tryCallback(nil, err)
-			}
-			collectionOp.lock.Lock()
-			collectionOp.currentOp = op
-			collectionOp.pendingOp = nil
-			collectionOp.lock.Unlock()
-		},
-	)
+	cidCache, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
+	if !ok {
+		cidCache = cidMgr.newCollectionIdCache()
+		cidCache.id = unknownCid
+		cidMgr.Add(cidCache, req.ScopeName, req.CollectionName)
+	}
+	err := cidCache.dispatch(req)
 	if err != nil {
 		return nil, err
 	}
-	collectionOp.lock.Lock()
-	collectionOp.currentOp = op
-	collectionOp.pendingOp = req
-	collectionOp.lock.Unlock()
+	return req, nil
+}
 
-	return &collectionOp, nil
+func (cidMgr *collectionIdManager) requeue(req *memdQRequest) {
+	cidCache, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
+	if !ok {
+		cidCache = cidMgr.newCollectionIdCache()
+		cidCache.id = unknownCid
+		cidMgr.Add(cidCache, req.ScopeName, req.CollectionName)
+	}
+	cidCache.lock.Lock()
+	if cidCache.id != unknownCid && cidCache.id != pendingCid && cidCache.id != invalidCid {
+		cidCache.id = unknownCid
+	}
+	cidCache.lock.Unlock()
 
+	err := cidCache.dispatch(req)
+	if err != nil {
+		req.tryCallback(nil, err)
+	}
 }

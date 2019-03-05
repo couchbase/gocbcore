@@ -76,6 +76,72 @@ func getAgentnSignaler(t *testing.T) (*testNode, *Signaler) {
 	return agent, agent.getSignaler(t)
 }
 
+func TestCidRetries(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+	if !agent.SupportsFeature(TestCollectionFeature) {
+		t.Skip("Collections are not supported")
+	}
+
+	// prime the cid map cache
+	s.PushOp(agent.GetCollectionID(agent.ScopeName(), agent.CollectionName(), GetCollectionIDOptions{},
+		func(manifestID uint64, collectionID uint32, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("Get CID operation failed: %v", err)
+				}
+			})
+		}),
+	)
+	s.Wait(0)
+
+	// delete the collection
+	err := testDeleteCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent, true)
+	if err != nil {
+		t.Fatalf("Failed to delete collection: %v", err)
+	}
+
+	// recreate
+	err = testCreateCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent)
+	if err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
+	}
+
+	// Set should succeed as we detect cid unknown, fetch the cid and then retry again
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:            []byte("test"),
+		Value:          []byte("{}"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetEx(GetOptions{
+		Key:            []byte("test"),
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
+	}, func(res *GetResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Get operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 func TestBasicOps(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
@@ -1332,12 +1398,6 @@ func TestMain(m *testing.M) {
 		Mock:           mock,
 		Version:        nodeVersion,
 		collectionName: *collectionName,
-	}
-
-	if useCollections {
-		if err != nil {
-			panic("Failed to create collection, " + err.Error())
-		}
 	}
 
 	memdAgentConfig := &AgentConfig{}

@@ -643,6 +643,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		tracer = opentracing.NoopTracer{}
 	}
 
+	maxQueueSize := 2048
+
 	c := &Agent{
 		clientId:    formatCbUid(randomCbUid()),
 		userString:  config.UserString,
@@ -671,7 +673,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		serverWaitTimeout:     5 * time.Second,
 		nmvRetryDelay:         100 * time.Millisecond,
 		kvPoolSize:            1,
-		maxQueueSize:          2048,
+		maxQueueSize:          maxQueueSize,
 		confHttpRetryDelay:    10 * time.Second,
 		confHttpRedialPeriod:  10 * time.Second,
 		confCccpMaxWait:       3 * time.Second,
@@ -681,7 +683,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useDcpExpiry:          config.UseDcpExpiry,
 		durabilityLevelStatus: durabilityLevelStatusUnknown,
 	}
-	c.cidMgr = newCollectionIdManager(c)
+	c.cidMgr = newCollectionIdManager(c, maxQueueSize)
 
 	connectTimeout := 60000 * time.Millisecond
 	if config.ConnectTimeout > 0 {

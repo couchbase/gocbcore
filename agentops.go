@@ -87,6 +87,10 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	agent.waitAndRetryNmv(req)
 }
 
+func (agent *Agent) handleCollectionUnknown(req *memdQRequest) {
+	agent.cidMgr.requeue(req)
+}
+
 func (agent *Agent) getKvErrMapData(code StatusCode) *kvErrorMapError {
 	if agent.useKvErrorMaps {
 		errMap := agent.kvErrorMap.Get()
@@ -179,6 +183,9 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, 
 			return true, nil
 		} else if resp.Status == StatusSuccess {
 			return false, nil
+		} else if resp.Status == StatusCollectionUnknown && resp.Opcode != cmdCollectionsGetID {
+			agent.handleCollectionUnknown(req)
+			return true, nil
 		}
 
 		kvErrData := agent.getKvErrMapData(resp.Status)
@@ -218,11 +225,7 @@ func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
 	req.owner = agent
 	req.dispatchTime = time.Now()
 
-	err := agent.dispatchDirect(req)
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
+	return agent.cidMgr.dispatch(req)
 }
 
 func (agent *Agent) dispatchOpToAddress(req *memdQRequest, address string) (PendingOp, error) {

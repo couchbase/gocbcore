@@ -71,7 +71,7 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // ExistsInOptions encapsulates the parameters for a ExistsInEx operation.
@@ -131,7 +131,7 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // StoreInOptions encapsulates the parameters for a SetInEx, AddInEx, ReplaceInEx,
@@ -230,7 +230,7 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // SetInEx sets the value at a path within a document.
@@ -355,7 +355,7 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // DeleteInOptions encapsulates the parameters for a DeleteInEx operation.
@@ -446,7 +446,7 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // SubDocOp defines a per-operation structure to be passed to MutateIn
@@ -573,7 +573,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // MutateInOptions encapsulates the parameters for a MutateInEx operation.
@@ -737,5 +737,5 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }

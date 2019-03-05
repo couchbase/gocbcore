@@ -88,7 +88,7 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 		ScopeName:        opts.ScopeName,
 	}
 
-	return agent.cidMgr.dispatch(req)
+	return agent.dispatchOp(req)
 }
 
 // ObserveVbOptions encapsulates the parameters for a ObserveVbEx operation.
