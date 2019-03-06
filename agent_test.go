@@ -142,7 +142,7 @@ func TestGetReplica(t *testing.T) {
 				} else if err != nil && !keyNotFound {
 					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
 				}
-				if res.Cas == Cas(0) && !keyNotFound {
+				if !keyNotFound && res.Cas == Cas(0) {
 					s.Fatalf("Invalid cas received")
 				}
 			})
@@ -194,7 +194,7 @@ func TestGetAnyReplica(t *testing.T) {
 				} else if err != nil && !keyNotFound {
 					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
 				}
-				if res.Cas == Cas(0) && !keyNotFound {
+				if !keyNotFound && res.Cas == Cas(0) {
 					s.Fatalf("Invalid cas received")
 				}
 			})
