@@ -26,7 +26,6 @@ func isCompressibleOp(command commandCode) bool {
 	return false
 }
 
-
 type memdClient struct {
 	lastActivity int64
 	dcpAckSize   int
