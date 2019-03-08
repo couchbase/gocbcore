@@ -218,10 +218,6 @@ func (cidMgr *collectionIdManager) Add(id *collectionIdCache, scopeName, collect
 }
 
 func (cidMgr *collectionIdManager) Get(scopeName, collectionName string) (*collectionIdCache, bool) {
-	if scopeName == "_default" && collectionName == "_default" {
-		return nil, true
-	}
-
 	cidMgr.mapLock.Lock()
 	id, ok := cidMgr.idMap[cidMgr.createKey(scopeName, collectionName)]
 	cidMgr.mapLock.Unlock()
@@ -338,6 +334,17 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error
 
 	// some operations do not support cid
 	if req.CollectionName == "" && req.ScopeName == "" {
+		err := cidMgr.agent.dispatchDirect(req)
+		if err != nil {
+			return nil, err
+		}
+
+		return req, nil
+	}
+
+	if req.CollectionName == "_default" && req.ScopeName == "_default" {
+		req.CollectionID = 0
+
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {
 			return nil, err
