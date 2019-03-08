@@ -703,7 +703,7 @@ type ReplaceOptions struct {
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
 func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
-	return agent.storeEx("ReplaceEx", cmdSet, storeOptions{
+	return agent.storeEx("ReplaceEx", cmdReplace, storeOptions{
 		Key:            opts.Key,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
