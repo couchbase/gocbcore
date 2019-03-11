@@ -3,6 +3,13 @@ package gocbcore
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
+)
+
+const (
+	noManifestUid = uint64(0xFFFFFFFFFFFFFFFF)
+	noScopeId     = uint32(0xFFFFFFFF)
+	noStreamId    = uint16(0xFFFF)
 )
 
 // SnapshotState represents the state of a particular cluster snapshot.
@@ -39,8 +46,24 @@ type StreamObserver interface {
 	ModifyCollection(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, collectionId uint32, ttl uint32, streamId uint16)
 }
 
+// NewStreamFilter returns a new StreamFilter.
+func NewStreamFilter() *StreamFilter {
+	return &StreamFilter{
+		ManifestUid: noManifestUid,
+		Scope:       noScopeId,
+		StreamId:    noStreamId,
+	}
+}
+
 // StreamFilter provides options for filtering a DCP stream.
 type StreamFilter struct {
+	ManifestUid uint64
+	Collections []uint32
+	Scope       uint32
+	StreamId    uint16
+}
+
+type streamFilter struct {
 	ManifestUid string   `json:"uid,omitempty"`
 	Collections []string `json:"collections,omitempty"`
 	Scope       string   `json:"scope,omitempty"`
@@ -208,15 +231,21 @@ func (agent *Agent) OpenStream(vbId uint16, flags DcpStreamAddFlag, vbUuid VbUui
 	var val []byte
 	val = nil
 	if filter != nil {
-		// convertedFilter := collectionStreamFilter{}
-		// for _, cid := range filter.Collections {
-		// 	convertedFilter.Collections = append(convertedFilter.Collections, fmt.Sprintf("%x", cid))
-		// }
-		// convertedFilter.Scope = fmt.Sprintf("%d", filter.Scope)
-		// convertedFilter.ManifestUid = fmt.Sprintf("%d", filter.ManifestUid)
-		// convertedFilter.StreamId = fmt.Sprintf("%d", filter.StreamId)
+		convertedFilter := streamFilter{}
+		for _, cid := range filter.Collections {
+			convertedFilter.Collections = append(convertedFilter.Collections, fmt.Sprintf("%x", cid))
+		}
+		if filter.Scope != noScopeId {
+			convertedFilter.Scope = fmt.Sprintf("%x", filter.Scope)
+		}
+		if filter.ManifestUid != noManifestUid {
+			convertedFilter.ManifestUid = fmt.Sprintf("%x", filter.ManifestUid)
+		}
+		if filter.StreamId != noStreamId {
+			convertedFilter.StreamId = filter.StreamId
+		}
 		var err error
-		val, err = json.Marshal(filter)
+		val, err = json.Marshal(convertedFilter)
 		if err != nil {
 			return nil, err
 		}
