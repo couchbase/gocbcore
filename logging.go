@@ -109,15 +109,6 @@ var (
 	globalLogRedactionLevel LogRedactLevel
 )
 
-// DefaultStdOutLogger gets the default logger. This actually logs to stderr
-// rather than stdout. Use DefaultStdioLogger which has a correct name, since
-// the "standard" logger logs to stderr, rather than stdout.
-//
-// Deprecated: Use DefaultStdioLogger() instead.
-func DefaultStdOutLogger() Logger {
-	return &globalDefaultLogger
-}
-
 // DefaultStdioLogger gets the default standard I/O logger.
 //  gocbcore.SetLogger(gocbcore.DefaultStdioLogger())
 func DefaultStdioLogger() Logger {

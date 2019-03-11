@@ -533,13 +533,6 @@ func TestBasicAdjoins(t *testing.T) {
 	s.Wait(0)
 }
 
-func isKeyNotFoundError(err error) bool {
-	te, ok := err.(interface {
-		KeyNotFound() bool
-	})
-	return ok && te.KeyNotFound()
-}
-
 func TestExpiry(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
 
@@ -566,7 +559,7 @@ func TestExpiry(t *testing.T) {
 		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !isKeyNotFoundError(err) {
+			if !IsErrorStatus(err, StatusKeyNotFound) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})
@@ -629,7 +622,7 @@ func TestTouch(t *testing.T) {
 		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !isKeyNotFoundError(err) {
+			if !IsErrorStatus(err, StatusKeyNotFound) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})
@@ -692,7 +685,7 @@ func TestGetAndTouch(t *testing.T) {
 		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !isKeyNotFoundError(err) {
+			if !IsErrorStatus(err, StatusKeyNotFound) {
 				s.Fatalf("Get should have returned key not found")
 			}
 		})

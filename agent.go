@@ -150,14 +150,6 @@ type AgentConfig struct {
 	DcpAgentPriority DcpAgentPriority
 	UseDcpExpiry     bool
 
-	// Username specifies the username to use when connecting.
-	// DEPRECATED
-	Username string
-
-	// Password specifies the password to use when connecting.
-	// DEPRECATED
-	Password string
-
 	EnableStreamId bool
 }
 
@@ -323,30 +315,12 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.HttpRetryDelay = time.Duration(val) * time.Millisecond
 	}
 
-	// This option is deprecated (see config_poll_floor_interval)
-	if valStr, ok := fetchOption("cccp_max_wait"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("cccp max wait option must be a number")
-		}
-		config.CccpMaxWait = time.Duration(val) * time.Millisecond
-	}
-
 	if valStr, ok := fetchOption("config_poll_floor_interval"); ok {
 		val, err := strconv.ParseInt(valStr, 10, 64)
 		if err != nil {
 			return fmt.Errorf("config pool floor interval option must be a number")
 		}
 		config.CccpMaxWait = time.Duration(val) * time.Millisecond
-	}
-
-	// This option is deprecated (see config_poll_interval)
-	if valStr, ok := fetchOption("cccp_poll_period"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("cccp pool period option must be a number")
-		}
-		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
 	}
 
 	if valStr, ok := fetchOption("config_poll_interval"); ok {
@@ -540,15 +514,6 @@ func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFu
 
 func normalizeAgentConfig(configIn *AgentConfig) *AgentConfig {
 	config := *configIn
-
-	// If the user does not provide an authentication provider, we should use
-	// the deprecated username/password fields to create one.
-	if config.Auth == nil {
-		config.Auth = &PasswordAuthProvider{
-			Username: config.Username,
-			Password: config.Password,
-		}
-	}
 
 	// TODO: The location of this happening is a bit strange
 	if config.AuthHandler == nil {
