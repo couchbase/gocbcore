@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/couchbaselabs/gojcbmock.v1"
+	"github.com/couchbaselabs/gojcbmock"
 )
 
 type TestFeatureCode int
