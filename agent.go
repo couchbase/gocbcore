@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/http2"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.
