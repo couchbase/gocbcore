@@ -500,6 +500,9 @@ const (
 type DcpStreamAddFlag uint32
 
 const (
+	//DcpStreamAddFlagDiskOnly indicates that stream should only send items if they are on disk
+	DcpStreamAddFlagDiskOnly = DcpStreamAddFlag(0x02)
+
 	// DcpStreamAddFlagLatest indicates this stream wants to get data up to the latest seqno.
 	DcpStreamAddFlagLatest = DcpStreamAddFlag(0x04)
 
