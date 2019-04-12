@@ -207,8 +207,7 @@ func TestGetReplica(t *testing.T) {
 	retries := 0
 	keyExists := false
 	for {
-		// GetReplica Specific
-		s.PushOp(agent.GetReplicaEx(GetReplicaOptions{
+		s.PushOp(agent.GetOneReplicaEx(GetOneReplicaOptions{
 			Key:            []byte("testReplica"),
 			ReplicaIdx:     1,
 			CollectionName: agent.CollectionName(),
@@ -264,9 +263,8 @@ func TestGetAnyReplica(t *testing.T) {
 	keyExists := false
 	for {
 		// GetReplica Any
-		s.PushOp(agent.GetReplicaEx(GetReplicaOptions{
+		s.PushOp(agent.GetAnyReplicaEx(GetAnyReplicaOptions{
 			Key:            []byte("testReplica"),
-			ReplicaIdx:     0,
 			CollectionName: agent.CollectionName(),
 			ScopeName:      agent.ScopeName(),
 		}, func(res *GetReplicaResult, err error) {
