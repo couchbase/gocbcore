@@ -1108,6 +1108,28 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 	globalAgent.networkType = initialNetworkType
 }
 
+func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses_without_ports.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "external"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
 func TestAlternateAddressesInvalidConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
