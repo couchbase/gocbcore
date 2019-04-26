@@ -11,6 +11,7 @@ import (
 type TestFeatureCode int
 
 var (
+	srvVer450  = NodeVersion{4, 5, 0, 0, ""}
 	srvVer551  = NodeVersion{5, 5, 1, 0, ""}
 	srvVer552  = NodeVersion{5, 5, 2, 0, ""}
 	srvVer553  = NodeVersion{5, 5, 3, 0, ""}
@@ -23,6 +24,8 @@ var (
 	TestErrMapFeature     = TestFeatureCode(2)
 	TestTimeTravelFeature = TestFeatureCode(3)
 	TestCollectionFeature = TestFeatureCode(4)
+	TestDCPFeature        = TestFeatureCode(5)
+	TestDCPExpiryFeature  = TestFeatureCode(6)
 )
 
 type testNode struct {
@@ -52,6 +55,8 @@ func (c *testNode) supportsMockFeature(feature TestFeatureCode) bool {
 	switch feature {
 	case TestCollectionFeature:
 		return false
+	case TestDCPFeature:
+		return false
 	}
 
 	return true
@@ -66,6 +71,10 @@ func (c *testNode) supportsServerFeature(feature TestFeatureCode) bool {
 	case TestTimeTravelFeature:
 		return false
 	case TestCollectionFeature:
+		return !c.Version.Lower(srvVer650)
+	case TestDCPFeature:
+		return !c.Version.Lower(srvVer450)
+	case TestDCPExpiryFeature:
 		return !c.Version.Lower(srvVer650)
 	}
 

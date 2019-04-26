@@ -66,6 +66,8 @@ const (
 
 var globalAgent *testNode
 var globalMemdAgent *testNode
+var globalDCPAgent *testNode
+var globalDCPOpAgent *testNode
 
 func getAgent() *testNode {
 	return globalAgent
@@ -95,13 +97,13 @@ func TestCidRetries(t *testing.T) {
 	s.Wait(0)
 
 	// delete the collection
-	err := testDeleteCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent, true)
+	_, err := testDeleteCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent, true)
 	if err != nil {
 		t.Fatalf("Failed to delete collection: %v", err)
 	}
 
 	// recreate
-	err = testCreateCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent)
+	_, err = testCreateCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent)
 	if err != nil {
 		t.Fatalf("Failed to create collection: %v", err)
 	}
@@ -1323,10 +1325,12 @@ func TestMain(m *testing.M) {
 	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
 	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
 	memdBucketName := flag.String("memd-bucket", "memd", "The memd bucket to use to test against")
+	dcpBucketName := flag.String("dcp-bucket", "", "The dcp bucket to use to test against")
 	user := flag.String("user", "", "The username to use to authenticate when using a real server")
 	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
 	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
 	collectionName := flag.String("collection-name", "", "The collection name to use to test with collections")
+	collectionsDcp := flag.Bool("dcp-collections", false, "Whether or not to use collections for dcp tests")
 	flag.Parse()
 
 	if (*memdservers == "") != (*httpservers == "") {
@@ -1434,6 +1438,38 @@ func TestMain(m *testing.M) {
 		Version: nodeVersion,
 	}
 
+	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
+		dcpAgentConfig := &AgentConfig{}
+		*dcpAgentConfig = *agentConfig
+		dcpAgentConfig.UseCollections = *collectionsDcp
+		dcpAgentConfig.EnableStreamId = *collectionsDcp
+		dcpAgentConfig.BucketName = *dcpBucketName
+
+		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
+			dcpAgentConfig.UseDcpExpiry = true
+		}
+
+		dcpAgent, err := CreateDcpAgent(dcpAgentConfig, "dcp-stream", DcpOpenFlagProducer)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPAgent = &testNode{
+			Agent:   dcpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+		dcpOpAgent, err := CreateAgent(dcpAgentConfig)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPOpAgent = &testNode{
+			Agent:   dcpOpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+
+	}
+
 	result := m.Run()
 
 	err = agent.Close()
@@ -1444,6 +1480,18 @@ func TestMain(m *testing.M) {
 	err = globalMemdAgent.Close()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
+	}
+
+	if globalDCPAgent != nil {
+		err = globalDCPAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp agent: %s", err))
+		}
+
+		err = globalDCPOpAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp op agent: %s", err))
+		}
 	}
 
 	log.Printf("Log Messages Emitted:")
@@ -1481,7 +1529,12 @@ func TestMain(m *testing.M) {
 
 // These functions are likely temporary.
 
-func testCreateCollection(name, scopeName, bucketName string, agent *Agent) error {
+type testManifestWithError struct {
+	Manifest Manifest
+	Err      error
+}
+
+func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
 	data := url.Values{}
 	data.Set("name", name)
 
@@ -1497,10 +1550,10 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) erro
 
 	resp, err := agent.DoHttpRequest(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
 	}
 
 	respBody := struct {
@@ -1509,28 +1562,32 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) erro
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan error)
+	waitCh := make(chan testManifestWithError)
 	go waitForManifest(agent, respBody.Uid, waitCh)
 
 	for {
 		select {
 		case <-timer.C:
-			return errors.New("wait time for collection to become available expired")
-		case err := <-waitCh:
-			return err
+			return nil, errors.New("wait time for collection to become available expired")
+		case manifest := <-waitCh:
+			if manifest.Err != nil {
+				return nil, manifest.Err
+			}
+
+			return &manifest.Manifest, nil
 		}
 	}
 }
 
-func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) error {
+func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
 	data := url.Values{}
 	data.Set("name", name)
 
@@ -1543,10 +1600,10 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 
 	resp, err := agent.DoHttpRequest(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
 	}
 
 	respBody := struct {
@@ -1555,29 +1612,33 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan error)
+	waitCh := make(chan testManifestWithError)
 	go waitForManifest(agent, respBody.Uid, waitCh)
 
 	for {
 		select {
 		case <-timer.C:
-			return errors.New("wait time for collection to become deleted expired")
-		case err := <-waitCh:
-			return err
+			return nil, errors.New("wait time for collection to become deleted expired")
+		case manifest := <-waitCh:
+			if manifest.Err != nil {
+				return nil, manifest.Err
+			}
+
+			return &manifest.Manifest, nil
 		}
 	}
 
 }
 
-func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan error) {
+func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan testManifestWithError) {
 	var manifest Manifest
 	for manifest.UID != manifestId {
 		setCh := make(chan struct{})
@@ -1585,7 +1646,7 @@ func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan error) {
 			if err != nil {
 				log.Println(err.Error())
 				close(setCh)
-				manifestCh <- err
+				manifestCh <- testManifestWithError{Err: err}
 				return
 			}
 
@@ -1593,13 +1654,13 @@ func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan error) {
 			if err != nil {
 				log.Println(err.Error())
 				close(setCh)
-				manifestCh <- err
+				manifestCh <- testManifestWithError{Err: err}
 				return
 			}
 
 			if manifest.UID == manifestId {
 				close(setCh)
-				manifestCh <- nil
+				manifestCh <- testManifestWithError{Manifest: manifest}
 				return
 			}
 			setCh <- struct{}{}
