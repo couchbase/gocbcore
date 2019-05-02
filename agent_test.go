@@ -63,6 +63,8 @@ const (
 
 var globalAgent *testNode
 var globalMemdAgent *testNode
+var globalDCPAgent *testNode
+var globalDCPOpAgent *testNode
 
 func getAgent() *testNode {
 	return globalAgent
@@ -1181,6 +1183,7 @@ func TestMain(m *testing.M) {
 	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
 	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
 	memdBucketName := flag.String("memd-bucket", "memd", "The memd bucket to use to test against")
+	dcpBucketName := flag.String("dcp-bucket", "", "The dcp bucket to use to test against")
 	user := flag.String("user", "", "The username to use to authenticate when using a real server")
 	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
 	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
@@ -1284,6 +1287,36 @@ func TestMain(m *testing.M) {
 		Version: nodeVersion,
 	}
 
+	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
+		dcpAgentConfig := &AgentConfig{}
+		*dcpAgentConfig = *agentConfig
+		dcpAgentConfig.BucketName = *dcpBucketName
+
+		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
+			dcpAgentConfig.UseDcpExpiry = true
+		}
+
+		dcpAgent, err := CreateDcpAgent(dcpAgentConfig, "dcp-stream", DcpOpenFlagProducer)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPAgent = &testNode{
+			Agent:   dcpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+		dcpOpAgent, err := CreateAgent(dcpAgentConfig)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPOpAgent = &testNode{
+			Agent:   dcpOpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+
+	}
+
 	result := m.Run()
 
 	err = agent.Close()
@@ -1294,6 +1327,18 @@ func TestMain(m *testing.M) {
 	err = globalMemdAgent.Close()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
+	}
+
+	if globalDCPAgent != nil {
+		err = globalDCPAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp agent: %s", err))
+		}
+
+		err = globalDCPOpAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp op agent: %s", err))
+		}
 	}
 
 	log.Printf("Log Messages Emitted:")
