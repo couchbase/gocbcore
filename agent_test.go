@@ -41,11 +41,10 @@ func (suite *StandardTestSuite) TestCidRetries() {
 	)
 	s.Wait(0)
 
-	// delete the collection
-	_, err = testDeleteCollection(collectionName, scopeName, bucketName, agent, true)
-	if err != nil {
-		suite.T().Fatalf("Failed to delete collection: %v", err)
-	}
+var globalAgent *testNode
+var globalMemdAgent *testNode
+var globalDCPAgent *testNode
+var globalDCPOpAgent *testNode
 
 	// recreate
 	_, err = testCreateCollection(collectionName, scopeName, bucketName, agent)
@@ -2095,13 +2094,15 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 		suite.T().Skipf("Skipping test due to non default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{}
-	cfg.MemdAddrs = []string{addr1}
-	cfg.BucketName = "idontexist"
-	agent, err := CreateAgent(&cfg)
-	suite.Require().Nil(err, err)
-	defer agent.Close()
-	s := suite.GetHarness()
+	memdservers := flag.String("memdservers", "", "Comma separated list of connection strings to connect to for real memd servers")
+	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
+	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
+	memdBucketName := flag.String("memd-bucket", "memd", "The memd bucket to use to test against")
+	dcpBucketName := flag.String("dcp-bucket", "", "The dcp bucket to use to test against")
+	user := flag.String("user", "", "The username to use to authenticate when using a real server")
+	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
+	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
+	flag.Parse()
 
 	start := time.Now()
 	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{
@@ -2283,24 +2284,37 @@ func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool
 		return nil, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
+	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
+		dcpAgentConfig := &AgentConfig{}
+		*dcpAgentConfig = *agentConfig
+		dcpAgentConfig.BucketName = *dcpBucketName
 
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for scope to become deleted expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
-
-			return &manifest.Manifest, nil
+		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
+			dcpAgentConfig.UseDcpExpiry = true
 		}
+
+		dcpAgent, err := CreateDcpAgent(dcpAgentConfig, "dcp-stream", DcpOpenFlagProducer)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPAgent = &testNode{
+			Agent:   dcpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+		dcpOpAgent, err := CreateAgent(dcpAgentConfig)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPOpAgent = &testNode{
+			Agent:   dcpOpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+
 	}
 
-}
+	result := m.Run()
 
 func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
 	if scopeName == "" {
@@ -2372,9 +2386,21 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
-	uid, err := strconv.ParseInt(respBody.UID, 16, 64)
-	if err != nil {
-		return nil, err
+	if globalDCPAgent != nil {
+		err = globalDCPAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp agent: %s", err))
+		}
+
+		err = globalDCPOpAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp op agent: %s", err))
+		}
+	}
+
+	log.Printf("Log Messages Emitted:")
+	for i := 0; i < int(LogMaxVerbosity); i++ {
+		log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
 	}
 
 	timer := time.NewTimer(20 * time.Second)
