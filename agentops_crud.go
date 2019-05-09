@@ -74,13 +74,11 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 
 // GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
 type GetAndTouchOptions struct {
-	Key                    []byte
-	Expiry                 uint32
-	TraceContext           opentracing.SpanContext
-	CollectionName         string
-	ScopeName              string
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	Key            []byte
+	Expiry         uint32
+	TraceContext   opentracing.SpanContext
+	CollectionName string
+	ScopeName      string
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -122,31 +120,18 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdGAT,
-			Datatype:    0,
-			Cas:         0,
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       nil,
-			FrameExtras: flexibleFrameExtras,
+			Magic:    reqMagic,
+			Opcode:   cmdGAT,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   extraBuf,
+			Key:      opts.Key,
+			Value:    nil,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
