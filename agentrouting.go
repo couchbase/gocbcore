@@ -18,7 +18,7 @@ func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool
 	return false
 }
 
-func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
+func (agent *Agent) dialMemdClient(address string, deadline time.Time) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config
@@ -32,21 +32,265 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 		tlsConfig.ServerName = host
 	}
 
-	deadline := time.Now().Add(agent.serverConnectTimeout)
-
-	memdConn, err := dialMemdConn(address, tlsConfig, deadline)
+	conn, err := dialMemdConn(address, tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
 	}
+	client := newMemdClient(agent, conn)
 
-	client := newMemdClient(agent, memdConn)
+	return client, err
+}
+
+func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh chan bool, deadline time.Time) chan BytesAndError {
+	if bucketName == "" {
+		return nil
+	}
+
+	selectCh := make(chan BytesAndError, 1)
+	go func() {
+		success := <-continueAuthCh
+		if !success {
+			selectCh <- BytesAndError{}
+			return
+		}
+		execCh, err := sclient.ExecSelectBucket([]byte(bucketName), deadline)
+		if err != nil {
+			logDebugf("Failed to execute select bucket (%v)", err)
+			selectCh <- BytesAndError{Err: err}
+			return
+		}
+
+		execResp := <-execCh
+		selectCh <- execResp
+	}()
+
+	return selectCh
+}
+
+func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
+	for {
+		authMechanisms = authMechanisms[1:]
+		if len(authMechanisms) == 0 {
+			break
+		}
+		mech := authMechanisms[0]
+		for _, serverMech := range serverAuthMechanisms {
+			if mech == serverMech {
+				return true, mech, authMechanisms
+			}
+		}
+	}
+
+	return false, "", authMechanisms
+}
+
+func (agent *Agent) storeErrorMap(mapBytes []byte, client *memdClient) {
+	errMap, err := parseKvErrorMap(mapBytes)
+	if err != nil {
+		logDebugf("Failed to parse kv error map (%s)", err)
+		return
+	}
+
+	logDebugf("Fetched error map: %+v", errMap)
+
+	// Tell the local client to use this error map
+	client.SetErrorMap(errMap)
+
+	// Check if we need to switch the agent itself to a better
+	//  error map revision.
+	for {
+		origMap := agent.kvErrorMap.Get()
+		if origMap != nil && errMap.Revision < origMap.Revision {
+			break
+		}
+
+		if agent.kvErrorMap.Update(origMap, errMap) {
+			break
+		}
+	}
+}
+
+func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism,
+	nextAuth func(mechanism AuthMechanism), deadline time.Time) error {
 
 	sclient := syncClient{
 		client: client,
 	}
 
 	logDebugf("Fetching cluster client data")
+
+	bucket := agent.bucket()
+	features := agent.helloFeatures()
+	clientInfoStr := agent.clientInfoString(client.connId)
+
+	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
+	if err != nil {
+		logDebugf("Failed to execute HELLO (%v)", err)
+		return err
+	}
+
+	errMapCh, err := sclient.ExecGetErrorMap(1, deadline)
+	if err != nil {
+		// GetErrorMap isn't integral to bootstrap succeeding
+		logDebugf("Failed to execute get error map (%v)", err)
+	}
+
+	var listMechsCh chan SaslListMechsCompleted
+	if nextAuth != nil {
+		// We only need to list mechs if there's more than 1 way to do auth.
+		listMechsCh, err = sclient.SaslListMechs(deadline)
+		if err != nil {
+			logDebugf("Failed to execute list auth mechs (%v)", err)
+		}
+	}
+
+	var completedAuthCh chan BytesAndError
+	var continueAuthCh chan bool
+	if agent.authHandler != nil {
+		completedAuthCh, continueAuthCh, err = agent.authHandler(&sclient, deadline)
+		if err != nil {
+			logDebugf("Failed to execute auth (%v)", err)
+			return err
+		}
+	}
+
+	var selectCh chan BytesAndError
+	if continueAuthCh == nil {
+		if bucket != "" {
+			selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+			if err != nil {
+				logDebugf("Failed to execute select bucket (%v)", err)
+				return err
+			}
+		}
+	} else {
+		selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+	}
+
+	helloResp := <-helloCh
+	if helloResp.Err != nil {
+		logDebugf("Failed to hello with server (%v)", helloResp.Err)
+		return err
+	}
+
+	errMapResp := <-errMapCh
+	if errMapResp.Err == nil {
+		agent.storeErrorMap(errMapResp.Bytes, client)
+	} else {
+		logDebugf("Failed to fetch kv error map (%s)", errMapResp.Err)
+	}
+
+	var serverAuthMechanisms []AuthMechanism
+	if listMechsCh != nil {
+		listMechsResp := <-listMechsCh
+		if listMechsResp.Err == nil {
+			serverAuthMechanisms = listMechsResp.Mechs
+			logDebugf("Server supported auth mechanisms: %v", serverAuthMechanisms)
+		} else {
+			logDebugf("Failed to fetch auth mechs from server (%v)", listMechsResp.Err)
+		}
+	}
+
+	if completedAuthCh != nil {
+		authResp := <-completedAuthCh
+		if authResp.Err != nil {
+			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+			if nextAuth == nil || ErrorCause(authResp.Err) != ErrAuthError {
+				return authResp.Err
+			}
+
+			for {
+				var found bool
+				var mech AuthMechanism
+				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
+				if !found {
+					logDebugf("Failed to authenticate, all options exhausted")
+					return authResp.Err
+				}
+
+				nextAuth(mech)
+				completedAuthCh, continueAuthCh, err = agent.authHandler(&sclient, deadline)
+				if err != nil {
+					logDebugf("Failed to execute auth (%v)", err)
+					return err
+				}
+				if continueAuthCh == nil {
+					if bucket != "" {
+						selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+						if err != nil {
+							logDebugf("Failed to execute select bucket (%v)", err)
+							return err
+						}
+					}
+				} else {
+					selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+				}
+				authResp = <-completedAuthCh
+				if authResp.Err == nil {
+					break
+				}
+
+				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+				if ErrorCause(authResp.Err) != ErrAuthError {
+					return authResp.Err
+				}
+			}
+		}
+		logDebugf("Authenticated successfully")
+	}
+
+	if selectCh != nil {
+		selectResp := <-selectCh
+		if selectResp.Err != nil {
+			logDebugf("Failed to perform select bucket against server (%v)", selectResp.Err)
+			return selectResp.Err
+		}
+	}
+
+	client.features = helloResp.SrvFeatures
+
+	logDebugf("Client Features: %+v", features)
+	logDebugf("Server Features: %+v", client.features)
+
+	if client.SupportsFeature(FeatureCollections) {
+		client.conn.EnableCollections(true)
+	}
+
+	if client.SupportsFeature(FeatureDurations) {
+		client.conn.EnableFramingExtras(true)
+	}
+
+	err = agent.initFn(&sclient, deadline, agent)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (agent *Agent) clientInfoString(connId string) string {
+	agentName := "gocbcore/" + goCbCoreVersionStr
+	if agent.userString != "" {
+		agentName += " " + agent.userString
+	}
+
+	clientInfo := struct {
+		Agent  string `json:"a"`
+		ConnId string `json:"i"`
+	}{
+		Agent:  agentName,
+		ConnId: connId,
+	}
+	clientInfoBytes, err := json.Marshal(clientInfo)
+	if err != nil {
+		logDebugf("Failed to generate client info string: %s", err)
+	}
+
+	return string(clientInfoBytes)
+}
+
+func (agent *Agent) helloFeatures() []HelloFeature {
 	var features []HelloFeature
 
 	// Send the TLS flag, which has unknown effects.
@@ -87,89 +331,16 @@ func (agent *Agent) dialMemdClient(address string) (*memdClient, error) {
 	features = append(features, FeatureAltRequests)
 	features = append(features, FeatureEnhancedDurability)
 
-	agentName := "gocbcore/" + goCbCoreVersionStr
-	if agent.userString != "" {
-		agentName += " " + agent.userString
-	}
-
-	clientInfo := struct {
-		Agent  string `json:"a"`
-		ConnId string `json:"i"`
-	}{
-		Agent:  agentName,
-		ConnId: client.connId,
-	}
-	clientInfoBytes, err := json.Marshal(clientInfo)
-	if err != nil {
-		logDebugf("Failed to generate client info string: %s", err)
-	}
-	clientInfoStr := string(clientInfoBytes)
-
-	srvFeatures, err := sclient.ExecHello(clientInfoStr, features, deadline)
-	if err != nil {
-		logDebugf("Failed to HELLO with server (%s)", err)
-	}
-
-	logDebugf("Client Features: %+v", features)
-	logDebugf("Server Features: %+v", srvFeatures)
-
-	client.features = srvFeatures
-
-	if checkSupportsFeature(srvFeatures, FeatureXerror) {
-		errMapData, err := sclient.ExecGetErrorMap(1, deadline)
-		if err == nil {
-			errMap, err := parseKvErrorMap(errMapData)
-			if err == nil {
-				logDebugf("Fetched error map: %+v", errMap)
-
-				// Tell the local client to use this error map
-				client.SetErrorMap(errMap)
-
-				// Check if we need to switch the agent itself to a better
-				//  error map revision.
-				for {
-					origMap := agent.kvErrorMap.Get()
-					if origMap != nil && errMap.Revision < origMap.Revision {
-						break
-					}
-
-					if agent.kvErrorMap.Update(origMap, errMap) {
-						break
-					}
-				}
-			} else {
-				logDebugf("Failed to parse kv error map (%s)", err)
-			}
-		} else {
-			logDebugf("Failed to fetch kv error map (%s)", err)
-		}
-	}
-
-	if checkSupportsFeature(srvFeatures, FeatureCollections) {
-		memdConn.EnableCollections(true)
-	}
-
-	if checkSupportsFeature(srvFeatures, FeatureDurations) {
-		memdConn.EnableFramingExtras(true)
-	}
-
-	logDebugf("Authenticating...")
-	err = agent.initFn(&sclient, deadline, agent)
-	if err != nil {
-		logDebugf("Failed to authenticate. %v", err)
-
-		closeErr := client.Close()
-		if closeErr != nil {
-			logWarnf("Failed to close authentication client (%s)", closeErr)
-		}
-
-		return nil, err
-	}
-
-	return client, nil
+	return features
 }
 
 func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
+	cached := agent.getCachedClient(address)
+	if cached != nil {
+		logDebugf("Returning cached client %p for %s", cached, address)
+		return cached, nil
+	}
+
 	agent.serverFailuresLock.Lock()
 	failureTime := agent.serverFailures[address]
 	agent.serverFailuresLock.Unlock()
@@ -181,8 +352,22 @@ func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
 		}
 	}
 
-	client, err := agent.dialMemdClient(address)
+	deadline := time.Now().Add(agent.serverConnectTimeout)
+	client, err := agent.dialMemdClient(address, deadline)
 	if err != nil {
+		agent.serverFailuresLock.Lock()
+		agent.serverFailures[address] = time.Now()
+		agent.serverFailuresLock.Unlock()
+
+		return nil, err
+	}
+
+	err = agent.bootstrap(client, nil, nil, deadline)
+	if err != nil {
+		closeErr := client.Close()
+		if closeErr != nil {
+			logWarnf("Failed to close authentication client (%s)", closeErr)
+		}
 		agent.serverFailuresLock.Lock()
 		agent.serverFailures[address] = time.Now()
 		agent.serverFailuresLock.Unlock()
@@ -235,21 +420,22 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 		source:     cfg,
 	}
 
-	kvPoolSize := agent.kvPoolSize
-	maxQueueSize := agent.maxQueueSize
-	newRouting.clientMux = newMemdClientMux(cfg.kvServerList, kvPoolSize, maxQueueSize, agent.slowDialMemdClient)
+	newRouting.clientMux = agent.newMemdClientMux(cfg.kvServerList)
 
 	oldRouting := agent.routingInfo.Get()
 	if oldRouting == nil {
 		return false
 	}
 
+	// Check that the new config data is newer than the current one, in the case where we've done a select bucket
+	// against an existing connection then the revisions could be the same. In that case the configuration still
+	// needs to be applied.
 	if newRouting.revId == 0 {
 		logDebugf("Unversioned configuration data, ")
 	} else if newRouting.revId == oldRouting.revId {
 		logDebugf("Ignoring configuration with identical revision number")
 		return false
-	} else if newRouting.revId <= oldRouting.revId {
+	} else if newRouting.revId < oldRouting.revId {
 		logDebugf("Ignoring new configuration as it has an older revision id")
 		return false
 	}
@@ -288,8 +474,8 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 	return true
 }
 
-func (agent *Agent) updateRoutingConfig(bk *cfgBucket) bool {
-	if bk == nil {
+func (agent *Agent) updateRoutingConfig(cfg cfgObj) bool {
+	if cfg == nil {
 		// Use the existing config if none was passed.
 		oldRouting := agent.routingInfo.Get()
 		if oldRouting == nil {
@@ -301,7 +487,7 @@ func (agent *Agent) updateRoutingConfig(bk *cfgBucket) bool {
 	}
 
 	// Normalize the cfgBucket to a routeConfig and apply it.
-	routeCfg := buildRouteConfig(bk, agent.IsSecure(), agent.networkType, false)
+	routeCfg := buildRouteConfig(cfg, agent.IsSecure(), agent.networkType, false)
 	if !routeCfg.IsValid() {
 		// We received an invalid configuration, lets shutdown.
 		err := agent.Close()

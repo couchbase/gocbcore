@@ -5,11 +5,12 @@ import (
 	"time"
 )
 
-func (agent *Agent) cccpLooper() {
+func (agent *Agent) gcccpLooper() {
 	tickTime := agent.confCccpPollPeriod
 	maxWaitTime := agent.confCccpMaxWait
+	cancelled := false
 
-	logDebugf("CCCP Looper starting.")
+	logDebugf("GCCCP Looper starting.")
 
 	nodeIdx := -1
 	for {
@@ -17,6 +18,13 @@ func (agent *Agent) cccpLooper() {
 		select {
 		case <-time.After(tickTime):
 		case <-agent.closeNotify:
+		case <-agent.gcccpLooperStopSig:
+			logDebugf("GCCCP poller received shutdown signal")
+			cancelled = true
+		}
+
+		if cancelled {
+			break
 		}
 
 		routingInfo := agent.routingInfo.Get()
@@ -27,7 +35,7 @@ func (agent *Agent) cccpLooper() {
 
 		numNodes := routingInfo.clientMux.NumPipelines()
 		if numNodes == 0 {
-			logDebugf("CCCPPOLL: No nodes available to poll")
+			logDebugf("GCCCPPOLL: No nodes available to poll")
 			continue
 		}
 
@@ -35,7 +43,7 @@ func (agent *Agent) cccpLooper() {
 			nodeIdx = rand.Intn(numNodes)
 		}
 
-		var foundConfig *cfgBucket
+		var foundConfig *cfgCluster
 		for nodeOff := 0; nodeOff < numNodes; nodeOff++ {
 			nodeIdx = (nodeIdx + 1) % numNodes
 
@@ -48,34 +56,34 @@ func (agent *Agent) cccpLooper() {
 			}
 			cccpBytes, err := client.ExecGetClusterConfig(time.Now().Add(maxWaitTime))
 			if err != nil {
-				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+				logDebugf("GCCCPPOLL: Failed to retrieve CCCP config. %v", err)
 				continue
 			}
 
 			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {
-				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+				logErrorf("GCCCPPOLL: Failed to parse source address. %v", err)
 				continue
 			}
 
-			bk, err := parseBktConfig(cccpBytes, hostName)
+			cfg, err := parseClusterConfig(cccpBytes, hostName)
 			if err != nil {
-				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+				logDebugf("GCCCPPOLL: Failed to parse CCCP config. %v", err)
 				continue
 			}
 
-			foundConfig = bk
+			foundConfig = cfg
 			break
 		}
 
 		if foundConfig == nil {
-			logDebugf("CCCPPOLL: Failed to retrieve config from any node.")
+			logDebugf("GCCCPPOLL: Failed to retrieve config from any node.")
 			continue
 		}
 
-		logDebugf("CCCPPOLL: Received new config")
+		logDebugf("GCCCPPOLL: Received new config")
 		agent.updateConfig(foundConfig)
 	}
 
-	close(agent.cccpLooperDoneSig)
+	close(agent.gcccpLooperDoneSig)
 }

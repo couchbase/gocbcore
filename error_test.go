@@ -46,7 +46,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": true,
-		"bucket":  globalAgent.bucket,
+		"bucket":  globalAgent.bucket(),
 	}))
 
 	s.PushOp(agent.GetAndLockEx(GetAndLockOptions{
@@ -80,6 +80,6 @@ func TestEnhancedErrorOp(t *testing.T) {
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": false,
-		"bucket":  globalAgent.bucket,
+		"bucket":  globalAgent.bucket(),
 	}))
 }

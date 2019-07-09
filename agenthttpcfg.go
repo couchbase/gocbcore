@@ -102,7 +102,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 				streamPath = "bucketsStreaming"
 			}
 			// HTTP request time!
-			uri := fmt.Sprintf("%s/pools/default/%s/%s", pickedSrv, streamPath, agent.bucket)
+			uri := fmt.Sprintf("%s/pools/default/%s/%s", pickedSrv, streamPath, agent.bucket())
 			logDebugf("Requesting config from: %s.", uri)
 
 			req, err := http.NewRequest("GET", uri, nil)
@@ -199,7 +199,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 
 			logDebugf("Got Block: %v", string(configBlock.Bytes))
 
-			bkCfg, err := parseConfig(configBlock.Bytes, hostname)
+			bkCfg, err := parseBktConfig(configBlock.Bytes, hostname)
 			if err != nil {
 				logDebugf("Got error while parsing config: %v", err)
 

@@ -6,11 +6,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -42,24 +44,6 @@ func (agent *Agent) makeDistKeys() (keys []string) {
 	return
 }
 
-func saslAuthFn(bucket, password string) func(AuthClient, time.Time) error {
-	return func(srv AuthClient, deadline time.Time) error {
-		// Build PLAIN auth data
-		userBuf := []byte(bucket)
-		passBuf := []byte(password)
-		authData := make([]byte, 1+len(userBuf)+1+len(passBuf))
-		authData[0] = 0
-		copy(authData[1:], userBuf)
-		authData[1+len(userBuf)] = 0
-		copy(authData[1+len(userBuf)+1:], passBuf)
-
-		// Execute PLAIN authentication
-		_, err := srv.ExecSaslAuth([]byte("PLAIN"), authData, deadline)
-
-		return err
-	}
-}
-
 const (
 	defaultServerVersion = "5.1.0"
 )
@@ -80,15 +64,23 @@ func getAgentnSignaler(t *testing.T) (*testNode, *Signaler) {
 
 func TestCidRetries(t *testing.T) {
 	agent, s := getAgentnSignaler(t)
-	if !agent.SupportsFeature(TestCollectionFeature) {
-		t.Skip("Collections are not supported")
+	if !agent.SupportsFeature(TestCollectionFeature) || !agent.HasCollectionsSupport() {
+		t.Skip("Collections are not supported or not enabled")
 	}
-	if agent.CollectionName() == "_default" || agent.CollectionName() == "" {
-		t.Skip("Default collection is being used")
+
+	collectionName := "mytestcollectionname"
+	scopeName := agent.ScopeName()
+	if scopeName == "" {
+		scopeName = "_default"
+	}
+
+	_, err := testCreateCollection(collectionName, scopeName, agent.bucketName, agent.Agent)
+	if err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
 	}
 
 	// prime the cid map cache
-	s.PushOp(agent.GetCollectionID(agent.ScopeName(), agent.CollectionName(), GetCollectionIDOptions{},
+	s.PushOp(agent.GetCollectionID(scopeName, collectionName, GetCollectionIDOptions{},
 		func(manifestID uint64, collectionID uint32, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -100,13 +92,13 @@ func TestCidRetries(t *testing.T) {
 	s.Wait(0)
 
 	// delete the collection
-	_, err := testDeleteCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent, true)
+	_, err = testDeleteCollection(collectionName, scopeName, agent.bucketName, agent.Agent, true)
 	if err != nil {
 		t.Fatalf("Failed to delete collection: %v", err)
 	}
 
 	// recreate
-	_, err = testCreateCollection(agent.CollectionName(), agent.ScopeName(), agent.bucket, agent.Agent)
+	_, err = testCreateCollection(collectionName, scopeName, agent.bucketName, agent.Agent)
 	if err != nil {
 		t.Fatalf("Failed to create collection: %v", err)
 	}
@@ -115,7 +107,7 @@ func TestCidRetries(t *testing.T) {
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
+		CollectionName: collectionName,
 		ScopeName:      agent.ScopeName(),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
@@ -132,7 +124,7 @@ func TestCidRetries(t *testing.T) {
 	// Get
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("test"),
-		CollectionName: agent.CollectionName(),
+		CollectionName: collectionName,
 		ScopeName:      agent.ScopeName(),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
@@ -988,6 +980,10 @@ func TestGetHttpEps(t *testing.T) {
 }
 
 func TestMemcachedBucket(t *testing.T) {
+	if !globalAgent.SupportsFeature(TestMemdFeature) {
+		t.Skip("Skipping test because memcached buckets not supported")
+	}
+
 	// Ensure we can do upserts..
 	agent := globalMemdAgent
 	s := agent.getSignaler(t)
@@ -1335,12 +1331,12 @@ func TestMain(m *testing.M) {
 	}
 
 	var err error
-	var httpAuthHandler func(AuthClient, time.Time) error
-	var memdAuthHandler func(AuthClient, time.Time) error
 	var memdAddrs []string
 	var httpAddrs []string
 
 	var mock *gojcbmock.Mock
+	var httpAuth *PasswordAuthProvider
+	var memdAuth *PasswordAuthProvider
 	if *memdservers == "" {
 		if *version != "" {
 			panic("Version cannot be specified with mock")
@@ -1364,16 +1360,31 @@ func TestMain(m *testing.M) {
 
 		httpAddrs = []string{fmt.Sprintf("127.0.0.1:%d", mock.EntryPort)}
 
-		httpAuthHandler = saslAuthFn("default", "")
-		memdAuthHandler = saslAuthFn("memd", "")
-
 		*version = mock.Version()
+
+		httpAuth = &PasswordAuthProvider{
+			Username: "default",
+			Password: "",
+		}
+		memdAuth = &PasswordAuthProvider{
+			Username: "memd",
+			Password: "",
+		}
 	} else {
 		memdAddrs = strings.Split(*memdservers, ",")
 		httpAddrs = strings.Split(*httpservers, ",")
 
 		if *version == "" {
 			*version = defaultServerVersion
+		}
+
+		httpAuth = &PasswordAuthProvider{
+			Username: *user,
+			Password: *password,
+		}
+		memdAuth = &PasswordAuthProvider{
+			Username: *user,
+			Password: *password,
 		}
 	}
 
@@ -1388,15 +1399,12 @@ func TestMain(m *testing.M) {
 	}
 
 	agentConfig := &AgentConfig{
-		MemdAddrs:  memdAddrs,
-		HttpAddrs:  httpAddrs,
-		TlsConfig:  nil,
-		BucketName: *bucketName,
-		Auth: &PasswordAuthProvider{
-			Username: *user,
-			Password: *password,
-		},
-		AuthHandler:          httpAuthHandler,
+		MemdAddrs: memdAddrs,
+		HttpAddrs: httpAddrs,
+		TlsConfig: nil,
+		// BucketName:           *bucketName,
+		Auth:                 httpAuth,
+		AuthMechanisms:       []AuthMechanism{PlainAuthMechanism},
 		ConnectTimeout:       5 * time.Second,
 		ServerConnectTimeout: 1 * time.Second,
 		UseMutationTokens:    true,
@@ -1407,7 +1415,11 @@ func TestMain(m *testing.M) {
 
 	agent, err := CreateAgent(agentConfig)
 	if err != nil {
-		panic("Failed to connect to server")
+		panic(fmt.Sprintf("Failed to connect to server, %v", err))
+	}
+	err = agent.SelectBucket(*bucketName, time.Now().Add(2*time.Second))
+	if err != nil {
+		panic(fmt.Sprintf("Failed to select bucket, %v", err))
 	}
 	globalAgent = &testNode{
 		Agent:          agent,
@@ -1415,24 +1427,82 @@ func TestMain(m *testing.M) {
 		Version:        nodeVersion,
 		collectionName: *collectionName,
 	}
+	timer := time.NewTimer(5 * time.Second)
+	ch := make(chan error)
+	op, err := globalAgent.PingKvEx(PingKvOptions{}, func(results *PingKvResult, err error) {
+		if err != nil {
+			ch <- err
+		}
 
-	memdAgentConfig := &AgentConfig{}
-	*memdAgentConfig = *agentConfig
-	memdAgentConfig.MemdAddrs = nil
-	memdAgentConfig.BucketName = *memdBucketName
-	memdAgentConfig.Auth = &PasswordAuthProvider{
-		Username: *user,
-		Password: *password,
-	}
-	memdAgentConfig.AuthHandler = memdAuthHandler
-	memdAgent, err := CreateAgent(memdAgentConfig)
+		for _, result := range results.Services {
+			if result.Error != nil {
+				ch <- result.Error
+			}
+		}
+
+		ch <- nil
+	})
 	if err != nil {
-		panic(fmt.Sprintf("Failed to connect to memcached bucket!: %v", err))
+		panic(fmt.Sprintf("Failed to ping against bucket!: %v", err))
 	}
-	globalMemdAgent = &testNode{
-		Agent:   memdAgent,
-		Mock:    mock,
-		Version: nodeVersion,
+
+	select {
+	case <-timer.C:
+		op.Cancel()
+		panic("Timed out ping against bucket!")
+	case err := <-ch:
+		timer.Stop()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to ping against bucket!: %v", err))
+		}
+	}
+
+	if globalAgent.SupportsFeature(TestMemdFeature) {
+		memdAgentConfig := &AgentConfig{}
+		*memdAgentConfig = *agentConfig
+		memdAgentConfig.UseCollections = false // memcached buckets don't have support for collections
+		memdAgentConfig.BucketName = *memdBucketName
+		memdAgentConfig.Auth = memdAuth
+		memdAgentConfig.AuthMechanisms = []AuthMechanism{PlainAuthMechanism}
+		memdAgent, err := CreateAgent(memdAgentConfig)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to connect to memcached bucket!: %v", err))
+		}
+		globalMemdAgent = &testNode{
+			Agent:   memdAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+
+		timer := time.NewTimer(5 * time.Second)
+		memdCh := make(chan error)
+		op, err := memdAgent.PingKvEx(PingKvOptions{}, func(results *PingKvResult, err error) {
+			if err != nil {
+				memdCh <- err
+			}
+
+			for _, result := range results.Services {
+				if result.Error != nil {
+					memdCh <- result.Error
+				}
+			}
+
+			memdCh <- nil
+		})
+		if err != nil {
+			panic(fmt.Sprintf("Failed to ping against memcached bucket!: %v", err))
+		}
+
+		select {
+		case <-timer.C:
+			op.Cancel()
+			panic("Timed out ping against memcached bucket!")
+		case err := <-memdCh:
+			timer.Stop()
+			if err != nil {
+				panic(fmt.Sprintf("Failed to ping against memcached bucket!: %v", err))
+			}
+		}
 	}
 
 	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
@@ -1474,9 +1544,11 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("Failed to shut down global agent: %s", err))
 	}
 
-	err = globalMemdAgent.Close()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
+	if globalMemdAgent != nil {
+		err = globalMemdAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
+		}
 	}
 
 	if globalDCPAgent != nil {
@@ -1552,11 +1624,19 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			logDebugf("Failed to close response body")
+		}
+		return nil, fmt.Errorf("could not create collection, %s", string(data))
 	}
 
 	respBody := struct {
-		Uid uint64 `json:"uid"`
+		Uid string `json:"uid"`
 	}{}
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
@@ -1568,9 +1648,14 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
+	uid, err := strconv.Atoi(respBody.Uid)
+	if err != nil {
+		return nil, err
+	}
+
 	timer := time.NewTimer(20 * time.Second)
 	waitCh := make(chan testManifestWithError)
-	go waitForManifest(agent, respBody.Uid, waitCh)
+	go waitForManifest(agent, uint64(uid), waitCh)
 
 	for {
 		select {
@@ -1602,11 +1687,19 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("could not create collection, status code: %d", resp.StatusCode)
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not delete collection, status code: %d", resp.StatusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			logDebugf("Failed to close response body")
+		}
+		return nil, fmt.Errorf("could not delete collection, %s", string(data))
 	}
 
 	respBody := struct {
-		Uid uint64 `json:"uid"`
+		Uid string `json:"uid"`
 	}{}
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
@@ -1618,9 +1711,14 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		return nil, err
 	}
 
+	uid, err := strconv.Atoi(respBody.Uid)
+	if err != nil {
+		return nil, err
+	}
+
 	timer := time.NewTimer(20 * time.Second)
 	waitCh := make(chan testManifestWithError)
-	go waitForManifest(agent, respBody.Uid, waitCh)
+	go waitForManifest(agent, uint64(uid), waitCh)
 
 	for {
 		select {

@@ -8,7 +8,22 @@ import (
 	"time"
 )
 
-// TODO(brett19): Remove the Exec keyword from AuthClient
+// AuthMechanism represents a type of auth that can be performed.
+type AuthMechanism string
+
+const (
+	// PlainAuthMechanism represents that PLAIN auth should be performed.
+	PlainAuthMechanism = AuthMechanism("PLAIN")
+
+	// ScramSha1AuthMechanism represents that SCRAM SHA1 auth should be performed.
+	ScramSha1AuthMechanism = AuthMechanism("SCRAM_SHA1")
+
+	// ScramSha256AuthMechanism represents that SCRAM SHA256 auth should be performed.
+	ScramSha256AuthMechanism = AuthMechanism("SCRAM_SHA256")
+
+	// ScramSha512AuthMechanism represents that SCRAM SHA512 auth should be performed.
+	ScramSha512AuthMechanism = AuthMechanism("SCRAM_SHA512")
+)
 
 // AuthClient exposes an interface for performing authentication on a
 // connected Couchbase K/V client.
@@ -16,14 +31,19 @@ type AuthClient interface {
 	Address() string
 	SupportsFeature(feature HelloFeature) bool
 
-	ExecSaslListMechs(deadline time.Time) ([]string, error)
-	ExecSaslAuth(k, v []byte, deadline time.Time) ([]byte, error)
-	ExecSaslStep(k, v []byte, deadline time.Time) ([]byte, error)
-	ExecSelectBucket(b []byte, deadline time.Time) error
+	SaslListMechs(deadline time.Time) (chan SaslListMechsCompleted, error)
+	SaslAuth(k, v []byte, deadline time.Time) (chan BytesAndError, error)
+	SaslStep(k, v []byte, deadline time.Time) (chan BytesAndError, error)
+}
+
+// SaslListMechsCompleted is used to contain the result and/or error from a SaslListMechs operation.
+type SaslListMechsCompleted struct {
+	Err   error
+	Mechs []AuthMechanism
 }
 
 // SaslAuthPlain performs PLAIN SASL authentication against an AuthClient.
-func SaslAuthPlain(username, password string, client AuthClient, deadline time.Time) error {
+func SaslAuthPlain(username, password string, client AuthClient, deadline time.Time) (chan BytesAndError, error) {
 	// Build PLAIN auth data
 	userBuf := []byte(username)
 	passBuf := []byte(password)
@@ -34,75 +54,123 @@ func SaslAuthPlain(username, password string, client AuthClient, deadline time.T
 	copy(authData[1+len(userBuf)+1:], passBuf)
 
 	// Execute PLAIN authentication
-	_, err := client.ExecSaslAuth([]byte("PLAIN"), authData, deadline)
-
-	return err
-}
-
-func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password string, client AuthClient, deadline time.Time) error {
-	scramMgr := newScramClient(newHash, username, password)
-
-	var in []byte
-	var err error
-
-	// Perform the initial SASL step
-	scramMgr.Step(nil)
-	in, err = client.ExecSaslAuth(saslName, scramMgr.Out(), deadline)
-	if err != nil && !IsErrorStatus(err, StatusAuthContinue) {
-		return err
+	completedCh, err := client.SaslAuth([]byte(PlainAuthMechanism), authData, deadline)
+	if err != nil {
+		return nil, err
 	}
 
-	// Perform any additional step rounds
-	for IsErrorStatus(err, StatusAuthContinue) {
-		if !scramMgr.Step(in) {
+	return completedCh, nil
+}
+
+func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password string, client AuthClient,
+	deadline time.Time) (chan BytesAndError, chan bool, error) {
+	scramMgr := newScramClient(newHash, username, password)
+
+	// Perform the initial SASL step
+	completedCh := make(chan BytesAndError, 1)
+	continueCh := make(chan bool, 1)
+	scramMgr.Step(nil)
+	saslCh, err := client.SaslAuth(saslName, scramMgr.Out(), deadline)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	go func() {
+		authResult := <-saslCh
+		if authResult.Err != nil && !IsErrorStatus(authResult.Err, StatusAuthContinue) {
+			continueCh <- false
+			completedCh <- BytesAndError{
+				Err: authResult.Err,
+			}
+			return
+		}
+
+		if !scramMgr.Step(authResult.Bytes) {
 			err = scramMgr.Err()
 			if err != nil {
-				return err
+				continueCh <- false
+				completedCh <- BytesAndError{
+					Err: err,
+				}
+				return
 			}
 
 			logErrorf("Local auth client finished before server accepted auth")
-			return ErrAuthError
+			continueCh <- false
+			completedCh <- BytesAndError{}
+			return
 		}
 
-		in, err = client.ExecSaslStep(saslName, scramMgr.Out(), deadline)
-		if err != nil &&
-			!IsErrorStatus(err, StatusAuthContinue) {
-			return err
+		stepCh, err := client.SaslStep(saslName, scramMgr.Out(), deadline)
+		if err != nil {
+			continueCh <- false
+			completedCh <- BytesAndError{
+				Err: err,
+			}
+			return
 		}
-	}
 
-	return nil
+		continueCh <- true
+
+		stepResult := <-stepCh
+		if stepResult.Err != nil {
+			completedCh <- BytesAndError{
+				Err: stepResult.Err,
+			}
+			return
+		}
+
+		completedCh <- BytesAndError{
+			Bytes: stepResult.Bytes,
+		}
+	}()
+
+	return completedCh, continueCh, nil
 }
 
 // SaslAuthScramSha1 performs SCRAM-SHA1 SASL authentication against an AuthClient.
-func SaslAuthScramSha1(username, password string, client AuthClient, deadline time.Time) error {
+func SaslAuthScramSha1(username, password string, client AuthClient, deadline time.Time) (completedCh chan BytesAndError,
+	continueCh chan bool, err error) {
 	return saslAuthScram([]byte("SCRAM-SHA1"), sha1.New, username, password, client, deadline)
 }
 
 // SaslAuthScramSha256 performs SCRAM-SHA256 SASL authentication against an AuthClient.
-func SaslAuthScramSha256(username, password string, client AuthClient, deadline time.Time) error {
+func SaslAuthScramSha256(username, password string, client AuthClient, deadline time.Time) (completedCh chan BytesAndError,
+	continueCh chan bool, err error) {
 	return saslAuthScram([]byte("SCRAM-SHA256"), sha256.New, username, password, client, deadline)
 }
 
 // SaslAuthScramSha512 performs SCRAM-SHA512 SASL authentication against an AuthClient.
-func SaslAuthScramSha512(username, password string, client AuthClient, deadline time.Time) error {
+func SaslAuthScramSha512(username, password string, client AuthClient, deadline time.Time) (completedCh chan BytesAndError,
+	continueCh chan bool, err error) {
 	return saslAuthScram([]byte("SCRAM-SHA512"), sha512.New, username, password, client, deadline)
 }
 
-// SaslAuthBest performs SASL authentication against an AuthClient using the
-// best supported authentication algorithm available on both client and server.
-func SaslAuthBest(username, password string, client AuthClient, deadline time.Time) error {
-	methods, err := client.ExecSaslListMechs(deadline)
-	if err != nil {
-		return err
+func saslMethod(method AuthMechanism, username, password string, client AuthClient, deadline time.Time) (completedCh chan BytesAndError,
+	continueCh chan bool, err error) {
+	switch method {
+	case PlainAuthMechanism:
+		ch, err := SaslAuthPlain(username, password, client, deadline)
+		if err != nil {
+			return nil, nil, err
+		}
+		return ch, nil, nil
+	case ScramSha1AuthMechanism:
+		return SaslAuthScramSha1(username, password, client, deadline)
+	case ScramSha256AuthMechanism:
+		return SaslAuthScramSha256(username, password, client, deadline)
+	case ScramSha512AuthMechanism:
+		return SaslAuthScramSha512(username, password, client, deadline)
+	default:
+		return nil, nil, ErrNoAuthMethod
 	}
+}
 
-	logDebugf("Server SASL supports: %v", methods)
-
-	var bestMethod string
+func saslBestMethod(methods []AuthMechanism) AuthMechanism {
+	var bestMethod AuthMechanism
 	var bestPriority int
 	for _, method := range methods {
-		if bestPriority <= 1 && method == "PLAIN" {
+		if bestPriority <= 1 && method == PlainAuthMechanism {
 			bestPriority = 1
 			bestMethod = method
 		}
@@ -117,33 +185,21 @@ func SaslAuthBest(username, password string, client AuthClient, deadline time.Ti
 			}
 		*/
 
-		if bestPriority <= 3 && method == "SCRAM-SHA1" {
+		if bestPriority <= 3 && method == ScramSha1AuthMechanism {
 			bestPriority = 3
 			bestMethod = method
 		}
 
-		if bestPriority <= 4 && method == "SCRAM-SHA256" {
+		if bestPriority <= 4 && method == ScramSha256AuthMechanism {
 			bestPriority = 4
 			bestMethod = method
 		}
 
-		if bestPriority <= 5 && method == "SCRAM-SHA512" {
+		if bestPriority <= 5 && method == ScramSha512AuthMechanism {
 			bestPriority = 5
 			bestMethod = method
 		}
 	}
 
-	logDebugf("Selected `%s` for SASL auth", bestMethod)
-
-	if bestMethod == "PLAIN" {
-		return SaslAuthPlain(username, password, client, deadline)
-	} else if bestMethod == "SCRAM-SHA1" {
-		return SaslAuthScramSha1(username, password, client, deadline)
-	} else if bestMethod == "SCRAM-SHA256" {
-		return SaslAuthScramSha256(username, password, client, deadline)
-	} else if bestMethod == "SCRAM-SHA512" {
-		return SaslAuthScramSha512(username, password, client, deadline)
-	}
-
-	return ErrNoAuthMethod
+	return bestMethod
 }

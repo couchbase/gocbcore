@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -53,6 +54,52 @@ func (mp *multiPendingOp) IncrementCompletedOps() uint32 {
 	return atomic.AddUint32(&mp.completedOps, 1)
 }
 
+type asyncPendingOp struct {
+	ops          []PendingOp
+	lock         sync.Mutex
+	completedOps uint32
+	cancelled    bool
+}
+
+func newAsyncPendingOp() *asyncPendingOp {
+	return &asyncPendingOp{
+		lock: sync.Mutex{},
+	}
+}
+
+func (mp *asyncPendingOp) Cancel() bool {
+	mp.lock.Lock()
+	defer mp.lock.Unlock()
+	mp.cancelled = true
+
+	var failedCancels uint32
+	for _, op := range mp.ops {
+		if !op.Cancel() {
+			failedCancels++
+		}
+	}
+	return mp.CompletedOps()-failedCancels == 0
+}
+
+func (mp *asyncPendingOp) Add(op PendingOp) bool {
+	mp.lock.Lock()
+	defer mp.lock.Unlock()
+	if mp.cancelled {
+		return false
+	}
+	mp.ops = append(mp.ops, op)
+
+	return true
+}
+
+func (mp *asyncPendingOp) CompletedOps() uint32 {
+	return atomic.LoadUint32(&mp.completedOps)
+}
+
+func (mp *asyncPendingOp) IncrementCompletedOps() uint32 {
+	return atomic.AddUint32(&mp.completedOps, 1)
+}
+
 func (agent *Agent) waitAndRetryOperation(req *memdQRequest, waitDura time.Duration) {
 	if waitDura == 0 {
 		agent.requeueDirect(req)
@@ -77,7 +124,7 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 	}
 
 	// Try to parse the value as a bucket configuration
-	bk, err := parseConfig(resp.Value, sourceHost)
+	bk, err := parseBktConfig(resp.Value, sourceHost)
 	if err == nil {
 		agent.updateConfig(bk)
 	}

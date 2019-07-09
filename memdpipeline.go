@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 var (
@@ -160,4 +161,35 @@ func (pipeline *memdPipeline) Close() error {
 
 func (pipeline *memdPipeline) Drain(cb func(*memdQRequest)) {
 	pipeline.queue.Drain(cb)
+}
+
+func (pipeline *memdPipeline) BroadcastSelectBucket(bucketName string, deadline time.Time) error {
+	pipeline.clientsLock.Lock()
+	clients := pipeline.clients
+	pipeline.clientsLock.Unlock()
+
+	for _, cli := range clients {
+		syncCli := syncClient{client: cli.client}
+		respChan, err := syncCli.ExecSelectBucket([]byte(bucketName), deadline)
+		if err != nil {
+			err = cli.client.Close()
+			if err != nil {
+				logDebugf("Failed to shutdown client (%v)", err)
+			}
+		}
+		resp := <-respChan
+		if resp.Err != nil {
+			// If the bucket isn't valid then just error out.
+			if IsErrorStatus(resp.Err, StatusAccessError) {
+				return ErrAccessError
+			}
+			// Otherwise close the client to let the pipelineclient do a reconnect and try, try again.
+			err = cli.client.Close()
+			if err != nil {
+				logDebugf("Failed to shutdown client (%v)", err)
+			}
+		}
+	}
+
+	return nil
 }

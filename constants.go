@@ -367,6 +367,7 @@ const (
 type bucketType int
 
 const (
+	bktTypeNone                 = -1
 	bktTypeInvalid   bucketType = 0
 	bktTypeCouchbase            = iota
 	bktTypeMemcached            = iota

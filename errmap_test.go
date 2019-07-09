@@ -83,13 +83,13 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	serverIdx := globalAgent.KeyToServer([]byte(testKey), 0)
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
-		"bucket": globalAgent.bucket,
+		"bucket": globalAgent.bucket(),
 		"code":   errCode,
 		"count":  -1,
 	}))
 	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CStartRetryVerify, map[string]interface{}{
 		"idx":    serverIdx,
-		"bucket": globalAgent.bucket,
+		"bucket": globalAgent.bucket(),
 	}))
 
 	s.PushOp(agent.GetEx(GetOptions{
@@ -101,7 +101,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 
 	resp := globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CCheckRetryVerify, map[string]interface{}{
 		"idx":     serverIdx,
-		"bucket":  globalAgent.bucket,
+		"bucket":  globalAgent.bucket(),
 		"opcode":  0,
 		"errcode": errCode,
 		"fuzz_ms": 20,
@@ -111,7 +111,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	}
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
-		"bucket": globalAgent.bucket,
+		"bucket": globalAgent.bucket(),
 		"code":   errCode,
 		"count":  0,
 	}))

@@ -344,6 +344,9 @@ var (
 	// being used does not support it.
 	ErrEnhancedDurabilityUnsupported = errors.New("Enhanced durability is not supported by this server version.")
 
+	// ErrBucketAlreadySelected occurs when SelectBucket is called when a bucket is already selected..
+	ErrBucketAlreadySelected = errors.New("Bucket already selected.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 

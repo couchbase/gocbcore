@@ -26,6 +26,7 @@ var (
 	TestCollectionFeature = TestFeatureCode(4)
 	TestDCPFeature        = TestFeatureCode(5)
 	TestDCPExpiryFeature  = TestFeatureCode(6)
+	TestMemdFeature       = TestFeatureCode(7) // This is necessary until Couchbase Mock supports gcccp
 )
 
 type testNode struct {
@@ -57,6 +58,8 @@ func (c *testNode) supportsMockFeature(feature TestFeatureCode) bool {
 		return false
 	case TestDCPFeature:
 		return false
+	case TestMemdFeature:
+		return false
 	}
 
 	return true
@@ -76,6 +79,8 @@ func (c *testNode) supportsServerFeature(feature TestFeatureCode) bool {
 		return !c.Version.Lower(srvVer450)
 	case TestDCPExpiryFeature:
 		return !c.Version.Lower(srvVer650)
+	case TestMemdFeature:
+		return true
 	}
 
 	return false

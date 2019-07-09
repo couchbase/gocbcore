@@ -150,7 +150,7 @@ func testDCP(t *testing.T) {
 
 	if globalDCPOpAgent.useCollections {
 		collectionName = "collection1"
-		manifest, err := testCreateCollection(collectionName, "_default", globalDCPOpAgent.bucket, globalDCPOpAgent.Agent)
+		manifest, err := testCreateCollection(collectionName, "_default", globalDCPOpAgent.bucketName, globalDCPOpAgent.Agent)
 		if err != nil {
 			t.Fatalf("Failed to create collection, %v", err)
 		}
