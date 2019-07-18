@@ -454,7 +454,6 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 			!IsErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
 			!IsErrorStatus(err, StatusSubDocSuccessDeleted) &&
 			!IsErrorStatus(err, StatusSubDocBadMulti) {
-			// tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -575,7 +574,6 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 
 		if IsErrorStatus(err, StatusSubDocBadMulti) {
 			if len(resp.Value) != 3 {
-				// tracer.Finish()
 				cb(nil, ErrProtocol)
 				return
 			}
