@@ -784,6 +784,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			continue
 		}
 
+		agent.updateClusterCapabilities(bk)
 		logDebugf("Successfully connected")
 
 		// Build some fake routing data, this is used to indicate that
@@ -851,6 +852,7 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) e
 			return false
 		}
 
+		agent.updateClusterCapabilities(cfg)
 		routeCfg = newRouteCfg
 		signal <- nil
 		return true
