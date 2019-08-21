@@ -83,6 +83,9 @@ func TestCidRetries(t *testing.T) {
 	if !agent.SupportsFeature(TestCollectionFeature) {
 		t.Skip("Collections are not supported")
 	}
+	if agent.CollectionName() == "_default" || agent.CollectionName() == "" {
+		t.Skip("Default collection is being used")
+	}
 
 	// prime the cid map cache
 	s.PushOp(agent.GetCollectionID(agent.ScopeName(), agent.CollectionName(), GetCollectionIDOptions{},
@@ -1143,12 +1146,11 @@ func TestDiagnostics(t *testing.T) {
 func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = ""
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	if agent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1159,18 +1161,17 @@ func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesAutoConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "auto"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	agent.networkType = "auto"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	if agent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1181,18 +1182,17 @@ func TestAlternateAddressesAutoConfig(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "auto"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "172.17.0.4:11210")
+	agent := Agent{}
+	agent.networkType = "auto"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "172.17.0.4:11210")
 
 	if globalAgent.networkType != "default" {
-		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1203,18 +1203,17 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesDefaultConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "default"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	agent.networkType = "default"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "default" {
-		t.Fatalf("Expected agent networkType to be default, was %s", globalAgent.networkType)
+	if agent.networkType != "default" {
+		t.Fatalf("Expected agent networkType to be default, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1225,18 +1224,17 @@ func TestAlternateAddressesDefaultConfig(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesExternalConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "external"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	agent.networkType = "external"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	if agent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1247,18 +1245,17 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses_without_ports.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "external"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	agent.networkType = "external"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	if agent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1269,18 +1266,17 @@ func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 func TestAlternateAddressesInvalidConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
-	initialNetworkType := globalAgent.networkType
-	globalAgent.networkType = "invalid"
-	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent := Agent{}
+	agent.networkType = "invalid"
+	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
 
-	if globalAgent.networkType != "invalid" {
-		t.Fatalf("Expected agent networkType to be invalid, was %s", globalAgent.networkType)
+	if agent.networkType != "invalid" {
+		t.Fatalf("Expected agent networkType to be invalid, was %s", agent.networkType)
 	}
 
 	if cfg.IsValid() {
@@ -1289,7 +1285,6 @@ func TestAlternateAddressesInvalidConfig(t *testing.T) {
 	if len(cfg.kvServerList) != 0 {
 		t.Fatalf("Expected kvServerList to be empty, had %d items", len(cfg.kvServerList))
 	}
-	globalAgent.networkType = initialNetworkType
 }
 
 type testLogger struct {
@@ -1315,10 +1310,6 @@ func createTestLogger() *testLogger {
 func TestMain(m *testing.M) {
 	initialGoroutineCount := runtime.NumGoroutine()
 
-	// Set up our special logger which logs the log level count
-	logger := createTestLogger()
-	SetLogger(logger)
-
 	memdservers := flag.String("memdservers", "", "Comma separated list of connection strings to connect to for real memd servers")
 	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
 	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
@@ -1329,7 +1320,15 @@ func TestMain(m *testing.M) {
 	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
 	collectionName := flag.String("collection-name", "", "The collection name to use to test with collections")
 	collectionsDcp := flag.Bool("dcp-collections", false, "Whether or not to use collections for dcp tests")
+	disableLogger := flag.Bool("disable-logger", false, "Whether or not to disable the logger")
 	flag.Parse()
+
+	var logger *testLogger
+	if !*disableLogger {
+		// Set up our special logger which logs the log level count
+		logger = createTestLogger()
+		SetLogger(logger)
+	}
 
 	if (*memdservers == "") != (*httpservers == "") {
 		panic("If one of memdservers or httpservers is present then both must be present")
@@ -1492,15 +1491,17 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	log.Printf("Log Messages Emitted:")
-	for i := 0; i < int(LogMaxVerbosity); i++ {
-		log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
-	}
+	if logger != nil {
+		log.Printf("Log Messages Emitted:")
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
+		}
 
-	abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
-	if abnormalLogCount > 0 {
-		log.Printf("Detected unexpected logging, failing")
-		result = 1
+		abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
+		if abnormalLogCount > 0 {
+			log.Printf("Detected unexpected logging, failing")
+			result = 1
+		}
 	}
 
 	// Loop for at most a second checking for goroutines leaks, this gives any HTTP goroutines time to shutdown
