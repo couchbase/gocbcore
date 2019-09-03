@@ -251,6 +251,9 @@ const (
 	// time and the result is ambiguous.
 	StatusSyncWriteAmbiguous = StatusCode(0xa3)
 
+	// StatusSyncWriteReCommitInProgress occurs when an SyncWrite is being recommitted.
+	StatusSyncWriteReCommitInProgress = StatusCode(0xa4)
+
 	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
 	StatusSubDocPathNotFound = StatusCode(0xc0)

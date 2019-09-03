@@ -467,6 +467,9 @@ var (
 	// time and the result is ambiguous.
 	ErrSyncWriteAmbiguous = newSimpleError(StatusSyncWriteAmbiguous)
 
+	// ErrSyncWriteReCommitInProgress occurs when an SyncWrite is being recommitted.
+	ErrSyncWriteReCommitInProgress = newSimpleError(StatusSyncWriteReCommitInProgress)
+
 	// ErrSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
 	ErrSubDocPathNotFound = newSimpleError(StatusSubDocPathNotFound)
@@ -620,6 +623,8 @@ func findMemdError(code StatusCode) (bool, error) {
 		return true, ErrSyncWriteInProgess
 	case StatusSyncWriteAmbiguous:
 		return true, ErrSyncWriteAmbiguous
+	case StatusSyncWriteReCommitInProgress:
+		return true, ErrSyncWriteReCommitInProgress
 	case StatusSubDocPathNotFound:
 		return true, ErrSubDocPathNotFound
 	case StatusSubDocPathMismatch:
