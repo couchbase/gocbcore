@@ -118,7 +118,11 @@ func (agent *Agent) OpenStream(vbId uint16, flags DcpStreamAddFlag, vbUuid VbUui
 
 		if err != nil {
 			req.Cancel()
-			evtHandler.End(vbId, filter.StreamId, err)
+			streamId := noStreamId
+			if filter != nil {
+				streamId = filter.StreamId
+			}
+			evtHandler.End(vbId, streamId, err)
 			return
 		}
 
