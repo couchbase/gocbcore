@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func (so *testObserver) Mutation(seqNo, revNo uint64, flags, expiry, lockTime ui
 		value: value,
 		cas:   cas,
 	}
-	so.mutationsRcvd++
+	atomic.AddInt32(&so.mutationsRcvd, 1)
 	so.mlock.Unlock()
 }
 
@@ -71,7 +72,7 @@ func (so *testObserver) Deletion(seqNo, revNo, cas uint64, datatype uint8, vbId 
 		value: value,
 		cas:   cas,
 	}
-	so.deletionsRcvd++
+	atomic.AddInt32(&so.deletionsRcvd, 1)
 	so.dlock.Unlock()
 }
 
@@ -87,7 +88,7 @@ func (so *testObserver) Expiration(seqNo, revNo, cas uint64, vbId uint16, collec
 		key: key,
 		cas: cas,
 	}
-	so.expirationsRcvd++
+	atomic.AddInt32(&so.expirationsRcvd, 1)
 	so.elock.Unlock()
 }
 
@@ -285,7 +286,7 @@ func waitForChanges(metric *int32, numChanges int) error {
 		case <-timer:
 			return errors.New("timeout waiting for changes")
 		default:
-			if *metric == int32(numChanges) {
+			if atomic.LoadInt32(metric) == int32(numChanges) {
 				return nil
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -296,6 +297,7 @@ func waitForChanges(metric *int32, numChanges int) error {
 func openStreams(t *testing.T, observer *testObserver, filter *StreamFilter) {
 	var g errgroup.Group
 	var ops []PendingOp
+	lock := sync.Mutex{}
 	for i := 0; i < globalDCPAgent.numVbuckets; i++ {
 		vbucket := i // https://golang.org/doc/faq#closures_and_goroutines
 		g.Go(func() error {
@@ -307,7 +309,9 @@ func openStreams(t *testing.T, observer *testObserver, filter *StreamFilter) {
 			if err != nil {
 				return err
 			}
+			lock.Lock()
 			ops = append(ops, op)
+			lock.Unlock()
 
 			return <-waitCh
 		})
