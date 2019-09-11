@@ -499,11 +499,6 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 }
 
 // CreateAgent creates an agent for performing normal operations.
-// This will create a new agent and attempt to connect it to the cluster,
-// if connecting fails (for reasons other than auth or invalid bucket) then
-// this function will NOT return an error and will instead continue to
-// retry the connection asynchronously. The PingKvEx command can be used
-// verify if the connection was successful.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
 	initFn := func(client *syncClient, deadline time.Time, agent *Agent) error {
 		return nil
@@ -513,11 +508,6 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
-// This will create a new agent and attempt to connect it to the cluster,
-// if connecting fails (for reasons other than auth or invalid bucket) then
-// this function will NOT return an error and will instead continue to
-// retry the connection asynchronously. The PingKvEx command can be used
-// verify if the connection was successful.
 func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
@@ -732,7 +722,6 @@ func (agent *Agent) buildAuthHandler(client AuthClient, authMechanisms []AuthMec
 }
 
 func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechanisms []AuthMechanism, deadline time.Time) error {
-	cccpUnsupported := false
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s for %p", thisHostPort, agent)
 
@@ -790,7 +779,6 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		if err != nil {
 			logDebugf("Failed to retrieve CCCP config %p/%s. %v", agent, thisHostPort, err)
 			agent.disconnectClient(client)
-			cccpUnsupported = true
 			continue
 		}
 
@@ -811,7 +799,6 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		if !bk.supportsCccp() {
 			logDebugf("Bucket does not support CCCP %p/%s", agent, thisHostPort)
 			agent.disconnectClient(client)
-			cccpUnsupported = true
 			break
 		}
 
@@ -848,20 +835,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		return nil
 	}
 
-	if cccpUnsupported {
-		// We should only hit here if we're connecting to a memcached bucket.
-		return agent.tryStartHttpLooper(httpAddrs)
-	}
-
-	// We failed to connect so start a mux with the provided addresses and keep trying to connect.
-	mux := agent.newMemdClientMux(memdAddrs)
-	agent.routingInfo.Update(nil, &routeData{
-		revId:     -1,
-		clientMux: mux,
-	})
-	mux.Start()
-
-	return nil
+	return agent.tryStartHttpLooper(httpAddrs)
 }
 
 func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []AuthMechanism, deadline time.Time) error {
@@ -1594,16 +1568,4 @@ func (agent *Agent) newMemdClientMux(hostPorts []string) *memdClientMux {
 	}
 
 	return newMemdClientMux(hostPorts, agent.kvPoolSize, agent.maxQueueSize, agent.slowDialMemdClient)
-}
-
-// HasRetrievedConfig verifies that the agent has, at some point in its lifetime, been able to connect to the cluster
-// at some point and has managed to retrieve a cluster config. It does not necessarily mean that it still
-// connected right now.
-func (agent *Agent) HasRetrievedConfig() bool {
-	eps := agent.MgmtEps()
-	if eps == nil || len(eps) == 0 {
-		return false
-	}
-
-	return true
 }
