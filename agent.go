@@ -162,6 +162,29 @@ type AgentConfig struct {
 	EnableStreamId bool
 }
 
+func (config *AgentConfig) redacted() interface{} {
+	newConfig := AgentConfig{}
+	newConfig = *config
+	if isLogRedactionLevelFull() {
+		// The slices here are still pointing at config's underlying arrays
+		// so we need to make them not do that.
+		newConfig.HttpAddrs = append([]string(nil), newConfig.HttpAddrs...)
+		for i, addr := range newConfig.HttpAddrs {
+			newConfig.HttpAddrs[i] = redactSystemData(addr)
+		}
+		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
+		for i, addr := range newConfig.MemdAddrs {
+			newConfig.MemdAddrs[i] = redactSystemData(addr)
+		}
+
+		if newConfig.BucketName != "" {
+			newConfig.BucketName = redactMetaData(newConfig.BucketName)
+		}
+	}
+
+	return newConfig
+}
+
 // FromConnStr populates the AgentConfig with information from a
 // Couchbase Connection String.
 // Supported options are:
@@ -555,8 +578,8 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	// TODO(brett19): Put all configurable options in the AgentConfig
 
-	logDebugf("SDK Version: gocb/%s", goCbCoreVersionStr)
-	logDebugf("Creating new agent: %+v", config)
+	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
+	logInfof("Creating new agent: %+v", config)
 
 	httpTransport := &http.Transport{
 		TLSClientConfig: config.TlsConfig,

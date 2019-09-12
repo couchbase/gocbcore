@@ -22,6 +22,18 @@ const (
 	LogMaxVerbosity
 )
 
+func redactUserData(v interface{}) string {
+	return fmt.Sprintf("<ud>%v<ud>", v)
+}
+
+func redactMetaData(v interface{}) string {
+	return fmt.Sprintf("<md>%v<md>", v)
+}
+
+func redactSystemData(v interface{}) string {
+	return fmt.Sprintf("<sd>%v<sd>", v)
+}
+
 // LogRedactLevel specifies the degree with which to redact the logs.
 type LogRedactLevel int
 
@@ -130,8 +142,21 @@ func SetLogger(logger Logger) {
 	globalLogger = logger
 }
 
+type redactableLogValue interface {
+	redacted() interface{}
+}
+
 func logExf(level LogLevel, offset int, format string, v ...interface{}) {
 	if globalLogger != nil {
+		if level <= LogInfo && !isLogRedactionLevelNone() {
+			// We only redact at info level or below.
+			for i, iv := range v {
+				if redactable, ok := iv.(redactableLogValue); ok {
+					v[i] = redactable.redacted()
+				}
+			}
+		}
+
 		err := globalLogger.Log(level, offset+1, format, v...)
 		if err != nil {
 			log.Printf("Logger error occurred (%s)\n", err)
@@ -153,6 +178,10 @@ func logWarnf(format string, v ...interface{}) {
 
 func logErrorf(format string, v ...interface{}) {
 	logExf(LogError, 1, format, v...)
+}
+
+func logInfof(format string, v ...interface{}) {
+	logExf(LogInfo, 1, format, v...)
 }
 
 func reindentLog(indent, message string) string {
