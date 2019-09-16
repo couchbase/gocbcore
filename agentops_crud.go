@@ -2,10 +2,13 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"regexp"
 	"sync"
 
 	"github.com/opentracing/opentracing-go"
 )
+
+var vbTakeoverRegex = regexp.MustCompile(`dcp-vbtakeover (\d+$|\d+ \S+)`)
 
 // GetOptions encapsulates the parameters for a GetEx operation.
 type GetOptions struct {
@@ -893,8 +896,12 @@ type SingleServerStats struct {
 }
 
 // StatsOptions encapsulates the parameters for a StatsEx operation.
+// The optional 'Vbid' member is ignored for all stat calls which do not
+// need to be sent to a specific node in the cluster. Currently, the only
+// call that must be sent to a specific node is 'dcp-vbtakeover'.
 type StatsOptions struct {
 	Key          string
+	Vbid         uint16
 	TraceContext opentracing.SpanContext
 }
 
@@ -925,6 +932,11 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 
 	op := new(multiPendingOp)
 	expected := uint32(config.clientMux.NumPipelines())
+
+	isVBTakeover := vbTakeoverRegex.MatchString(opts.Key)
+	if isVBTakeover {
+		expected = 1
+	}
 
 	opHandledLocked := func() {
 		completed := op.IncrementCompletedOps()
@@ -988,10 +1000,22 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 		curStats.Stats[string(resp.Key)] = string(resp.Value)
 	}
 
-	for serverIdx := 0; serverIdx < config.clientMux.NumPipelines(); serverIdx++ {
-		pipeline := config.clientMux.GetPipeline(serverIdx)
-		serverAddress := pipeline.Address()
+	pipelines := make([]*memdPipeline, 0)
+	if isVBTakeover {
+		srvIdx, err := config.vbMap.NodeByVbucket(opts.Vbid, 0)
+		if err != nil {
+			cb(nil, err)
+		}
 
+		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
+	} else {
+		for i := 0; i < config.clientMux.NumPipelines(); i++ {
+			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
+		}
+	}
+
+	for _, pipeline := range pipelines {
+		serverAddress := pipeline.Address()
 		req := &memdQRequest{
 			memdPacket: memdPacket{
 				Magic:    reqMagic,
