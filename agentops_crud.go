@@ -375,12 +375,10 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 
 // TouchOptions encapsulates the parameters for a TouchEx operation.
 type TouchOptions struct {
-	Key                    []byte
-	Expiry                 uint32
-	CollectionName         string
-	ScopeName              string
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	Key            []byte
+	Expiry         uint32
+	CollectionName string
+	ScopeName      string
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -415,16 +413,6 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
