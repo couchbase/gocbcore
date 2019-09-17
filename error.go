@@ -454,6 +454,9 @@ var (
 	// ErrNonZeroCas occurs when an operation that require a CAS value of 0 is used with a non-zero value.
 	ErrNonZeroCas = errors.New("Cas value must be 0.")
 
+	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
+	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
