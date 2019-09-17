@@ -895,13 +895,21 @@ type SingleServerStats struct {
 	Error error
 }
 
+// StatsTarget is used for providing a specific target to the StatsEx operation.
+type StatsTarget interface {
+}
+
+// VBucketIdStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
+type VBucketIdStatsTarget struct {
+	Vbid uint16
+}
+
 // StatsOptions encapsulates the parameters for a StatsEx operation.
-// The optional 'Vbid' member is ignored for all stat calls which do not
-// need to be sent to a specific node in the cluster. Currently, the only
-// call that must be sent to a specific node is 'dcp-vbtakeover'.
 type StatsOptions struct {
-	Key          string
-	Vbid         uint16
+	Key string
+	// Target indicates that something specific should be targeted by the operation. If left nil
+	// then the stats command will be sent to all servers.
+	Target       StatsTarget
 	TraceContext opentracing.SpanContext
 }
 
@@ -931,11 +939,28 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 	var statsLock sync.Mutex
 
 	op := new(multiPendingOp)
-	expected := uint32(config.clientMux.NumPipelines())
+	var expected uint32
 
-	isVBTakeover := vbTakeoverRegex.MatchString(opts.Key)
-	if isVBTakeover {
+	pipelines := make([]*memdPipeline, 0)
+
+	switch target := opts.Target.(type) {
+	case nil:
+		expected = uint32(config.clientMux.NumPipelines())
+
+		for i := 0; i < config.clientMux.NumPipelines(); i++ {
+			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
+		}
+	case VBucketIdStatsTarget:
 		expected = 1
+
+		srvIdx, err := config.vbMap.NodeByVbucket(target.Vbid, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
+	default:
+		return nil, ErrUnsupportedStatsTarget
 	}
 
 	opHandledLocked := func() {
@@ -998,20 +1023,6 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 
 		// Add the stat for this server to the list of stats.
 		curStats.Stats[string(resp.Key)] = string(resp.Value)
-	}
-
-	pipelines := make([]*memdPipeline, 0)
-	if isVBTakeover {
-		srvIdx, err := config.vbMap.NodeByVbucket(opts.Vbid, 0)
-		if err != nil {
-			cb(nil, err)
-		}
-
-		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
-	} else {
-		for i := 0; i < config.clientMux.NumPipelines(); i++ {
-			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
-		}
 	}
 
 	for _, pipeline := range pipelines {
