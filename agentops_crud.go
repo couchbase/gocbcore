@@ -986,9 +986,21 @@ type SingleServerStats struct {
 	Error error
 }
 
+// StatsTarget is used for providing a specific target to the StatsEx operation.
+type StatsTarget interface {
+}
+
+// VBucketIdStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
+type VBucketIdStatsTarget struct {
+	Vbid uint16
+}
+
 // StatsOptions encapsulates the parameters for a StatsEx operation.
 type StatsOptions struct {
 	Key string
+	// Target indicates that something specific should be targeted by the operation. If left nil
+	// then the stats command will be sent to all servers.
+	Target StatsTarget
 }
 
 // StatsResult encapsulates the result of a StatsEx operation.
@@ -1014,7 +1026,29 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 	var statsLock sync.Mutex
 
 	op := new(multiPendingOp)
-	expected := uint32(config.clientMux.NumPipelines())
+	var expected uint32
+
+	pipelines := make([]*memdPipeline, 0)
+
+	switch target := opts.Target.(type) {
+	case nil:
+		expected = uint32(config.clientMux.NumPipelines())
+
+		for i := 0; i < config.clientMux.NumPipelines(); i++ {
+			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
+		}
+	case VBucketIdStatsTarget:
+		expected = 1
+
+		srvIdx, err := config.vbMap.NodeByVbucket(target.Vbid, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
+	default:
+		return nil, ErrUnsupportedStatsTarget
+	}
 
 	opHandledLocked := func() {
 		completed := op.IncrementCompletedOps()
@@ -1077,8 +1111,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 		curStats.Stats[string(resp.Key)] = string(resp.Value)
 	}
 
-	for serverIdx := 0; serverIdx < config.clientMux.NumPipelines(); serverIdx++ {
-		pipeline := config.clientMux.GetPipeline(serverIdx)
+	for _, pipeline := range pipelines {
 		serverAddress := pipeline.Address()
 
 		req := &memdQRequest{

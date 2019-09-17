@@ -347,6 +347,9 @@ var (
 	// ErrBucketAlreadySelected occurs when SelectBucket is called when a bucket is already selected..
 	ErrBucketAlreadySelected = errors.New("Bucket already selected.")
 
+	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
+	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
