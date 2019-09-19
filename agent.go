@@ -587,6 +587,22 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		networkType: config.NetworkType,
 		httpCli: &http.Client{
 			Transport: httpTransport,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// All that we're doing here is setting auth on any redirects.
+				// For that reason we can just pull it off the oldest (first) request.
+				if len(via) >= 10 {
+					// Just duplicate the default behaviour for maximum redirects.
+					return errors.New("stopped after 10 redirects")
+				}
+
+				oldest := via[0]
+				auth := oldest.Header.Get("Authorization")
+				if auth != "" {
+					req.Header.Set("Authorization", auth)
+				}
+
+				return nil
+			},
 		},
 		closeNotify:           make(chan struct{}),
 		useZombieLogger:       config.UseZombieLogger,
