@@ -10,6 +10,7 @@ type GetOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetResult encapsulates the result of a GetEx operation.
@@ -47,13 +48,14 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGet,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdGet,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       nil,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -69,6 +71,7 @@ type GetAndTouchOptions struct {
 	Expiry         uint32
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -110,13 +113,14 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGAT,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdGAT,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -132,6 +136,7 @@ type GetAndLockOptions struct {
 	LockTime       uint32
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
@@ -173,13 +178,14 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGetLocked,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdGetLocked,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -194,6 +200,7 @@ type GetAnyReplicaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetOneReplicaOptions encapsulates the parameters for a GetOneReplicaEx operation.
@@ -201,6 +208,7 @@ type GetOneReplicaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 	ReplicaIdx     int
 }
 
@@ -240,13 +248,14 @@ func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCall
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGetReplica,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdGetReplica,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       nil,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		ReplicaIdx:     opts.ReplicaIdx,
@@ -356,6 +365,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 			ReplicaIdx:     repIdx,
 			CollectionName: opts.CollectionName,
 			ScopeName:      opts.ScopeName,
+			CollectionId:   opts.CollectionId,
 		}, handler)
 
 		resultLock.Lock()
@@ -379,6 +389,7 @@ type TouchOptions struct {
 	Expiry         uint32
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -418,14 +429,15 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdTouch,
-			Datatype:    0,
-			Cas:         0,
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       nil,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       cmdTouch,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        nil,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -441,6 +453,7 @@ type UnlockOptions struct {
 	Cas            Cas
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // UnlockResult encapsulates the result of a UnlockEx operation.
@@ -475,13 +488,14 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdUnlockKey,
-			Datatype: 0,
-			Cas:      uint64(opts.Cas),
-			Extras:   nil,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdUnlockKey,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       nil,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -499,6 +513,7 @@ type DeleteOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // DeleteResult encapsulates the result of a DeleteEx operation.
@@ -545,14 +560,15 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdDelete,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      nil,
-			Key:         opts.Key,
-			Value:       nil,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       cmdDelete,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       nil,
+			Key:          opts.Key,
+			Value:        nil,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -573,6 +589,7 @@ type storeOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
@@ -621,14 +638,15 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      opcode,
-			Datatype:    opts.Datatype,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       opts.Value,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       opcode,
+			Datatype:     opts.Datatype,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        opts.Value,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -649,6 +667,7 @@ type AddOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // AddEx stores a document as long as it does not already exist.
@@ -664,6 +683,7 @@ func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error
 		Expiry:                 opts.Expiry,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
+		CollectionId:           opts.CollectionId,
 	}, cb)
 }
 
@@ -678,6 +698,7 @@ type SetOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // SetEx stores a document.
@@ -693,6 +714,7 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 		Expiry:                 opts.Expiry,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
+		CollectionId:           opts.CollectionId,
 	}, cb)
 }
 
@@ -708,6 +730,7 @@ type ReplaceOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
@@ -723,6 +746,7 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 		Expiry:                 opts.Expiry,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
+		CollectionId:           opts.CollectionId,
 	}, cb)
 }
 
@@ -735,6 +759,7 @@ type AdjoinOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
@@ -780,14 +805,15 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      opcode,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      nil,
-			Key:         opts.Key,
-			Value:       opts.Value,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       opcode,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       nil,
+			Key:          opts.Key,
+			Value:        opts.Value,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -818,6 +844,7 @@ type CounterOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
@@ -886,14 +913,15 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      opcode,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       nil,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       opcode,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        nil,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,

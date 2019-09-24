@@ -312,8 +312,12 @@ func (cid *collectionIdCache) dispatch(req *memdQRequest) error {
 }
 
 func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error) {
+	noCollection := req.CollectionName == "" && req.ScopeName == ""
+	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
+	collectionIdPresent := req.CollectionID > 0
+
 	if !cidMgr.agent.HasCollectionsSupport() {
-		if (req.CollectionName != "" || req.ScopeName != "") && (req.CollectionName != "_default" || req.ScopeName != "_default") {
+		if !(noCollection || defaultCollection) || collectionIdPresent {
 			return nil, ErrCollectionsUnsupported
 		}
 		err := cidMgr.agent.dispatchDirect(req)
@@ -324,19 +328,7 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error
 		return req, nil
 	}
 
-	// some operations do not support cid
-	if req.CollectionName == "" && req.ScopeName == "" {
-		err := cidMgr.agent.dispatchDirect(req)
-		if err != nil {
-			return nil, err
-		}
-
-		return req, nil
-	}
-
-	if req.CollectionName == "_default" && req.ScopeName == "_default" {
-		req.CollectionID = 0
-
+	if noCollection || defaultCollection || collectionIdPresent {
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {
 			return nil, err

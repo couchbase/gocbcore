@@ -10,6 +10,7 @@ type ObserveOptions struct {
 	ReplicaIdx     int
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // ObserveResult encapsulates the result of a ObserveEx operation.
@@ -62,14 +63,15 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdObserve,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    valueBuf,
-			Vbucket:  vbId,
+			Magic:        reqMagic,
+			Opcode:       cmdObserve,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       nil,
+			Key:          nil,
+			Value:        valueBuf,
+			Vbucket:      vbId,
+			CollectionID: opts.CollectionId,
 		},
 		ReplicaIdx:     opts.ReplicaIdx,
 		Callback:       handler,

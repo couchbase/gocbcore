@@ -9,6 +9,7 @@ type GetMetaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetMetaResult encapsulates the result of a GetMetaEx operation.
@@ -60,13 +61,14 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGetMeta,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    nil,
+			Magic:        reqMagic,
+			Opcode:       cmdGetMeta,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        nil,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -89,6 +91,7 @@ type SetMetaOptions struct {
 	RevNo          uint64
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // SetMetaResult encapsulates the result of a SetMetaEx operation.
@@ -131,13 +134,14 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 	copy(extraBuf[30:], opts.Extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSetMeta,
-			Datatype: opts.Datatype,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    opts.Value,
+			Magic:        reqMagic,
+			Opcode:       cmdSetMeta,
+			Datatype:     opts.Datatype,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        opts.Value,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -160,6 +164,7 @@ type DeleteMetaOptions struct {
 	RevNo          uint64
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
@@ -202,13 +207,14 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 	copy(extraBuf[30:], opts.Extra)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdDelMeta,
-			Datatype: opts.Datatype,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    opts.Value,
+			Magic:        reqMagic,
+			Opcode:       cmdDelMeta,
+			Datatype:     opts.Datatype,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        opts.Value,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,

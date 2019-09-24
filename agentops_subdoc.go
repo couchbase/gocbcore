@@ -17,6 +17,7 @@ type GetInOptions struct {
 	Flags          SubdocFlag
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // GetInResult encapsulates the result of a GetInEx operation.
@@ -50,13 +51,14 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocGet,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    pathBytes,
+			Magic:        reqMagic,
+			Opcode:       cmdSubDocGet,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        pathBytes,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -73,6 +75,7 @@ type ExistsInOptions struct {
 	Flags          SubdocFlag
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // ExistsInResult encapsulates the result of a ExistsInEx operation.
@@ -104,13 +107,14 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocExists,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    pathBytes,
+			Magic:        reqMagic,
+			Opcode:       cmdSubDocExists,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        pathBytes,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -133,6 +137,7 @@ type StoreInOptions struct {
 	ScopeName              string
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // StoreInResult encapsulates the result of a SetInEx, AddInEx, ReplaceInEx,
@@ -196,14 +201,15 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      opcode,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       valueBuf,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       opcode,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        valueBuf,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -316,14 +322,15 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdSubDocCounter,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       valueBuf,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       cmdSubDocCounter,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        valueBuf,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -344,6 +351,7 @@ type DeleteInOptions struct {
 	ScopeName              string
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // DeleteInResult encapsulates the result of a DeleteInEx operation.
@@ -401,14 +409,15 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdSubDocDelete,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       pathBytes,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       cmdSubDocDelete,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        pathBytes,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -434,6 +443,7 @@ type LookupInOptions struct {
 	Ops            []SubDocOp
 	CollectionName string
 	ScopeName      string
+	CollectionId   uint32
 }
 
 // LookupInResult encapsulates the result of a LookupInEx operation.
@@ -521,13 +531,14 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdSubDocMultiLookup,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      opts.Key,
-			Value:    valueBuf,
+			Magic:        reqMagic,
+			Opcode:       cmdSubDocMultiLookup,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        valueBuf,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
@@ -548,6 +559,7 @@ type MutateInOptions struct {
 	ScopeName              string
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
+	CollectionId           uint32
 }
 
 // MutateInResult encapsulates the result of a MutateInEx operation.
@@ -676,14 +688,15 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 
 	req := &memdQRequest{
 		memdPacket: memdPacket{
-			Magic:       magic,
-			Opcode:      cmdSubDocMultiMutation,
-			Datatype:    0,
-			Cas:         uint64(opts.Cas),
-			Extras:      extraBuf,
-			Key:         opts.Key,
-			Value:       valueBuf,
-			FrameExtras: flexibleFrameExtras,
+			Magic:        magic,
+			Opcode:       cmdSubDocMultiMutation,
+			Datatype:     0,
+			Cas:          uint64(opts.Cas),
+			Extras:       extraBuf,
+			Key:          opts.Key,
+			Value:        valueBuf,
+			FrameExtras:  flexibleFrameExtras,
+			CollectionID: opts.CollectionId,
 		},
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
