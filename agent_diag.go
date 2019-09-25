@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -146,6 +147,8 @@ type MemdConnInfo struct {
 	LocalAddr    string
 	RemoteAddr   string
 	LastActivity time.Time
+	Scope        string
+	Id           string
 }
 
 // DiagnosticInfo is returned by the Diagnostics method and includes
@@ -168,16 +171,16 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 		var conns []MemdConnInfo
 
 		for _, pipeline := range config.clientMux.pipelines {
-			remoteAddr := pipeline.address
-
 			pipeline.clientsLock.Lock()
 			for _, pipecli := range pipeline.clients {
 				localAddr := ""
+				remoteAddr := ""
 				var lastActivity time.Time
 
 				pipecli.lock.Lock()
 				if pipecli.client != nil {
-					localAddr = pipecli.client.Address()
+					localAddr = pipecli.client.LocalAddress()
+					remoteAddr = pipecli.client.Address()
 					lastActivityUs := atomic.LoadInt64(&pipecli.client.lastActivity)
 					if lastActivityUs != 0 {
 						lastActivity = time.Unix(0, lastActivityUs)
@@ -185,11 +188,16 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 				}
 				pipecli.lock.Unlock()
 
-				conns = append(conns, MemdConnInfo{
+				conn := MemdConnInfo{
 					LocalAddr:    localAddr,
 					RemoteAddr:   remoteAddr,
 					LastActivity: lastActivity,
-				})
+					Id:           fmt.Sprintf("%p", pipecli),
+				}
+				if agent.bucketName != "" {
+					conn.Scope = redactMetaData(agent.bucketName)
+				}
+				conns = append(conns, conn)
 			}
 			pipeline.clientsLock.Unlock()
 		}

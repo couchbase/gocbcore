@@ -375,6 +375,10 @@ func (client *memdClient) run() {
 	}()
 }
 
+func (client *memdClient) LocalAddress() string {
+	return client.conn.LocalAddr()
+}
+
 func (client *memdClient) Close() error {
 	client.lock.Lock()
 	client.closed = true
