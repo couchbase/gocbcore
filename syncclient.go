@@ -100,9 +100,7 @@ type BytesAndError struct {
 	Bytes []byte
 }
 
-func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time) (chan BytesAndError, error) {
-	completedCh := make(chan BytesAndError, 1)
-
+func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time, cb func(b []byte, err error)) error {
 	signal := make(chan BytesAndError)
 	qreq := memdQRequest{
 		memdPacket: *req,
@@ -118,7 +116,7 @@ func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time) (c
 
 	err := client.client.SendRequest(&qreq)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
@@ -126,30 +124,30 @@ func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time) (c
 		select {
 		case resp := <-signal:
 			ReleaseTimer(timeoutTmr, false)
-			completedCh <- resp
+			cb(resp.Bytes, resp.Err)
 			return
 		case <-timeoutTmr.C:
 			ReleaseTimer(timeoutTmr, true)
 			if !qreq.Cancel() {
 				resp := <-signal
-				completedCh <- resp
+				cb(resp.Bytes, resp.Err)
 				return
 			}
-			completedCh <- BytesAndError{Err: ErrTimeout}
+			cb(nil, ErrTimeout)
 		}
 	}()
 
-	return completedCh, nil
+	return nil
 }
 
-func (client *syncClient) doAsyncOp(cmd commandCode, k, v, e []byte, deadline time.Time) (chan BytesAndError, error) {
+func (client *syncClient) doAsyncOp(cmd commandCode, k, v, e []byte, deadline time.Time, cb func(b []byte, err error)) error {
 	return client.doAsyncRequest(&memdPacket{
 		Magic:  reqMagic,
 		Opcode: cmd,
 		Key:    k,
 		Value:  v,
 		Extras: e,
-	}, deadline)
+	}, deadline, cb)
 }
 
 func (client *syncClient) ExecDcpControl(key string, value string, deadline time.Time) error {
@@ -176,30 +174,27 @@ func (client *syncClient) ExecHello(clientId string, features []HelloFeature, de
 	}
 
 	completedCh := make(chan ExecHelloResponse)
-	opCh, err := client.doAsyncOp(cmdHello, []byte(clientId), featureBytes, nil, deadline)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		resp := <-opCh
-		if resp.Err != nil {
+	err := client.doAsyncOp(cmdHello, []byte(clientId), featureBytes, nil, deadline, func(b []byte, err error) {
+		if err != nil {
 			completedCh <- ExecHelloResponse{
-				Err: resp.Err,
+				Err: err,
 			}
 			return
 		}
 
 		var srvFeatures []HelloFeature
-		for i := 0; i < len(resp.Bytes); i += 2 {
-			feature := binary.BigEndian.Uint16(resp.Bytes[i:])
+		for i := 0; i < len(b); i += 2 {
+			feature := binary.BigEndian.Uint16(b[i:])
 			srvFeatures = append(srvFeatures, HelloFeature(feature))
 		}
 
 		completedCh <- ExecHelloResponse{
 			SrvFeatures: srvFeatures,
 		}
-	}()
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return completedCh, nil
 }
@@ -209,9 +204,26 @@ func (client *syncClient) ExecGetClusterConfig(deadline time.Time) ([]byte, erro
 }
 
 func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan BytesAndError, error) {
+	completedCh := make(chan BytesAndError, 1)
 	valueBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(valueBuf, version)
-	return client.doAsyncOp(cmdGetErrorMap, nil, valueBuf, nil, deadline)
+	err := client.doAsyncOp(cmdGetErrorMap, nil, valueBuf, nil, deadline, func(b []byte, err error) {
+		if err != nil {
+			completedCh <- BytesAndError{
+				Err: err,
+			}
+			return
+		}
+
+		completedCh <- BytesAndError{
+			Bytes: b,
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
 }
 
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
@@ -280,45 +292,70 @@ func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.T
 	return nil
 }
 
-func (client *syncClient) SaslListMechs(deadline time.Time) (chan SaslListMechsCompleted, error) {
-	completedCh := make(chan SaslListMechsCompleted)
-
-	opCh, err := client.doAsyncOp(cmdSASLListMechs, nil, nil, nil, deadline)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		resp := <-opCh
-		if resp.Err != nil {
-			completedCh <- SaslListMechsCompleted{
-				Err: resp.Err,
-			}
+func (client *syncClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
+	err := client.doAsyncOp(cmdSASLListMechs, nil, nil, nil, deadline, func(b []byte, err error) {
+		if err != nil {
+			cb(nil, err)
 			return
 		}
 
-		mechs := strings.Split(string(resp.Bytes), " ")
+		mechs := strings.Split(string(b), " ")
 		var authMechs []AuthMechanism
 		for _, mech := range mechs {
 			authMechs = append(authMechs, AuthMechanism(mech))
 		}
 
-		completedCh <- SaslListMechsCompleted{
-			Mechs: authMechs,
+		cb(authMechs, nil)
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *syncClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
+	err := client.doAsyncOp(cmdSASLAuth, k, v, nil, deadline, cb)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *syncClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
+	err := client.doAsyncOp(cmdSASLStep, k, v, nil, deadline, func(b []byte, err error) {
+		if err != nil {
+			cb(err)
+			return
 		}
-	}()
 
-	return completedCh, nil
-}
+		cb(nil)
+	})
+	if err != nil {
+		return err
+	}
 
-func (client *syncClient) SaslAuth(k, v []byte, deadline time.Time) (chan BytesAndError, error) {
-	return client.doAsyncOp(cmdSASLAuth, k, v, nil, deadline)
-}
-
-func (client *syncClient) SaslStep(k, v []byte, deadline time.Time) (chan BytesAndError, error) {
-	return client.doAsyncOp(cmdSASLStep, k, v, nil, deadline)
+	return nil
 }
 
 func (client *syncClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
-	return client.doAsyncOp(cmdSelectBucket, b, nil, nil, deadline)
+	completedCh := make(chan BytesAndError, 1)
+	err := client.doAsyncOp(cmdSelectBucket, b, nil, nil, deadline, func(b []byte, err error) {
+		if err != nil {
+			completedCh <- BytesAndError{
+				Err: err,
+			}
+			return
+		}
+
+		completedCh <- BytesAndError{
+			Bytes: b,
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
 }

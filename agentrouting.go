@@ -138,8 +138,17 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 
 	var listMechsCh chan SaslListMechsCompleted
 	if nextAuth != nil {
+		listMechsCh = make(chan SaslListMechsCompleted)
 		// We only need to list mechs if there's more than 1 way to do auth.
-		listMechsCh, err = sclient.SaslListMechs(deadline)
+		err = sclient.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
+			if err != nil {
+				logDebugf("Failed to fetch list auth mechs (%v)", err)
+			}
+			listMechsCh <- SaslListMechsCompleted{
+				Err:   err,
+				Mechs: mechs,
+			}
+		})
 		if err != nil {
 			logDebugf("Failed to execute list auth mechs (%v)", err)
 		}

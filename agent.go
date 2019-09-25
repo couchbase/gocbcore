@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbaselabs/gocbconnstr"
@@ -25,7 +26,7 @@ type Agent struct {
 	clientId             string
 	userString           string
 	auth                 AuthProvider
-	authHandler          AuthFunc
+	authHandler          authFunc
 	bucketName           string
 	bucketLock           sync.Mutex
 	tlsConfig            *tls.Config
@@ -109,10 +110,14 @@ func (agent *Agent) getErrorMap() *kvErrorMap {
 }
 
 // AuthFunc is invoked by the agent to authenticate a client. This function returns two channels to allow for for multi-stage
-// authentication processes (such as SCRAM). The continue channel should be called when further asynchronous bootstrapping
-// requests (such as select bucket) can be considered, if false is sent on the channel then the further requests will not
-// be sent. The completed channel should be called when authentication is completed, containing any error that occurred.
-type AuthFunc func(client AuthClient, deadline time.Time) (completedCh chan BytesAndError, continueCh chan bool, err error)
+// authentication processes (such as SCRAM). The continue callback should be called when further asynchronous bootstrapping
+// requests (such as select bucket) can be sent. The completed callback should be called when authentication is completed,
+// or failed. It should contain any error that occurred. If completed is called before continue then continue will be called
+// first internally, the success value will be determined by whether or not an error is present.
+type AuthFunc func(client AuthClient, deadline time.Time, continueCb func(), completedCb func(error)) error
+
+// authFunc wraps AuthFunc to provide a better to the user.
+type authFunc func(client AuthClient, deadline time.Time) (completedCh chan BytesAndError, continueCh chan bool, err error)
 
 // AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
@@ -604,7 +609,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		userString:  config.UserString,
 		bucketName:  config.BucketName,
 		auth:        config.Auth,
-		authHandler: config.AuthHandler,
 		tlsConfig:   config.TlsConfig,
 		initFn:      initFn,
 		networkType: config.NetworkType,
@@ -654,6 +658,33 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		cachedClients:         make(map[string]*memdClient),
 	}
 	c.cidMgr = newCollectionIdManager(c, maxQueueSize)
+
+	if config.AuthHandler != nil {
+		// If the user has set an auth handler then we wrap it so that it matches the signature we actually
+		// need.
+		c.authHandler = func(client AuthClient, deadline time.Time) (chan BytesAndError, chan bool, error) {
+			continueCh := make(chan bool, 1)
+			completedCh := make(chan BytesAndError, 1)
+			hasContinued := false
+			callErr := config.AuthHandler(client, deadline, func() {
+				continueCh <- true
+			}, func(err error) {
+				if !hasContinued {
+					sendContinue := true
+					if err != nil {
+						sendContinue = false
+					}
+					continueCh <- sendContinue
+				}
+				completedCh <- BytesAndError{Err: err}
+			})
+			if callErr != nil {
+				return nil, nil, callErr
+			}
+
+			return completedCh, continueCh, nil
+		}
+	}
 
 	connectTimeout := 60000 * time.Millisecond
 	if config.ConnectTimeout > 0 {
@@ -741,9 +772,30 @@ func (agent *Agent) buildAuthHandler(client AuthClient, authMechanisms []AuthMec
 	if creds.Username != "" || creds.Password != "" {
 		// If we only have 1 auth mechanism then we've either we've already decided what mechanism to use
 		// or the user has only decided to support 1. Either way we don't need to check what the server supports.
-		getAuthFunc := func(mechanism AuthMechanism, deadline time.Time) AuthFunc {
-			return func(client AuthClient, deadline time.Time) (completedCh chan BytesAndError, continueCh chan bool, err error) {
-				return saslMethod(mechanism, creds.Username, creds.Password, client, deadline)
+		getAuthFunc := func(mechanism AuthMechanism, deadline time.Time) authFunc {
+			return func(client AuthClient, deadline time.Time) (chan BytesAndError, chan bool, error) {
+				continueCh := make(chan bool, 1)
+				completedCh := make(chan BytesAndError, 1)
+				hasContinued := int32(0)
+				callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
+					// hasContinued should never be 1 here but let's guard against it.
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						continueCh <- true
+					}
+				}, func(err error) {
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						sendContinue := true
+						if err != nil {
+							sendContinue = false
+						}
+						continueCh <- sendContinue
+					}
+					completedCh <- BytesAndError{Err: err}
+				})
+				if callErr != nil {
+					return nil, nil, err
+				}
+				return completedCh, continueCh, nil
 			}
 		}
 
