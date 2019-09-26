@@ -12,6 +12,8 @@ type PingResult struct {
 	Endpoint string
 	Error    error
 	Latency  time.Duration
+	Id       string
+	Scope    string
 }
 
 type pingSubOp struct {
@@ -25,6 +27,7 @@ type pingOp struct {
 	remaining int32
 	results   []PingResult
 	callback  PingKvExCallback
+	configRev int64
 }
 
 func (pop *pingOp) Cancel() bool {
@@ -47,7 +50,8 @@ func (pop *pingOp) handledOneLocked() {
 	remaining := atomic.AddInt32(&pop.remaining, -1)
 	if remaining == 0 {
 		pop.callback(&PingKvResult{
-			Services: pop.results,
+			ConfigRev: pop.configRev,
+			Services:  pop.results,
 		}, nil)
 	}
 }
@@ -58,7 +62,8 @@ type PingKvOptions struct {
 
 // PingKvResult encapsulates the result of a PingKvEx operation.
 type PingKvResult struct {
-	Services []PingResult
+	ConfigRev int64
+	Services  []PingResult
 }
 
 // PingKvExCallback is invoked upon completion of a PingKvEx operation.
@@ -75,9 +80,17 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 	op := &pingOp{
 		callback:  cb,
 		remaining: 1,
+		configRev: config.revId,
 	}
 
 	pingStartTime := time.Now()
+
+	bucketName := ""
+	if agent.bucketName != "" {
+		bucketName = redactMetaData(agent.bucketName)
+	}
+
+	addrToId := make(map[string]string)
 
 	kvHandler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		serverAddress := resp.sourceAddr
@@ -85,10 +98,13 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 		pingLatency := time.Now().Sub(pingStartTime)
 
 		op.lock.Lock()
+		id := addrToId[serverAddress]
 		op.results = append(op.results, PingResult{
 			Endpoint: serverAddress,
 			Error:    err,
 			Latency:  pingLatency,
+			Scope:    bucketName,
+			Id:       id,
 		})
 		op.handledOneLocked()
 		op.lock.Unlock()
@@ -114,9 +130,10 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 		if err != nil {
 			op.lock.Lock()
 			op.results = append(op.results, PingResult{
-				Endpoint: serverAddress,
+				Endpoint: redactSystemData(serverAddress),
 				Error:    err,
 				Latency:  0,
+				Scope:    bucketName,
 			})
 			op.lock.Unlock()
 			continue
@@ -128,6 +145,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 			op:       curOp,
 		})
 		atomic.AddInt32(&op.remaining, 1)
+		addrToId[serverAddress] = fmt.Sprintf("%p", pipeline)
 		op.lock.Unlock()
 	}
 
