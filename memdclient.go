@@ -368,6 +368,13 @@ func (client *memdClient) run() {
 				logWarnf("Encountered an unowned request in a client opMap")
 			}
 
+			// Retry the operation, if we successfully requeue it then don't return to the caller
+			// yet. Instead we'll try to resend it once the parent pipeline client has refreshed.
+			retried := client.parent.waitAndRetryOperation(req, SocketCloseInFlightRetryReason)
+			if retried {
+				return
+			}
+
 			req.tryCallback(nil, ErrNetwork)
 		})
 

@@ -101,7 +101,7 @@ func (c *testNode) NotSupportsFeature(feature TestFeatureCode) bool {
 type Signaler struct {
 	t      *testing.T
 	signal chan int
-	op     PendingOp
+	op     CancellablePendingOp
 }
 
 func (s *Signaler) Continue() {
@@ -158,7 +158,7 @@ func (s *Signaler) Wait(waitSecs int) {
 	}
 }
 
-func (s *Signaler) PushOp(op PendingOp, err error) {
+func (s *Signaler) PushOp(op CancellablePendingOp, err error) {
 	if err != nil {
 		s.t.Fatal(err.Error())
 		return

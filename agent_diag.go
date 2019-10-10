@@ -71,7 +71,7 @@ type PingKvExCallback func(*PingKvResult, error)
 
 // PingKvEx pings all of the servers we are connected to and returns
 // a report regarding the pings that were performed.
-func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
+func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (CancellablePendingOp, error) {
 	config := agent.routingInfo.Get()
 	if config == nil {
 		return nil, ErrShutdown
@@ -110,6 +110,8 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 		op.lock.Unlock()
 	}
 
+	retryStrat := NewFailFastRetryStrategy()
+
 	for serverIdx := 0; serverIdx < config.clientMux.NumPipelines(); serverIdx++ {
 		pipeline := config.clientMux.GetPipeline(serverIdx)
 		serverAddress := pipeline.Address()
@@ -123,7 +125,8 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 				Key:      nil,
 				Value:    nil,
 			},
-			Callback: kvHandler,
+			Callback:      kvHandler,
+			RetryStrategy: retryStrat,
 		}
 
 		curOp, err := agent.dispatchOpToAddress(req, serverAddress)

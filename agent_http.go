@@ -8,6 +8,9 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"sort"
+	"sync"
+	"sync/atomic"
 )
 
 // HttpRequest contains the description of an HTTP request to perform.
@@ -22,6 +25,17 @@ type HttpRequest struct {
 	Context     context.Context
 	Headers     map[string]string
 	ContentType string
+	UniqueId    string
+
+	IsIdempotent  bool
+	RetryStrategy RetryStrategy
+	retryCount    uint32
+	retryReasons  []RetryReason
+
+	// If the request is in the process of being retried then this is the function
+	// to call to stop the retry wait for this request.
+	cancelRetryTimerFunc func() bool
+	cancelTimerLock      sync.Mutex
 }
 
 // HttpResponse encapsulates the response from an HTTP request.
@@ -29,6 +43,59 @@ type HttpResponse struct {
 	Endpoint   string
 	StatusCode int
 	Body       io.ReadCloser
+}
+
+// RetryAttempts is the number of times that this request has been retried.
+func (hr *HttpRequest) RetryAttempts() uint32 {
+	return atomic.LoadUint32(&hr.retryCount)
+}
+
+// incrementRetryAttempts increments the number of retry attempts.
+func (hr *HttpRequest) incrementRetryAttempts() {
+	atomic.AddUint32(&hr.retryCount, 1)
+}
+
+// Identifier returns the unique identifier for this request.
+func (hr *HttpRequest) Identifier() string {
+	return hr.UniqueId
+}
+
+// Idempotent returns whether or not this request is idempotent.
+func (hr *HttpRequest) Idempotent() bool {
+	return hr.IsIdempotent
+}
+
+// RetryReasons returns the set of reasons why this request has been retried.
+func (hr *HttpRequest) RetryReasons() []RetryReason {
+	return hr.retryReasons
+}
+
+// setCancelRetry sets the retry cancel function for this request.
+func (hr *HttpRequest) setCancelRetry(cancelFunc func() bool) {
+	hr.cancelTimerLock.Lock()
+	hr.cancelRetryTimerFunc = cancelFunc
+	hr.cancelTimerLock.Unlock()
+}
+
+// CancelRetry will cancel any retry that this request is waiting for.
+func (hr *HttpRequest) CancelRetry() bool {
+	if hr.cancelRetryTimerFunc == nil {
+		return true
+	}
+
+	return hr.cancelRetryTimerFunc()
+}
+
+// addRetryReason adds a reason why this request has been retried.
+func (hr *HttpRequest) addRetryReason(reason RetryReason) {
+	idx := sort.Search(len(hr.retryReasons), func(i int) bool {
+		return hr.retryReasons[i] == reason
+	})
+
+	// if idx is out of the range of retryReasons then it wasn't found.
+	if idx > len(hr.retryReasons)-1 {
+		hr.retryReasons = append(hr.retryReasons, reason)
+	}
 }
 
 func injectJsonCreds(body []byte, creds []UserPassPair) []byte {
@@ -170,6 +237,10 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 		}
 	}
 
+	if req.RetryStrategy == nil {
+		req.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
 
 	if req.ContentType != "" {
@@ -181,9 +252,39 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 		hreq.Header.Set(key, val)
 	}
 
-	hresp, err := agent.httpCli.Do(hreq)
-	if err != nil {
-		return nil, err
+	var hresp *http.Response
+	for {
+		hresp, err = agent.httpCli.Do(hreq)
+		if err != nil {
+			if !req.IsIdempotent {
+				return nil, err
+			}
+
+			if err == context.DeadlineExceeded || err == context.Canceled {
+				return nil, err
+			}
+
+			waitCh := make(chan struct{})
+			retried := agent.retryOrchestrator.MaybeRetry(req, UnknownRetryReason, req.RetryStrategy, func() {
+				waitCh <- struct{}{}
+			})
+			if retried {
+				select {
+				case <-waitCh:
+					continue
+				case <-req.Context.Done():
+					if !req.CancelRetry() {
+						// Read the channel so that we don't leave it hanging
+						<-waitCh
+					}
+
+					return nil, req.Context.Err()
+				}
+			}
+
+			return nil, err
+		}
+		break
 	}
 
 	respOut := HttpResponse{

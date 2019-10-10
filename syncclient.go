@@ -53,6 +53,7 @@ func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOu
 			errOut = err
 			signal <- true
 		},
+		RetryStrategy: NewFailFastRetryStrategy(),
 	}
 
 	err := client.client.SendRequest(&qreq)
@@ -112,6 +113,7 @@ func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time, cb
 			signalResp.Err = err
 			signal <- signalResp
 		},
+		RetryStrategy: NewFailFastRetryStrategy(),
 	}
 
 	err := client.client.SendRequest(&qreq)

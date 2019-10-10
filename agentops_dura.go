@@ -11,6 +11,7 @@ type ObserveOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // ObserveResult encapsulates the result of a ObserveEx operation.
@@ -61,6 +62,10 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 	binary.BigEndian.PutUint16(valueBuf[2:], uint16(keyLen))
 	copy(valueBuf[4:], opts.Key)
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -77,6 +82,7 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -84,9 +90,10 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 
 // ObserveVbOptions encapsulates the parameters for a ObserveVbEx operation.
 type ObserveVbOptions struct {
-	VbId       uint16
-	VbUuid     VbUuid
-	ReplicaIdx int
+	VbId          uint16
+	VbUuid        VbUuid
+	ReplicaIdx    int
+	RetryStrategy RetryStrategy
 }
 
 // ObserveVbResult encapsulates the result of a ObserveVbEx operation.
@@ -175,6 +182,10 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 	valueBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(valueBuf[0:], uint64(opts.VbUuid))
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
@@ -186,8 +197,9 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			Value:    valueBuf,
 			Vbucket:  opts.VbId,
 		},
-		ReplicaIdx: opts.ReplicaIdx,
-		Callback:   handler,
+		ReplicaIdx:    opts.ReplicaIdx,
+		Callback:      handler,
+		RetryStrategy: opts.RetryStrategy,
 	}
 	return agent.dispatchOp(req)
 }

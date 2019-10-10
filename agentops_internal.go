@@ -10,6 +10,7 @@ type GetMetaOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetMetaResult encapsulates the result of a GetMetaEx operation.
@@ -59,6 +60,10 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 	extraBuf := make([]byte, 1)
 	extraBuf[0] = 2
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -73,6 +78,7 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -92,6 +98,7 @@ type SetMetaOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // SetMetaResult encapsulates the result of a SetMetaEx operation.
@@ -132,6 +139,11 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 	binary.BigEndian.PutUint32(extraBuf[24:], opts.Options)
 	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(opts.Extra)))
 	copy(extraBuf[30:], opts.Extra)
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -146,6 +158,7 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -165,6 +178,7 @@ type DeleteMetaOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
@@ -205,6 +219,11 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 	binary.BigEndian.PutUint32(extraBuf[24:], opts.Options)
 	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(opts.Extra)))
 	copy(extraBuf[30:], opts.Extra)
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -219,6 +238,7 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)

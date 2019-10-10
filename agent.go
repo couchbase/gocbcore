@@ -86,6 +86,10 @@ type Agent struct {
 	cachedClientsLock   sync.Mutex
 	cachedHTTPEndpoints []string
 	supportsGCCCP       bool
+
+	retryOrchestrator *retryOrchestrator
+
+	defaultRetryStrategy RetryStrategy
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -165,6 +169,8 @@ type AgentConfig struct {
 	UseDcpExpiry     bool
 
 	EnableStreamId bool
+
+	DefaultRetryStrategy RetryStrategy
 }
 
 func (config *AgentConfig) redacted() interface{} {
@@ -656,6 +662,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useDcpExpiry:          config.UseDcpExpiry,
 		durabilityLevelStatus: durabilityLevelStatusUnknown,
 		cachedClients:         make(map[string]*memdClient),
+		retryOrchestrator:     &retryOrchestrator{},
+		defaultRetryStrategy:  config.DefaultRetryStrategy,
 	}
 	c.cidMgr = newCollectionIdManager(c, maxQueueSize)
 
@@ -723,6 +731,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		if c.compressionMinRatio >= 1.0 {
 			c.compressionMinRatio = 1.0
 		}
+	}
+	if c.defaultRetryStrategy == nil {
+		c.defaultRetryStrategy = NewFailFastRetryStrategy()
 	}
 
 	deadline := time.Now().Add(connectTimeout)

@@ -18,6 +18,7 @@ type GetInOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetInResult encapsulates the result of a GetInEx operation.
@@ -49,6 +50,10 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
 	extraBuf[2] = uint8(opts.Flags)
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -63,6 +68,7 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -76,6 +82,7 @@ type ExistsInOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // ExistsInResult encapsulates the result of a ExistsInEx operation.
@@ -105,6 +112,10 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
 	extraBuf[2] = uint8(opts.Flags)
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -119,6 +130,7 @@ func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (Pen
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -135,6 +147,7 @@ type StoreInOptions struct {
 	Expiry                 uint32
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
@@ -199,6 +212,10 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -214,6 +231,7 @@ func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOpt
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -320,6 +338,10 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -335,6 +357,7 @@ func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -349,6 +372,7 @@ type DeleteInOptions struct {
 	Flags                  SubdocFlag
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
@@ -407,6 +431,10 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -422,6 +450,7 @@ func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (Pen
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -444,6 +473,7 @@ type LookupInOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // LookupInResult encapsulates the result of a LookupInEx operation.
@@ -529,6 +559,10 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		extraBuf = append(extraBuf, uint8(opts.Flags))
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -543,6 +577,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -557,6 +592,7 @@ type MutateInOptions struct {
 	Ops                    []SubDocOp
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
@@ -686,6 +722,10 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		extraBuf = append(extraBuf, uint8(opts.Flags))
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -701,6 +741,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)

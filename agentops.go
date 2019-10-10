@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"encoding/json"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -25,15 +24,28 @@ type MutationToken struct {
 	SeqNo  SeqNo
 }
 
+// CancellablePendingOp represents an outstanding operation within the client.
+// This can be used to cancel an operation before it completes.
+type CancellablePendingOp interface {
+	Cancel() bool
+}
+
 // PendingOp represents an outstanding operation within the client.
 // This can be used to cancel an operation before it completes.
+// This can also be used to get information about the operation once
+// it has completed (cancelled or successful).
 type PendingOp interface {
-	Cancel() bool
+	CancellablePendingOp
+	RetryAttempts() uint32
+	Identifier() string
+	Idempotent() bool
+	RetryReasons() []RetryReason
 }
 
 type multiPendingOp struct {
 	ops          []PendingOp
 	completedOps uint32
+	isIdempotent bool
 }
 
 func (mp *multiPendingOp) Cancel() bool {
@@ -54,73 +66,51 @@ func (mp *multiPendingOp) IncrementCompletedOps() uint32 {
 	return atomic.AddUint32(&mp.completedOps, 1)
 }
 
-type asyncPendingOp struct {
-	ops          []PendingOp
-	lock         sync.Mutex
-	completedOps uint32
-	cancelled    bool
-}
-
-func newAsyncPendingOp() *asyncPendingOp {
-	return &asyncPendingOp{
-		lock: sync.Mutex{},
+func (mp *multiPendingOp) RetryAttempts() uint32 {
+	if len(mp.ops) == 0 {
+		return 0
 	}
+
+	return mp.ops[0].RetryAttempts()
 }
 
-func (mp *asyncPendingOp) Cancel() bool {
-	mp.lock.Lock()
-	defer mp.lock.Unlock()
-	mp.cancelled = true
-
-	var failedCancels uint32
-	for _, op := range mp.ops {
-		if !op.Cancel() {
-			failedCancels++
-		}
+func (mp *multiPendingOp) Identifier() string {
+	if len(mp.ops) == 0 {
+		return ""
 	}
-	return mp.CompletedOps()-failedCancels == 0
+
+	return mp.ops[0].Identifier()
 }
 
-func (mp *asyncPendingOp) Add(op PendingOp) bool {
-	mp.lock.Lock()
-	defer mp.lock.Unlock()
-	if mp.cancelled {
-		return false
+func (mp *multiPendingOp) Idempotent() bool {
+	return mp.isIdempotent
+}
+
+func (mp *multiPendingOp) RetryReasons() []RetryReason {
+	if len(mp.ops) == 0 {
+		return []RetryReason{}
 	}
-	mp.ops = append(mp.ops, op)
 
-	return true
+	return mp.ops[0].RetryReasons()
 }
 
-func (mp *asyncPendingOp) CompletedOps() uint32 {
-	return atomic.LoadUint32(&mp.completedOps)
+func (agent *Agent) waitAndRetryOperation(req *memdQRequest, reason RetryReason) bool {
+	retried := agent.retryOrchestrator.MaybeRetry(req, reason, req.RetryStrategy, func() {
+		agent.requeueDirect(req, true)
+	})
+	return retried
 }
 
-func (mp *asyncPendingOp) IncrementCompletedOps() uint32 {
-	return atomic.AddUint32(&mp.completedOps, 1)
+func (agent *Agent) waitAndRetryNmv(req *memdQRequest) bool {
+	return agent.waitAndRetryOperation(req, KVNotMyVBucketRetryReason)
 }
 
-func (agent *Agent) waitAndRetryOperation(req *memdQRequest, waitDura time.Duration) {
-	if waitDura == 0 {
-		agent.requeueDirect(req)
-	} else {
-		time.AfterFunc(waitDura, func() {
-			agent.requeueDirect(req)
-		})
-	}
-}
-
-func (agent *Agent) waitAndRetryNmv(req *memdQRequest) {
-	agent.waitAndRetryOperation(req, agent.nmvRetryDelay)
-}
-
-func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
+func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) bool {
 	// Grab just the hostname from the source address
 	sourceHost, err := hostFromHostPort(resp.sourceAddr)
 	if err != nil {
 		logErrorf("NMV response source address was invalid, skipping config update")
-		agent.waitAndRetryNmv(req)
-		return
+		return agent.waitAndRetryNmv(req)
 	}
 
 	// Try to parse the value as a bucket configuration
@@ -131,11 +121,14 @@ func (agent *Agent) handleOpNmv(resp *memdQResponse, req *memdQRequest) {
 
 	// Redirect it!  This may actually come back to this server, but I won't tell
 	//   if you don't ;)
-	agent.waitAndRetryNmv(req)
+	return agent.waitAndRetryNmv(req)
 }
 
-func (agent *Agent) handleCollectionUnknown(req *memdQRequest) {
-	agent.cidMgr.requeue(req)
+func (agent *Agent) handleCollectionUnknown(req *memdQRequest) bool {
+	retried := agent.retryOrchestrator.MaybeRetry(req, KVCollectionOutdatedRetryReason, req.RetryStrategy, func() {
+		agent.cidMgr.requeue(req)
+	})
+	return retried
 }
 
 func (agent *Agent) getKvErrMapData(code StatusCode) *kvErrorMapError {
@@ -210,44 +203,59 @@ func (agent *Agent) makeBasicMemdError(code StatusCode, opaque uint32) error {
 }
 
 func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
+	kvErrData := agent.getKvErrMapData(resp.Status)
+
 	if resp.Magic == resMagic {
-		// Temporary backwards compatibility handling...
-		if resp.Status == StatusLocked {
-			switch req.Opcode {
-			case cmdSet:
-				resp.Status = StatusKeyExists
-			case cmdReplace:
-				resp.Status = StatusKeyExists
-			case cmdDelete:
-				resp.Status = StatusKeyExists
-			default:
-				resp.Status = StatusTmpFail
+		switch resp.Status {
+		case StatusNotMyVBucket:
+			retried := agent.handleOpNmv(resp, req)
+			if retried {
+				return true, nil
 			}
-		}
-
-		if resp.Status == StatusNotMyVBucket {
-			agent.handleOpNmv(resp, req)
-			return true, nil
-		} else if resp.Status == StatusSuccess {
-			return false, nil
-		} else if resp.Status == StatusCollectionUnknown && resp.Opcode != cmdCollectionsGetID {
-			agent.handleCollectionUnknown(req)
-			return true, nil
-		}
-
-		kvErrData := agent.getKvErrMapData(resp.Status)
-		if kvErrData != nil {
-			for _, attr := range kvErrData.Attributes {
-				if attr == "auto-retry" {
-					retryWait := kvErrData.Retry.CalculateRetryDelay(req.retryCount)
-					maxDura := time.Duration(kvErrData.Retry.MaxDuration) * time.Millisecond
-					if time.Now().Sub(req.dispatchTime)+retryWait > maxDura {
-						break
-					}
-
-					req.retryCount++
-					agent.waitAndRetryOperation(req, retryWait)
+		case StatusCollectionUnknown:
+			// Only retry for this if it's an op supporting collections.
+			// And if the collection name or scope name are specified.
+			// We don't want to retry if the user specified a collection ID directly.
+			hasNames := req.CollectionName != "" || req.ScopeName != ""
+			if _, ok := cidSupportedOps[req.Opcode]; ok && hasNames {
+				retried := agent.handleCollectionUnknown(req)
+				if retried {
 					return true, nil
+				}
+			}
+		case StatusLocked:
+			retried := agent.waitAndRetryOperation(req, KVLockedRetryReason)
+			if retried {
+				return true, nil
+			}
+		case StatusTmpFail:
+			retried := agent.waitAndRetryOperation(req, KVTemporaryFailureRetryReason)
+			if retried {
+				return true, nil
+			}
+		case StatusSyncWriteInProgress:
+			retried := agent.waitAndRetryOperation(req, KVSyncWriteInProgressRetryReason)
+			if retried {
+				return true, nil
+			}
+		case StatusSyncWriteReCommitInProgress:
+			retried := agent.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason)
+			if retried {
+				return true, nil
+			}
+		case StatusSuccess:
+			return false, nil
+		default:
+			if kvErrData != nil {
+				for _, attr := range kvErrData.Attributes {
+					if attr == "auto-retry" || attr == "retry-now" || attr == "retry-later" {
+						retried := agent.waitAndRetryOperation(req, KVErrMapRetryReason)
+						if retried {
+							return true, nil
+						}
+
+						return false, err
+					}
 				}
 			}
 		}
@@ -272,7 +280,43 @@ func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
 	req.owner = agent
 	req.dispatchTime = time.Now()
 
-	return agent.cidMgr.dispatch(req)
+	err := agent.cidMgr.dispatch(req)
+
+	if err != nil {
+		// Creating a goroutine here is more expensive that we'd maybe like but errors here shouldn't
+		// happen often.
+		go func() {
+			for {
+				wait := make(chan struct{})
+				reason := UnknownRetryReason
+				if err == ErrOverload {
+					reason = PipelineOverloadedRetryReason
+				}
+
+				retried := agent.retryOrchestrator.MaybeRetry(req, reason, req.RetryStrategy, func() {
+					wait <- struct{}{}
+				})
+
+				// If the request is cancelled then we don't really want to retry it.
+				// The worst case here is that it does get retried and then either fails to
+				// get dispatched again and is caught here or it is dispatched and gets caught
+				// in the dispatch queue. Either way if the user has cancelled the request then this is
+				// going to just be hanging around so we need to drop out of the loop ASAP.
+				if !retried || req.isCancelled() {
+					req.tryCallback(nil, err)
+					return
+				}
+
+				<-wait
+				err = agent.cidMgr.dispatch(req)
+				if err == nil {
+					return
+				}
+			}
+		}()
+	}
+
+	return req, nil
 }
 
 func (agent *Agent) dispatchOpToAddress(req *memdQRequest, address string) (PendingOp, error) {
@@ -281,7 +325,44 @@ func (agent *Agent) dispatchOpToAddress(req *memdQRequest, address string) (Pend
 
 	err := agent.dispatchDirectToAddress(req, address)
 	if err != nil {
-		return req, nil
+		// Creating a goroutine here is more expensive that we'd maybe like but errors here shouldn't
+		// happen often.
+		go func() {
+			for {
+				wait := make(chan struct{})
+				reason := UnknownRetryReason
+				if err == ErrOverload {
+					reason = PipelineOverloadedRetryReason
+				}
+
+				retried := agent.retryOrchestrator.MaybeRetry(req, reason, req.RetryStrategy, func() {
+					wait <- struct{}{}
+				})
+
+				if !retried {
+					req.tryCallback(nil, err)
+					return
+				}
+
+				<-wait
+
+				// If the request is cancelled then we don't really want to retry it.
+				// The worst case here is that it does get retried and then either fails to
+				// get dispatched again and is caught here or it is dispatched and gets caught
+				// in the dispatch queue. Either way if the user has cancelled the request then this is
+				// going to just be hanging around so we need to drop out of the loop ASAP.
+				if req.isCancelled() {
+					req.tryCallback(nil, err)
+					return
+				}
+
+				err = agent.dispatchDirectToAddress(req, address)
+				if err == nil {
+					return
+				}
+			}
+		}()
 	}
+
 	return req, nil
 }

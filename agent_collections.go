@@ -95,12 +95,17 @@ func (item *Manifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// GetCollectionManifestOptions are the options available to the GetCollectionManifest command.
+type GetCollectionManifestOptions struct {
+	RetryStrategy RetryStrategy
+}
+
 // ManifestCallback is invoked upon completion of a GetCollectionManifest operation.
 type ManifestCallback func(manifest []byte, err error)
 
 // GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
 // id cache.
-func (agent *Agent) GetCollectionManifest(cb ManifestCallback) (PendingOp, error) {
+func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -108,6 +113,10 @@ func (agent *Agent) GetCollectionManifest(cb ManifestCallback) (PendingOp, error
 		}
 
 		cb(resp.Value, nil)
+	}
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
 	}
 
 	req := &memdQRequest{
@@ -120,7 +129,8 @@ func (agent *Agent) GetCollectionManifest(cb ManifestCallback) (PendingOp, error
 			Key:      nil,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:      handler,
+		RetryStrategy: opts.RetryStrategy,
 	}
 	return agent.dispatchOp(req)
 }
@@ -130,6 +140,7 @@ type CollectionIdCallback func(manifestID uint64, collectionID uint32, err error
 
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
+	RetryStrategy RetryStrategy
 }
 
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
@@ -162,6 +173,10 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 		cb(manifestID, collectionID, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
@@ -173,7 +188,8 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 			Value:    nil,
 			Vbucket:  0,
 		},
-		ReplicaIdx: -1,
+		ReplicaIdx:    -1,
+		RetryStrategy: opts.RetryStrategy,
 	}
 
 	req.Callback = handler
@@ -279,7 +295,7 @@ func (cid *collectionIdCache) refreshCid(req *memdQRequest) error {
 			cid.opQueue.Close()
 			cid.opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = collectionID
-				cid.agent.requeueDirect(request)
+				cid.agent.requeueDirect(request, false)
 			})
 		},
 	)
@@ -311,30 +327,30 @@ func (cid *collectionIdCache) dispatch(req *memdQRequest) error {
 	}
 }
 
-func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error) {
+func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) error {
 	noCollection := req.CollectionName == "" && req.ScopeName == ""
 	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
 	collectionIdPresent := req.CollectionID > 0
 
 	if !cidMgr.agent.HasCollectionsSupport() {
 		if !(noCollection || defaultCollection) || collectionIdPresent {
-			return nil, ErrCollectionsUnsupported
+			return ErrCollectionsUnsupported
 		}
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return req, nil
+		return nil
 	}
 
 	if noCollection || defaultCollection || collectionIdPresent {
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return req, nil
+		return nil
 	}
 
 	cidCache, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
@@ -345,9 +361,9 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) (PendingOp, error
 	}
 	err := cidCache.dispatch(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return req, nil
+	return nil
 }
 
 func (cidMgr *collectionIdManager) requeue(req *memdQRequest) {

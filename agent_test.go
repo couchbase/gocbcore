@@ -103,7 +103,8 @@ func TestCidRetries(t *testing.T) {
 		t.Fatalf("Failed to create collection: %v", err)
 	}
 
-	// Set should succeed as we detect cid unknown, fetch the cid and then retry again
+	// Set should succeed as we detect cid unknown, fetch the cid and then retry again. This should happen
+	// even if we don't set a retry strategy.
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
@@ -552,6 +553,7 @@ func TestExpiry(t *testing.T) {
 		Key:            []byte("testExpiry"),
 		CollectionName: agent.CollectionName(),
 		ScopeName:      agent.ScopeName(),
+		RetryStrategy:  NewBestEffortRetryStrategy(nil),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !IsErrorStatus(err, StatusKeyNotFound) {
@@ -682,6 +684,57 @@ func TestGetAndTouch(t *testing.T) {
 		s.Wrap(func() {
 			if !IsErrorStatus(err, StatusKeyNotFound) {
 				s.Fatalf("Get should have returned key not found")
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
+// This test will lock the document for 1 second, it will then perform set requests for up to 2 seconds,
+// the operation should succeed within the 2 seconds.
+func TestRetrySet(t *testing.T) {
+	agent, s := getAgentnSignaler(t)
+
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:            []byte("testRetrySet"),
+		Value:          []byte("{}"),
+		Expiry:         1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.GetAndLockEx(GetAndLockOptions{
+		Key:            []byte("testRetrySet"),
+		LockTime:       1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
+	}, func(res *GetAndLockResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetAndLock operation failed: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:            []byte("testRetrySet"),
+		Value:          []byte("{}"),
+		Expiry:         1,
+		CollectionName: agent.CollectionName(),
+		ScopeName:      agent.ScopeName(),
+		RetryStrategy:  NewBestEffortRetryStrategy(nil),
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
 			}
 		})
 	}))
@@ -1739,7 +1792,7 @@ func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan testManife
 	var manifest Manifest
 	for manifest.UID != manifestId {
 		setCh := make(chan struct{})
-		agent.GetCollectionManifest(func(bytes []byte, err error) {
+		agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(bytes []byte, err error) {
 			if err != nil {
 				log.Println(err.Error())
 				close(setCh)

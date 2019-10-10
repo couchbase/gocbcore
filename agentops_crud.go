@@ -11,6 +11,7 @@ type GetOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetResult encapsulates the result of a GetEx operation.
@@ -46,6 +47,10 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		cb(&res, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -60,6 +65,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -72,6 +78,7 @@ type GetAndTouchOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -108,6 +115,10 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		}, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
@@ -125,6 +136,7 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -137,6 +149,7 @@ type GetAndLockOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
@@ -173,6 +186,10 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 		}, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.LockTime)
 
@@ -190,6 +207,7 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -201,6 +219,7 @@ type GetAnyReplicaOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // GetOneReplicaOptions encapsulates the parameters for a GetOneReplicaEx operation.
@@ -209,6 +228,7 @@ type GetOneReplicaOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 	ReplicaIdx     int
 }
 
@@ -246,6 +266,10 @@ func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCall
 		}, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -261,6 +285,7 @@ func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCall
 		ReplicaIdx:     opts.ReplicaIdx,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -289,6 +314,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 	var firstResult *GetReplicaResult
 
 	op := new(multiPendingOp)
+	op.isIdempotent = true
 	expected := uint32(numReplicas) + 1
 
 	opHandledLocked := func() {
@@ -332,8 +358,13 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 		resultLock.Unlock()
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	getOp, err := agent.GetEx(GetOptions{
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 		CollectionName: opts.CollectionName,
 		Key:            opts.Key,
 	}, func(result *GetResult, err error) {
@@ -366,6 +397,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 			CollectionName: opts.CollectionName,
 			ScopeName:      opts.ScopeName,
 			CollectionId:   opts.CollectionId,
+			RetryStrategy:  opts.RetryStrategy,
 		}, handler)
 
 		resultLock.Lock()
@@ -390,6 +422,7 @@ type TouchOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -427,6 +460,10 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -442,6 +479,7 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -454,6 +492,7 @@ type UnlockOptions struct {
 	CollectionName string
 	ScopeName      string
 	CollectionId   uint32
+	RetryStrategy  RetryStrategy
 }
 
 // UnlockResult encapsulates the result of a UnlockEx operation.
@@ -486,6 +525,10 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 		}, nil)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        reqMagic,
@@ -500,6 +543,7 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -510,6 +554,7 @@ type DeleteOptions struct {
 	Key                    []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
@@ -558,6 +603,10 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 		magic = altReqMagic
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -573,6 +622,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -582,6 +632,7 @@ type storeOptions struct {
 	Key                    []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Value                  []byte
 	Flags                  uint32
 	Datatype               uint8
@@ -633,6 +684,10 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		magic = altReqMagic
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
@@ -651,6 +706,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -661,6 +717,7 @@ type AddOptions struct {
 	Key                    []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Value                  []byte
 	Flags                  uint32
 	Datatype               uint8
@@ -676,6 +733,7 @@ func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
+		RetryStrategy:          opts.RetryStrategy,
 		Value:                  opts.Value,
 		Flags:                  opts.Flags,
 		Datatype:               opts.Datatype,
@@ -692,6 +750,7 @@ type SetOptions struct {
 	Key                    []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Value                  []byte
 	Flags                  uint32
 	Datatype               uint8
@@ -707,6 +766,7 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
+		RetryStrategy:          opts.RetryStrategy,
 		Value:                  opts.Value,
 		Flags:                  opts.Flags,
 		Datatype:               opts.Datatype,
@@ -723,6 +783,7 @@ type ReplaceOptions struct {
 	Key                    []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Value                  []byte
 	Flags                  uint32
 	Datatype               uint8
@@ -739,6 +800,7 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
+		RetryStrategy:          opts.RetryStrategy,
 		Value:                  opts.Value,
 		Flags:                  opts.Flags,
 		Datatype:               opts.Datatype,
@@ -756,6 +818,7 @@ type AdjoinOptions struct {
 	Value                  []byte
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
@@ -803,6 +866,10 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 		magic = altReqMagic
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:        magic,
@@ -818,6 +885,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -841,6 +909,7 @@ type CounterOptions struct {
 	Expiry                 uint32
 	CollectionName         string
 	ScopeName              string
+	RetryStrategy          RetryStrategy
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
@@ -901,6 +970,10 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 		magic = altReqMagic
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	extraBuf := make([]byte, 20)
 	binary.BigEndian.PutUint64(extraBuf[0:], opts.Delta)
 	if opts.Initial != uint64(0xFFFFFFFFFFFFFFFF) {
@@ -926,6 +999,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 		Callback:       handler,
 		CollectionName: opts.CollectionName,
 		ScopeName:      opts.ScopeName,
+		RetryStrategy:  opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -943,6 +1017,7 @@ func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (Pend
 
 // GetRandomOptions encapsulates the parameters for a GetRandomEx operation.
 type GetRandomOptions struct {
+	RetryStrategy RetryStrategy
 }
 
 // GetRandomResult encapsulates the result of a GetRandomEx operation.
@@ -980,6 +1055,11 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 			Datatype: resp.Datatype,
 		}, nil)
 	}
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
@@ -990,7 +1070,8 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 			Key:      nil,
 			Value:    nil,
 		},
-		Callback: handler,
+		Callback:      handler,
+		RetryStrategy: opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -1016,7 +1097,8 @@ type StatsOptions struct {
 	Key string
 	// Target indicates that something specific should be targeted by the operation. If left nil
 	// then the stats command will be sent to all servers.
-	Target StatsTarget
+	Target        StatsTarget
+	RetryStrategy RetryStrategy
 }
 
 // StatsResult encapsulates the result of a StatsEx operation.
@@ -1032,7 +1114,7 @@ type StatsExCallback func(*StatsResult, error)
 // about the consistency of the results.  Occasionally, some nodes may not be
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
-func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
+func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellablePendingOp, error) {
 	config := agent.routingInfo.Get()
 	if config == nil {
 		return nil, ErrShutdown
@@ -1042,6 +1124,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 	var statsLock sync.Mutex
 
 	op := new(multiPendingOp)
+	op.isIdempotent = true
 	var expected uint32
 
 	pipelines := make([]*memdPipeline, 0)
@@ -1127,6 +1210,10 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 		curStats.Stats[string(resp.Key)] = string(resp.Value)
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
 	for _, pipeline := range pipelines {
 		serverAddress := pipeline.Address()
 
@@ -1139,8 +1226,9 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 				Key:      []byte(opts.Key),
 				Value:    nil,
 			},
-			Persistent: true,
-			Callback:   handler,
+			Persistent:    true,
+			Callback:      handler,
+			RetryStrategy: opts.RetryStrategy,
 		}
 
 		curOp, err := agent.dispatchOpToAddress(req, serverAddress)

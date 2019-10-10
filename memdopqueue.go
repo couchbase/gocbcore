@@ -105,8 +105,8 @@ func (q *memdOpQueue) Push(req *memdQRequest, maxItems int) error {
 		// TODO(brett19): Maybe should ensure this was meant to be in this opqueue.
 		atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(q), nil)
 		q.lock.Unlock()
-		// TODO(brett19): Better error for cancelled requests pending insertion on an opqueue.
-		return errAlreadyQueued
+
+		return ErrCancelled
 	}
 
 	q.items.PushBack(req)

@@ -1,6 +1,8 @@
 package gocbcore
 
 import (
+	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,8 +67,59 @@ type memdQRequest struct {
 	// algorithms.
 	retryCount uint32
 
+	// This is used to determine what, if any, retry strategy to use
+	// when deciding whether to retry the request and calculating
+	// any back-off time period.
+	RetryStrategy RetryStrategy
+
+	// This is the set of reasons why this request has been retried.
+	retryReasons []RetryReason
+
+	// If the request is in the process of being retried then this is the function
+	// to call to stop the retry wait for this request.
+	cancelRetryTimerFunc func() bool
+	cancelTimerLock      sync.Mutex
+
 	CollectionName string
 	ScopeName      string
+}
+
+func (req *memdQRequest) RetryAttempts() uint32 {
+	return atomic.LoadUint32(&req.retryCount)
+}
+
+func (req *memdQRequest) incrementRetryAttempts() {
+	atomic.AddUint32(&req.retryCount, 1)
+}
+
+func (req *memdQRequest) Identifier() string {
+	return fmt.Sprintf("%d", req.Opaque)
+}
+
+func (req *memdQRequest) Idempotent() bool {
+	_, ok := idempotentOps[req.Opcode]
+	return ok
+}
+
+func (req *memdQRequest) RetryReasons() []RetryReason {
+	return req.retryReasons
+}
+
+func (req *memdQRequest) setCancelRetry(cancelFunc func() bool) {
+	req.cancelTimerLock.Lock()
+	req.cancelRetryTimerFunc = cancelFunc
+	req.cancelTimerLock.Unlock()
+}
+
+func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
+	idx := sort.Search(len(req.retryReasons), func(i int) bool {
+		return req.retryReasons[i] == retryReason
+	})
+
+	// if idx is out of the range of retryReasons then it wasn't found.
+	if idx > len(req.retryReasons)-1 {
+		req.retryReasons = append(req.retryReasons, retryReason)
+	}
 }
 
 func (req *memdQRequest) cloneNew() *memdQRequest {
@@ -107,6 +160,14 @@ func (req *memdQRequest) Cancel() bool {
 		req.processingLock.Unlock()
 		return false
 	}
+
+	req.cancelTimerLock.Lock()
+	if req.cancelRetryTimerFunc != nil {
+		// It doesn't really matter if this succeeds or fails but we should try to do it anyway.
+		// At worst the request will be requeued and then rejected.
+		req.cancelRetryTimerFunc()
+	}
+	req.cancelTimerLock.Unlock()
 
 	queuedWith := (*memdOpQueue)(atomic.LoadPointer(&req.queuedWith))
 	if queuedWith != nil {

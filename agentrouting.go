@@ -476,7 +476,7 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 		sort.Sort(memdQRequestSorter(requestList))
 
 		for _, req := range requestList {
-			agent.requeueDirect(req)
+			agent.requeueDirect(req, false)
 		}
 	}
 
@@ -618,12 +618,17 @@ func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) e
 	return nil
 }
 
-func (agent *Agent) requeueDirect(req *memdQRequest) {
+func (agent *Agent) requeueDirect(req *memdQRequest, isRetry bool) {
 	handleError := func(err error) {
-		logErrorf("Reschedule failed, failing request (%s)", err)
+		// We only want to log an error on retries if the error isn't cancelled.
+		if !isRetry || (isRetry && err != ErrCancelled) {
+			logErrorf("Reschedule failed, failing request (%s)", err)
+		}
 
 		req.tryCallback(nil, err)
 	}
+
+	logDebugf("Request being requeued, Opaque=%d", req.Opaque)
 
 	for {
 		pipeline, err := agent.routeRequest(req)

@@ -154,6 +154,23 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 				}
 			}
 
+			// These are special case that can arise
+			// ErrCollectionsUnsupported should never be seen here but theoretically can be.
+			// ErrCancelled can occur if the request was cancelled during dispatch.
+			// In either case we should respond with the relevant error and neither should be retried.
+			if err == ErrCollectionsUnsupported || err == ErrCancelled {
+				req.tryCallback(nil, err)
+				break
+			}
+
+			// We can attempt to retry ops of this type if the socket fails on write.
+			retried := client.parent.waitAndRetryOperation(req, SocketNotAvailableRetryReason)
+			if retried {
+				// If we've successfully retried this then don't return an error to the caller, just refresh
+				// the client and pick the request up again later.
+				break
+			}
+
 			// We need to alert the caller that there was a network error
 			req.tryCallback(nil, ErrNetwork)
 

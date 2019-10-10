@@ -73,6 +73,17 @@ func TestKvErrorExponentialRetry(t *testing.T) {
 	}
 }
 
+type errMapTestRetryStrategy struct {
+	reasons []RetryReason
+	retries int
+}
+
+func (lrs *errMapTestRetryStrategy) RetryAfter(request RetryRequest, reason RetryReason) RetryAction {
+	lrs.retries++
+	lrs.reasons = append(lrs.reasons, reason)
+	return &WithDurationRetryAction{50 * time.Millisecond}
+}
+
 func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	if !globalAgent.SupportsFeature(TestErrMapFeature) {
 		t.Skip("Cannot test error map with real server")
@@ -80,34 +91,34 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	agent, s := getAgentnSignaler(t)
 
 	testKey := "hello"
-	serverIdx := globalAgent.KeyToServer([]byte(testKey), 0)
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
 		"bucket": globalAgent.bucket(),
 		"code":   errCode,
-		"count":  -1,
-	}))
-	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CStartRetryVerify, map[string]interface{}{
-		"idx":    serverIdx,
-		"bucket": globalAgent.bucket(),
+		"count":  3,
 	}))
 
+	strategy := &errMapTestRetryStrategy{}
 	s.PushOp(agent.GetEx(GetOptions{
-		Key: []byte(testKey),
+		Key:           []byte(testKey),
+		RetryStrategy: strategy,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {})
 	}))
 	s.Wait(0)
 
-	resp := globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.CCheckRetryVerify, map[string]interface{}{
-		"idx":     serverIdx,
-		"bucket":  globalAgent.bucket(),
-		"opcode":  0,
-		"errcode": errCode,
-		"fuzz_ms": 20,
-	}))
-	if !resp.Success() {
-		t.Fatalf("Failed to verify retry intervals")
+	if strategy.retries != 3 {
+		t.Fatalf("Expected retries to be 3 but was %d", strategy.retries)
+	}
+
+	if len(strategy.reasons) != 3 {
+		t.Fatalf("Expected 3 retry reasons but was %v", strategy.reasons)
+	}
+
+	for _, reason := range strategy.reasons {
+		if reason != KVErrMapRetryReason {
+			t.Fatalf("Expected reason to be KVErrMapRetryReason but was %s", reason.Description())
+		}
 	}
 
 	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
@@ -117,6 +128,8 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	}))
 }
 
+// It doesn't actually matter what strategy the error map specifies, we just test that retries happen as the
+// strategy dictates no matter what.
 func TestKvErrorMap7ff0(t *testing.T) {
 	testKvErrorMapGeneric(t, 0x7ff0)
 }
