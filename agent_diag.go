@@ -58,6 +58,8 @@ func (pop *pingOp) handledOneLocked() {
 
 // PingKvOptions encapsulates the parameters for a PingKvEx operation.
 type PingKvOptions struct {
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // PingKvResult encapsulates the result of a PingKvEx operation.

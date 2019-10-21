@@ -12,6 +12,9 @@ type ObserveOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // ObserveResult encapsulates the result of a ObserveEx operation.
@@ -25,29 +28,36 @@ type ObserveExCallback func(*ObserveResult, error)
 
 // ObserveEx retrieves the current CAS and persistence state for a document.
 func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("ObserveEx", opts.TraceContext)
+
 	if agent.bucketType() != bktTypeCouchbase {
+		tracer.Finish()
 		return nil, ErrNotSupported
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) < 4 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 		keyLen := int(binary.BigEndian.Uint16(resp.Value[2:]))
 
 		if len(resp.Value) != 2+2+keyLen+1+8 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 		keyState := KeyState(resp.Value[2+2+keyLen])
 		cas := binary.BigEndian.Uint64(resp.Value[2+2+keyLen+1:])
 
+		tracer.Finish()
 		cb(&ObserveResult{
 			KeyState: keyState,
 			Cas:      Cas(cas),
@@ -78,11 +88,12 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 			Vbucket:      vbId,
 			CollectionID: opts.CollectionId,
 		},
-		ReplicaIdx:     opts.ReplicaIdx,
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		ReplicaIdx:       opts.ReplicaIdx,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -94,6 +105,9 @@ type ObserveVbOptions struct {
 	VbUuid        VbUuid
 	ReplicaIdx    int
 	RetryStrategy RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // ObserveVbResult encapsulates the result of a ObserveVbEx operation.
@@ -113,17 +127,22 @@ type ObserveVbExCallback func(*ObserveVbResult, error)
 // ObserveVbEx retrieves the persistence state sequence numbers for a particular VBucket
 // and includes additional details not included by the basic version.
 func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("ObserveVbEx", nil)
+
 	if agent.bucketType() != bktTypeCouchbase {
+		tracer.Finish()
 		return nil, ErrNotSupported
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) < 1 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -132,6 +151,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 		if formatType == 0 {
 			// Normal
 			if len(resp.Value) < 27 {
+				tracer.Finish()
 				cb(nil, ErrProtocol)
 				return
 			}
@@ -141,6 +161,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
 
+			tracer.Finish()
 			cb(&ObserveVbResult{
 				DidFailover:  false,
 				VbId:         vbId,
@@ -163,6 +184,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			oldVbUuid := binary.BigEndian.Uint64(resp.Value[27:])
 			lastSeqNo := binary.BigEndian.Uint64(resp.Value[35:])
 
+			tracer.Finish()
 			cb(&ObserveVbResult{
 				DidFailover:  true,
 				VbId:         vbId,
@@ -174,6 +196,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			}, nil)
 			return
 		} else {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -197,9 +220,10 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			Value:    valueBuf,
 			Vbucket:  opts.VbId,
 		},
-		ReplicaIdx:    opts.ReplicaIdx,
-		Callback:      handler,
-		RetryStrategy: opts.RetryStrategy,
+		ReplicaIdx:       opts.ReplicaIdx,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		RetryStrategy:    opts.RetryStrategy,
 	}
 	return agent.dispatchOp(req)
 }

@@ -95,13 +95,15 @@ func (item *Manifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GetCollectionManifestOptions are the options available to the GetCollectionManifest command.
-type GetCollectionManifestOptions struct {
-	RetryStrategy RetryStrategy
-}
-
 // ManifestCallback is invoked upon completion of a GetCollectionManifest operation.
 type ManifestCallback func(manifest []byte, err error)
+
+// GetCollectionManifestOptions are the options available to the GetCollectionManifest command.
+type GetCollectionManifestOptions struct {
+	// Volatile: Tracer API is subject to change.
+	TraceContext  RequestSpanContext
+	RetryStrategy RetryStrategy
+}
 
 // GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
 // id cache.
@@ -141,11 +143,15 @@ type CollectionIdCallback func(manifestID uint64, collectionID uint32, err error
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
 	RetryStrategy RetryStrategy
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
 // and collection name. This function will also prime the client's collection id cache.
 func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIdCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetCollectionID", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		cidCache, ok := agent.cidMgr.Get(scopeName, collectionName)
 		if !ok {
@@ -159,6 +165,7 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 			cidCache.err = err
 			cidCache.lock.Unlock()
 
+			tracer.Finish()
 			cb(0, 0, err)
 			return
 		}
@@ -170,6 +177,7 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 		cidCache.id = collectionID
 		cidCache.lock.Unlock()
 
+		tracer.Finish()
 		cb(manifestID, collectionID, nil)
 	}
 
@@ -188,8 +196,9 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 			Value:    nil,
 			Vbucket:  0,
 		},
-		ReplicaIdx:    -1,
-		RetryStrategy: opts.RetryStrategy,
+		ReplicaIdx:       -1,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: opts.TraceContext,
 	}
 
 	req.Callback = handler
@@ -280,7 +289,7 @@ func (cid *collectionIdCache) refreshCid(req *memdQRequest) error {
 	if err != nil {
 		return err
 	}
-	_, err = cid.agent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{},
+	_, err = cid.agent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
 		func(manifestID uint64, collectionID uint32, err error) {
 			// GetCollectionID will handle updating the id cache so we don't need to do it here
 			if err != nil {

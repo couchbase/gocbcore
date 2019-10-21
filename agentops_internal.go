@@ -11,6 +11,9 @@ type GetMetaOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetMetaResult encapsulates the result of a GetMetaEx operation.
@@ -29,13 +32,17 @@ type GetMetaExCallback func(*GetMetaResult, error)
 
 // GetMetaEx retrieves a document along with some internal Couchbase meta-data.
 func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 21 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -46,6 +53,7 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 		seqNo := SeqNo(binary.BigEndian.Uint64(resp.Extras[12:]))
 		dataType := resp.Extras[20]
 
+		tracer.Finish()
 		cb(&GetMetaResult{
 			Value:    resp.Value,
 			Flags:    flags,
@@ -75,10 +83,11 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -99,6 +108,9 @@ type SetMetaOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // SetMetaResult encapsulates the result of a SetMetaEx operation.
@@ -112,8 +124,11 @@ type SetMetaExCallback func(*SetMetaResult, error)
 
 // SetMetaEx stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -125,6 +140,7 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&SetMetaResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -155,10 +171,11 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 			Value:        opts.Value,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -179,6 +196,9 @@ type DeleteMetaOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
@@ -192,8 +212,11 @@ type DeleteMetaExCallback func(*DeleteMetaResult, error)
 
 // DeleteMetaEx deletes a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetMetaEx", nil)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -205,6 +228,7 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&DeleteMetaResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -235,10 +259,11 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 			Value:        opts.Value,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)

@@ -476,6 +476,7 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 		sort.Sort(memdQRequestSorter(requestList))
 
 		for _, req := range requestList {
+			agent.stopCmdTrace(req)
 			agent.requeueDirect(req, false)
 		}
 	}
@@ -556,6 +557,8 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 }
 
 func (agent *Agent) dispatchDirect(req *memdQRequest) error {
+	agent.startCmdTrace(req)
+
 	for {
 		pipeline, err := agent.routeRequest(req)
 		if err != nil {
@@ -578,6 +581,8 @@ func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 }
 
 func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) error {
+	agent.startCmdTrace(req)
+
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
 	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
 	if req.ReplicaIdx != 0 {
@@ -619,6 +624,7 @@ func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) e
 }
 
 func (agent *Agent) requeueDirect(req *memdQRequest, isRetry bool) {
+	agent.startCmdTrace(req)
 	handleError := func(err error) {
 		// We only want to log an error on retries if the error isn't cancelled.
 		if !isRetry || (isRetry && err != ErrCancelled) {

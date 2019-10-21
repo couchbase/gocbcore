@@ -12,6 +12,9 @@ type GetOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetResult encapsulates the result of a GetEx operation.
@@ -27,13 +30,17 @@ type GetExCallback func(*GetResult, error)
 
 // GetEx retrieves a document.
 func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 4 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -44,6 +51,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 		res.Cas = Cas(resp.Cas)
 		res.Datatype = resp.Datatype
 
+		tracer.Finish()
 		cb(&res, nil)
 	}
 
@@ -62,10 +70,11 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -79,6 +88,9 @@ type GetAndTouchOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -94,19 +106,24 @@ type GetAndTouchExCallback func(*GetAndTouchResult, error)
 
 // GetAndTouchEx retrieves a document and updates its expiry.
 func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetAndTouchEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 4 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
+		tracer.Finish()
 		cb(&GetAndTouchResult{
 			Value:    resp.Value,
 			Flags:    flags,
@@ -133,10 +150,11 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -150,6 +168,9 @@ type GetAndLockOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
@@ -165,19 +186,24 @@ type GetAndLockExCallback func(*GetAndLockResult, error)
 
 // GetAndLockEx retrieves a document and locks it.
 func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetAndLockEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 4 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
+		tracer.Finish()
 		cb(&GetAndLockResult{
 			Value:    resp.Value,
 			Flags:    flags,
@@ -204,10 +230,11 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -220,6 +247,9 @@ type GetAnyReplicaOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetOneReplicaOptions encapsulates the parameters for a GetOneReplicaEx operation.
@@ -230,6 +260,9 @@ type GetOneReplicaOptions struct {
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
 	ReplicaIdx     int
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetReplicaResult encapsulates the result of a GetReplica operation.
@@ -244,7 +277,7 @@ type GetReplicaResult struct {
 // GetReplicaExCallback is invoked upon completion of a GetReplica operation.
 type GetReplicaExCallback func(*GetReplicaResult, error)
 
-func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+func (agent *Agent) getOneReplica(tracer *opTracer, opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -281,11 +314,12 @@ func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCall
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		ReplicaIdx:     opts.ReplicaIdx,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		ReplicaIdx:       opts.ReplicaIdx,
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -293,20 +327,27 @@ func (agent *Agent) getOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCall
 
 // GetOneReplicaEx retrieves a document from a replica server.
 func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetReplicaEx", opts.TraceContext)
+
 	if opts.ReplicaIdx <= 0 {
+		tracer.Finish()
 		return nil, ErrInvalidReplica
 	}
 
-	return agent.getOneReplica(opts, func(resp *GetReplicaResult, err error) {
+	return agent.getOneReplica(tracer, opts, func(resp *GetReplicaResult, err error) {
+		tracer.Finish()
 		cb(resp, err)
 	})
 }
 
 // GetAnyReplicaEx retrieves a document from any replica or active server.
 func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetAnyReplicaEx", opts.TraceContext)
+
 	numReplicas := agent.NumReplicas()
 
 	if numReplicas == 0 {
+		tracer.Finish()
 		return nil, ErrInvalidReplica
 	}
 
@@ -321,10 +362,12 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 		completed := op.IncrementCompletedOps()
 		if expected-completed == 0 {
 			if firstResult == nil {
+				tracer.Finish()
 				cb(nil, ErrNoReplicas)
 				return
 			}
 
+			tracer.Finish()
 			cb(firstResult, nil)
 		}
 	}
@@ -366,6 +409,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 		ScopeName:      opts.ScopeName,
 		RetryStrategy:  opts.RetryStrategy,
 		CollectionName: opts.CollectionName,
+		TraceContext:   opts.TraceContext,
 		Key:            opts.Key,
 	}, func(result *GetResult, err error) {
 		if err != nil {
@@ -391,7 +435,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 
 	// Dispatch a getReplica for each replica server
 	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
-		subOp, err := agent.getOneReplica(GetOneReplicaOptions{
+		subOp, err := agent.getOneReplica(tracer, GetOneReplicaOptions{
 			Key:            opts.Key,
 			ReplicaIdx:     repIdx,
 			CollectionName: opts.CollectionName,
@@ -423,6 +467,9 @@ type TouchOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // TouchResult encapsulates the result of a TouchEx operation.
@@ -436,8 +483,11 @@ type TouchExCallback func(*TouchResult, error)
 
 // TouchEx updates the expiry for a document.
 func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("TouchEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -449,6 +499,7 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&TouchResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -476,10 +527,11 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -493,6 +545,9 @@ type UnlockOptions struct {
 	ScopeName      string
 	CollectionId   uint32
 	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // UnlockResult encapsulates the result of a UnlockEx operation.
@@ -506,8 +561,11 @@ type UnlockExCallback func(*UnlockResult, error)
 
 // UnlockEx unlocks a locked document.
 func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("UnlockEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -519,6 +577,7 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&UnlockResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -540,10 +599,11 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 			Value:        nil,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -559,6 +619,9 @@ type DeleteOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // DeleteResult encapsulates the result of a DeleteEx operation.
@@ -572,8 +635,11 @@ type DeleteExCallback func(*DeleteResult, error)
 
 // DeleteEx removes a document.
 func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("DeleteEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -585,6 +651,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&DeleteResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -619,10 +686,11 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -641,6 +709,9 @@ type storeOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
@@ -653,8 +724,11 @@ type StoreResult struct {
 type StoreExCallback func(*StoreResult, error)
 
 func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions, cb StoreExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -666,6 +740,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&StoreResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -703,10 +778,11 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -725,6 +801,9 @@ type AddOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // AddEx stores a document as long as it does not already exist.
@@ -739,6 +818,7 @@ func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error
 		Datatype:               opts.Datatype,
 		Cas:                    0,
 		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionId:           opts.CollectionId,
@@ -758,6 +838,9 @@ type SetOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // SetEx stores a document.
@@ -772,6 +855,7 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 		Datatype:               opts.Datatype,
 		Cas:                    0,
 		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionId:           opts.CollectionId,
@@ -792,6 +876,9 @@ type ReplaceOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
@@ -806,6 +893,7 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 		Datatype:               opts.Datatype,
 		Cas:                    opts.Cas,
 		Expiry:                 opts.Expiry,
+		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionId:           opts.CollectionId,
@@ -823,6 +911,9 @@ type AdjoinOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
@@ -835,8 +926,11 @@ type AdjoinResult struct {
 type AdjoinExCallback func(*AdjoinResult, error)
 
 func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
@@ -848,6 +942,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&AdjoinResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
@@ -882,10 +977,11 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -914,6 +1010,9 @@ type CounterOptions struct {
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionId           uint32
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
@@ -927,13 +1026,17 @@ type CounterResult struct {
 type CounterExCallback func(*CounterResult, error)
 
 func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace(opName, opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Value) != 8 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
@@ -946,6 +1049,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
+		tracer.Finish()
 		cb(&CounterResult{
 			Value:         intVal,
 			Cas:           Cas(resp.Cas),
@@ -996,10 +1100,11 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionId,
 		},
-		Callback:       handler,
-		CollectionName: opts.CollectionName,
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -1018,6 +1123,9 @@ func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (Pend
 // GetRandomOptions encapsulates the parameters for a GetRandomEx operation.
 type GetRandomOptions struct {
 	RetryStrategy RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // GetRandomResult encapsulates the result of a GetRandomEx operation.
@@ -1034,19 +1142,24 @@ type GetRandomExCallback func(*GetRandomResult, error)
 
 // GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
 func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetRandomEx", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 4 {
+			tracer.Finish()
 			cb(nil, ErrProtocol)
 			return
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
+		tracer.Finish()
 		cb(&GetRandomResult{
 			Key:      resp.Key,
 			Value:    resp.Value,
@@ -1070,8 +1183,9 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 			Key:      nil,
 			Value:    nil,
 		},
-		Callback:      handler,
-		RetryStrategy: opts.RetryStrategy,
+		Callback:         handler,
+		RootTraceContext: tracer.RootContext(),
+		RetryStrategy:    opts.RetryStrategy,
 	}
 
 	return agent.dispatchOp(req)
@@ -1099,6 +1213,9 @@ type StatsOptions struct {
 	// then the stats command will be sent to all servers.
 	Target        StatsTarget
 	RetryStrategy RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // StatsResult encapsulates the result of a StatsEx operation.
@@ -1115,8 +1232,11 @@ type StatsExCallback func(*StatsResult, error)
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
 func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellablePendingOp, error) {
+	tracer := agent.createOpTrace("StatsEx", opts.TraceContext)
+
 	config := agent.routingInfo.Get()
 	if config == nil {
+		tracer.Finish()
 		return nil, ErrShutdown
 	}
 
@@ -1152,6 +1272,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 	opHandledLocked := func() {
 		completed := op.IncrementCompletedOps()
 		if expected-completed == 0 {
+			tracer.Finish()
 			cb(&StatsResult{
 				Servers: stats,
 			}, nil)
@@ -1226,9 +1347,10 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 				Key:      []byte(opts.Key),
 				Value:    nil,
 			},
-			Persistent:    true,
-			Callback:      handler,
-			RetryStrategy: opts.RetryStrategy,
+			Persistent:       true,
+			Callback:         handler,
+			RootTraceContext: tracer.RootContext(),
+			RetryStrategy:    opts.RetryStrategy,
 		}
 
 		curOp, err := agent.dispatchOpToAddress(req, serverAddress)

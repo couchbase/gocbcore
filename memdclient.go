@@ -165,6 +165,8 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
 
+	client.parent.startNetTrace(req)
+
 	err := client.conn.WritePacket(packet)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
@@ -198,6 +200,10 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	req.processingLock.Lock()
 
+	if !req.Persistent {
+		client.parent.stopNetTrace(req, resp, client)
+	}
+
 	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
 	if isCompressed && !client.parent.disableDecompression {
 		newValue, err := snappy.Decode(nil, resp.Value)
@@ -227,6 +233,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		req.processingLock.Unlock()
 	} else {
 		if !req.Persistent {
+			client.parent.stopCmdTrace(req)
 		}
 
 		req.processingLock.Unlock()

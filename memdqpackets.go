@@ -84,6 +84,10 @@ type memdQRequest struct {
 	cancelRetryTimerFunc func() bool
 	cancelTimerLock      sync.Mutex
 
+	RootTraceContext RequestSpanContext
+	cmdTraceSpan     RequestSpan
+	netTraceSpan     RequestSpan
+
 	CollectionName string
 	ScopeName      string
 }
@@ -140,11 +144,12 @@ func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
 
 func (req *memdQRequest) cloneNew() *memdQRequest {
 	return &memdQRequest{
-		memdPacket: req.memdPacket,
-		ReplicaIdx: req.ReplicaIdx,
-		Callback:   req.Callback,
-		Persistent: req.Persistent,
-		owner:      req.owner,
+		memdPacket:       req.memdPacket,
+		ReplicaIdx:       req.ReplicaIdx,
+		Callback:         req.Callback,
+		Persistent:       req.Persistent,
+		owner:            req.owner,
+		RootTraceContext: req.RootTraceContext,
 	}
 }
 
@@ -195,6 +200,7 @@ func (req *memdQRequest) Cancel() bool {
 		waitingIn.CancelRequest(req)
 	}
 
+	req.owner.cancelReqTrace(req, ErrCancelled)
 	req.processingLock.Unlock()
 	return true
 }
