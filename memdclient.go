@@ -229,6 +229,10 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 	}
 
+	if req.onCompletion != nil {
+		req.onCompletion(err)
+	}
+
 	if client.parent == nil {
 		req.processingLock.Unlock()
 	} else {

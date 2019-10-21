@@ -90,6 +90,8 @@ type memdQRequest struct {
 
 	CollectionName string
 	ScopeName      string
+
+	onCompletion func(err error)
 }
 
 func (req *memdQRequest) RetryAttempts() uint32 {
@@ -198,6 +200,10 @@ func (req *memdQRequest) Cancel() bool {
 	waitingIn := (*memdClient)(atomic.LoadPointer(&req.waitingIn))
 	if waitingIn != nil {
 		waitingIn.CancelRequest(req)
+	}
+
+	if req.onCompletion != nil {
+		req.onCompletion(ErrCancelled)
 	}
 
 	req.owner.cancelReqTrace(req, ErrCancelled)

@@ -12,7 +12,8 @@ type memdClientMux struct {
 	deadPipe  *memdPipeline
 }
 
-func newMemdClientMux(hostPorts []string, poolSize int, queueSize int, getClientFn memdGetClientFunc) *memdClientMux {
+func newMemdClientMux(hostPorts []string, poolSize int, queueSize int, getClientFn memdGetClientFunc,
+	breakerCfg CircuitBreakerConfig) *memdClientMux {
 	mux := &memdClientMux{}
 
 	for _, hostPort := range hostPorts {
@@ -21,7 +22,7 @@ func newMemdClientMux(hostPorts []string, poolSize int, queueSize int, getClient
 		getCurClientFn := func() (*memdClient, error) {
 			return getClientFn(hostPort)
 		}
-		pipeline := newPipeline(hostPort, poolSize, queueSize, getCurClientFn)
+		pipeline := newPipeline(hostPort, poolSize, queueSize, getCurClientFn, breakerCfg)
 
 		mux.pipelines = append(mux.pipelines, pipeline)
 	}

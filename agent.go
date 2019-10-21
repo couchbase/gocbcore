@@ -90,9 +90,10 @@ type Agent struct {
 	cachedHTTPEndpoints []string
 	supportsGCCCP       bool
 
-	retryOrchestrator *retryOrchestrator
-
+	retryOrchestrator    *retryOrchestrator
 	defaultRetryStrategy RetryStrategy
+
+	circuitBreakerConfig CircuitBreakerConfig
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -178,6 +179,7 @@ type AgentConfig struct {
 	EnableStreamId bool
 
 	DefaultRetryStrategy RetryStrategy
+	CircuitBreakerConfig CircuitBreakerConfig
 }
 
 func (config *AgentConfig) redacted() interface{} {
@@ -678,6 +680,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		cachedClients:         make(map[string]*memdClient),
 		retryOrchestrator:     &retryOrchestrator{},
 		defaultRetryStrategy:  config.DefaultRetryStrategy,
+		circuitBreakerConfig:  config.CircuitBreakerConfig,
 	}
 	c.cidMgr = newCollectionIdManager(c, maxQueueSize)
 
@@ -1680,8 +1683,8 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 
 func (agent *Agent) newMemdClientMux(hostPorts []string) *memdClientMux {
 	if agent.bucket() == "" {
-		return newMemdClientMux(hostPorts, 1, agent.maxQueueSize, agent.slowDialMemdClient)
+		return newMemdClientMux(hostPorts, 1, agent.maxQueueSize, agent.slowDialMemdClient, agent.circuitBreakerConfig)
 	}
 
-	return newMemdClientMux(hostPorts, agent.kvPoolSize, agent.maxQueueSize, agent.slowDialMemdClient)
+	return newMemdClientMux(hostPorts, agent.kvPoolSize, agent.maxQueueSize, agent.slowDialMemdClient, agent.circuitBreakerConfig)
 }

@@ -22,20 +22,22 @@ type memdPipeline struct {
 	maxClients  int
 	clients     []*memdPipelineClient
 	clientsLock sync.Mutex
+	breakerCfg  CircuitBreakerConfig
 }
 
-func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
+func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn, breakerCfg CircuitBreakerConfig) *memdPipeline {
 	return &memdPipeline{
 		address:     address,
 		getClientFn: getClientFn,
 		maxClients:  maxClients,
 		maxItems:    maxItems,
 		queue:       newMemdOpQueue(),
+		breakerCfg:  breakerCfg,
 	}
 }
 
 func newDeadPipeline(maxItems int) *memdPipeline {
-	return newPipeline("", 0, maxItems, nil)
+	return newPipeline("", 0, maxItems, nil, CircuitBreakerConfig{})
 }
 
 func (pipeline *memdPipeline) debugString() string {

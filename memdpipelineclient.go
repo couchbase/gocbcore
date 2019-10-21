@@ -12,14 +12,23 @@ type memdPipelineClient struct {
 	consumer  *memdOpConsumer
 	lock      sync.Mutex
 	closedSig chan struct{}
+	breaker   circuitBreaker
 }
 
 func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
-	return &memdPipelineClient{
+	client := &memdPipelineClient{
 		parent:    parent,
 		address:   parent.address,
 		closedSig: make(chan struct{}),
 	}
+
+	if parent.breakerCfg.Enabled {
+		client.breaker = newLazyCircuitBreaker(parent.breakerCfg, client.sendCanary)
+	} else {
+		client.breaker = newNoopCircuitBreaker()
+	}
+
+	return client
 }
 
 func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
@@ -138,6 +147,29 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 			continue
 		}
 
+		if !pipecli.breaker.AllowsRequest() {
+			client.parent.stopCmdTrace(req)
+			canRetry := client.parent.waitAndRetryOperation(req, CircuitBreakerOpenRetryReason)
+			if canRetry {
+				// If the retry orchestrator is going to attempt to retry this then we don't want to return an
+				// error to the user.
+				continue
+			}
+
+			req.tryCallback(nil, ErrCircuitBreakerOpen)
+
+			// Keep looping, there may be more requests and those might be able to send
+			continue
+		}
+
+		req.onCompletion = func(err error) {
+			if pipecli.breaker.CompletionCallback(err) {
+				pipecli.breaker.MarkSuccessful()
+			} else {
+				pipecli.breaker.MarkFailure()
+			}
+		}
+
 		err := client.SendRequest(req)
 		if err != nil {
 			logDebugf("Pipeline client `%s/%p` encountered a socket write error: %v", pipecli.address, pipecli, err)
@@ -164,8 +196,8 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 			}
 
 			// We can attempt to retry ops of this type if the socket fails on write.
-			retried := client.parent.waitAndRetryOperation(req, SocketNotAvailableRetryReason)
-			if retried {
+			canRetry := client.parent.waitAndRetryOperation(req, SocketNotAvailableRetryReason)
+			if canRetry {
 				// If we've successfully retried this then don't return an error to the caller, just refresh
 				// the client and pick the request up again later.
 				break
@@ -200,6 +232,8 @@ func (pipecli *memdPipelineClient) Run() {
 			logDebugf("Pipeline Client `%s/%p` is shutting down", pipecli.address, pipecli)
 			break
 		}
+
+		pipecli.breaker.Reset()
 
 		logDebugf("Pipeline Client `%s/%p` retrieving new client connection for parent %p", pipecli.address, pipecli, pipeline)
 		client, err := pipeline.getClientFn()
@@ -245,4 +279,52 @@ func (pipecli *memdPipelineClient) Close() error {
 	<-pipecli.closedSig
 
 	return nil
+}
+
+func (pipecli *memdPipelineClient) sendCanary() {
+	errChan := make(chan error)
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		errChan <- err
+	}
+
+	req := &memdQRequest{
+		memdPacket: memdPacket{
+			Magic:    reqMagic,
+			Opcode:   cmdNoop,
+			Datatype: 0,
+			Cas:      0,
+			Key:      nil,
+			Value:    nil,
+		},
+		Callback:      handler,
+		RetryStrategy: NewFailFastRetryStrategy(),
+	}
+
+	logDebugf("Sending NOOP request for %p/%s", pipecli, pipecli.address)
+	err := pipecli.client.SendRequest(req)
+	if err != nil {
+		pipecli.breaker.MarkFailure()
+	}
+
+	timer := AcquireTimer(pipecli.breaker.CanaryTimeout())
+	select {
+	case <-timer.C:
+		if !req.Cancel() {
+			err := <-errChan
+			if err == nil {
+				logDebugf("NOOP request successful for %p/%s", pipecli, pipecli.address)
+				pipecli.breaker.MarkSuccessful()
+			} else {
+				logDebugf("NOOP request failed for %p/%s", pipecli, pipecli.address)
+				pipecli.breaker.MarkFailure()
+			}
+		}
+		pipecli.breaker.MarkFailure()
+	case err := <-errChan:
+		if err == nil {
+			pipecli.breaker.MarkSuccessful()
+		} else {
+			pipecli.breaker.MarkFailure()
+		}
+	}
 }

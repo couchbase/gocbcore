@@ -90,6 +90,9 @@ var (
 
 	// PipelineOverloadedRetryReason indicates that the operation failed because the pipeline queue was full.
 	PipelineOverloadedRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "PIPELINE_OVERLOADED"}
+
+	// CircuitBreakerOpenRetryReason indicates that the operation failed because the circuit breaker for the underlying socket was open.
+	CircuitBreakerOpenRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CIRCUIT_BREAKER_OPEN"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.

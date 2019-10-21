@@ -350,6 +350,9 @@ var (
 	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
 	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
 
+	// ErrCircuitBreakerOpen occurs when the circuit breaker for a socket is open and not allowing requests.
+	ErrCircuitBreakerOpen = errors.New("Circuit breaker is open.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
 
