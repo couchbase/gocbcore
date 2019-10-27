@@ -36,10 +36,15 @@ type CancellablePendingOp interface {
 // it has completed (cancelled or successful).
 type PendingOp interface {
 	CancellablePendingOp
+
+	// The following should only be accessed after completion of the op.
 	RetryAttempts() uint32
 	Identifier() string
 	Idempotent() bool
 	RetryReasons() []RetryReason
+	LocalEndpoint() string
+	RemoteEndpoint() string
+	ConnectionId() string
 }
 
 type multiPendingOp struct {
@@ -92,6 +97,30 @@ func (mp *multiPendingOp) RetryReasons() []RetryReason {
 	}
 
 	return mp.ops[0].RetryReasons()
+}
+
+func (mp *multiPendingOp) ConnectionId() string {
+	if len(mp.ops) == 0 {
+		return ""
+	}
+
+	return mp.ops[0].ConnectionId()
+}
+
+func (mp *multiPendingOp) LocalEndpoint() string {
+	if len(mp.ops) == 0 {
+		return ""
+	}
+
+	return mp.ops[0].LocalEndpoint()
+}
+
+func (mp *multiPendingOp) RemoteEndpoint() string {
+	if len(mp.ops) == 0 {
+		return ""
+	}
+
+	return mp.ops[0].RemoteEndpoint()
 }
 
 func (agent *Agent) waitAndRetryOperation(req *memdQRequest, reason RetryReason) bool {

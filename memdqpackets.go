@@ -75,6 +75,10 @@ type memdQRequest struct {
 	// This is the set of reasons why this request has been retried.
 	retryReasons []RetryReason
 
+	lastDispatchedTo   string
+	lastDispatchedFrom string
+	lastConnectionId   string
+
 	// If the request is in the process of being retried then this is the function
 	// to call to stop the retry wait for this request.
 	cancelRetryTimerFunc func() bool
@@ -93,7 +97,7 @@ func (req *memdQRequest) incrementRetryAttempts() {
 }
 
 func (req *memdQRequest) Identifier() string {
-	return fmt.Sprintf("%d", req.Opaque)
+	return fmt.Sprintf("0x%x", req.Opaque)
 }
 
 func (req *memdQRequest) Idempotent() bool {
@@ -103,6 +107,18 @@ func (req *memdQRequest) Idempotent() bool {
 
 func (req *memdQRequest) RetryReasons() []RetryReason {
 	return req.retryReasons
+}
+
+func (req *memdQRequest) LocalEndpoint() string {
+	return req.lastDispatchedFrom
+}
+
+func (req *memdQRequest) RemoteEndpoint() string {
+	return req.lastDispatchedTo
+}
+
+func (req *memdQRequest) ConnectionId() string {
+	return req.lastConnectionId
 }
 
 func (req *memdQRequest) setCancelRetry(cancelFunc func() bool) {
