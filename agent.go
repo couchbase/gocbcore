@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -70,7 +71,7 @@ type Agent struct {
 
 	zombieLock      sync.RWMutex
 	zombieOps       []*zombieLogEntry
-	useZombieLogger bool
+	useZombieLogger uint32
 
 	dcpPriority  DcpAgentPriority
 	useDcpExpiry bool
@@ -659,7 +660,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			},
 		},
 		closeNotify:          make(chan struct{}),
-		useZombieLogger:      config.UseZombieLogger,
 		tracer:               tracer,
 		useMutationTokens:    config.UseMutationTokens,
 		useKvErrorMaps:       config.UseKvErrorMaps,
@@ -729,6 +729,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	if config.UseZombieLogger {
+		// We setup the zombie logger after connecting so that we don't end up leaking the logging goroutine.
+		// We also don't enable the zombie logger on the agent until here so that the operations performed
+		// when connecting don't trigger a zombie log to occur when the logger isn't yet setup.
+		atomic.StoreUint32(&c.useZombieLogger, 1)
 		zombieLoggerInterval := 10 * time.Second
 		zombieLoggerSampleSize := 10
 		if config.ZombieLoggerInterval > 0 {

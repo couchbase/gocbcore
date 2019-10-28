@@ -238,16 +238,19 @@ func (agent *Agent) recordZombieResponse(resp *memdQResponse, client *memdClient
 	}
 
 	agent.zombieLock.RLock()
-	if len(agent.zombieOps) == cap(agent.zombieOps) && entry.duration < agent.zombieOps[0].duration {
-		// we are at capacity and we are faster than the fastest slow op
+
+	if cap(agent.zombieOps) == 0 || (len(agent.zombieOps) == cap(agent.zombieOps) &&
+		entry.duration < agent.zombieOps[0].duration) {
+		// we are at capacity and we are faster than the fastest slow op or somehow in a state where capacity is 0.
 		agent.zombieLock.RUnlock()
 		return
 	}
 	agent.zombieLock.RUnlock()
 
 	agent.zombieLock.Lock()
-	if len(agent.zombieOps) == cap(agent.zombieOps) && entry.duration < agent.zombieOps[0].duration {
-		// we are at capacity and we are faster than the fastest slow op
+	if cap(agent.zombieOps) == 0 || (len(agent.zombieOps) == cap(agent.zombieOps) &&
+		entry.duration < agent.zombieOps[0].duration) {
+		// we are at capacity and we are faster than the fastest slow op or somehow in a state where capacity is 0.
 		agent.zombieLock.Unlock()
 		return
 	}

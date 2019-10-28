@@ -185,7 +185,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
 		logDebugf("Received response with no corresponding request.")
-		if client.parent.useZombieLogger {
+		if atomic.LoadUint32(&client.parent.useZombieLogger) == 1 {
 			client.parent.recordZombieResponse(resp, client)
 		}
 		return
