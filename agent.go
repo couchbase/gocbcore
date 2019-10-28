@@ -9,8 +9,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
+	"golang.org/x/net/http2"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.
@@ -21,26 +25,51 @@ type Agent struct {
 	bucketName           string
 	tlsConfig            *dynTLSConfig
 	initFn               memdInitFunc
-	defaultRetryStrategy RetryStrategy
+	networkType          string
+	useMutationTokens    bool
+	useKvErrorMaps       bool
+	useEnhancedErrors    bool
+	useCompression       bool
+	useDurations         bool
+	disableDecompression bool
 
-	pollerController *pollerController
-	kvMux            *kvMux
-	httpMux          *httpMux
+	compressionMinSize  int
+	compressionMinRatio float64
 
-	cfgManager   *configManagementComponent
-	errMap       *errMapComponent
-	collections  *collectionsComponent
-	tracer       *tracerComponent
-	http         *httpComponent
-	diagnostics  *diagnosticsComponent
-	crud         *crudComponent
-	observe      *observeComponent
-	stats        *statsComponent
-	n1ql         *n1qlQueryComponent
-	analytics    *analyticsQueryComponent
-	search       *searchQueryComponent
-	views        *viewQueryComponent
-	zombieLogger *zombieLoggerComponent
+	closeNotify       chan struct{}
+	cccpLooperDoneSig chan struct{}
+	httpLooperDoneSig chan struct{}
+
+	configLock  sync.Mutex
+	routingInfo routeDataPtr
+	kvErrorMap  kvErrorMapPtr
+	numVbuckets int
+
+	tracer           opentracing.Tracer
+	noRootTraceSpans bool
+
+	serverFailuresLock sync.Mutex
+	serverFailures     map[string]time.Time
+
+	httpCli *http.Client
+
+	confHttpRedialPeriod time.Duration
+	confHttpRetryDelay   time.Duration
+	confCccpMaxWait      time.Duration
+	confCccpPollPeriod   time.Duration
+
+	serverConnectTimeout time.Duration
+	serverWaitTimeout    time.Duration
+	nmvRetryDelay        time.Duration
+	kvPoolSize           int
+	maxQueueSize         int
+
+	zombieLock      sync.RWMutex
+	zombieOps       []*zombieLogEntry
+	useZombieLogger uint32
+
+	dcpPriority  DcpAgentPriority
+	useDcpExpiry bool
 }
 
 // !!!!UNSURE WHY THESE EXIST!!!!
@@ -206,7 +235,92 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 
-	authHandler := buildAuthHandler(auth)
+	return createAgent(config, initFn)
+}
+
+func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
+	// TODO(brett19): Put all configurable options in the AgentConfig
+
+	logDebugf("SDK Version: gocb/%s", goCbCoreVersionStr)
+	logDebugf("Creating new agent: %+v", config)
+
+	httpTransport := &http.Transport{
+		TLSClientConfig: config.TlsConfig,
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
+		MaxIdleConns:        config.HttpMaxIdleConns,
+		MaxIdleConnsPerHost: config.HttpMaxIdleConnsPerHost,
+		IdleConnTimeout:     config.HttpIdleConnTimeout,
+	}
+	err := http2.ConfigureTransport(httpTransport)
+	if err != nil {
+		logDebugf("failed to configure http2: %s", err)
+	}
+
+	tracer := config.Tracer
+	if tracer == nil {
+		tracer = opentracing.NoopTracer{}
+	}
+
+	c := &Agent{
+		clientId:    formatCbUid(randomCbUid()),
+		userString:  config.UserString,
+		bucket:      config.BucketName,
+		auth:        config.Auth,
+		tlsConfig:   config.TlsConfig,
+		initFn:      initFn,
+		networkType: config.NetworkType,
+		httpCli: &http.Client{
+			Transport: httpTransport,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// All that we're doing here is setting auth on any redirects.
+				// For that reason we can just pull it off the oldest (first) request.
+				if len(via) >= 10 {
+					// Just duplicate the default behaviour for maximum redirects.
+					return errors.New("stopped after 10 redirects")
+				}
+
+				oldest := via[0]
+				auth := oldest.Header.Get("Authorization")
+				if auth != "" {
+					req.Header.Set("Authorization", auth)
+				}
+
+				return nil
+			},
+		},
+		closeNotify:          make(chan struct{}),
+		tracer:               tracer,
+		useMutationTokens:    config.UseMutationTokens,
+		useKvErrorMaps:       config.UseKvErrorMaps,
+		useEnhancedErrors:    config.UseEnhancedErrors,
+		useCompression:       config.UseCompression,
+		compressionMinSize:   32,
+		compressionMinRatio:  0.83,
+		useDurations:         config.UseDurations,
+		noRootTraceSpans:     config.NoRootTraceSpans,
+		serverFailures:       make(map[string]time.Time),
+		serverConnectTimeout: 7000 * time.Millisecond,
+		serverWaitTimeout:    5 * time.Second,
+		nmvRetryDelay:        100 * time.Millisecond,
+		kvPoolSize:           1,
+		maxQueueSize:         2048,
+		confHttpRetryDelay:   10 * time.Second,
+		confHttpRedialPeriod: 10 * time.Second,
+		confCccpMaxWait:      3 * time.Second,
+		confCccpPollPeriod:   2500 * time.Millisecond,
+		dcpPriority:          config.DcpAgentPriority,
+		disableDecompression: config.DisableDecompression,
+		useDcpExpiry:         config.UseDcpExpiry,
+	}
+
+	connectTimeout := 60000 * time.Millisecond
+	if config.ConnectTimeout > 0 {
+		connectTimeout = config.ConnectTimeout
+	}
 
 	var httpEpList []string
 	for _, hostPort := range config.HTTPAddrs {
@@ -218,6 +332,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	if config.UseZombieLogger {
+		// We setup the zombie logger after connecting so that we don't end up leaking the logging goroutine.
+		// We also don't enable the zombie logger on the agent until here so that the operations performed
+		// when connecting don't trigger a zombie log to occur when the logger isn't yet setup.
+		atomic.StoreUint32(&c.useZombieLogger, 1)
 		zombieLoggerInterval := 10 * time.Second
 		zombieLoggerSampleSize := 10
 		if config.ZombieLoggerInterval > 0 {
