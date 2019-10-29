@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -134,12 +133,16 @@ func (req *memdQRequest) setCancelRetry(cancelFunc func() bool) {
 }
 
 func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
-	idx := sort.Search(len(req.retryReasons), func(i int) bool {
-		return req.retryReasons[i] == retryReason
-	})
+	found := false
+	for i := 0; i < len(req.retryReasons); i++ {
+		if req.retryReasons[i] == retryReason {
+			found = true
+			break
+		}
+	}
 
 	// if idx is out of the range of retryReasons then it wasn't found.
-	if idx > len(req.retryReasons)-1 {
+	if !found {
 		req.retryReasons = append(req.retryReasons, retryReason)
 	}
 }
