@@ -131,8 +131,8 @@ func (lcb *lazyCircuitBreaker) Reset() {
 	atomic.StoreUint32(&lcb.state, circuitBreakerStateClosed)
 	atomic.StoreInt64(&lcb.total, 0)
 	atomic.StoreInt64(&lcb.failed, 0)
-	atomic.StoreInt64(&lcb.openedAt, now-lcb.sleepWindow)
-	atomic.StoreInt64(&lcb.windowStart, now-lcb.rollingWindow)
+	atomic.StoreInt64(&lcb.openedAt, 0)
+	atomic.StoreInt64(&lcb.windowStart, now)
 }
 
 func (lcb *lazyCircuitBreaker) State() uint32 {
