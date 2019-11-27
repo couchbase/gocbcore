@@ -15,7 +15,7 @@ type memdQResponse struct {
 	memdPacket
 
 	sourceAddr   string
-	sourceConnId string
+	sourceConnID string
 	isInternal   bool
 }
 
@@ -76,7 +76,7 @@ type memdQRequest struct {
 
 	lastDispatchedTo   string
 	lastDispatchedFrom string
-	lastConnectionId   string
+	lastConnectionID   string
 
 	// If the request is in the process of being retried then this is the function
 	// to call to stop the retry wait for this request.
@@ -122,8 +122,8 @@ func (req *memdQRequest) RemoteEndpoint() string {
 	return req.lastDispatchedTo
 }
 
-func (req *memdQRequest) ConnectionId() string {
-	return req.lastConnectionId
+func (req *memdQRequest) ConnectionID() string {
+	return req.lastConnectionID
 }
 
 func (req *memdQRequest) setCancelRetry(cancelFunc func() bool) {

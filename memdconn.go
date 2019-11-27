@@ -13,8 +13,8 @@ import (
 type memdFrameExtras struct {
 	HasSrvDuration         bool
 	SrvDuration            time.Duration
-	HasStreamId            bool
-	StreamId               uint16
+	HasStreamID            bool
+	StreamID               uint16
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
 }
@@ -45,7 +45,7 @@ type memdConn interface {
 	EnableCollections(bool)
 }
 
-type memdTcpConn struct {
+type memdTCPConn struct {
 	conn             io.ReadWriteCloser
 	reader           *bufio.Reader
 	headerBuf        []byte
@@ -65,8 +65,8 @@ func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 		return nil, err
 	}
 
-	tcpConn, isTcpConn := baseConn.(*net.TCPConn)
-	if !isTcpConn || tcpConn == nil {
+	tcpConn, isTCPConn := baseConn.(*net.TCPConn)
+	if !isTCPConn || tcpConn == nil {
 		return nil, ErrCliInternalError
 	}
 
@@ -88,7 +88,7 @@ func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 		conn = tlsConn
 	}
 
-	return &memdTcpConn{
+	return &memdTCPConn{
 		conn:       conn,
 		reader:     bufio.NewReader(conn),
 		headerBuf:  make([]byte, 24),
@@ -97,19 +97,19 @@ func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 	}, nil
 }
 
-func (s *memdTcpConn) LocalAddr() string {
+func (s *memdTCPConn) LocalAddr() string {
 	return s.localAddr
 }
 
-func (s *memdTcpConn) RemoteAddr() string {
+func (s *memdTCPConn) RemoteAddr() string {
 	return s.remoteAddr
 }
 
-func (s *memdTcpConn) Close() error {
+func (s *memdTCPConn) Close() error {
 	return s.conn.Close()
 }
 
-func (s *memdTcpConn) WritePacket(req *memdPacket) error {
+func (s *memdTCPConn) WritePacket(req *memdPacket) error {
 	encodedKey := req.Key
 	if s.useCollections {
 		if supported, ok := cidSupportedOps[req.Opcode]; ok && supported {
@@ -141,7 +141,7 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 	valLen := len(req.Value)
 	var frameLen int
 	if req.FrameExtras != nil {
-		if req.FrameExtras.HasStreamId {
+		if req.FrameExtras.HasStreamID {
 			frameLen += 3
 		}
 
@@ -181,10 +181,10 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 
 	extrasStart := 24
 	if req.FrameExtras != nil {
-		if req.FrameExtras.HasStreamId {
-			buffer[extrasStart] = byte(((streamIdFrameExtra & 0xF) << 4) | (2 & 0xF))
+		if req.FrameExtras.HasStreamID {
+			buffer[extrasStart] = byte(((streamIDFrameExtra & 0xF) << 4) | (2 & 0xF))
 
-			binary.BigEndian.PutUint16(buffer[extrasStart+1:], uint16(req.FrameExtras.StreamId))
+			binary.BigEndian.PutUint16(buffer[extrasStart+1:], uint16(req.FrameExtras.StreamID))
 			extrasStart = extrasStart + 3
 		}
 
@@ -212,7 +212,7 @@ func (s *memdTcpConn) WritePacket(req *memdPacket) error {
 	return err
 }
 
-func (s *memdTcpConn) readFullBuffer(buf []byte) error {
+func (s *memdTCPConn) readFullBuffer(buf []byte) error {
 	for len(buf) > 0 {
 		r, err := s.reader.Read(buf)
 		if err != nil {
@@ -229,7 +229,7 @@ func (s *memdTcpConn) readFullBuffer(buf []byte) error {
 	return nil
 }
 
-func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
+func (s *memdTCPConn) ReadPacket(resp *memdPacket) error {
 	err := s.readFullBuffer(s.headerBuf)
 	if err != nil {
 		return err
@@ -296,15 +296,15 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 
 				resp.FrameExtras.HasSrvDuration = true
 				resp.FrameExtras.SrvDuration = time.Duration(srvDurMicros) * time.Microsecond
-			} else if extraType == streamIdFrameExtra {
-				resp.FrameExtras.HasStreamId = true
-				resp.FrameExtras.StreamId = binary.BigEndian.Uint16(extraBody)
+			} else if extraType == streamIDFrameExtra {
+				resp.FrameExtras.HasStreamID = true
+				resp.FrameExtras.StreamID = binary.BigEndian.Uint16(extraBody)
 			}
 		}
 	}
 
 	resp.Extras = bodyBuf[frameExtrasLen : frameExtrasLen+extLen]
-	var collectionIdLen int
+	var collectionIDLen int
 	if s.useCollections {
 		var n uint8
 		// Some operations do not encode the cid in the key
@@ -315,19 +315,19 @@ func (s *memdTcpConn) ReadPacket(resp *memdPacket) error {
 			break
 		default:
 			resp.CollectionID, n = decodeleb128_32(bodyBuf[frameExtrasLen+extLen : frameExtrasLen+extLen+keyLen])
-			collectionIdLen = int(n)
+			collectionIDLen = int(n)
 		}
 	}
-	resp.Key = bodyBuf[frameExtrasLen+extLen+collectionIdLen : frameExtrasLen+extLen+keyLen]
+	resp.Key = bodyBuf[frameExtrasLen+extLen+collectionIDLen : frameExtrasLen+extLen+keyLen]
 	resp.Value = bodyBuf[frameExtrasLen+extLen+keyLen:]
 	return nil
 }
 
-func (s *memdTcpConn) EnableFramingExtras(use bool) {
+func (s *memdTCPConn) EnableFramingExtras(use bool) {
 	s.useFramingExtras = use
 }
 
-func (s *memdTcpConn) EnableCollections(use bool) {
+func (s *memdTCPConn) EnableCollections(use bool) {
 	s.useCollections = use
 }
 

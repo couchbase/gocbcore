@@ -31,7 +31,7 @@ type memdClient struct {
 	dcpAckSize            int
 	dcpFlowRecv           int
 	closeNotify           chan bool
-	connId                string
+	connID                string
 	closed                bool
 	parent                *Agent
 	conn                  memdConn
@@ -47,7 +47,7 @@ func newMemdClient(parent *Agent, conn memdConn) *memdClient {
 		parent:      parent,
 		conn:        conn,
 		closeNotify: make(chan bool),
-		connId:      parent.clientId + "/" + formatCbUid(randomCbUid()),
+		connID:      parent.clientID + "/" + formatCbUID(randomCbUID()),
 	}
 	client.run()
 	return &client
@@ -119,7 +119,7 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
 
 	req.lastDispatchedTo = client.Address()
 	req.lastDispatchedFrom = client.LocalAddress()
-	req.lastConnectionId = client.connId
+	req.lastConnectionID = client.connID
 
 	client.opList.Add(req)
 	return true
@@ -288,7 +288,7 @@ func (client *memdClient) run() {
 		for {
 			resp := &memdQResponse{
 				sourceAddr:   client.conn.RemoteAddr(),
-				sourceConnId: client.connId,
+				sourceConnID: client.connID,
 			}
 
 			err := client.conn.ReadPacket(&resp.memdPacket)
@@ -321,8 +321,8 @@ func (client *memdClient) run() {
 			if resp.Magic == resMagic && resp.Opcode == cmdDcpCloseStream && client.streamEndNotSupported {
 				closeReq := client.opList.Find(resp.Opaque)
 				if closeReq != nil {
-					vbId := closeReq.Vbucket
-					streamReq := client.opList.FindOpenStream(vbId)
+					vbID := closeReq.Vbucket
+					streamReq := client.opList.FindOpenStream(vbID)
 					if streamReq != nil {
 						endExtras := make([]byte, 4)
 						binary.BigEndian.PutUint32(endExtras, uint32(streamEndClosed))
@@ -330,7 +330,7 @@ func (client *memdClient) run() {
 							memdPacket: memdPacket{
 								Magic:   reqMagic,
 								Opcode:  cmdDcpStreamEnd,
-								Vbucket: vbId,
+								Vbucket: vbID,
 								Opaque:  streamReq.Opaque,
 								Extras:  endExtras,
 							},

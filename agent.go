@@ -23,7 +23,7 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
-	clientId             string
+	clientID             string
 	userString           string
 	auth                 AuthProvider
 	authHandler          authFunc
@@ -62,8 +62,8 @@ type Agent struct {
 
 	httpCli *http.Client
 
-	confHttpRedialPeriod time.Duration
-	confHttpRetryDelay   time.Duration
+	confHTTPRedialPeriod time.Duration
+	confHTTPRetryDelay   time.Duration
 	confCccpMaxWait      time.Duration
 	confCccpPollPeriod   time.Duration
 
@@ -80,7 +80,7 @@ type Agent struct {
 	dcpPriority  DcpAgentPriority
 	useDcpExpiry bool
 
-	cidMgr *collectionIdManager
+	cidMgr *collectionIDManager
 
 	durabilityLevelStatus durabilityLevelStatus
 	clusterCapabilities   uint32
@@ -106,10 +106,10 @@ func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
 	agent.serverConnectTimeout = timeout
 }
 
-// HttpClient returns a pre-configured HTTP Client for communicating with
+// HTTPClient returns a pre-configured HTTP Client for communicating with
 // Couchbase Server.  You must still specify authentication information
 // for any dispatched requests.
-func (agent *Agent) HttpClient() *http.Client {
+func (agent *Agent) HTTPClient() *http.Client {
 	return agent.httpCli
 }
 
@@ -131,8 +131,8 @@ type authFunc func(client AuthClient, deadline time.Time) (completedCh chan Byte
 type AgentConfig struct {
 	UserString     string
 	MemdAddrs      []string
-	HttpAddrs      []string
-	TlsConfig      *tls.Config
+	HTTPAddrs      []string
+	TLSConfig      *tls.Config
 	BucketName     string
 	NetworkType    string
 	AuthHandler    AuthFunc
@@ -150,8 +150,8 @@ type AgentConfig struct {
 	CompressionMinSize  int
 	CompressionMinRatio float64
 
-	HttpRedialPeriod time.Duration
-	HttpRetryDelay   time.Duration
+	HTTPRedialPeriod time.Duration
+	HTTPRetryDelay   time.Duration
 	CccpMaxWait      time.Duration
 	CccpPollPeriod   time.Duration
 
@@ -161,9 +161,9 @@ type AgentConfig struct {
 	KvPoolSize           int
 	MaxQueueSize         int
 
-	HttpMaxIdleConns        int
-	HttpMaxIdleConnsPerHost int
-	HttpIdleConnTimeout     time.Duration
+	HTTPMaxIdleConns        int
+	HTTPMaxIdleConnsPerHost int
+	HTTPIdleConnTimeout     time.Duration
 
 	// Volatile: Tracer API is subject to change.
 	Tracer           RequestTracer
@@ -176,7 +176,7 @@ type AgentConfig struct {
 	DcpAgentPriority DcpAgentPriority
 	UseDcpExpiry     bool
 
-	EnableStreamId bool
+	EnableStreamID bool
 
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig
@@ -188,9 +188,9 @@ func (config *AgentConfig) redacted() interface{} {
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.
-		newConfig.HttpAddrs = append([]string(nil), newConfig.HttpAddrs...)
-		for i, addr := range newConfig.HttpAddrs {
-			newConfig.HttpAddrs[i] = redactSystemData(addr)
+		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
+		for i, addr := range newConfig.HTTPAddrs {
+			newConfig.HTTPAddrs[i] = redactSystemData(addr)
 		}
 		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
 		for i, addr := range newConfig.MemdAddrs {
@@ -280,7 +280,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		return errors.New("bootstrap_on={http,cccp,both}")
 	}
 	config.MemdAddrs = memdHosts
-	config.HttpAddrs = httpHosts
+	config.HTTPAddrs = httpHosts
 
 	var tlsConfig *tls.Config
 	if spec.UseSsl {
@@ -327,7 +327,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
 	}
-	config.TlsConfig = tlsConfig
+	config.TLSConfig = tlsConfig
 
 	if spec.Bucket != "" {
 		config.BucketName = spec.Bucket
@@ -355,7 +355,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("http redial period option must be a number")
 		}
-		config.HttpRedialPeriod = time.Duration(val) * time.Millisecond
+		config.HTTPRedialPeriod = time.Duration(val) * time.Millisecond
 	}
 
 	// This option is experimental
@@ -364,7 +364,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("http retry delay option must be a number")
 		}
-		config.HttpRetryDelay = time.Duration(val) * time.Millisecond
+		config.HTTPRetryDelay = time.Duration(val) * time.Millisecond
 	}
 
 	if valStr, ok := fetchOption("config_poll_floor_interval"); ok {
@@ -462,7 +462,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("http max idle connections option must be a number")
 		}
-		config.HttpMaxIdleConns = int(val)
+		config.HTTPMaxIdleConns = int(val)
 	}
 
 	if valStr, ok := fetchOption("http_max_idle_conns_per_host"); ok {
@@ -470,7 +470,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("http max idle connections per host option must be a number")
 		}
-		config.HttpMaxIdleConnsPerHost = int(val)
+		config.HTTPMaxIdleConnsPerHost = int(val)
 	}
 
 	if valStr, ok := fetchOption("http_idle_conn_timeout"); ok {
@@ -478,7 +478,7 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("http idle connection timeout option must be a number")
 		}
-		config.HttpIdleConnTimeout = time.Duration(val) * time.Millisecond
+		config.HTTPIdleConnTimeout = time.Duration(val) * time.Millisecond
 	}
 
 	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
@@ -580,7 +580,7 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 			}
 		}
 
-		if config.EnableStreamId {
+		if config.EnableStreamID {
 			if err := client.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
@@ -602,15 +602,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	logInfof("Creating new agent: %+v", config)
 
 	httpTransport := &http.Transport{
-		TLSClientConfig: config.TlsConfig,
+		TLSClientConfig: config.TLSConfig,
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		TLSHandshakeTimeout: 10 * time.Second,
-		MaxIdleConns:        config.HttpMaxIdleConns,
-		MaxIdleConnsPerHost: config.HttpMaxIdleConnsPerHost,
-		IdleConnTimeout:     config.HttpIdleConnTimeout,
+		MaxIdleConns:        config.HTTPMaxIdleConns,
+		MaxIdleConnsPerHost: config.HTTPMaxIdleConnsPerHost,
+		IdleConnTimeout:     config.HTTPIdleConnTimeout,
 	}
 	err := http2.ConfigureTransport(httpTransport)
 	if err != nil {
@@ -625,11 +625,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	maxQueueSize := 2048
 
 	c := &Agent{
-		clientId:    formatCbUid(randomCbUid()),
+		clientID:    formatCbUID(randomCbUID()),
 		userString:  config.UserString,
 		bucketName:  config.BucketName,
 		auth:        config.Auth,
-		tlsConfig:   config.TlsConfig,
+		tlsConfig:   config.TLSConfig,
 		initFn:      initFn,
 		networkType: config.NetworkType,
 		httpCli: &http.Client{
@@ -668,8 +668,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		nmvRetryDelay:         100 * time.Millisecond,
 		kvPoolSize:            1,
 		maxQueueSize:          maxQueueSize,
-		confHttpRetryDelay:    10 * time.Second,
-		confHttpRedialPeriod:  10 * time.Second,
+		confHTTPRetryDelay:    10 * time.Second,
+		confHTTPRedialPeriod:  10 * time.Second,
 		confCccpMaxWait:       3 * time.Second,
 		confCccpPollPeriod:    2500 * time.Millisecond,
 		dcpPriority:           config.DcpAgentPriority,
@@ -681,7 +681,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		defaultRetryStrategy:  config.DefaultRetryStrategy,
 		circuitBreakerConfig:  config.CircuitBreakerConfig,
 	}
-	c.cidMgr = newCollectionIdManager(c, maxQueueSize)
+	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
 
 	if config.AuthHandler != nil {
 		// If the user has set an auth handler then we wrap it so that it matches the signature we actually
@@ -727,11 +727,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if config.MaxQueueSize > 0 {
 		c.maxQueueSize = config.MaxQueueSize
 	}
-	if config.HttpRetryDelay > 0 {
-		c.confHttpRetryDelay = config.HttpRetryDelay
+	if config.HTTPRetryDelay > 0 {
+		c.confHTTPRetryDelay = config.HTTPRetryDelay
 	}
-	if config.HttpRedialPeriod > 0 {
-		c.confHttpRedialPeriod = config.HttpRedialPeriod
+	if config.HTTPRedialPeriod > 0 {
+		c.confHTTPRedialPeriod = config.HTTPRedialPeriod
 	}
 	if config.CccpMaxWait > 0 {
 		c.confCccpMaxWait = config.CccpMaxWait
@@ -754,11 +754,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	deadline := time.Now().Add(connectTimeout)
 	if config.BucketName == "" {
-		if err := c.connectG3CP(config.MemdAddrs, config.HttpAddrs, config.AuthMechanisms, deadline); err != nil {
+		if err := c.connectG3CP(config.MemdAddrs, config.HTTPAddrs, config.AuthMechanisms, deadline); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := c.connectWithBucket(config.MemdAddrs, config.HttpAddrs, config.AuthMechanisms, deadline); err != nil {
+		if err := c.connectWithBucket(config.MemdAddrs, config.HTTPAddrs, config.AuthMechanisms, deadline); err != nil {
 			return nil, err
 		}
 	}
@@ -768,6 +768,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		// We also don't enable the zombie logger on the agent until here so that the operations performed
 		// when connecting don't trigger a zombie log to occur when the logger isn't yet setup.
 		atomic.StoreUint32(&c.useZombieLogger, 1)
+
 		zombieLoggerInterval := 10 * time.Second
 		zombieLoggerSampleSize := 10
 		if config.ZombieLoggerInterval > 0 {
@@ -938,7 +939,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		// Build some fake routing data, this is used to indicate that
 		//  client is "alive".  A nil routeData causes immediate shutdown.
 		agent.routingInfo.Update(nil, &routeData{
-			revId: -1,
+			revID: -1,
 		})
 
 		agent.cacheClientNoLock(client)
@@ -957,7 +958,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		return nil
 	}
 
-	return agent.tryStartHttpLooper(httpAddrs)
+	return agent.tryStartHTTPLooper(httpAddrs)
 }
 
 func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []AuthMechanism, deadline time.Time) error {
@@ -1074,7 +1075,7 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 	// Build some fake routing data, this is used to indicate that
 	//  client is "alive".  A nil routeData causes immediate shutdown.
 	agent.routingInfo.Update(nil, &routeData{
-		revId: -1,
+		revID: -1,
 	})
 
 	if routeCfg.vbMap != nil {
@@ -1104,7 +1105,7 @@ func (agent *Agent) cacheClientNoLock(client *memdClient) {
 	agent.cachedClients[client.Address()] = client
 }
 
-func (agent *Agent) tryStartHttpLooper(httpAddrs []string) error {
+func (agent *Agent) tryStartHTTPLooper(httpAddrs []string) error {
 	signal := make(chan error, 1)
 	var routeCfg *routeConfig
 
@@ -1120,7 +1121,7 @@ func (agent *Agent) tryStartHttpLooper(httpAddrs []string) error {
 	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		agent.routingInfo.Update(nil, &routeData{
-			revId:      -1,
+			revID:      -1,
 			mgmtEpList: epList,
 		})
 	}
@@ -1433,9 +1434,9 @@ func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	return vbList[index]
 }
 
-// ClientId returns the unique id for this agent
-func (agent *Agent) ClientId() string {
-	return agent.clientId
+// ClientID returns the unique id for this agent
+func (agent *Agent) ClientID() string {
+	return agent.clientID
 }
 
 // CapiEps returns all the available endpoints for performing
@@ -1650,7 +1651,7 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 	if routeCfg == nil || !routeCfg.IsValid() {
 		logDebugf("No valid route config created, starting HTTP looper.")
 		// If we failed to get a routeCfg then try the http looper instead, this will be the case for memcached buckets.
-		err := agent.tryStartHttpLooper(agent.cachedHTTPEndpoints)
+		err := agent.tryStartHTTPLooper(agent.cachedHTTPEndpoints)
 		if err != nil {
 			agent.setBucket("")
 			return err
@@ -1664,7 +1665,7 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 		// client is "alive".  A nil routeData causes immediate shutdown.
 		// If we don't support GCCP then we could hit this.
 		agent.routingInfo.Update(nil, &routeData{
-			revId: -1,
+			revID: -1,
 		})
 	}
 

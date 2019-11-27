@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 )
 
-// HttpRequest contains the description of an HTTP request to perform.
-type HttpRequest struct {
+// HTTPRequest contains the description of an HTTP request to perform.
+type HTTPRequest struct {
 	Service     ServiceType
 	Method      string
 	Endpoint    string
@@ -25,7 +25,7 @@ type HttpRequest struct {
 	Context     context.Context
 	Headers     map[string]string
 	ContentType string
-	UniqueId    string
+	UniqueID    string
 
 	IsIdempotent  bool
 	RetryStrategy RetryStrategy
@@ -38,47 +38,47 @@ type HttpRequest struct {
 	cancelTimerLock      sync.Mutex
 }
 
-// HttpResponse encapsulates the response from an HTTP request.
-type HttpResponse struct {
+// HTTPResponse encapsulates the response from an HTTP request.
+type HTTPResponse struct {
 	Endpoint   string
 	StatusCode int
 	Body       io.ReadCloser
 }
 
 // RetryAttempts is the number of times that this request has been retried.
-func (hr *HttpRequest) RetryAttempts() uint32 {
+func (hr *HTTPRequest) RetryAttempts() uint32 {
 	return atomic.LoadUint32(&hr.retryCount)
 }
 
 // incrementRetryAttempts increments the number of retry attempts.
-func (hr *HttpRequest) incrementRetryAttempts() {
+func (hr *HTTPRequest) incrementRetryAttempts() {
 	atomic.AddUint32(&hr.retryCount, 1)
 }
 
 // Identifier returns the unique identifier for this request.
-func (hr *HttpRequest) Identifier() string {
-	return hr.UniqueId
+func (hr *HTTPRequest) Identifier() string {
+	return hr.UniqueID
 }
 
 // Idempotent returns whether or not this request is idempotent.
-func (hr *HttpRequest) Idempotent() bool {
+func (hr *HTTPRequest) Idempotent() bool {
 	return hr.IsIdempotent
 }
 
 // RetryReasons returns the set of reasons why this request has been retried.
-func (hr *HttpRequest) RetryReasons() []RetryReason {
+func (hr *HTTPRequest) RetryReasons() []RetryReason {
 	return hr.retryReasons
 }
 
 // setCancelRetry sets the retry cancel function for this request.
-func (hr *HttpRequest) setCancelRetry(cancelFunc func() bool) {
+func (hr *HTTPRequest) setCancelRetry(cancelFunc func() bool) {
 	hr.cancelTimerLock.Lock()
 	hr.cancelRetryTimerFunc = cancelFunc
 	hr.cancelTimerLock.Unlock()
 }
 
 // CancelRetry will cancel any retry that this request is waiting for.
-func (hr *HttpRequest) CancelRetry() bool {
+func (hr *HTTPRequest) CancelRetry() bool {
 	if hr.cancelRetryTimerFunc == nil {
 		return true
 	}
@@ -87,7 +87,7 @@ func (hr *HttpRequest) CancelRetry() bool {
 }
 
 // addRetryReason adds a reason why this request has been retried.
-func (hr *HttpRequest) addRetryReason(reason RetryReason) {
+func (hr *HTTPRequest) addRetryReason(reason RetryReason) {
 	idx := sort.Search(len(hr.retryReasons), func(i int) bool {
 		return hr.retryReasons[i] == reason
 	})
@@ -98,7 +98,7 @@ func (hr *HttpRequest) addRetryReason(reason RetryReason) {
 	}
 }
 
-func injectJsonCreds(body []byte, creds []UserPassPair) []byte {
+func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
 	var props map[string]json.RawMessage
 	err := json.Unmarshal(body, &props)
 	if err == nil {
@@ -161,9 +161,9 @@ func (agent *Agent) getCbasEp() (string, error) {
 	return cbasEps[rand.Intn(len(cbasEps))], nil
 }
 
-// DoHttpRequest will perform an HTTP request against one of the HTTP
+// DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
-func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
+func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 	if req.Service == MemdService {
 		return nil, ErrInvalidService
 	}
@@ -192,10 +192,10 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 	}
 
 	// Generate a request URI
-	reqUri := endpoint + req.Path
+	reqURI := endpoint + req.Path
 
 	// Create a new request
-	hreq, err := http.NewRequest(req.Method, reqUri, nil)
+	hreq, err := http.NewRequest(req.Method, reqURI, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 			if len(creds) == 1 {
 				hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
 			} else {
-				body = injectJsonCreds(body, creds)
+				body = injectJSONCreds(body, creds)
 			}
 		} else {
 			if len(creds) != 1 {
@@ -287,7 +287,7 @@ func (agent *Agent) DoHttpRequest(req *HttpRequest) (*HttpResponse, error) {
 		break
 	}
 
-	respOut := HttpResponse{
+	respOut := HTTPResponse{
 		Endpoint:   endpoint,
 		StatusCode: hresp.StatusCode,
 		Body:       hresp.Body,

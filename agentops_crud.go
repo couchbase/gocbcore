@@ -10,7 +10,7 @@ type GetOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -68,7 +68,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 			Extras:       nil,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -86,7 +86,7 @@ type GetAndTouchOptions struct {
 	Expiry         uint32
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -148,7 +148,7 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -166,7 +166,7 @@ type GetAndLockOptions struct {
 	LockTime       uint32
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -228,7 +228,7 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -245,7 +245,7 @@ type GetAnyReplicaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -257,7 +257,7 @@ type GetOneReplicaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 	ReplicaIdx     int
 
@@ -312,7 +312,7 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetOneReplicaOptions, c
 			Extras:       nil,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -440,7 +440,7 @@ func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCa
 			ReplicaIdx:     repIdx,
 			CollectionName: opts.CollectionName,
 			ScopeName:      opts.ScopeName,
-			CollectionId:   opts.CollectionId,
+			CollectionID:   opts.CollectionID,
 			RetryStrategy:  opts.RetryStrategy,
 		}, handler)
 
@@ -465,7 +465,7 @@ type TouchOptions struct {
 	Expiry         uint32
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -494,8 +494,8 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -525,7 +525,7 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 			Key:          opts.Key,
 			Value:        nil,
 			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -543,7 +543,7 @@ type UnlockOptions struct {
 	Cas            Cas
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -572,8 +572,8 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -597,7 +597,7 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 			Extras:       nil,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -618,7 +618,7 @@ type DeleteOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -646,8 +646,8 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -684,7 +684,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 			Key:          opts.Key,
 			Value:        nil,
 			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -708,7 +708,7 @@ type storeOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -735,8 +735,8 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -776,7 +776,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 			Key:          opts.Key,
 			Value:        opts.Value,
 			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -800,7 +800,7 @@ type AddOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -821,7 +821,7 @@ func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error
 		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionId:           opts.CollectionId,
+		CollectionID:           opts.CollectionID,
 	}, cb)
 }
 
@@ -837,7 +837,7 @@ type SetOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -858,7 +858,7 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionId:           opts.CollectionId,
+		CollectionID:           opts.CollectionID,
 	}, cb)
 }
 
@@ -875,7 +875,7 @@ type ReplaceOptions struct {
 	Expiry                 uint32
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -896,7 +896,7 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 		TraceContext:           opts.TraceContext,
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionId:           opts.CollectionId,
+		CollectionID:           opts.CollectionID,
 	}, cb)
 }
 
@@ -910,7 +910,7 @@ type AdjoinOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -937,8 +937,8 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -975,7 +975,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 			Key:          opts.Key,
 			Value:        opts.Value,
 			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -1009,7 +1009,7 @@ type CounterOptions struct {
 	Cas                    Cas
 	DurabilityLevel        DurabilityLevel
 	DurabilityLevelTimeout uint16
-	CollectionId           uint32
+	CollectionID           uint32
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
@@ -1044,8 +1044,8 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -1098,7 +1098,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 			Key:          opts.Key,
 			Value:        nil,
 			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -1201,9 +1201,9 @@ type SingleServerStats struct {
 type StatsTarget interface {
 }
 
-// VBucketIdStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
-type VBucketIdStatsTarget struct {
-	Vbid uint16
+// VBucketIDStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
+type VBucketIDStatsTarget struct {
+	VbID uint16
 }
 
 // StatsOptions encapsulates the parameters for a StatsEx operation.
@@ -1256,10 +1256,10 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 		for i := 0; i < config.clientMux.NumPipelines(); i++ {
 			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
 		}
-	case VBucketIdStatsTarget:
+	case VBucketIDStatsTarget:
 		expected = 1
 
-		srvIdx, err := config.vbMap.NodeByVbucket(target.Vbid, 0)
+		srvIdx, err := config.vbMap.NodeByVbucket(target.VbID, 0)
 		if err != nil {
 			return nil, err
 		}

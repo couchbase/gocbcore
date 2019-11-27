@@ -137,8 +137,8 @@ func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb 
 	return agent.dispatchOp(req)
 }
 
-// CollectionIdCallback is invoked upon completion of a GetCollectionID operation.
-type CollectionIdCallback func(manifestID uint64, collectionID uint32, err error)
+// CollectionIDCallback is invoked upon completion of a GetCollectionID operation.
+type CollectionIDCallback func(manifestID uint64, collectionID uint32, err error)
 
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
@@ -149,14 +149,14 @@ type GetCollectionIDOptions struct {
 
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
 // and collection name. This function will also prime the client's collection id cache.
-func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIdCallback) (PendingOp, error) {
+func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		cidCache, ok := agent.cidMgr.Get(scopeName, collectionName)
+		cidCache, ok := agent.cidMgr.get(scopeName, collectionName)
 		if !ok {
-			cidCache = agent.cidMgr.newCollectionIdCache()
-			agent.cidMgr.Add(cidCache, scopeName, collectionName)
+			cidCache = agent.cidMgr.newCollectionIDCache()
+			agent.cidMgr.add(cidCache, scopeName, collectionName)
 		}
 
 		if err != nil {
@@ -206,35 +206,35 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 	return agent.dispatchOp(req)
 }
 
-func (cidMgr *collectionIdManager) createKey(scopeName, collectionName string) string {
+func (cidMgr *collectionIDManager) createKey(scopeName, collectionName string) string {
 	return fmt.Sprintf("%s.%s", scopeName, collectionName)
 }
 
-type collectionIdManager struct {
-	idMap        map[string]*collectionIdCache
+type collectionIDManager struct {
+	idMap        map[string]*collectionIDCache
 	mapLock      sync.Mutex
 	agent        *Agent
 	maxQueueSize int
 }
 
-func newCollectionIdManager(agent *Agent, maxQueueSize int) *collectionIdManager {
-	cidMgr := &collectionIdManager{
+func newCollectionIDManager(agent *Agent, maxQueueSize int) *collectionIDManager {
+	cidMgr := &collectionIDManager{
 		agent:        agent,
-		idMap:        make(map[string]*collectionIdCache),
+		idMap:        make(map[string]*collectionIDCache),
 		maxQueueSize: maxQueueSize,
 	}
 
 	return cidMgr
 }
 
-func (cidMgr *collectionIdManager) Add(id *collectionIdCache, scopeName, collectionName string) {
+func (cidMgr *collectionIDManager) add(id *collectionIDCache, scopeName, collectionName string) {
 	key := cidMgr.createKey(scopeName, collectionName)
 	cidMgr.mapLock.Lock()
 	cidMgr.idMap[key] = id
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionIdManager) Get(scopeName, collectionName string) (*collectionIdCache, bool) {
+func (cidMgr *collectionIDManager) get(scopeName, collectionName string) (*collectionIDCache, bool) {
 	cidMgr.mapLock.Lock()
 	id, ok := cidMgr.idMap[cidMgr.createKey(scopeName, collectionName)]
 	cidMgr.mapLock.Unlock()
@@ -245,20 +245,20 @@ func (cidMgr *collectionIdManager) Get(scopeName, collectionName string) (*colle
 	return id, true
 }
 
-func (cidMgr *collectionIdManager) Remove(scopeName, collectionName string) {
+func (cidMgr *collectionIDManager) remove(scopeName, collectionName string) {
 	cidMgr.mapLock.Lock()
 	delete(cidMgr.idMap, cidMgr.createKey(scopeName, collectionName))
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionIdManager) newCollectionIdCache() *collectionIdCache {
-	return &collectionIdCache{
+func (cidMgr *collectionIDManager) newCollectionIDCache() *collectionIDCache {
+	return &collectionIDCache{
 		agent:        cidMgr.agent,
 		maxQueueSize: cidMgr.maxQueueSize,
 	}
 }
 
-type collectionIdCache struct {
+type collectionIDCache struct {
 	opQueue        *memdOpQueue
 	id             uint32
 	collectionName string
@@ -269,22 +269,22 @@ type collectionIdCache struct {
 	maxQueueSize   int
 }
 
-func (cid *collectionIdCache) sendWithCid(req *memdQRequest) error {
+func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	cid.lock.Lock()
 	req.CollectionID = cid.id
 	cid.lock.Unlock()
 	return cid.agent.dispatchDirect(req)
 }
 
-func (cid *collectionIdCache) rejectRequest(req *memdQRequest) error {
+func (cid *collectionIDCache) rejectRequest(req *memdQRequest) error {
 	return cid.err
 }
 
-func (cid *collectionIdCache) queueRequest(req *memdQRequest) error {
+func (cid *collectionIDCache) queueRequest(req *memdQRequest) error {
 	return cid.opQueue.Push(req, cid.maxQueueSize)
 }
 
-func (cid *collectionIdCache) refreshCid(req *memdQRequest) error {
+func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 	err := cid.opQueue.Push(req, cid.maxQueueSize)
 	if err != nil {
 		return err
@@ -312,7 +312,7 @@ func (cid *collectionIdCache) refreshCid(req *memdQRequest) error {
 	return err
 }
 
-func (cid *collectionIdCache) dispatch(req *memdQRequest) error {
+func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	cid.lock.Lock()
 	// if the cid is unknown then mark the request pending and refresh cid first
 	// if it's pending then queue the request
@@ -336,13 +336,13 @@ func (cid *collectionIdCache) dispatch(req *memdQRequest) error {
 	}
 }
 
-func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) error {
+func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 	noCollection := req.CollectionName == "" && req.ScopeName == ""
 	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
-	collectionIdPresent := req.CollectionID > 0
+	collectionIDPresent := req.CollectionID > 0
 
 	if !cidMgr.agent.HasCollectionsSupport() {
-		if !(noCollection || defaultCollection) || collectionIdPresent {
+		if !(noCollection || defaultCollection) || collectionIDPresent {
 			return ErrCollectionsUnsupported
 		}
 		err := cidMgr.agent.dispatchDirect(req)
@@ -353,7 +353,7 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) error {
 		return nil
 	}
 
-	if noCollection || defaultCollection || collectionIdPresent {
+	if noCollection || defaultCollection || collectionIDPresent {
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {
 			return err
@@ -362,11 +362,11 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) error {
 		return nil
 	}
 
-	cidCache, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
+	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)
 	if !ok {
-		cidCache = cidMgr.newCollectionIdCache()
+		cidCache = cidMgr.newCollectionIDCache()
 		cidCache.id = unknownCid
-		cidMgr.Add(cidCache, req.ScopeName, req.CollectionName)
+		cidMgr.add(cidCache, req.ScopeName, req.CollectionName)
 	}
 	err := cidCache.dispatch(req)
 	if err != nil {
@@ -375,12 +375,12 @@ func (cidMgr *collectionIdManager) dispatch(req *memdQRequest) error {
 	return nil
 }
 
-func (cidMgr *collectionIdManager) requeue(req *memdQRequest) {
-	cidCache, ok := cidMgr.Get(req.ScopeName, req.CollectionName)
+func (cidMgr *collectionIDManager) requeue(req *memdQRequest) {
+	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)
 	if !ok {
-		cidCache = cidMgr.newCollectionIdCache()
+		cidCache = cidMgr.newCollectionIDCache()
 		cidCache.id = unknownCid
-		cidMgr.Add(cidCache, req.ScopeName, req.CollectionName)
+		cidMgr.add(cidCache, req.ScopeName, req.CollectionName)
 	}
 	cidCache.lock.Lock()
 	if cidCache.id != unknownCid && cidCache.id != pendingCid && cidCache.id != invalidCid {

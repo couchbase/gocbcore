@@ -10,8 +10,8 @@ import (
 // to perform optimistic locking.
 type Cas uint64
 
-// VbUuid represents a unique identifier for a particular vbucket history.
-type VbUuid uint64
+// VbUUID represents a unique identifier for a particular vbucket history.
+type VbUUID uint64
 
 // SeqNo is a sequential mutation number indicating the order and precise
 // position of a write that has occurred.
@@ -19,8 +19,8 @@ type SeqNo uint64
 
 // MutationToken represents a particular mutation within the cluster.
 type MutationToken struct {
-	VbId   uint16
-	VbUuid VbUuid
+	VbID   uint16
+	VbUUID VbUUID
 	SeqNo  SeqNo
 }
 
@@ -44,7 +44,7 @@ type PendingOp interface {
 	RetryReasons() []RetryReason
 	LocalEndpoint() string
 	RemoteEndpoint() string
-	ConnectionId() string
+	ConnectionID() string
 }
 
 type multiPendingOp struct {
@@ -99,12 +99,12 @@ func (mp *multiPendingOp) RetryReasons() []RetryReason {
 	return mp.ops[0].RetryReasons()
 }
 
-func (mp *multiPendingOp) ConnectionId() string {
+func (mp *multiPendingOp) ConnectionID() string {
 	if len(mp.ops) == 0 {
 		return ""
 	}
 
-	return mp.ops[0].ConnectionId()
+	return mp.ops[0].ConnectionID()
 }
 
 func (mp *multiPendingOp) LocalEndpoint() string {
@@ -289,7 +289,7 @@ func (agent *Agent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, 
 			}
 		}
 
-		if DatatypeFlag(resp.Datatype)&DatatypeFlagJson != 0 {
+		if DatatypeFlag(resp.Datatype)&DatatypeFlagJSON != 0 {
 			err = agent.makeMemdError(resp.Status, kvErrData, resp.Opaque, resp.Value)
 
 			if !IsErrorStatus(err, StatusSuccess) &&

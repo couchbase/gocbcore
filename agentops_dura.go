@@ -10,7 +10,7 @@ type ObserveOptions struct {
 	ReplicaIdx     int
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -64,11 +64,11 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 		}, nil)
 	}
 
-	vbId := agent.KeyToVbucket(opts.Key)
+	vbID := agent.KeyToVbucket(opts.Key)
 	keyLen := len(opts.Key)
 
 	valueBuf := make([]byte, 2+2+keyLen)
-	binary.BigEndian.PutUint16(valueBuf[0:], vbId)
+	binary.BigEndian.PutUint16(valueBuf[0:], vbID)
 	binary.BigEndian.PutUint16(valueBuf[2:], uint16(keyLen))
 	copy(valueBuf[4:], opts.Key)
 
@@ -85,8 +85,8 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 			Extras:       nil,
 			Key:          nil,
 			Value:        valueBuf,
-			Vbucket:      vbId,
-			CollectionID: opts.CollectionId,
+			Vbucket:      vbID,
+			CollectionID: opts.CollectionID,
 		},
 		ReplicaIdx:       opts.ReplicaIdx,
 		Callback:         handler,
@@ -101,8 +101,8 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 
 // ObserveVbOptions encapsulates the parameters for a ObserveVbEx operation.
 type ObserveVbOptions struct {
-	VbId          uint16
-	VbUuid        VbUuid
+	VbID          uint16
+	VbUUID        VbUUID
 	ReplicaIdx    int
 	RetryStrategy RetryStrategy
 
@@ -113,11 +113,11 @@ type ObserveVbOptions struct {
 // ObserveVbResult encapsulates the result of a ObserveVbEx operation.
 type ObserveVbResult struct {
 	DidFailover  bool
-	VbId         uint16
-	VbUuid       VbUuid
+	VbID         uint16
+	VbUUID       VbUUID
 	PersistSeqNo SeqNo
 	CurrentSeqNo SeqNo
-	OldVbUuid    VbUuid
+	OldVbUUID    VbUUID
 	LastSeqNo    SeqNo
 }
 
@@ -156,16 +156,16 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 				return
 			}
 
-			vbId := binary.BigEndian.Uint16(resp.Value[1:])
-			vbUuid := binary.BigEndian.Uint64(resp.Value[3:])
+			vbID := binary.BigEndian.Uint16(resp.Value[1:])
+			vbUUID := binary.BigEndian.Uint64(resp.Value[3:])
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
 
 			tracer.Finish()
 			cb(&ObserveVbResult{
 				DidFailover:  false,
-				VbId:         vbId,
-				VbUuid:       VbUuid(vbUuid),
+				VbID:         vbID,
+				VbUUID:       VbUUID(vbUUID),
 				PersistSeqNo: SeqNo(persistSeqNo),
 				CurrentSeqNo: SeqNo(currentSeqNo),
 			}, nil)
@@ -177,21 +177,21 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 				return
 			}
 
-			vbId := binary.BigEndian.Uint16(resp.Value[1:])
-			vbUuid := binary.BigEndian.Uint64(resp.Value[3:])
+			vbID := binary.BigEndian.Uint16(resp.Value[1:])
+			vbUUID := binary.BigEndian.Uint64(resp.Value[3:])
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
-			oldVbUuid := binary.BigEndian.Uint64(resp.Value[27:])
+			oldVbUUID := binary.BigEndian.Uint64(resp.Value[27:])
 			lastSeqNo := binary.BigEndian.Uint64(resp.Value[35:])
 
 			tracer.Finish()
 			cb(&ObserveVbResult{
 				DidFailover:  true,
-				VbId:         vbId,
-				VbUuid:       VbUuid(vbUuid),
+				VbID:         vbID,
+				VbUUID:       VbUUID(vbUUID),
 				PersistSeqNo: SeqNo(persistSeqNo),
 				CurrentSeqNo: SeqNo(currentSeqNo),
-				OldVbUuid:    VbUuid(oldVbUuid),
+				OldVbUUID:    VbUUID(oldVbUUID),
 				LastSeqNo:    SeqNo(lastSeqNo),
 			}, nil)
 			return
@@ -203,7 +203,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 	}
 
 	valueBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(valueBuf[0:], uint64(opts.VbUuid))
+	binary.BigEndian.PutUint64(valueBuf[0:], uint64(opts.VbUUID))
 
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = agent.defaultRetryStrategy
@@ -218,7 +218,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			Extras:   nil,
 			Key:      nil,
 			Value:    valueBuf,
-			Vbucket:  opts.VbId,
+			Vbucket:  opts.VbID,
 		},
 		ReplicaIdx:       opts.ReplicaIdx,
 		Callback:         handler,

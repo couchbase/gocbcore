@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-func randomCbUid() []byte {
+func randomCbUID() []byte {
 	out := make([]byte, 8)
 	_, err := rand.Read(out)
 	if err != nil {
@@ -15,7 +15,7 @@ func randomCbUid() []byte {
 	return out
 }
 
-func formatCbUid(data []byte) string {
+func formatCbUID(data []byte) string {
 	return fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
 		data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7])
 }

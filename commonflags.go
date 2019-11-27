@@ -2,7 +2,7 @@ package gocbcore
 
 const (
 	// Legacy flag format for JSON data.
-	lfJson = 0
+	lfJSON = 0
 
 	// Common flags mask
 	cfMask = 0xFF000000
@@ -14,7 +14,7 @@ const (
 	// Common flag format for sdk-private data.
 	cfFmtPrivate = 1 << 24
 	// Common flag format for JSON data.
-	cfFmtJson = 2 << 24
+	cfFmtJSON = 2 << 24
 	// Common flag format for binary data.
 	cfFmtBinary = 3 << 24
 	// Common flag format for string data.
@@ -34,8 +34,8 @@ const (
 	// UnknownType indicates the values type is unknown.
 	UnknownType = DataType(0)
 
-	// JsonType indicates the value is JSON data.
-	JsonType = DataType(1)
+	// JSONType indicates the value is JSON data.
+	JSONType = DataType(1)
 
 	// BinaryType indicates the value is binary data.
 	BinaryType = DataType(2)
@@ -58,8 +58,8 @@ func EncodeCommonFlags(valueType DataType, compression CompressionType) uint32 {
 	var flags uint32
 
 	switch valueType {
-	case JsonType:
-		flags |= cfFmtJson
+	case JSONType:
+		flags |= cfFmtJSON
 	case BinaryType:
 		flags |= cfFmtBinary
 	case StringType:
@@ -84,9 +84,9 @@ func DecodeCommonFlags(flags uint32) (DataType, CompressionType) {
 	// Check for legacy flags
 	if flags&cfMask == 0 {
 		// Legacy Flags
-		if flags == lfJson {
+		if flags == lfJSON {
 			// Legacy JSON
-			flags = cfFmtJson
+			flags = cfFmtJSON
 		} else {
 			return UnknownType, UnknownCompression
 		}
@@ -99,8 +99,8 @@ func DecodeCommonFlags(flags uint32) (DataType, CompressionType) {
 		valueType = BinaryType
 	} else if flags&cfFmtMask == cfFmtString {
 		valueType = StringType
-	} else if flags&cfFmtMask == cfFmtJson {
-		valueType = JsonType
+	} else if flags&cfFmtMask == cfFmtJSON {
+		valueType = JSONType
 	}
 
 	if flags&cfCmprMask == cfCmprNone {

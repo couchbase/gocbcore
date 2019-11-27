@@ -171,7 +171,7 @@ func getMemdErrorDesc(code StatusCode) string {
 		return "existing document contains too many levels of nesting"
 	case StatusSubDocCantInsert:
 		return "subdocument operation would invalidate the JSON"
-	case StatusSubDocNotJson:
+	case StatusSubDocNotJSON:
 		return "existing document is not valid JSON"
 	case StatusSubDocBadRange:
 		return "existing numeric value is too large"
@@ -313,45 +313,45 @@ var (
 	ErrCliInternalError = errors.New("client internal error")
 
 	// ErrCancelled occurs when an operation has been cancelled by the user.
-	ErrCancelled = errors.New("Operation was cancelled by the user.")
+	ErrCancelled = errors.New("operation was cancelled by the user")
 
 	// ErrInvalidCredentials is returned when an invalid set of credentials is provided for a service.
-	ErrInvalidCredentials = errors.New("An invalid set of credentials was provided.")
+	ErrInvalidCredentials = errors.New("an invalid set of credentials was provided")
 
 	// ErrInvalidService occurs when an invalid service is specified for an operation.
-	ErrInvalidService = errors.New("Invalid service specified")
+	ErrInvalidService = errors.New("invalid service specified")
 
 	// ErrNoMgmtService occurs when no mgmt services are available for a request.
-	ErrNoMgmtService = errors.New("No available management nodes.")
+	ErrNoMgmtService = errors.New("no available management nodes")
 
 	// ErrNoCapiService occurs when no capi services are available for a request.
-	ErrNoCapiService = errors.New("No available capi nodes.")
+	ErrNoCapiService = errors.New("no available capi nodes")
 
 	// ErrNoN1qlService occurs when no N1QL services are available for a request.
-	ErrNoN1qlService = errors.New("No available n1ql nodes.")
+	ErrNoN1qlService = errors.New("no available n1ql nodes")
 
 	// ErrNoFtsService occurs when no FTS services are available for a request.
-	ErrNoFtsService = errors.New("No available fts nodes.")
+	ErrNoFtsService = errors.New("no available fts nodes")
 
 	// ErrNoCbasService occurs when no CBAS services are available for a request.
-	ErrNoCbasService = errors.New("No available cbas nodes.")
+	ErrNoCbasService = errors.New("no available cbas nodes")
 
 	// ErrCollectionsUnsupported occurs when collections are used but either server does not support them or the agent
 	// was created without them enabled.
-	ErrCollectionsUnsupported = errors.New("Collections are not enabled.")
+	ErrCollectionsUnsupported = errors.New("collections are not enabled")
 
 	// ErrEnhancedDurabilityUnsupported occurs when a request is performed with enhanced durability but the server version
 	// being used does not support it.
-	ErrEnhancedDurabilityUnsupported = errors.New("Enhanced durability is not supported by this server version.")
+	ErrEnhancedDurabilityUnsupported = errors.New("enhanced durability is not supported by this server version")
 
 	// ErrBucketAlreadySelected occurs when SelectBucket is called when a bucket is already selected..
-	ErrBucketAlreadySelected = errors.New("Bucket already selected.")
+	ErrBucketAlreadySelected = errors.New("bucket already selected")
 
 	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
-	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
+	ErrUnsupportedStatsTarget = errors.New("must specify a supported StatsTarget")
 
 	// ErrCircuitBreakerOpen occurs when the circuit breaker for a socket is open and not allowing requests.
-	ErrCircuitBreakerOpen = errors.New("Circuit breaker is open.")
+	ErrCircuitBreakerOpen = errors.New("circuit breaker is open")
 
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = &shutdownError{}
@@ -500,9 +500,9 @@ var (
 	// ErrSubDocCantInsert occurs when a sub-document operation could not insert.
 	ErrSubDocCantInsert = newSimpleError(StatusSubDocCantInsert)
 
-	// ErrSubDocNotJson occurs when a sub-document operation is performed on a
+	// ErrSubDocNotJSON occurs when a sub-document operation is performed on a
 	// document which is not JSON.
-	ErrSubDocNotJson = newSimpleError(StatusSubDocNotJson)
+	ErrSubDocNotJSON = newSimpleError(StatusSubDocNotJSON)
 
 	// ErrSubDocBadRange occurs when a sub-document operation is performed with
 	// a bad range.
@@ -646,8 +646,8 @@ func findMemdError(code StatusCode) (bool, error) {
 		return true, ErrSubDocDocTooDeep
 	case StatusSubDocCantInsert:
 		return true, ErrSubDocCantInsert
-	case StatusSubDocNotJson:
-		return true, ErrSubDocNotJson
+	case StatusSubDocNotJSON:
+		return true, ErrSubDocNotJSON
 	case StatusSubDocBadRange:
 		return true, ErrSubDocBadRange
 	case StatusSubDocBadDelta:

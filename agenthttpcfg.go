@@ -20,7 +20,7 @@ func (i *configStreamBlock) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func hostnameFromUri(uri string) string {
+func hostnameFromURI(uri string) string {
 	uriInfo, err := url.Parse(uri)
 	if err != nil {
 		return uri
@@ -35,8 +35,8 @@ func hostnameFromUri(uri string) string {
 }
 
 func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) {
-	waitPeriod := agent.confHttpRetryDelay
-	maxConnPeriod := agent.confHttpRedialPeriod
+	waitPeriod := agent.confHTTPRetryDelay
+	maxConnPeriod := agent.confHTTPRedialPeriod
 
 	var iterNum uint64 = 1
 	iterSawConfig := false
@@ -89,7 +89,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 
 		seenNodes[pickedSrv] = iterNum
 
-		hostname := hostnameFromUri(pickedSrv)
+		hostname := hostnameFromURI(pickedSrv)
 		logDebugf("HTTP Hostname: %s.", hostname)
 
 		var resp *http.Response

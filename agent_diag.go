@@ -12,7 +12,7 @@ type PingResult struct {
 	Endpoint string
 	Error    error
 	Latency  time.Duration
-	Id       string
+	ID       string
 	Scope    string
 }
 
@@ -82,7 +82,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (Cancellab
 	op := &pingOp{
 		callback:  cb,
 		remaining: 1,
-		configRev: config.revId,
+		configRev: config.revID,
 	}
 
 	pingStartTime := time.Now()
@@ -92,7 +92,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (Cancellab
 		bucketName = redactMetaData(agent.bucketName)
 	}
 
-	addrToId := make(map[string]string)
+	addrToID := make(map[string]string)
 
 	kvHandler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		serverAddress := resp.sourceAddr
@@ -100,13 +100,13 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (Cancellab
 		pingLatency := time.Now().Sub(pingStartTime)
 
 		op.lock.Lock()
-		id := addrToId[serverAddress]
+		id := addrToID[serverAddress]
 		op.results = append(op.results, PingResult{
 			Endpoint: serverAddress,
 			Error:    err,
 			Latency:  pingLatency,
 			Scope:    bucketName,
-			Id:       id,
+			ID:       id,
 		})
 		op.handledOneLocked()
 		op.lock.Unlock()
@@ -150,7 +150,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (Cancellab
 			op:       curOp,
 		})
 		atomic.AddInt32(&op.remaining, 1)
-		addrToId[serverAddress] = fmt.Sprintf("%p", pipeline)
+		addrToID[serverAddress] = fmt.Sprintf("%p", pipeline)
 		op.lock.Unlock()
 	}
 
@@ -171,7 +171,7 @@ type MemdConnInfo struct {
 	RemoteAddr   string
 	LastActivity time.Time
 	Scope        string
-	Id           string
+	ID           string
 }
 
 // DiagnosticInfo is returned by the Diagnostics method and includes
@@ -215,7 +215,7 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 					LocalAddr:    localAddr,
 					RemoteAddr:   remoteAddr,
 					LastActivity: lastActivity,
-					Id:           fmt.Sprintf("%p", pipecli),
+					ID:           fmt.Sprintf("%p", pipecli),
 				}
 				if agent.bucketName != "" {
 					conn.Scope = redactMetaData(agent.bucketName)
@@ -228,7 +228,7 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 		endConfig := agent.routingInfo.Get()
 		if endConfig == config {
 			return &DiagnosticInfo{
-				ConfigRev: config.revId,
+				ConfigRev: config.revID,
 				MemdConns: conns,
 			}, nil
 		}

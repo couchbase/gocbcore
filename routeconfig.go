@@ -1,7 +1,7 @@
 package gocbcore
 
 type routeConfig struct {
-	revId        int64
+	revID        int64
 	uuid         string
 	bktType      bucketType
 	kvServerList []string

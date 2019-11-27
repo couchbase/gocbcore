@@ -9,7 +9,7 @@ type GetMetaOptions struct {
 	Key            []byte
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -81,7 +81,7 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        nil,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -106,7 +106,7 @@ type SetMetaOptions struct {
 	RevNo          uint64
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -135,8 +135,8 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -169,7 +169,7 @@ func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (Pendin
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        opts.Value,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -194,7 +194,7 @@ type DeleteMetaOptions struct {
 	RevNo          uint64
 	CollectionName string
 	ScopeName      string
-	CollectionId   uint32
+	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 
 	// Volatile: Tracer API is subject to change.
@@ -223,8 +223,8 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 
 		mutToken := MutationToken{}
 		if len(resp.Extras) >= 16 {
-			mutToken.VbId = req.Vbucket
-			mutToken.VbUuid = VbUuid(binary.BigEndian.Uint64(resp.Extras[0:]))
+			mutToken.VbID = req.Vbucket
+			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
@@ -257,7 +257,7 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        opts.Value,
-			CollectionID: opts.CollectionId,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

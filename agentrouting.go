@@ -122,7 +122,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 
 	bucket := agent.bucket()
 	features := agent.helloFeatures()
-	clientInfoStr := agent.clientInfoString(client.connId)
+	clientInfoStr := agent.clientInfoString(client.connID)
 
 	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
@@ -278,7 +278,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 	return nil
 }
 
-func (agent *Agent) clientInfoString(connId string) string {
+func (agent *Agent) clientInfoString(connID string) string {
 	agentName := "gocbcore/" + goCbCoreVersionStr
 	if agent.userString != "" {
 		agentName += " " + agent.userString
@@ -286,10 +286,10 @@ func (agent *Agent) clientInfoString(connId string) string {
 
 	clientInfo := struct {
 		Agent  string `json:"a"`
-		ConnId string `json:"i"`
+		ConnID string `json:"i"`
 	}{
 		Agent:  agentName,
-		ConnId: connId,
+		ConnID: connID,
 	}
 	clientInfoBytes, err := json.Marshal(clientInfo)
 	if err != nil {
@@ -303,7 +303,7 @@ func (agent *Agent) helloFeatures() []HelloFeature {
 	var features []HelloFeature
 
 	// Send the TLS flag, which has unknown effects.
-	features = append(features, FeatureTls)
+	features = append(features, FeatureTLS)
 
 	// Indicate that we understand XATTRs
 	features = append(features, FeatureXattr)
@@ -416,7 +416,7 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 	defer agent.configLock.Unlock()
 
 	newRouting := &routeData{
-		revId:      cfg.revId,
+		revID:      cfg.revID,
 		uuid:       cfg.uuid,
 		capiEpList: cfg.capiEpList,
 		mgmtEpList: cfg.mgmtEpList,
@@ -439,12 +439,12 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 	// Check that the new config data is newer than the current one, in the case where we've done a select bucket
 	// against an existing connection then the revisions could be the same. In that case the configuration still
 	// needs to be applied.
-	if newRouting.revId == 0 {
+	if newRouting.revID == 0 {
 		logDebugf("Unversioned configuration data, ")
-	} else if newRouting.revId == oldRouting.revId {
+	} else if newRouting.revID == oldRouting.revID {
 		logDebugf("Ignoring configuration with identical revision number")
 		return false
-	} else if newRouting.revId < oldRouting.revId {
+	} else if newRouting.revID < oldRouting.revID {
 		logDebugf("Ignoring new configuration as it has an older revision id")
 		return false
 	}
@@ -518,11 +518,11 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 	}
 
 	var srvIdx int
-	repId := req.ReplicaIdx
+	repIdx := req.ReplicaIdx
 
 	// Route to specific server
-	if repId < 0 {
-		srvIdx = -repId - 1
+	if repIdx < 0 {
+		srvIdx = -repIdx - 1
 	} else {
 		var err error
 
@@ -531,12 +531,12 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 				req.Vbucket = routingInfo.vbMap.VbucketByKey(req.Key)
 			}
 
-			srvIdx, err = routingInfo.vbMap.NodeByVbucket(req.Vbucket, uint32(repId))
+			srvIdx, err = routingInfo.vbMap.NodeByVbucket(req.Vbucket, uint32(repIdx))
 			if err != nil {
 				return nil, err
 			}
 		} else if routingInfo.bktType == bktTypeMemcached {
-			if repId > 0 {
+			if repIdx > 0 {
 				// Error. Memcached buckets don't understand replicas!
 				return nil, ErrInvalidReplica
 			}

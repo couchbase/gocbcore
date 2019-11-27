@@ -146,7 +146,7 @@ func (agent *Agent) stopNetTrace(req *memdQRequest, resp *memdQResponse, client 
 	}
 
 	req.netTraceSpan.SetTag("couchbase.operation_id", fmt.Sprintf("0x%x", resp.Opaque))
-	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnId)
+	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnID)
 	if isLogRedactionLevelNone() {
 		req.netTraceSpan.SetTag("couchbase.document_key", string(req.Key))
 	}
@@ -261,7 +261,7 @@ func (agent *Agent) zombieLogger(interval time.Duration, sampleSize int) {
 
 func (agent *Agent) recordZombieResponse(resp *memdQResponse, client *memdClient) {
 	entry := &zombieLogEntry{
-		connectionID: client.connId,
+		connectionID: client.connID,
 		operationID:  fmt.Sprintf("0x%x", resp.Opaque),
 		endpoint:     client.Address(),
 		duration:     0,

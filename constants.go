@@ -19,7 +19,7 @@ type frameExtraType uint16
 const (
 	srvDurationFrameExtra        = frameExtraType(0)
 	enhancedDurabilityFrameExtra = frameExtraType(1)
-	streamIdFrameExtra           = frameExtraType(2)
+	streamIDFrameExtra           = frameExtraType(2)
 )
 
 // commandCode for memcached packets.
@@ -98,17 +98,17 @@ const (
 	// FeatureDatatype indicates support for Datatype fields.
 	FeatureDatatype = HelloFeature(0x01)
 
-	// FeatureTls indicates support for TLS
-	FeatureTls = HelloFeature(0x02)
+	// FeatureTLS indicates support for TLS
+	FeatureTLS = HelloFeature(0x02)
 
-	// FeatureTcpNoDelay indicates support for TCP no-delay.
-	FeatureTcpNoDelay = HelloFeature(0x03)
+	// FeatureTCPNoDelay indicates support for TCP no-delay.
+	FeatureTCPNoDelay = HelloFeature(0x03)
 
 	// FeatureSeqNo indicates support for mutation tokens.
 	FeatureSeqNo = HelloFeature(0x04)
 
-	// FeatureTcpDelay indicates support for TCP delay.
-	FeatureTcpDelay = HelloFeature(0x05)
+	// FeatureTCPDelay indicates support for TCP delay.
+	FeatureTCPDelay = HelloFeature(0x05)
 
 	// FeatureXattr indicates support for document xattrs.
 	FeatureXattr = HelloFeature(0x06)
@@ -125,8 +125,8 @@ const (
 	// FeatureSnappy indicates support for snappy compressed documents.
 	FeatureSnappy = HelloFeature(0x0a)
 
-	// FeatureJson indicates support for JSON datatype data.
-	FeatureJson = HelloFeature(0x0b)
+	// FeatureJSON indicates support for JSON datatype data.
+	FeatureJSON = HelloFeature(0x0b)
 
 	// FeatureDuplex indicates support for duplex communications.
 	FeatureDuplex = HelloFeature(0x0c)
@@ -275,9 +275,9 @@ const (
 	// StatusSubDocCantInsert occurs when a sub-document operation could not insert.
 	StatusSubDocCantInsert = StatusCode(0xc5)
 
-	// StatusSubDocNotJson occurs when a sub-document operation is performed on a
+	// StatusSubDocNotJSON occurs when a sub-document operation is performed on a
 	// document which is not JSON.
-	StatusSubDocNotJson = StatusCode(0xc6)
+	StatusSubDocNotJSON = StatusCode(0xc6)
 
 	// StatusSubDocBadRange occurs when a sub-document operation is performed with
 	// a bad range.
@@ -522,8 +522,8 @@ const (
 type DatatypeFlag uint8
 
 const (
-	// DatatypeFlagJson indicates the server believes the value payload to be JSON.
-	DatatypeFlagJson = DatatypeFlag(0x01)
+	// DatatypeFlagJSON indicates the server believes the value payload to be JSON.
+	DatatypeFlagJSON = DatatypeFlag(0x01)
 
 	// DatatypeFlagCompressed indicates the value payload is compressed.
 	DatatypeFlagCompressed = DatatypeFlag(0x02)

@@ -785,7 +785,7 @@ func TestObserveSeqNo(t *testing.T) {
 			}
 
 			mt := res.MutationToken
-			if mt.VbUuid == 0 && mt.SeqNo == 0 {
+			if mt.VbUUID == 0 && mt.SeqNo == 0 {
 				s.Skipf("ObserveSeqNo not supported by server")
 			}
 
@@ -795,10 +795,10 @@ func TestObserveSeqNo(t *testing.T) {
 	s.Wait(0)
 
 	origCurSeqNo := SeqNo(0)
-	vbId := agent.KeyToVbucket([]byte("testObserve"))
+	vbID := agent.KeyToVbucket([]byte("testObserve"))
 	s.PushOp(agent.ObserveVbEx(ObserveVbOptions{
-		VbId:       vbId,
-		VbUuid:     origMt.VbUuid,
+		VbID:       vbID,
+		VbUUID:     origMt.VbUUID,
 		ReplicaIdx: 1,
 	}, func(res *ObserveVbResult, err error) {
 		s.Wrap(func() {
@@ -828,10 +828,10 @@ func TestObserveSeqNo(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	vbId = agent.KeyToVbucket([]byte("testObserve"))
+	vbID = agent.KeyToVbucket([]byte("testObserve"))
 	s.PushOp(agent.ObserveVbEx(ObserveVbOptions{
-		VbId:       vbId,
-		VbUuid:     newMt.VbUuid,
+		VbID:       vbID,
+		VbUUID:     newMt.VbUUID,
 		ReplicaIdx: 1,
 	}, func(res *ObserveVbResult, err error) {
 		s.Wrap(func() {
@@ -1453,8 +1453,8 @@ func TestMain(m *testing.M) {
 
 	agentConfig := &AgentConfig{
 		MemdAddrs: memdAddrs,
-		HttpAddrs: httpAddrs,
-		TlsConfig: nil,
+		HTTPAddrs: httpAddrs,
+		TLSConfig: nil,
 		// BucketName:           *bucketName,
 		Auth:                 httpAuth,
 		AuthMechanisms:       []AuthMechanism{PlainAuthMechanism},
@@ -1562,7 +1562,7 @@ func TestMain(m *testing.M) {
 		dcpAgentConfig := &AgentConfig{}
 		*dcpAgentConfig = *agentConfig
 		dcpAgentConfig.UseCollections = *collectionsDcp
-		dcpAgentConfig.EnableStreamId = *collectionsDcp
+		dcpAgentConfig.EnableStreamID = *collectionsDcp
 		dcpAgentConfig.BucketName = *dcpBucketName
 
 		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
@@ -1662,7 +1662,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 	data := url.Values{}
 	data.Set("name", name)
 
-	req := &HttpRequest{
+	req := &HTTPRequest{
 		Service: MgmtService,
 		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/", bucketName, scopeName),
 		Method:  "POST",
@@ -1672,7 +1672,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 
 	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-	resp, err := agent.DoHttpRequest(req)
+	resp, err := agent.DoHTTPRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1689,7 +1689,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 	}
 
 	respBody := struct {
-		Uid string `json:"uid"`
+		UID string `json:"uid"`
 	}{}
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
@@ -1701,7 +1701,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
-	uid, err := strconv.Atoi(respBody.Uid)
+	uid, err := strconv.Atoi(respBody.UID)
 	if err != nil {
 		return nil, err
 	}
@@ -1728,14 +1728,14 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 	data := url.Values{}
 	data.Set("name", name)
 
-	req := &HttpRequest{
+	req := &HTTPRequest{
 		Service: MgmtService,
 		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
 		Method:  "DELETE",
 		Headers: make(map[string]string),
 	}
 
-	resp, err := agent.DoHttpRequest(req)
+	resp, err := agent.DoHTTPRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1752,7 +1752,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 	}
 
 	respBody := struct {
-		Uid string `json:"uid"`
+		UID string `json:"uid"`
 	}{}
 	jsonDec := json.NewDecoder(resp.Body)
 	err = jsonDec.Decode(&respBody)
@@ -1764,7 +1764,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		return nil, err
 	}
 
-	uid, err := strconv.Atoi(respBody.Uid)
+	uid, err := strconv.Atoi(respBody.UID)
 	if err != nil {
 		return nil, err
 	}
@@ -1788,9 +1788,9 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 
 }
 
-func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan testManifestWithError) {
+func waitForManifest(agent *Agent, manifestID uint64, manifestCh chan testManifestWithError) {
 	var manifest Manifest
-	for manifest.UID != manifestId {
+	for manifest.UID != manifestID {
 		setCh := make(chan struct{})
 		agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(bytes []byte, err error) {
 			if err != nil {
@@ -1808,7 +1808,7 @@ func waitForManifest(agent *Agent, manifestId uint64, manifestCh chan testManife
 				return
 			}
 
-			if manifest.UID == manifestId {
+			if manifest.UID == manifestID {
 				close(setCh)
 				manifestCh <- testManifestWithError{Manifest: manifest}
 				return

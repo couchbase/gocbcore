@@ -163,7 +163,7 @@ type ExecHelloResponse struct {
 	Err         error
 }
 
-func (client *syncClient) ExecHello(clientId string, features []HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
+func (client *syncClient) ExecHello(clientID string, features []HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
 	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
 		bytes = append(bytes, 0, 0)
 		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
@@ -176,7 +176,7 @@ func (client *syncClient) ExecHello(clientId string, features []HelloFeature, de
 	}
 
 	completedCh := make(chan ExecHelloResponse)
-	err := client.doAsyncOp(cmdHello, []byte(clientId), featureBytes, nil, deadline, func(b []byte, err error) {
+	err := client.doAsyncOp(cmdHello, []byte(clientID), featureBytes, nil, deadline, func(b []byte, err error) {
 		if err != nil {
 			completedCh <- ExecHelloResponse{
 				Err: err,

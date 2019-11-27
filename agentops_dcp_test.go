@@ -36,20 +36,20 @@ type testObserver struct {
 	elock               sync.Mutex
 }
 
-func (so *testObserver) SnapshotMarker(startSeqNo, endSeqNo uint64, vbId uint16, streamId uint16,
+func (so *testObserver) SnapshotMarker(startSeqNo, endSeqNo uint64, vbID uint16, streamID uint16,
 	snapshotType SnapshotState) {
 }
 
-func (so *testObserver) Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
-	collectionId uint32, streamId uint16, key, value []byte) {
+func (so *testObserver) Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbID uint16,
+	CollectionID uint32, streamID uint16, key, value []byte) {
 	so.mlock.Lock()
-	if _, ok := so.mutations[streamId]; !ok {
-		so.mutations[streamId] = make(map[uint32]map[string]testDCPMutation)
+	if _, ok := so.mutations[streamID]; !ok {
+		so.mutations[streamID] = make(map[uint32]map[string]testDCPMutation)
 	}
-	if _, ok := so.mutations[streamId][collectionId]; !ok {
-		so.mutations[streamId][collectionId] = make(map[string]testDCPMutation)
+	if _, ok := so.mutations[streamID][CollectionID]; !ok {
+		so.mutations[streamID][CollectionID] = make(map[string]testDCPMutation)
 	}
-	so.mutations[streamId][collectionId][string(key)] = testDCPMutation{
+	so.mutations[streamID][CollectionID][string(key)] = testDCPMutation{
 		key:   key,
 		value: value,
 		cas:   cas,
@@ -58,16 +58,16 @@ func (so *testObserver) Mutation(seqNo, revNo uint64, flags, expiry, lockTime ui
 	so.mlock.Unlock()
 }
 
-func (so *testObserver) Deletion(seqNo, revNo, cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
+func (so *testObserver) Deletion(seqNo, revNo, cas uint64, datatype uint8, vbID uint16, CollectionID uint32, streamID uint16,
 	key, value []byte) {
 	so.dlock.Lock()
-	if _, ok := so.deletions[streamId]; !ok {
-		so.deletions[streamId] = make(map[uint32]map[string]testDCPMutation)
+	if _, ok := so.deletions[streamID]; !ok {
+		so.deletions[streamID] = make(map[uint32]map[string]testDCPMutation)
 	}
-	if _, ok := so.deletions[streamId][collectionId]; !ok {
-		so.deletions[streamId][collectionId] = make(map[string]testDCPMutation)
+	if _, ok := so.deletions[streamID][CollectionID]; !ok {
+		so.deletions[streamID][CollectionID] = make(map[string]testDCPMutation)
 	}
-	so.deletions[streamId][collectionId][string(key)] = testDCPMutation{
+	so.deletions[streamID][CollectionID][string(key)] = testDCPMutation{
 		key:   key,
 		value: value,
 		cas:   cas,
@@ -76,15 +76,15 @@ func (so *testObserver) Deletion(seqNo, revNo, cas uint64, datatype uint8, vbId 
 	so.dlock.Unlock()
 }
 
-func (so *testObserver) Expiration(seqNo, revNo, cas uint64, vbId uint16, collectionId uint32, streamId uint16, key []byte) {
+func (so *testObserver) Expiration(seqNo, revNo, cas uint64, vbID uint16, CollectionID uint32, streamID uint16, key []byte) {
 	so.elock.Lock()
-	if _, ok := so.expirations[streamId]; !ok {
-		so.expirations[streamId] = make(map[uint32]map[string]testDCPMutation)
+	if _, ok := so.expirations[streamID]; !ok {
+		so.expirations[streamID] = make(map[uint32]map[string]testDCPMutation)
 	}
-	if _, ok := so.expirations[streamId][collectionId]; !ok {
-		so.expirations[streamId][collectionId] = make(map[string]testDCPMutation)
+	if _, ok := so.expirations[streamID][CollectionID]; !ok {
+		so.expirations[streamID][CollectionID] = make(map[string]testDCPMutation)
 	}
-	so.expirations[streamId][collectionId][string(key)] = testDCPMutation{
+	so.expirations[streamID][CollectionID][string(key)] = testDCPMutation{
 		key: key,
 		cas: cas,
 	}
@@ -92,31 +92,31 @@ func (so *testObserver) Expiration(seqNo, revNo, cas uint64, vbId uint16, collec
 	so.elock.Unlock()
 }
 
-func (so *testObserver) End(vbId uint16, streamId uint16, err error) {
+func (so *testObserver) End(vbID uint16, streamID uint16, err error) {
 }
 
-func (so *testObserver) CreateCollection(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, scopeId uint32,
-	collectionId uint32, ttl uint32, streamId uint16, key []byte) {
+func (so *testObserver) CreateCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32,
+	collectionID uint32, ttl uint32, streamID uint16, key []byte) {
 }
 
-func (so *testObserver) DeleteCollection(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
-	streamId uint16) {
+func (so *testObserver) DeleteCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, collectionID uint32,
+	streamID uint16) {
 }
 
-func (so *testObserver) FlushCollection(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, collectionId uint32) {
+func (so *testObserver) FlushCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, collectionID uint32) {
 
 }
 
-func (so *testObserver) CreateScope(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, scopeId uint32,
-	streamId uint16, key []byte) {
+func (so *testObserver) CreateScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32,
+	streamID uint16, key []byte) {
 }
 
-func (so *testObserver) DeleteScope(seqNo uint64, version uint8, vbId uint16, manifestUid uint64, scopeId uint32,
-	streamId uint16) {
+func (so *testObserver) DeleteScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32,
+	streamID uint16) {
 }
 
-func (so *testObserver) ModifyCollection(seqNo uint64, version uint8, vbId uint16, manifestUid uint64,
-	collectionId uint32, ttl uint32, streamId uint16) {
+func (so *testObserver) ModifyCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64,
+	collectionID uint32, ttl uint32, streamID uint16) {
 }
 
 func TestDCP(t *testing.T) {
@@ -146,7 +146,7 @@ func testDCP(t *testing.T) {
 
 	var collectionName string
 	var filter *StreamFilter
-	var streamId uint16
+	var streamID uint16
 	var cid uint32
 
 	if globalDCPOpAgent.useCollections {
@@ -165,9 +165,9 @@ func testDCP(t *testing.T) {
 			t.Fatalf("Failed to find collection1 in manifest")
 		}
 
-		streamId = 1
+		streamID = 1
 		filter = NewStreamFilter()
-		filter.StreamId = streamId
+		filter.StreamID = streamID
 		filter.Collections = []uint32{cid}
 	}
 
@@ -178,7 +178,7 @@ func testDCP(t *testing.T) {
 		for i := 0; i < globalDCPAgent.numVbuckets; i++ {
 			waitCh := make(chan error)
 			if globalDCPOpAgent.useCollections {
-				globalDCPAgent.CloseStreamWithId(uint16(i), streamId, func(e error) {
+				globalDCPAgent.CloseStreamWithID(uint16(i), streamID, func(e error) {
 					waitCh <- e
 				})
 			} else {
@@ -233,7 +233,7 @@ func testDCP(t *testing.T) {
 		t.Fatalf("Failed waiting for deletions, %v", err)
 	}
 
-	observerMutations := observer.mutations[streamId][cid]
+	observerMutations := observer.mutations[streamID][cid]
 	for k, v := range mutations {
 		observed, ok := observerMutations[k]
 		if !ok {
@@ -250,7 +250,7 @@ func testDCP(t *testing.T) {
 		}
 	}
 
-	observerDeletions := observer.deletions[streamId][cid]
+	observerDeletions := observer.deletions[streamID][cid]
 	for k := range deletions {
 		observed, ok := observerDeletions[k]
 		if !ok {
@@ -264,7 +264,7 @@ func testDCP(t *testing.T) {
 	}
 
 	if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
-		observerExpirations := observer.expirations[streamId][cid]
+		observerExpirations := observer.expirations[streamID][cid]
 		for k := range expirations {
 			observed, ok := observerExpirations[k]
 			if !ok {

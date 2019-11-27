@@ -7,7 +7,7 @@ import (
 )
 
 type routeData struct {
-	revId   int64
+	revID   int64
 	uuid    string
 	bktType bucketType
 
@@ -27,7 +27,7 @@ type routeData struct {
 func (rd *routeData) DebugString() string {
 	var outStr string
 
-	outStr += fmt.Sprintf("Revision ID: %d\n", rd.revId)
+	outStr += fmt.Sprintf("Revision ID: %d\n", rd.revID)
 
 	outStr += "Client Multiplexer:"
 	outStr += reindentLog("  ", rd.clientMux.debugString()) + "\n"

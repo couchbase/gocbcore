@@ -194,7 +194,7 @@ func (cfg *cfgCluster) BuildRouteConfig(useSsl bool, networkType string, firstCo
 	}
 
 	rc := &routeConfig{
-		revId:        cfg.Rev,
+		revID:        cfg.Rev,
 		kvServerList: kvServerList,
 		capiEpList:   capiEpList,
 		mgmtEpList:   mgmtEpList,
@@ -325,7 +325,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 	}
 
 	rc := &routeConfig{
-		revId:        cfg.Rev,
+		revID:        cfg.Rev,
 		uuid:         cfg.UUID,
 		kvServerList: kvServerList,
 		capiEpList:   capiEpList,
