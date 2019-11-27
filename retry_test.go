@@ -3,7 +3,6 @@ package gocbcore
 import (
 	"fmt"
 	"reflect"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -14,6 +13,11 @@ type mockRetryRequest struct {
 	idempotent bool
 	reasons    []RetryReason
 	cancelFunc func() bool
+	strategy   RetryStrategy
+}
+
+func (mgr *mockRetryRequest) retryStrategy() RetryStrategy {
+	return mgr.strategy
 }
 
 func (mgr *mockRetryRequest) RetryAttempts() uint32 {
@@ -37,6 +41,11 @@ func (mgr *mockRetryRequest) RetryReasons() []RetryReason {
 }
 
 func (mgr *mockRetryRequest) addRetryReason(reason RetryReason) {
+	for _, foundReason := range mgr.reasons {
+		if foundReason == reason {
+			return
+		}
+	}
 	mgr.reasons = append(mgr.reasons, reason)
 }
 
@@ -63,7 +72,7 @@ func TestRetryOrchestrator(t *testing.T) {
 		name             string
 		shouldRetry      bool
 		retryReason      RetryReason
-		request          RetryRequest
+		request          *mockRetryRequest
 		expectedAttempts uint32
 		retryReasonsLen  int
 	}
@@ -82,7 +91,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: false},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -90,7 +99,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false},
 				request:          &mockRetryRequest{attempts: 0},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -98,7 +107,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -106,7 +115,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -114,7 +123,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -122,7 +131,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -130,11 +139,11 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 		},
-		NewFailFastRetryStrategy(): {
+		newFailFastRetryStrategy(): {
 			{
 				name:             "not idempotent request, allowsNonIdempotentRetry: false, alwaysRetry: false",
 				shouldRetry:      false,
@@ -172,7 +181,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -180,7 +189,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -188,7 +197,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 			{
@@ -196,46 +205,47 @@ func TestRetryOrchestrator(t *testing.T) {
 				shouldRetry:      true,
 				retryReason:      &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: true},
 				request:          &mockRetryRequest{attempts: 0, idempotent: true},
-				expectedAttempts: 1,
+				expectedAttempts: 3,
 				retryReasonsLen:  1,
 			},
 		},
 	}
-	orch := &retryOrchestrator{}
+
 	for strategy, rsTests := range tests {
 		stratTyp := reflect.ValueOf(strategy).Type()
 		for _, tt := range rsTests {
 			t.Run(fmt.Sprintf("%s - %s", stratTyp, tt.name), func(t *testing.T) {
-				waitCh := make(chan struct{})
-				triggered := uint32(0)
-				retried := orch.MaybeRetry(tt.request, tt.retryReason, strategy, func() {
-					if atomic.LoadUint32(&triggered) == 0 {
-						waitCh <- struct{}{}
+				// Copy it and add the strategy
+				baseReq := *tt.request
+				req := &baseReq
+				req.strategy = strategy
+
+				totalWaitTime := time.Duration(0)
+				for {
+					shouldRetry, retryTime := retryOrchMaybeRetry(req, tt.retryReason)
+					if shouldRetry != tt.shouldRetry {
+						t.Fatalf("Expected retried to be %v, got %v", tt.shouldRetry, shouldRetry)
 					}
-				})
-				if retried != tt.shouldRetry {
-					t.Fatalf("Expected retried to be %v, got %v", tt.shouldRetry, retried)
+
+					// No need to retry, just break
+					if !shouldRetry {
+						break
+					}
+
+					waitDuration := retryTime.Sub(time.Now())
+					totalWaitTime += waitDuration
+
+					if totalWaitTime >= 50*time.Millisecond {
+						break
+					}
 				}
 
-				timer := time.NewTimer(50 * time.Millisecond)
-				select {
-				case <-timer.C:
-					if tt.shouldRetry {
-						atomic.StoreUint32(&triggered, 1)
-						t.Fatalf("Timed out waiting for retry")
-					}
-				case <-waitCh:
-					if !tt.shouldRetry {
-						t.Fatalf("Should not have retried")
-					}
+				if tt.expectedAttempts != req.RetryAttempts() {
+					t.Fatalf("Expected retries to be %d, was %d", tt.expectedAttempts, req.RetryAttempts())
 				}
 
-				if tt.expectedAttempts != tt.request.RetryAttempts() {
-					t.Fatalf("Expected retries to be %d, was %d", tt.expectedAttempts, tt.request.RetryAttempts())
-				}
-
-				if tt.retryReasonsLen != len(tt.request.RetryReasons()) {
-					t.Fatalf("Expected retries to be %d, was %d", tt.retryReasonsLen, len(tt.request.RetryReasons()))
+				if tt.retryReasonsLen != len(req.RetryReasons()) {
+					t.Fatalf("Expected reasons to be %d, was %d", tt.retryReasonsLen, len(req.RetryReasons()))
 				}
 			})
 		}
@@ -247,34 +257,6 @@ type cancellationRetryStrategy struct {
 
 func (crs *cancellationRetryStrategy) RetryAfter(req RetryRequest, reason RetryReason) RetryAction {
 	return &WithDurationRetryAction{WithDuration: 50 * time.Millisecond}
-}
-
-func TestRetryOrchestratorCancelRequest(t *testing.T) {
-	reason := &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: true}
-	orch := &retryOrchestrator{}
-	req := &mockRetryRequest{idempotent: true}
-	retriedCh := make(chan struct{})
-	retried := orch.MaybeRetry(req, reason, &cancellationRetryStrategy{}, func() {
-		retriedCh <- struct{}{}
-	})
-	if !retried {
-		t.Fatalf("Expected request to be added to retries")
-	}
-
-	if req.cancelFunc == nil {
-		t.Fatalf("Expected request cancel func to be not nil")
-	}
-
-	cancelled := req.cancelFunc()
-	if !cancelled {
-		t.Fatalf("Expected request to successfully cancel")
-	}
-
-	select {
-	case <-time.After(60 * time.Millisecond):
-	case <-retriedCh:
-		t.Fatalf("Expected request to not be retried")
-	}
 }
 
 func TestControlledBackoff(t *testing.T) {

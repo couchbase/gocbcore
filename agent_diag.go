@@ -30,20 +30,10 @@ type pingOp struct {
 	configRev int64
 }
 
-func (pop *pingOp) Cancel() bool {
+func (pop *pingOp) Cancel(err error) {
 	for _, subop := range pop.subops {
-		if subop.op.Cancel() {
-			pop.lock.Lock()
-			pop.results = append(pop.results, PingResult{
-				Endpoint: subop.endpoint,
-				Error:    ErrCancelled,
-				Latency:  0,
-			})
-			pop.handledOneLocked()
-			pop.lock.Unlock()
-		}
+		subop.op.Cancel(err)
 	}
-	return false
 }
 
 func (pop *pingOp) handledOneLocked() {
@@ -73,10 +63,10 @@ type PingKvExCallback func(*PingKvResult, error)
 
 // PingKvEx pings all of the servers we are connected to and returns
 // a report regarding the pings that were performed.
-func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (CancellablePendingOp, error) {
+func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
 	config := agent.routingInfo.Get()
 	if config == nil {
-		return nil, ErrShutdown
+		return nil, errShutdown
 	}
 
 	op := &pingOp{
@@ -112,7 +102,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (Cancellab
 		op.lock.Unlock()
 	}
 
-	retryStrat := NewFailFastRetryStrategy()
+	retryStrat := newFailFastRetryStrategy()
 
 	for serverIdx := 0; serverIdx < config.clientMux.NumPipelines(); serverIdx++ {
 		pipeline := config.clientMux.GetPipeline(serverIdx)
@@ -188,7 +178,7 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 	for {
 		config := agent.routingInfo.Get()
 		if config == nil {
-			return nil, ErrShutdown
+			return nil, errShutdown
 		}
 
 		var conns []MemdConnInfo

@@ -43,7 +43,7 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 
 		if len(resp.Extras) != 21 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 

@@ -41,6 +41,7 @@ type memdConn interface {
 	WritePacket(*memdPacket) error
 	ReadPacket(*memdPacket) error
 	Close() error
+
 	EnableFramingExtras(bool)
 	EnableCollections(bool)
 }
@@ -67,7 +68,7 @@ func dialMemdConn(address string, tlsConfig *tls.Config, deadline time.Time) (me
 
 	tcpConn, isTCPConn := baseConn.(*net.TCPConn)
 	if !isTCPConn || tcpConn == nil {
-		return nil, ErrCliInternalError
+		return nil, errCliInternalError
 	}
 
 	err = tcpConn.SetNoDelay(false)
@@ -132,7 +133,7 @@ func (s *memdTCPConn) WritePacket(req *memdPacket) error {
 		}
 	} else {
 		if req.CollectionID > 0 {
-			return ErrCollectionsUnsupported
+			return errCollectionsUnsupported
 		}
 	}
 

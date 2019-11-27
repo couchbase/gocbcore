@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 )
@@ -104,7 +105,7 @@ func newLazyCircuitBreaker(config CircuitBreakerConfig, canaryFn func()) *lazyCi
 	}
 	if config.CompletionCallback == nil {
 		config.CompletionCallback = func(err error) bool {
-			if err == ErrCancelled {
+			if errors.Is(err, ErrTimeout) {
 				return false
 			}
 

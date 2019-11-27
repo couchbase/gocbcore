@@ -531,11 +531,11 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 
 	results := make([]SubDocResult, len(opts.Ops))
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
-			!IsErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
-			!IsErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!IsErrorStatus(err, StatusSubDocBadMulti) {
+			!isErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
+			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
+			!isErrorStatus(err, StatusSubDocBadMulti) {
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -545,7 +545,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		for i := range results {
 			if respIter+6 > len(resp.Value) {
 				tracer.Finish()
-				cb(nil, ErrProtocol)
+				cb(nil, errProtocol)
 				return
 			}
 
@@ -554,11 +554,14 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 
 			if respIter+6+resValueLen > len(resp.Value) {
 				tracer.Finish()
-				cb(nil, ErrProtocol)
+				cb(nil, errProtocol)
 				return
 			}
 
-			results[i].Err = agent.makeBasicMemdError(resError, resp.Opaque)
+			if resError != StatusSuccess {
+				results[i].Err = agent.makeSubDocError(i, resError, req, resp)
+			}
+
 			results[i].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
 			respIter += 6 + resValueLen
 		}
@@ -584,10 +587,10 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 	for i, op := range opts.Ops {
 		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
 			op.Op != SubDocOpGetDoc && op.Op != SubDocOpGetCount {
-			return nil, ErrInvalidArgs
+			return nil, errInvalidArgument
 		}
 		if op.Value != nil {
-			return nil, ErrInvalidArgs
+			return nil, errInvalidArgument
 		}
 
 		pathBytes := pathBytesList[i]
@@ -666,27 +669,24 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
-			!IsErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!IsErrorStatus(err, StatusSubDocBadMulti) {
+			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
+			!isErrorStatus(err, StatusSubDocBadMulti) {
 			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
-		if IsErrorStatus(err, StatusSubDocBadMulti) {
+		if isErrorStatus(err, StatusSubDocBadMulti) {
 			if len(resp.Value) != 3 {
 				tracer.Finish()
-				cb(nil, ErrProtocol)
+				cb(nil, errProtocol)
 				return
 			}
 
 			opIndex := int(resp.Value[0])
 			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
-			err := SubDocMutateError{
-				Err:     agent.makeBasicMemdError(resError, resp.Opaque),
-				OpIndex: opIndex,
-			}
+			err := agent.makeSubDocError(opIndex, resError, req, resp)
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -695,7 +695,8 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
-			results[opIndex].Err = agent.makeBasicMemdError(opStatus, resp.Opaque)
+
+			results[opIndex].Err = agent.makeSubDocError(opIndex, opStatus, req, resp)
 			readPos += 3
 
 			if opStatus == StatusSuccess {
@@ -724,7 +725,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
 		if agent.durabilityLevelStatus == 2 {
-			return nil, ErrEnhancedDurabilityUnsupported
+			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
 		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
@@ -752,7 +753,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 			op.Op != SubDocOpArrayInsert && op.Op != SubDocOpArrayAddUnique &&
 			op.Op != SubDocOpCounter && op.Op != SubDocOpSetDoc &&
 			op.Op != SubDocOpAddDoc && op.Op != SubDocOpDeleteDoc {
-			return nil, ErrInvalidArgs
+			return nil, errInvalidArgument
 		}
 
 		pathBytes := pathBytesList[i]

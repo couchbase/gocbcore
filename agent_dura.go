@@ -32,7 +32,7 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 
 	if agent.bucketType() != bktTypeCouchbase {
 		tracer.Finish()
-		return nil, ErrNotSupported
+		return nil, errFeatureNotAvailable
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -44,14 +44,14 @@ func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (Pendin
 
 		if len(resp.Value) < 4 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 		keyLen := int(binary.BigEndian.Uint16(resp.Value[2:]))
 
 		if len(resp.Value) != 2+2+keyLen+1+8 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 		keyState := KeyState(resp.Value[2+2+keyLen])
@@ -131,7 +131,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 
 	if agent.bucketType() != bktTypeCouchbase {
 		tracer.Finish()
-		return nil, ErrNotSupported
+		return nil, errFeatureNotAvailable
 	}
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -143,7 +143,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 
 		if len(resp.Value) < 1 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -152,7 +152,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			// Normal
 			if len(resp.Value) < 27 {
 				tracer.Finish()
-				cb(nil, ErrProtocol)
+				cb(nil, errProtocol)
 				return
 			}
 
@@ -173,7 +173,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 		} else if formatType == 1 {
 			// Hard Failover
 			if len(resp.Value) < 43 {
-				cb(nil, ErrProtocol)
+				cb(nil, errProtocol)
 				return
 			}
 
@@ -197,7 +197,7 @@ func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (
 			return
 		} else {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 	}

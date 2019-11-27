@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -145,7 +146,7 @@ func (client *memdClient) CancelRequest(req *memdQRequest) bool {
 func (client *memdClient) SendRequest(req *memdQRequest) error {
 	addSuccess := client.takeRequestOwnership(req)
 	if !addSuccess {
-		return ErrCancelled
+		return errRequestCanceled
 	}
 
 	packet := &req.memdPacket
@@ -179,6 +180,8 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	opIndex := resp.Opaque
+
+	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Opcode, resp.Opaque, resp.Status)
 
 	client.lock.Lock()
 	// Find the request that goes with this response, don't check if the client is
@@ -219,14 +222,8 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	// Give the agent an opportunity to intercept the response first
 	var err error
-	if resp.Magic == resMagic {
-		if resp.Status != StatusSuccess {
-			if ok, foundErr := findMemdError(resp.Status); ok {
-				err = foundErr
-			} else {
-				err = newSimpleError(resp.Status)
-			}
-		}
+	if resp.Magic == resMagic && resp.Status != StatusSuccess {
+		err = getKvStatusCodeError(resp.Status)
 	}
 
 	if req.onCompletion != nil {
@@ -241,14 +238,13 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 
 		req.processingLock.Unlock()
-		if err != ErrCancelled {
-			shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
-			if shortCircuited {
-				logSchedf("Routing callback intercepted response")
-				return
-			}
-			err = routeErr
+
+		shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
+		if shortCircuited {
+			logSchedf("Routing callback intercepted response")
+			return
 		}
+		err = routeErr
 	}
 
 	// Call the requests callback handler...
@@ -383,14 +379,12 @@ func (client *memdClient) run() {
 				logWarnf("Encountered an unowned request in a client opMap")
 			}
 
-			// Retry the operation, if we successfully requeue it then don't return to the caller
-			// yet. Instead we'll try to resend it once the parent pipeline client has refreshed.
-			retried := client.parent.waitAndRetryOperation(req, SocketCloseInFlightRetryReason)
-			if retried {
+			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, io.EOF)
+			if shortCircuited {
 				return
 			}
 
-			req.tryCallback(nil, ErrNetwork)
+			req.tryCallback(nil, routeErr)
 		})
 
 		close(client.closeNotify)

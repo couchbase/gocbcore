@@ -4,37 +4,20 @@ package gocbcore
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbaselabs/gocbconnstr"
 	"golang.org/x/net/http2"
 )
 
-// Agent represents the base client handling connections to a Couchbase Server.
-// This is used internally by the higher level classes for communicating with the cluster,
-// it can also be used to perform more advanced operations with a cluster.
-type Agent struct {
-	clientID             string
-	userString           string
-	auth                 AuthProvider
-	authHandler          authFunc
-	bucketName           string
-	bucketLock           sync.Mutex
-	tlsConfig            *tls.Config
-	initFn               memdInitFunc
+type agentConfig struct {
 	networkType          string
 	useMutationTokens    bool
-	useKvErrorMaps       bool
-	useEnhancedErrors    bool
 	useCompression       bool
 	useDurations         bool
 	disableDecompression bool
@@ -42,6 +25,22 @@ type Agent struct {
 
 	compressionMinSize  int
 	compressionMinRatio float64
+
+	noRootTraceSpans bool
+}
+
+// Agent represents the base client handling connections to a Couchbase Server.
+// This is used internally by the higher level classes for communicating with the cluster,
+// it can also be used to perform more advanced operations with a cluster.
+type Agent struct {
+	clientID    string
+	userAgent   string
+	auth        AuthProvider
+	authHandler authFunc
+	bucketName  string
+	bucketLock  sync.Mutex
+	tlsConfig   *tls.Config
+	initFn      memdInitFunc
 
 	closeNotify        chan struct{}
 	cccpLooperDoneSig  chan struct{}
@@ -54,8 +53,7 @@ type Agent struct {
 	kvErrorMap  kvErrorMapPtr
 	numVbuckets int
 
-	tracer           RequestTracer
-	noRootTraceSpans bool
+	tracer RequestTracer
 
 	serverFailuresLock sync.Mutex
 	serverFailures     map[string]time.Time
@@ -67,11 +65,10 @@ type Agent struct {
 	confCccpMaxWait      time.Duration
 	confCccpPollPeriod   time.Duration
 
-	serverConnectTimeout time.Duration
-	serverWaitTimeout    time.Duration
-	nmvRetryDelay        time.Duration
-	kvPoolSize           int
-	maxQueueSize         int
+	kvConnectTimeout  time.Duration
+	serverWaitTimeout time.Duration
+	kvPoolSize        int
+	maxQueueSize      int
 
 	zombieLock      sync.RWMutex
 	zombieOps       []*zombieLogEntry
@@ -84,26 +81,28 @@ type Agent struct {
 
 	durabilityLevelStatus durabilityLevelStatus
 	clusterCapabilities   uint32
+	supportsCollections   bool
 
 	cachedClients       map[string]*memdClient
 	cachedClientsLock   sync.Mutex
 	cachedHTTPEndpoints []string
 	supportsGCCCP       bool
 
-	retryOrchestrator    *retryOrchestrator
 	defaultRetryStrategy RetryStrategy
 
 	circuitBreakerConfig CircuitBreakerConfig
+
+	agentConfig
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
 func (agent *Agent) ServerConnectTimeout() time.Duration {
-	return agent.serverConnectTimeout
+	return agent.kvConnectTimeout
 }
 
 // SetServerConnectTimeout sets the timeout for each server connection.
 func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
-	agent.serverConnectTimeout = timeout
+	agent.kvConnectTimeout = timeout
 }
 
 // HTTPClient returns a pre-configured HTTP Client for communicating with
@@ -126,420 +125,6 @@ type AuthFunc func(client AuthClient, deadline time.Time, continueCb func(), com
 
 // authFunc wraps AuthFunc to provide a better to the user.
 type authFunc func(client AuthClient, deadline time.Time) (completedCh chan BytesAndError, continueCh chan bool, err error)
-
-// AgentConfig specifies the configuration options for creation of an Agent.
-type AgentConfig struct {
-	UserString     string
-	MemdAddrs      []string
-	HTTPAddrs      []string
-	TLSConfig      *tls.Config
-	BucketName     string
-	NetworkType    string
-	AuthHandler    AuthFunc
-	Auth           AuthProvider
-	AuthMechanisms []AuthMechanism
-
-	UseMutationTokens    bool
-	UseKvErrorMaps       bool
-	UseEnhancedErrors    bool
-	UseCompression       bool
-	UseDurations         bool
-	DisableDecompression bool
-	UseCollections       bool
-
-	CompressionMinSize  int
-	CompressionMinRatio float64
-
-	HTTPRedialPeriod time.Duration
-	HTTPRetryDelay   time.Duration
-	CccpMaxWait      time.Duration
-	CccpPollPeriod   time.Duration
-
-	ConnectTimeout       time.Duration
-	ServerConnectTimeout time.Duration
-	NmvRetryDelay        time.Duration
-	KvPoolSize           int
-	MaxQueueSize         int
-
-	HTTPMaxIdleConns        int
-	HTTPMaxIdleConnsPerHost int
-	HTTPIdleConnTimeout     time.Duration
-
-	// Volatile: Tracer API is subject to change.
-	Tracer           RequestTracer
-	NoRootTraceSpans bool
-
-	UseZombieLogger        bool
-	ZombieLoggerInterval   time.Duration
-	ZombieLoggerSampleSize int
-
-	DcpAgentPriority DcpAgentPriority
-	UseDcpExpiry     bool
-
-	EnableStreamID bool
-
-	DefaultRetryStrategy RetryStrategy
-	CircuitBreakerConfig CircuitBreakerConfig
-}
-
-func (config *AgentConfig) redacted() interface{} {
-	newConfig := AgentConfig{}
-	newConfig = *config
-	if isLogRedactionLevelFull() {
-		// The slices here are still pointing at config's underlying arrays
-		// so we need to make them not do that.
-		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
-		for i, addr := range newConfig.HTTPAddrs {
-			newConfig.HTTPAddrs[i] = redactSystemData(addr)
-		}
-		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
-		for i, addr := range newConfig.MemdAddrs {
-			newConfig.MemdAddrs[i] = redactSystemData(addr)
-		}
-
-		if newConfig.BucketName != "" {
-			newConfig.BucketName = redactMetaData(newConfig.BucketName)
-		}
-	}
-
-	return newConfig
-}
-
-// FromConnStr populates the AgentConfig with information from a
-// Couchbase Connection String.
-// Supported options are:
-//   cacertpath (string) - Path to the CA certificate
-//   certpath (string) - Path to your authentication certificate
-//   keypath (string) - Path to your authentication key
-//   config_total_timeout (int) - Maximum period to attempt to connect to cluster in ms.
-//   config_node_timeout (int) - Maximum period to attempt to connect to a node in ms.
-//   http_redial_period (int) - Maximum period to keep HTTP config connections open in ms.
-//   http_retry_delay (int) - Period to wait between retrying nodes for HTTP config in ms.
-//   config_poll_floor_interval (int) - Minimum time to wait between fetching configs via CCCP in ms.
-//   config_poll_interval (int) - Period to wait between CCCP config polling in ms.
-//   kv_pool_size (int) - The number of connections to establish per node.
-//   max_queue_size (int) - The maximum size of the operation queues per node.
-//   use_kverrmaps (bool) - Whether to enable error maps from the server.
-//   use_enhanced_errors (bool) - Whether to enable enhanced error information.
-//   fetch_mutation_tokens (bool) - Whether to fetch mutation tokens for operations.
-//   compression (bool) - Whether to enable network-wise compression of documents.
-//   compression_min_size (int) - The minimal size of the document to consider compression.
-//   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
-//   server_duration (bool) - Whether to enable fetching server operation durations.
-//   http_max_idle_conns (int) - Maximum number of idle http connections in the pool.
-//   http_max_idle_conns_per_host (int) - Maximum number of idle http connections in the pool per host.
-//   http_idle_conn_timeout (int) - Maximum length of time for an idle connection to stay in the pool in ms.
-//   network (string) - The network type to use
-func (config *AgentConfig) FromConnStr(connStr string) error {
-	baseSpec, err := gocbconnstr.Parse(connStr)
-	if err != nil {
-		return err
-	}
-
-	spec, err := gocbconnstr.Resolve(baseSpec)
-	if err != nil {
-		return err
-	}
-
-	fetchOption := func(name string) (string, bool) {
-		optValue := spec.Options[name]
-		if len(optValue) == 0 {
-			return "", false
-		}
-		return optValue[len(optValue)-1], true
-	}
-
-	// Grab the resolved hostnames into a set of string arrays
-	var httpHosts []string
-	for _, specHost := range spec.HttpHosts {
-		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-
-	var memdHosts []string
-	for _, specHost := range spec.MemdHosts {
-		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-
-	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
-	switch val, _ := fetchOption("bootstrap_on"); val {
-	case "http":
-		memdHosts = nil
-		if len(httpHosts) == 0 {
-			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
-		}
-	case "cccp":
-		httpHosts = nil
-		if len(memdHosts) == 0 {
-			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
-		}
-	case "both":
-	case "":
-		// Do nothing
-		break
-	default:
-		return errors.New("bootstrap_on={http,cccp,both}")
-	}
-	config.MemdAddrs = memdHosts
-	config.HTTPAddrs = httpHosts
-
-	var tlsConfig *tls.Config
-	if spec.UseSsl {
-		var certpath string
-		var keypath string
-		var cacertpaths []string
-
-		if len(spec.Options["cacertpath"]) > 0 || len(spec.Options["keypath"]) > 0 {
-			cacertpaths = spec.Options["cacertpath"]
-			certpath, _ = fetchOption("certpath")
-			keypath, _ = fetchOption("keypath")
-		} else {
-			cacertpaths = spec.Options["certpath"]
-		}
-
-		tlsConfig = &tls.Config{}
-
-		if len(cacertpaths) > 0 {
-			roots := x509.NewCertPool()
-
-			for _, path := range cacertpaths {
-				cacert, err := ioutil.ReadFile(path)
-				if err != nil {
-					return err
-				}
-
-				ok := roots.AppendCertsFromPEM(cacert)
-				if !ok {
-					return ErrInvalidCert
-				}
-			}
-
-			tlsConfig.RootCAs = roots
-		} else {
-			tlsConfig.InsecureSkipVerify = true
-		}
-
-		if certpath != "" && keypath != "" {
-			cert, err := tls.LoadX509KeyPair(certpath, keypath)
-			if err != nil {
-				return err
-			}
-
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
-	}
-	config.TLSConfig = tlsConfig
-
-	if spec.Bucket != "" {
-		config.BucketName = spec.Bucket
-	}
-
-	if valStr, ok := fetchOption("config_total_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("config_total_timeout option must be a number")
-		}
-		config.ConnectTimeout = time.Duration(val) * time.Millisecond
-	}
-
-	if valStr, ok := fetchOption("config_node_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("config_node_timeout option must be a number")
-		}
-		config.ServerConnectTimeout = time.Duration(val) * time.Millisecond
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_redial_period"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http redial period option must be a number")
-		}
-		config.HTTPRedialPeriod = time.Duration(val) * time.Millisecond
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_retry_delay"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http retry delay option must be a number")
-		}
-		config.HTTPRetryDelay = time.Duration(val) * time.Millisecond
-	}
-
-	if valStr, ok := fetchOption("config_poll_floor_interval"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("config pool floor interval option must be a number")
-		}
-		config.CccpMaxWait = time.Duration(val) * time.Millisecond
-	}
-
-	if valStr, ok := fetchOption("config_poll_interval"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("config pool interval option must be a number")
-		}
-		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("kv_pool_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("kv pool size option must be a number")
-		}
-		config.KvPoolSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("max_queue_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max queue size option must be a number")
-		}
-		config.MaxQueueSize = int(val)
-	}
-
-	if valStr, ok := fetchOption("use_kverrmaps"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("use_kverrmaps option must be a boolean")
-		}
-		config.UseKvErrorMaps = val
-	}
-
-	if valStr, ok := fetchOption("use_enhanced_errors"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("use_enhanced_errors option must be a boolean")
-		}
-		config.UseEnhancedErrors = val
-	}
-
-	if valStr, ok := fetchOption("fetch_mutation_tokens"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("fetch_mutation_tokens option must be a boolean")
-		}
-		config.UseMutationTokens = val
-	}
-
-	if valStr, ok := fetchOption("compression"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("compression option must be a boolean")
-		}
-		config.UseCompression = val
-	}
-
-	if valStr, ok := fetchOption("compression_min_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinSize = int(val)
-	}
-
-	if valStr, ok := fetchOption("compression_min_ratio"); ok {
-		val, err := strconv.ParseFloat(valStr, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinRatio = val
-	}
-
-	if valStr, ok := fetchOption("server_duration"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("server_duration option must be a boolean")
-		}
-		config.UseDurations = val
-	}
-
-	if valStr, ok := fetchOption("http_max_idle_conns"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http max idle connections option must be a number")
-		}
-		config.HTTPMaxIdleConns = int(val)
-	}
-
-	if valStr, ok := fetchOption("http_max_idle_conns_per_host"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http max idle connections per host option must be a number")
-		}
-		config.HTTPMaxIdleConnsPerHost = int(val)
-	}
-
-	if valStr, ok := fetchOption("http_idle_conn_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http idle connection timeout option must be a number")
-		}
-		config.HTTPIdleConnTimeout = time.Duration(val) * time.Millisecond
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging option must be a boolean")
-		}
-		config.UseZombieLogger = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_interval"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_interval option must be a number")
-		}
-		config.ZombieLoggerInterval = time.Duration(val) * time.Millisecond
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_sample_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_sample_size option must be a number")
-		}
-		config.ZombieLoggerSampleSize = int(val)
-	}
-
-	if valStr, ok := fetchOption("network"); ok {
-		if valStr == "default" {
-			valStr = ""
-		}
-
-		config.NetworkType = valStr
-	}
-
-	if valStr, ok := fetchOption("dcp_priority"); ok {
-		var priority DcpAgentPriority
-		switch valStr {
-		case "":
-			priority = DcpAgentPriorityLow
-		case "low":
-			priority = DcpAgentPriorityLow
-		case "medium":
-			priority = DcpAgentPriorityMed
-		case "high":
-			priority = DcpAgentPriorityHigh
-		default:
-			return fmt.Errorf("dcp_priority must be one of low, medium or high")
-		}
-		config.DcpAgentPriority = priority
-	}
-
-	if valStr, ok := fetchOption("enable_expiry_opcode"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("enable_expiry_opcode option must be a boolean")
-		}
-		config.UseDcpExpiry = val
-	}
-
-	return nil
-}
 
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
@@ -580,7 +165,7 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 			}
 		}
 
-		if config.EnableStreamID {
+		if config.UseDCPStreamID {
 			if err := client.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
@@ -596,13 +181,21 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 }
 
 func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
-	// TODO(brett19): Put all configurable options in the AgentConfig
-
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new agent: %+v", config)
 
+	var tlsConfig *tls.Config
+	if config.UseTLS {
+		tlsConfig = &tls.Config{
+			RootCAs: config.TLSRootCAs,
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				return config.Auth.Certificate(AuthCertRequest{})
+			},
+		}
+	}
+
 	httpTransport := &http.Transport{
-		TLSClientConfig: config.TLSConfig,
+		TLSClientConfig: tlsConfig,
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -610,11 +203,31 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		TLSHandshakeTimeout: 10 * time.Second,
 		MaxIdleConns:        config.HTTPMaxIdleConns,
 		MaxIdleConnsPerHost: config.HTTPMaxIdleConnsPerHost,
-		IdleConnTimeout:     config.HTTPIdleConnTimeout,
+		IdleConnTimeout:     config.HTTPIdleConnectionTimeout,
 	}
 	err := http2.ConfigureTransport(httpTransport)
 	if err != nil {
 		logDebugf("failed to configure http2: %s", err)
+	}
+
+	httpCli := &http.Client{
+		Transport: httpTransport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// All that we're doing here is setting auth on any redirects.
+			// For that reason we can just pull it off the oldest (first) request.
+			if len(via) >= 10 {
+				// Just duplicate the default behaviour for maximum redirects.
+				return errors.New("stopped after 10 redirects")
+			}
+
+			oldest := via[0]
+			auth := oldest.Header.Get("Authorization")
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+
+			return nil
+		},
 	}
 
 	tracer := config.Tracer
@@ -626,46 +239,18 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c := &Agent{
 		clientID:    formatCbUID(randomCbUID()),
-		userString:  config.UserString,
+		userAgent:   config.UserAgent,
 		bucketName:  config.BucketName,
 		auth:        config.Auth,
-		tlsConfig:   config.TLSConfig,
+		tlsConfig:   tlsConfig,
 		initFn:      initFn,
-		networkType: config.NetworkType,
-		httpCli: &http.Client{
-			Transport: httpTransport,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// All that we're doing here is setting auth on any redirects.
-				// For that reason we can just pull it off the oldest (first) request.
-				if len(via) >= 10 {
-					// Just duplicate the default behaviour for maximum redirects.
-					return errors.New("stopped after 10 redirects")
-				}
+		httpCli:     httpCli,
+		closeNotify: make(chan struct{}),
+		tracer:      tracer,
 
-				oldest := via[0]
-				auth := oldest.Header.Get("Authorization")
-				if auth != "" {
-					req.Header.Set("Authorization", auth)
-				}
-
-				return nil
-			},
-		},
-		closeNotify:           make(chan struct{}),
-		tracer:                tracer,
-		useMutationTokens:     config.UseMutationTokens,
-		useKvErrorMaps:        config.UseKvErrorMaps,
-		useEnhancedErrors:     config.UseEnhancedErrors,
-		useCompression:        config.UseCompression,
-		compressionMinSize:    32,
-		compressionMinRatio:   0.83,
-		useDurations:          config.UseDurations,
-		noRootTraceSpans:      config.NoRootTraceSpans,
-		useCollections:        config.UseCollections,
 		serverFailures:        make(map[string]time.Time),
-		serverConnectTimeout:  7000 * time.Millisecond,
+		kvConnectTimeout:      7000 * time.Millisecond,
 		serverWaitTimeout:     5 * time.Second,
-		nmvRetryDelay:         100 * time.Millisecond,
 		kvPoolSize:            1,
 		maxQueueSize:          maxQueueSize,
 		confHTTPRetryDelay:    10 * time.Second,
@@ -673,53 +258,32 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confCccpMaxWait:       3 * time.Second,
 		confCccpPollPeriod:    2500 * time.Millisecond,
 		dcpPriority:           config.DcpAgentPriority,
-		disableDecompression:  config.DisableDecompression,
-		useDcpExpiry:          config.UseDcpExpiry,
+		useDcpExpiry:          config.UseDCPExpiry,
 		durabilityLevelStatus: durabilityLevelStatusUnknown,
 		cachedClients:         make(map[string]*memdClient),
-		retryOrchestrator:     &retryOrchestrator{},
 		defaultRetryStrategy:  config.DefaultRetryStrategy,
 		circuitBreakerConfig:  config.CircuitBreakerConfig,
+
+		agentConfig: agentConfig{
+			networkType:         config.NetworkType,
+			useMutationTokens:   config.UseMutationTokens,
+			useCompression:      config.UseCompression,
+			useCollections:      config.UseCollections,
+			compressionMinSize:  32,
+			compressionMinRatio: 0.83,
+			useDurations:        config.UseDurations,
+			noRootTraceSpans:    config.NoRootTraceSpans,
+		},
 	}
 	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
-
-	if config.AuthHandler != nil {
-		// If the user has set an auth handler then we wrap it so that it matches the signature we actually
-		// need.
-		c.authHandler = func(client AuthClient, deadline time.Time) (chan BytesAndError, chan bool, error) {
-			continueCh := make(chan bool, 1)
-			completedCh := make(chan BytesAndError, 1)
-			hasContinued := false
-			callErr := config.AuthHandler(client, deadline, func() {
-				continueCh <- true
-			}, func(err error) {
-				if !hasContinued {
-					sendContinue := true
-					if err != nil {
-						sendContinue = false
-					}
-					continueCh <- sendContinue
-				}
-				completedCh <- BytesAndError{Err: err}
-			})
-			if callErr != nil {
-				return nil, nil, callErr
-			}
-
-			return completedCh, continueCh, nil
-		}
-	}
 
 	connectTimeout := 60000 * time.Millisecond
 	if config.ConnectTimeout > 0 {
 		connectTimeout = config.ConnectTimeout
 	}
 
-	if config.ServerConnectTimeout > 0 {
-		c.serverConnectTimeout = config.ServerConnectTimeout
-	}
-	if config.NmvRetryDelay > 0 {
-		c.nmvRetryDelay = config.NmvRetryDelay
+	if config.KVConnectTimeout > 0 {
+		c.kvConnectTimeout = config.KVConnectTimeout
 	}
 	if config.KvPoolSize > 0 {
 		c.kvPoolSize = config.KvPoolSize
@@ -749,16 +313,26 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		}
 	}
 	if c.defaultRetryStrategy == nil {
-		c.defaultRetryStrategy = NewFailFastRetryStrategy()
+		c.defaultRetryStrategy = newFailFastRetryStrategy()
+	}
+
+	authMechanisms := []AuthMechanism{
+		ScramSha512AuthMechanism,
+		ScramSha256AuthMechanism,
+		ScramSha1AuthMechanism}
+
+	// PLAIN authentication is only supported over TLS
+	if config.UseTLS {
+		authMechanisms = append(authMechanisms, PlainAuthMechanism)
 	}
 
 	deadline := time.Now().Add(connectTimeout)
 	if config.BucketName == "" {
-		if err := c.connectG3CP(config.MemdAddrs, config.HTTPAddrs, config.AuthMechanisms, deadline); err != nil {
+		if err := c.connectG3CP(config.MemdAddrs, config.HTTPAddrs, authMechanisms, deadline); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := c.connectWithBucket(config.MemdAddrs, config.HTTPAddrs, config.AuthMechanisms, deadline); err != nil {
+		if err := c.connectWithBucket(config.MemdAddrs, config.HTTPAddrs, authMechanisms, deadline); err != nil {
 			return nil, err
 		}
 	}
@@ -848,7 +422,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s for %p", thisHostPort, agent)
 
-		srvDeadlineTm := time.Now().Add(agent.serverConnectTimeout)
+		srvDeadlineTm := time.Now().Add(agent.kvConnectTimeout)
 		if srvDeadlineTm.After(deadline) {
 			srvDeadlineTm = deadline
 		}
@@ -875,8 +449,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 
 		logDebugf("Trying to bootstrap agent %p against %s", agent, thisHostPort)
 		err = agent.bootstrap(client, authMechanisms, nextAuth, srvDeadlineTm)
-		if IsErrorStatus(err, StatusAuthError) ||
-			IsErrorStatus(err, StatusAccessError) {
+		if errors.Is(err, ErrAuthenticationFailure) {
 			agent.disconnectClient(client)
 			return err
 		} else if err != nil {
@@ -886,9 +459,13 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		}
 		logDebugf("Bootstrapped %p/%s", agent, thisHostPort)
 
-		if agent.useCollections && !client.SupportsFeature(FeatureCollections) {
-			logDebugf("Disabling collections as unsupported")
-			agent.useCollections = false
+		if agent.useCollections {
+			agent.supportsCollections = client.SupportsFeature(FeatureCollections)
+			if !agent.supportsCollections {
+				logDebugf("Collections disabled as unsupported")
+			}
+		} else {
+			agent.supportsCollections = false
 		}
 
 		if client.SupportsFeature(FeatureEnhancedDurability) {
@@ -969,7 +546,7 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s for %p", thisHostPort, agent)
 
-		srvDeadlineTm := time.Now().Add(agent.serverConnectTimeout)
+		srvDeadlineTm := time.Now().Add(agent.kvConnectTimeout)
 		if srvDeadlineTm.After(deadline) {
 			srvDeadlineTm = deadline
 		}
@@ -996,8 +573,7 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 
 		logDebugf("Trying to bootstrap agent %p against %s", agent, thisHostPort)
 		err = agent.bootstrap(client, authMechanisms, nextAuth, srvDeadlineTm)
-		if IsErrorStatus(err, StatusAuthError) ||
-			IsErrorStatus(err, StatusAccessError) {
+		if errors.Is(err, ErrAuthenticationFailure) {
 			agent.disconnectClient(client)
 			for _, cli := range agent.cachedClients {
 				agent.disconnectClient(cli)
@@ -1010,9 +586,13 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 		}
 		logDebugf("Bootstrapped %p/%s", agent, thisHostPort)
 
-		if agent.useCollections && !client.SupportsFeature(FeatureCollections) {
-			logDebugf("Disabling collections as unsupported")
-			agent.useCollections = false
+		if agent.useCollections {
+			agent.supportsCollections = client.SupportsFeature(FeatureCollections)
+			if !agent.supportsCollections {
+				logDebugf("Collections disabled as unsupported")
+			}
+		} else {
+			agent.supportsCollections = false
 		}
 
 		if client.SupportsFeature(FeatureEnhancedDurability) {
@@ -1058,9 +638,8 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 
 	if len(agent.cachedClients) == 0 {
 		// If we're using gcccp or if we haven't failed due to cccp then fail.
-		// TODO: If we want to support HTTP scheme for connect then we could do it here.
 		logDebugf("No bucket selected and no clients cached, connect failed for %p", agent)
-		return ErrBadHosts
+		return errBadHosts
 	}
 
 	// In the case of G3CP we don't need to worry about connecting over HTTP as there's no bucket.
@@ -1134,9 +713,13 @@ func (agent *Agent) tryStartHTTPLooper(httpAddrs []string) error {
 			return true
 		}
 
-		if agent.useCollections && !cfg.supports("collections") {
-			logDebugf("Disabling collections as unsupported")
-			agent.useCollections = false
+		if agent.useCollections {
+			agent.supportsCollections = cfg.supports("collections")
+			if !agent.supportsCollections {
+				logDebugf("Collections disabled as unsupported")
+			}
+		} else {
+			agent.supportsCollections = false
 		}
 
 		if cfg.supports("syncreplication") {
@@ -1241,7 +824,7 @@ func (agent *Agent) Close() error {
 	routingInfo := agent.routingInfo.Clear()
 	if routingInfo == nil {
 		agent.configLock.Unlock()
-		return ErrShutdown
+		return errShutdown
 	}
 
 	// Notify everyone that we are shutting down
@@ -1254,7 +837,7 @@ func (agent *Agent) Close() error {
 	// Drain all the pipelines and error their requests, then
 	//  drain the dead queue and error those requests.
 	routingInfo.clientMux.Drain(func(req *memdQRequest) {
-		req.tryCallback(nil, ErrShutdown)
+		req.tryCallback(nil, errShutdown)
 	})
 
 	agent.configLock.Unlock()
@@ -1309,8 +892,6 @@ func (agent *Agent) BucketUUID() string {
 
 // KeyToVbucket translates a particular key to its assigned vbucket.
 func (agent *Agent) KeyToVbucket(key []byte) uint16 {
-	// TODO(brett19): The KeyToVbucket Bucket API should return an error
-
 	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
 		return 0
@@ -1409,10 +990,6 @@ func (agent *Agent) NumServers() int {
 	return routingInfo.clientMux.NumPipelines()
 }
 
-// TODO(brett19): Update VbucketsOnServer to return all servers.
-// Otherwise, we could race the route map update and get a
-// non-continuous list of vbuckets for each server.
-
 // VbucketsOnServer returns the list of VBuckets for a server.
 func (agent *Agent) VbucketsOnServer(index int) []uint16 {
 	routingInfo := agent.routingInfo.Get()
@@ -1491,7 +1068,7 @@ func (agent *Agent) CbasEps() []string {
 
 // HasCollectionsSupport verifies whether or not collections are available on the agent.
 func (agent *Agent) HasCollectionsSupport() bool {
-	return agent.useCollections
+	return agent.supportsCollections
 }
 
 // UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
@@ -1514,7 +1091,7 @@ func (agent *Agent) setBucket(bucket string) {
 // SelectBucket performs a select bucket operation against the cluster.
 func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 	if agent.bucket() != "" {
-		return ErrBucketAlreadySelected
+		return errBucketAlreadySelected
 	}
 
 	logDebugf("Selecting on %p", agent)
@@ -1547,7 +1124,7 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 				_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
 				if err != nil {
 					// This means that we can't connect to the bucket because something is invalid so bail.
-					if IsErrorStatus(err, StatusAccessError) {
+					if errors.Is(err, ErrAuthenticationFailure) {
 						agent.setBucket("")
 						return err
 					}
@@ -1563,32 +1140,32 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 				}
 				logDebugf("Bucket selected successfully against pipeline %p/%s", pipeline, pipeline.Address())
 
-				if routeCfg == nil {
-					cccpBytes, err := client.ExecGetClusterConfig(deadline)
-					if err != nil {
-						logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-						continue
-					}
-
-					hostName, err := hostFromHostPort(pipeline.Address())
-					if err != nil {
-						logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-						continue
-					}
-
-					bk, err := parseBktConfig(cccpBytes, hostName)
-					if err != nil {
-						logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-						continue
-					}
-
-					routeCfg = buildRouteConfig(bk, agent.IsSecure(), agent.networkType, false)
-					if !routeCfg.IsValid() {
-						logDebugf("Configuration was deemed invalid %+v", routeCfg)
-						routeCfg = nil
-						continue
-					}
+				//if routeCfg == nil {
+				cccpBytes, err := client.ExecGetClusterConfig(deadline)
+				if err != nil {
+					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+					continue
 				}
+
+				hostName, err := hostFromHostPort(pipeline.Address())
+				if err != nil {
+					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+					continue
+				}
+
+				bk, err := parseBktConfig(cccpBytes, hostName)
+				if err != nil {
+					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+					continue
+				}
+
+				routeCfg = buildRouteConfig(bk, agent.IsSecure(), agent.networkType, false)
+				if !routeCfg.IsValid() {
+					logDebugf("Configuration was deemed invalid %+v", routeCfg)
+					routeCfg = nil
+					continue
+				}
+				//}
 			}
 		}
 	} else {
@@ -1608,7 +1185,7 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 			_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
 			if err != nil {
 				// This means that we can't connect to the bucket because something is invalid so bail.
-				if IsErrorStatus(err, StatusAccessError) {
+				if errors.Is(err, ErrAuthenticationFailure) {
 					agent.setBucket("")
 					return err
 				}
@@ -1619,32 +1196,32 @@ func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
 			}
 			logDebugf("Bucket selected successfully against client %p/%s", cli, cli.Address())
 
-			if routeCfg == nil {
-				cccpBytes, err := client.ExecGetClusterConfig(deadline)
-				if err != nil {
-					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-					continue
-				}
-
-				hostName, err := hostFromHostPort(cli.Address())
-				if err != nil {
-					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-					continue
-				}
-
-				bk, err := parseBktConfig(cccpBytes, hostName)
-				if err != nil {
-					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-					continue
-				}
-
-				routeCfg = agent.buildFirstRouteConfig(bk, cli.Address())
-				if !routeCfg.IsValid() {
-					logDebugf("Configuration was deemed invalid %+v", routeCfg)
-					routeCfg = nil
-					continue
-				}
+			//if routeCfg == nil {
+			cccpBytes, err := client.ExecGetClusterConfig(deadline)
+			if err != nil {
+				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+				continue
 			}
+
+			hostName, err := hostFromHostPort(cli.Address())
+			if err != nil {
+				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+				continue
+			}
+
+			bk, err := parseBktConfig(cccpBytes, hostName)
+			if err != nil {
+				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+				continue
+			}
+
+			routeCfg = agent.buildFirstRouteConfig(bk, cli.Address())
+			if !routeCfg.IsValid() {
+				logDebugf("Configuration was deemed invalid %+v", routeCfg)
+				routeCfg = nil
+				continue
+			}
+			//}
 		}
 	}
 

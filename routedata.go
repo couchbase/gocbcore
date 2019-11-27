@@ -57,8 +57,22 @@ func (rd *routeData) DebugString() string {
 		outStr += fmt.Sprintf("  - %s\n", ep)
 	}
 
+	if rd.vbMap != nil {
+		outStr += "VBMap:\n"
+		outStr += fmt.Sprintf("%+v\n", rd.vbMap)
+	} else {
+		outStr += "VBMap: not-used\n"
+	}
+
+	if rd.ketamaMap != nil {
+		outStr += "KetamaMap:\n"
+		outStr += fmt.Sprintf("%+v\n", rd.ketamaMap)
+	} else {
+		outStr += "KetamaMap: not-used\n"
+	}
+
 	outStr += "Source Data: *"
-	//outStr += fmt.Sprintf("  Source Data: %v", d.source)
+	//outStr += fmt.Sprintf("  Source Data: %v", rd.source)
 
 	return outStr
 }

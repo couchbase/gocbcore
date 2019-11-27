@@ -56,11 +56,11 @@ func (vbMap vbucketMap) VbucketByKey(key []byte) uint16 {
 
 func (vbMap vbucketMap) NodeByVbucket(vbID uint16, replicaID uint32) (int, error) {
 	if vbID >= uint16(len(vbMap.entries)) {
-		return 0, ErrInvalidVBucket
+		return 0, errInvalidVBucket
 	}
 
 	if replicaID >= uint32(len(vbMap.entries[vbID])) {
-		return 0, ErrInvalidReplica
+		return 0, errInvalidReplica
 	}
 
 	return vbMap.entries[vbID][replicaID], nil

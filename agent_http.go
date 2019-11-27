@@ -4,90 +4,62 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"sort"
-	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
 )
 
-// HTTPRequest contains the description of an HTTP request to perform.
-type HTTPRequest struct {
-	Service     ServiceType
-	Method      string
-	Endpoint    string
-	Path        string
-	Username    string
-	Password    string
-	Body        []byte
-	Context     context.Context
-	Headers     map[string]string
-	ContentType string
-	UniqueID    string
-
+type httpRequest struct {
+	Service       ServiceType
+	Endpoint      string
+	Method        string
+	Path          string
+	Username      string
+	Password      string
+	Headers       map[string]string
+	ContentType   string
+	Body          []byte
 	IsIdempotent  bool
+	UniqueID      string
+	Deadline      time.Time
 	RetryStrategy RetryStrategy
-	retryCount    uint32
-	retryReasons  []RetryReason
 
-	// If the request is in the process of being retried then this is the function
-	// to call to stop the retry wait for this request.
-	cancelRetryTimerFunc func() bool
-	cancelTimerLock      sync.Mutex
+	retryCount   uint32
+	retryReasons []RetryReason
 }
 
-// HTTPResponse encapsulates the response from an HTTP request.
-type HTTPResponse struct {
-	Endpoint   string
-	StatusCode int
-	Body       io.ReadCloser
+func (hr *httpRequest) retryStrategy() RetryStrategy {
+	return hr.RetryStrategy
 }
 
-// RetryAttempts is the number of times that this request has been retried.
-func (hr *HTTPRequest) RetryAttempts() uint32 {
+func (hr *httpRequest) RetryAttempts() uint32 {
 	return atomic.LoadUint32(&hr.retryCount)
 }
 
-// incrementRetryAttempts increments the number of retry attempts.
-func (hr *HTTPRequest) incrementRetryAttempts() {
-	atomic.AddUint32(&hr.retryCount, 1)
-}
-
-// Identifier returns the unique identifier for this request.
-func (hr *HTTPRequest) Identifier() string {
+func (hr *httpRequest) Identifier() string {
 	return hr.UniqueID
 }
 
-// Idempotent returns whether or not this request is idempotent.
-func (hr *HTTPRequest) Idempotent() bool {
+func (hr *httpRequest) Idempotent() bool {
 	return hr.IsIdempotent
 }
 
-// RetryReasons returns the set of reasons why this request has been retried.
-func (hr *HTTPRequest) RetryReasons() []RetryReason {
+func (hr *httpRequest) RetryReasons() []RetryReason {
 	return hr.retryReasons
 }
 
-// setCancelRetry sets the retry cancel function for this request.
-func (hr *HTTPRequest) setCancelRetry(cancelFunc func() bool) {
-	hr.cancelTimerLock.Lock()
-	hr.cancelRetryTimerFunc = cancelFunc
-	hr.cancelTimerLock.Unlock()
+func (hr *httpRequest) incrementRetryAttempts() {
+	atomic.AddUint32(&hr.retryCount, 1)
 }
 
-// CancelRetry will cancel any retry that this request is waiting for.
-func (hr *HTTPRequest) CancelRetry() bool {
-	if hr.cancelRetryTimerFunc == nil {
-		return true
-	}
-
-	return hr.cancelRetryTimerFunc()
-}
-
-// addRetryReason adds a reason why this request has been retried.
-func (hr *HTTPRequest) addRetryReason(reason RetryReason) {
+func (hr *httpRequest) addRetryReason(reason RetryReason) {
 	idx := sort.Search(len(hr.retryReasons), func(i int) bool {
 		return hr.retryReasons[i] == reason
 	})
@@ -96,6 +68,30 @@ func (hr *HTTPRequest) addRetryReason(reason RetryReason) {
 	if idx > len(hr.retryReasons)-1 {
 		hr.retryReasons = append(hr.retryReasons, reason)
 	}
+}
+
+// HTTPRequest contains the description of an HTTP request to perform.
+type HTTPRequest struct {
+	Service       ServiceType
+	Method        string
+	Endpoint      string
+	Path          string
+	Username      string
+	Password      string
+	Body          []byte
+	Headers       map[string]string
+	ContentType   string
+	IsIdempotent  bool
+	UniqueID      string
+	Timeout       time.Duration
+	RetryStrategy RetryStrategy
+}
+
+// HTTPResponse encapsulates the response from an HTTP request.
+type HTTPResponse struct {
+	Endpoint   string
+	StatusCode int
+	Body       io.ReadCloser
 }
 
 func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
@@ -124,7 +120,7 @@ func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
 func (agent *Agent) getMgmtEp() (string, error) {
 	mgmtEps := agent.MgmtEps()
 	if len(mgmtEps) == 0 {
-		return "", ErrNoMgmtService
+		return "", errServiceNotAvailable
 	}
 	return mgmtEps[rand.Intn(len(mgmtEps))], nil
 }
@@ -132,7 +128,7 @@ func (agent *Agent) getMgmtEp() (string, error) {
 func (agent *Agent) getCapiEp() (string, error) {
 	capiEps := agent.CapiEps()
 	if len(capiEps) == 0 {
-		return "", ErrNoCapiService
+		return "", errServiceNotAvailable
 	}
 	return capiEps[rand.Intn(len(capiEps))], nil
 }
@@ -140,7 +136,7 @@ func (agent *Agent) getCapiEp() (string, error) {
 func (agent *Agent) getN1qlEp() (string, error) {
 	n1qlEps := agent.N1qlEps()
 	if len(n1qlEps) == 0 {
-		return "", ErrNoN1qlService
+		return "", errServiceNotAvailable
 	}
 	return n1qlEps[rand.Intn(len(n1qlEps))], nil
 }
@@ -148,7 +144,7 @@ func (agent *Agent) getN1qlEp() (string, error) {
 func (agent *Agent) getFtsEp() (string, error) {
 	ftsEps := agent.FtsEps()
 	if len(ftsEps) == 0 {
-		return "", ErrNoFtsService
+		return "", errServiceNotAvailable
 	}
 	return ftsEps[rand.Intn(len(ftsEps))], nil
 }
@@ -156,16 +152,65 @@ func (agent *Agent) getFtsEp() (string, error) {
 func (agent *Agent) getCbasEp() (string, error) {
 	cbasEps := agent.CbasEps()
 	if len(cbasEps) == 0 {
-		return "", ErrNoCbasService
+		return "", errServiceNotAvailable
 	}
 	return cbasEps[rand.Intn(len(cbasEps))], nil
+}
+
+func wrapHTTPError(req *httpRequest, err error) HTTPError {
+	ierr := HTTPError{
+		InnerError: err,
+	}
+
+	if req != nil {
+		ierr.Endpoint = req.Endpoint
+		ierr.UniqueID = req.UniqueID
+		ierr.RetryAttempts = req.RetryAttempts()
+		ierr.RetryReasons = req.RetryReasons()
+	}
+
+	return ierr
 }
 
 // DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
 func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
+	retryStrategy := agent.defaultRetryStrategy
+	if req.RetryStrategy != nil {
+		retryStrategy = req.RetryStrategy
+	}
+
+	deadline := time.Now().Add(req.Timeout)
+
+	ireq := &httpRequest{
+		Service:       req.Service,
+		Endpoint:      req.Endpoint,
+		Method:        req.Method,
+		Path:          req.Path,
+		Headers:       req.Headers,
+		ContentType:   req.ContentType,
+		Username:      req.Username,
+		Password:      req.Password,
+		Body:          req.Body,
+		IsIdempotent:  req.IsIdempotent,
+		UniqueID:      req.UniqueID,
+		Deadline:      deadline,
+		RetryStrategy: retryStrategy,
+	}
+
+	resp, err := agent.execHTTPRequest(ireq)
+	if err != nil {
+		return nil, wrapHTTPError(ireq, err)
+	}
+
+	return resp, nil
+}
+
+// DoHTTPRequest will perform an HTTP request against one of the HTTP
+// services which are available within the SDK.
+func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 	if req.Service == MemdService {
-		return nil, ErrInvalidService
+		return nil, errInvalidService
 	}
 
 	// Identify an endpoint to use for the request
@@ -199,11 +244,14 @@ func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	// hreq.WithContext will panic if ctx is nil so make absolutely sure it isn't
-	if req.Context == nil {
-		req.Context = context.Background()
-	}
-	hreq = hreq.WithContext(req.Context)
+
+	// Create a context to deadline with
+	ctx := context.Background()
+	ctx, ctxCancel := context.WithDeadline(ctx, req.Deadline)
+	defer ctxCancel()
+
+	// Lets add our context to the httpRequest
+	hreq = hreq.WithContext(ctx)
 
 	body := req.Body
 
@@ -230,15 +278,11 @@ func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 			}
 		} else {
 			if len(creds) != 1 {
-				return nil, ErrInvalidCredentials
+				return nil, errInvalidCredentials
 			}
 
 			hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
 		}
-	}
-
-	if req.RetryStrategy == nil {
-		req.RetryStrategy = agent.defaultRetryStrategy
 	}
 
 	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
@@ -252,46 +296,70 @@ func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 		hreq.Header.Set(key, val)
 	}
 
-	var hresp *http.Response
+	var uniqueID string
+	if req.UniqueID != "" {
+		uniqueID = req.UniqueID
+	} else {
+		uniqueID = uuid.New().String()
+	}
+	hreq.Header.Set("User-Agent", agent.clientInfoString(uniqueID))
+
 	for {
-		hresp, err = agent.httpCli.Do(hreq)
+		hresp, err := agent.httpCli.Do(hreq)
 		if err != nil {
+			// Because we have to hijack the context for our own timeout specification
+			// purposes, we need to perform some translation here if we hijacked it.
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = errAmbiguousTimeout
+			}
+
 			if !req.IsIdempotent {
 				return nil, err
 			}
 
-			if err == context.DeadlineExceeded || err == context.Canceled {
+			isUserError := false
+			isUserError = isUserError || errors.Is(err, context.DeadlineExceeded)
+			isUserError = isUserError || errors.Is(err, context.Canceled)
+			isUserError = isUserError || errors.Is(err, ErrTimeout)
+			if isUserError {
 				return nil, err
 			}
 
-			waitCh := make(chan struct{})
-			retried := agent.retryOrchestrator.MaybeRetry(req, UnknownRetryReason, req.RetryStrategy, func() {
-				waitCh <- struct{}{}
-			})
-			if retried {
-				select {
-				case <-waitCh:
-					continue
-				case <-req.Context.Done():
-					if !req.CancelRetry() {
-						// Read the channel so that we don't leave it hanging
-						<-waitCh
-					}
-
-					return nil, req.Context.Err()
-				}
+			var retryReason RetryReason
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				retryReason = SocketCloseInFlightRetryReason
 			}
 
-			return nil, err
+			if retryReason == nil {
+				return nil, err
+			}
+
+			shouldRetry, retryTime := retryOrchMaybeRetry(req, retryReason)
+			if !shouldRetry {
+				return nil, err
+			}
+
+			select {
+			case <-time.After(retryTime.Sub(time.Now())):
+				// continue!
+			case <-ctx.Done():
+				// context timed out
+				if errors.Is(err, context.DeadlineExceeded) {
+					err = errUnambiguousTimeout
+				}
+
+				return nil, err
+			}
+
+			continue
 		}
-		break
-	}
 
-	respOut := HTTPResponse{
-		Endpoint:   endpoint,
-		StatusCode: hresp.StatusCode,
-		Body:       hresp.Body,
-	}
+		respOut := HTTPResponse{
+			Endpoint:   endpoint,
+			StatusCode: hresp.StatusCode,
+			Body:       hresp.Body,
+		}
 
-	return &respOut, nil
+		return &respOut, nil
+	}
 }

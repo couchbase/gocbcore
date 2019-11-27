@@ -112,7 +112,7 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 		// Drain all the requests as an internal error so they are not lost
 		oldPipeline.Drain(func(req *memdQRequest) {
-			req.tryCallback(nil, ErrCliInternalError)
+			req.tryCallback(nil, errCliInternalError)
 		})
 
 		return
@@ -141,24 +141,28 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 func (pipeline *memdPipeline) Close() error {
 	// Shut down all the clients
-	var errs MultiError
-
 	pipeline.clientsLock.Lock()
 	clients := pipeline.clients
 	pipeline.clients = nil
 	pipeline.clientsLock.Unlock()
 
+	hadErrors := false
 	for _, pipecli := range clients {
 		err := pipecli.Close()
 		if err != nil {
-			errs.add(err)
+			logErrorf("failed to shutdown pipeline client: %s", err)
+			hadErrors = true
 		}
 	}
 
 	// Kill the queue, forcing everyone to stop
 	pipeline.queue.Close()
 
-	return errs.get()
+	if hadErrors {
+		return errCliInternalError
+	}
+
+	return nil
 }
 
 func (pipeline *memdPipeline) Drain(cb func(*memdQRequest)) {
@@ -182,9 +186,10 @@ func (pipeline *memdPipeline) BroadcastSelectBucket(bucketName string, deadline 
 		resp := <-respChan
 		if resp.Err != nil {
 			// If the bucket isn't valid then just error out.
-			if IsErrorStatus(resp.Err, StatusAccessError) {
-				return ErrAccessError
+			if errors.Is(err, errAuthenticationFailure) {
+				return resp.Err
 			}
+
 			// Otherwise close the client to let the pipelineclient do a reconnect and try, try again.
 			err = cli.client.Close()
 			if err != nil {

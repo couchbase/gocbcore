@@ -96,7 +96,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 		if resp != nil && resp.Magic == resMagic {
 			// This is the response to the open stream request.
 			if err != nil {
-				req.Cancel()
+				req.internalCancel()
 
 				// All client errors are handled by the StreamObserver
 				cb(nil, err)
@@ -117,7 +117,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 		}
 
 		if err != nil {
-			req.Cancel()
+			req.internalCancel()
 			streamID := noStreamID
 			if filter != nil {
 				streamID = filter.StreamID
@@ -213,13 +213,13 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 			}
 		case cmdDcpStreamEnd:
 			vbID := uint16(resp.Vbucket)
-			code := streamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
+			code := StreamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
 			var streamID uint16
 			if resp.FrameExtras != nil && resp.FrameExtras.HasStreamID {
 				streamID = resp.FrameExtras.StreamID
 			}
-			evtHandler.End(vbID, streamID, getStreamEndError(code))
-			req.Cancel()
+			evtHandler.End(vbID, streamID, getStreamEndStatusError(code))
+			req.internalCancel()
 		}
 	}
 
@@ -299,7 +299,7 @@ func (agent *Agent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStre
 		Callback:      handler,
 		ReplicaIdx:    0,
 		Persistent:    false,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 	return agent.dispatchOp(req)
 }
@@ -324,7 +324,7 @@ func (agent *Agent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp,
 		Callback:      handler,
 		ReplicaIdx:    0,
 		Persistent:    false,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 	return agent.dispatchOp(req)
 }
@@ -363,7 +363,7 @@ func (agent *Agent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (Pend
 		Callback:      handler,
 		ReplicaIdx:    0,
 		Persistent:    false,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 	return agent.dispatchOp(req)
 }
@@ -408,7 +408,7 @@ func (agent *Agent) GetVbucketSeqnosWithCollectionID(serverIdx int, state Vbucke
 		Callback:      handler,
 		ReplicaIdx:    -serverIdx,
 		Persistent:    false,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
 	return agent.dispatchOp(req)
@@ -453,7 +453,7 @@ func (agent *Agent) GetVbucketSeqnos(serverIdx int, state VbucketState, cb GetVB
 		Callback:      handler,
 		ReplicaIdx:    -serverIdx,
 		Persistent:    false,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
 	return agent.dispatchOp(req)

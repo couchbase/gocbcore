@@ -1,5 +1,7 @@
 package gocbcore
 
+import "crypto/tls"
+
 // UserPassPair represents a username and password pair.
 type UserPassPair struct {
 	Username string
@@ -12,9 +14,18 @@ type AuthCredsRequest struct {
 	Endpoint string
 }
 
+// AuthCertRequest represents a certificate details request from the agent.
+type AuthCertRequest struct {
+	Service  ServiceType
+	Endpoint string
+}
+
 // AuthProvider is an interface to allow the agent to fetch authentication
 // credentials on-demand from the application.
 type AuthProvider interface {
+	SupportsTLS() bool
+	SupportsNonTLS() bool
+	Certificate(req AuthCertRequest) (*tls.Certificate, error)
 	Credentials(req AuthCredsRequest) ([]UserPassPair, error)
 }
 
@@ -25,7 +36,7 @@ func getSingleAuthCreds(auth AuthProvider, req AuthCredsRequest) (UserPassPair, 
 	}
 
 	if len(creds) != 1 {
-		return UserPassPair{}, ErrInvalidCredentials
+		return UserPassPair{}, errInvalidCredentials
 	}
 
 	return creds[0], nil
@@ -78,6 +89,21 @@ func getCbasAuthCreds(auth AuthProvider, endpoint string) ([]UserPassPair, error
 type PasswordAuthProvider struct {
 	Username string
 	Password string
+}
+
+// SupportsNonTLS specifies whether this authenticator supports non-TLS connections.
+func (auth *PasswordAuthProvider) SupportsNonTLS() bool {
+	return true
+}
+
+// SupportsTLS specifies whether this authenticator supports TLS connections.
+func (auth *PasswordAuthProvider) SupportsTLS() bool {
+	return true
+}
+
+// Certificate directly returns a certificate chain to present for the connection.
+func (auth *PasswordAuthProvider) Certificate(req AuthCertRequest) (*tls.Certificate, error) {
+	return nil, nil
 }
 
 // Credentials directly returns the username/password from the provider.

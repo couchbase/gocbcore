@@ -97,6 +97,10 @@ func (req *memdQRequest) RetryAttempts() uint32 {
 	return atomic.LoadUint32(&req.retryCount)
 }
 
+func (req *memdQRequest) retryStrategy() RetryStrategy {
+	return req.RetryStrategy
+}
+
 func (req *memdQRequest) incrementRetryAttempts() {
 	atomic.AddUint32(&req.retryCount, 1)
 }
@@ -178,7 +182,7 @@ func (req *memdQRequest) isCancelled() bool {
 	return atomic.LoadUint32(&req.isCompleted) != 0
 }
 
-func (req *memdQRequest) Cancel() bool {
+func (req *memdQRequest) internalCancel() bool {
 	req.processingLock.Lock()
 
 	if atomic.SwapUint32(&req.isCompleted, 1) != 0 {
@@ -206,10 +210,22 @@ func (req *memdQRequest) Cancel() bool {
 	}
 
 	if req.onCompletion != nil {
-		req.onCompletion(ErrCancelled)
+		req.onCompletion(errRequestCanceled)
 	}
 
-	req.owner.cancelReqTrace(req, ErrCancelled)
+	req.owner.cancelReqTrace(req, errRequestCanceled)
 	req.processingLock.Unlock()
+
 	return true
+}
+
+func (req *memdQRequest) Cancel(err error) {
+	// Try to perform the cancellation, if it succeeds, we call the
+	// callback immediately on the users behalf.
+	if req.internalCancel() {
+		shortCircuited, routeErr := req.owner.handleOpRoutingResp(nil, req, err)
+		if !shortCircuited {
+			req.Callback(nil, req, routeErr)
+		}
+	}
 }

@@ -4,79 +4,28 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
-	"os"
-	"runtime"
-	"runtime/pprof"
 	"strconv"
-	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/couchbaselabs/gojcbmock"
 )
 
-// Gets a set of keys evenly distributed across all server nodes.
-// the result is an array of strings, each index representing an index
-// of a server
-func (agent *Agent) makeDistKeys() (keys []string) {
-	// Get the routing information
-	cfg := agent.routingInfo.Get()
-	keys = make([]string, cfg.clientMux.NumPipelines())
-	remaining := len(keys)
-
-	for i := 0; remaining > 0; i++ {
-		keyTmp := fmt.Sprintf("DistKey_%d", i)
-		// Map the vBucket and server
-		vbID := cfg.vbMap.VbucketByKey([]byte(keyTmp))
-		srvIx, err := cfg.vbMap.NodeByVbucket(vbID, 0)
-		if err != nil || srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
-			continue
-		}
-		keys[srvIx] = keyTmp
-		remaining--
-	}
-	return
-}
-
-const (
-	defaultServerVersion = "5.1.0"
-)
-
-var globalAgent *testNode
-var globalMemdAgent *testNode
-var globalDCPAgent *testNode
-var globalDCPOpAgent *testNode
-
-func getAgent() *testNode {
-	return globalAgent
-}
-
-func getAgentnSignaler(t *testing.T) (*testNode, *Signaler) {
-	agent := getAgent()
-	return agent, agent.getSignaler(t)
-}
-
+/* BUG(brett19): GOCBC-691: Disabled due to known issue with CID error retries
 func TestCidRetries(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
-	if !agent.SupportsFeature(TestCollectionFeature) || !agent.HasCollectionsSupport() {
-		t.Skip("Collections are not supported or not enabled")
-	}
+	testEnsureSupportsFeature(t, TestFeatureCollections)
 
-	collectionName := "mytestcollectionname"
-	scopeName := agent.ScopeName()
-	if scopeName == "" {
-		scopeName = "_default"
-	}
+	agent, s := testGetAgentAndHarness(t)
 
-	_, err := testCreateCollection(collectionName, scopeName, agent.bucketName, agent.Agent)
+	bucketName := s.BucketName
+	scopeName := s.ScopeName
+	collectionName := "testCidRetries"
+
+	_, err := testCreateCollection(collectionName, scopeName, bucketName, agent)
 	if err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
+		t.Logf("Failed to create collection: %v", err)
 	}
 
 	// prime the cid map cache
@@ -92,13 +41,13 @@ func TestCidRetries(t *testing.T) {
 	s.Wait(0)
 
 	// delete the collection
-	_, err = testDeleteCollection(collectionName, scopeName, agent.bucketName, agent.Agent, true)
+	_, err = testDeleteCollection(collectionName, scopeName, bucketName, agent, true)
 	if err != nil {
 		t.Fatalf("Failed to delete collection: %v", err)
 	}
 
 	// recreate
-	_, err = testCreateCollection(collectionName, scopeName, agent.bucketName, agent.Agent)
+	_, err = testCreateCollection(collectionName, scopeName, bucketName, agent)
 	if err != nil {
 		t.Fatalf("Failed to create collection: %v", err)
 	}
@@ -109,7 +58,7 @@ func TestCidRetries(t *testing.T) {
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
 		CollectionName: collectionName,
-		ScopeName:      agent.ScopeName(),
+		ScopeName:      scopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -126,7 +75,7 @@ func TestCidRetries(t *testing.T) {
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("test"),
 		CollectionName: collectionName,
-		ScopeName:      agent.ScopeName(),
+		ScopeName:      scopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -139,16 +88,17 @@ func TestCidRetries(t *testing.T) {
 	}))
 	s.Wait(0)
 }
+*/
 
 func TestBasicOps(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	// Set
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -164,8 +114,8 @@ func TestBasicOps(t *testing.T) {
 	// Get
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("test"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -180,14 +130,15 @@ func TestBasicOps(t *testing.T) {
 }
 
 func TestGetReplica(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	testEnsureSupportsFeature(t, TestFeatureReplicas)
+	agent, s := testGetAgentAndHarness(t)
 
 	// Set
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testReplica"),
 		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -206,70 +157,15 @@ func TestGetReplica(t *testing.T) {
 		s.PushOp(agent.GetOneReplicaEx(GetOneReplicaOptions{
 			Key:            []byte("testReplica"),
 			ReplicaIdx:     1,
-			CollectionName: agent.CollectionName(),
-			ScopeName:      agent.ScopeName(),
+			CollectionName: s.CollectionName,
+			ScopeName:      s.ScopeName,
 		}, func(res *GetReplicaResult, err error) {
 			s.Wrap(func() {
-				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
+				keyNotFound := errors.Is(err, ErrDocumentNotFound)
 				if err == nil {
 					keyExists = true
 				} else if err != nil && !keyNotFound {
-					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
-				}
-				if !keyNotFound && res.Cas == Cas(0) {
-					s.Fatalf("Invalid cas received")
-				}
-			})
-		}))
-		s.Wait(0)
-		if keyExists {
-			break
-		}
-		retries++
-		if retries >= 5 {
-			t.Fatalf("GetReplica could not locate key")
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-func TestGetAnyReplica(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
-
-	// Set
-	s.PushOp(agent.SetEx(SetOptions{
-		Key:            []byte("testReplica"),
-		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
-	}, func(res *StoreResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("Set operation failed: %v", err)
-			}
-			if res.Cas == Cas(0) {
-				s.Fatalf("Invalid cas received")
-			}
-		})
-	}))
-	s.Wait(0)
-
-	retries := 0
-	keyExists := false
-	for {
-		// GetReplica Any
-		s.PushOp(agent.GetAnyReplicaEx(GetAnyReplicaOptions{
-			Key:            []byte("testReplica"),
-			CollectionName: agent.CollectionName(),
-			ScopeName:      agent.ScopeName(),
-		}, func(res *GetReplicaResult, err error) {
-			s.Wrap(func() {
-				keyNotFound := IsErrorStatus(err, StatusKeyNotFound)
-				if err == nil {
-					keyExists = true
-				} else if err != nil && !keyNotFound {
-					s.Fatalf("GetReplica specific returned error that was not key not found: %v", err)
+					s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
 				}
 				if !keyNotFound && res.Cas == Cas(0) {
 					s.Fatalf("Invalid cas received")
@@ -290,14 +186,14 @@ func TestGetAnyReplica(t *testing.T) {
 }
 
 func TestBasicReplace(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	oldCas := Cas(0)
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testx"),
 		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		oldCas = res.Cas
 		s.Continue()
@@ -308,8 +204,8 @@ func TestBasicReplace(t *testing.T) {
 		Key:            []byte("testx"),
 		Value:          []byte("[]"),
 		Cas:            oldCas,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -324,13 +220,13 @@ func TestBasicReplace(t *testing.T) {
 }
 
 func TestBasicRemove(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testy"),
 		Value:          []byte("{}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -338,8 +234,8 @@ func TestBasicRemove(t *testing.T) {
 
 	s.PushOp(agent.DeleteEx(DeleteOptions{
 		Key:            []byte("testy"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -351,12 +247,12 @@ func TestBasicRemove(t *testing.T) {
 }
 
 func TestBasicInsert(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.DeleteEx(DeleteOptions{
 		Key:            []byte("testz"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
@@ -365,8 +261,8 @@ func TestBasicInsert(t *testing.T) {
 	s.PushOp(agent.AddEx(AddOptions{
 		Key:            []byte("testz"),
 		Value:          []byte("[]"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -381,13 +277,13 @@ func TestBasicInsert(t *testing.T) {
 }
 
 func TestBasicCounters(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	// Counters
 	s.PushOp(agent.DeleteEx(DeleteOptions{
 		Key:            []byte("testCounters"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
@@ -397,8 +293,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        11,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -418,8 +314,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        22,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -439,8 +335,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          3,
 		Initial:        65,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -458,17 +354,15 @@ func TestBasicCounters(t *testing.T) {
 }
 
 func TestBasicAdjoins(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	testEnsureSupportsFeature(t, TestFeatureAdjoin)
 
-	if !agent.SupportsFeature(TestAdjoinFeature) {
-		t.Skip("Test does not work against server version due to serverside bug")
-	}
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("there"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -477,8 +371,8 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.AppendEx(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte(" Frank!"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -494,8 +388,8 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.PrependEx(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("Hello "),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -510,8 +404,8 @@ func TestBasicAdjoins(t *testing.T) {
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testAdjoins"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -530,14 +424,14 @@ func TestBasicAdjoins(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testExpiry"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -547,17 +441,17 @@ func TestExpiry(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	agent.TimeTravel(2000 * time.Millisecond)
+	s.TimeTravel(2000 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testExpiry"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 		RetryStrategy:  NewBestEffortRetryStrategy(nil),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !IsErrorStatus(err, StatusKeyNotFound) {
-				s.Fatalf("Get should have returned key not found")
+			if !errors.Is(err, ErrDocumentNotFound) {
+				s.Fatalf("Get should have returned document not found")
 			}
 		})
 	}))
@@ -565,14 +459,14 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestTouch(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -585,8 +479,8 @@ func TestTouch(t *testing.T) {
 	s.PushOp(agent.TouchEx(TouchOptions{
 		Key:            []byte("testTouch"),
 		Expiry:         3,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *TouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -596,12 +490,12 @@ func TestTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	agent.TimeTravel(1500 * time.Millisecond)
+	s.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testTouch"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -611,16 +505,16 @@ func TestTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	agent.TimeTravel(2500 * time.Millisecond)
+	s.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testTouch"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !IsErrorStatus(err, StatusKeyNotFound) {
-				s.Fatalf("Get should have returned key not found")
+			if !errors.Is(err, ErrDocumentNotFound) {
+				s.Fatalf("Get should have returned document not found")
 			}
 		})
 	}))
@@ -628,14 +522,14 @@ func TestTouch(t *testing.T) {
 }
 
 func TestGetAndTouch(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testGetAndTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -648,8 +542,8 @@ func TestGetAndTouch(t *testing.T) {
 	s.PushOp(agent.GetAndTouchEx(GetAndTouchOptions{
 		Key:            []byte("testGetAndTouch"),
 		Expiry:         3,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetAndTouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -659,12 +553,12 @@ func TestGetAndTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	agent.TimeTravel(1500 * time.Millisecond)
+	s.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testGetAndTouch"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -674,16 +568,16 @@ func TestGetAndTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	agent.TimeTravel(2500 * time.Millisecond)
+	s.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("testGetAndTouch"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			if !IsErrorStatus(err, StatusKeyNotFound) {
-				s.Fatalf("Get should have returned key not found")
+			if !errors.Is(err, ErrDocumentNotFound) {
+				s.Fatalf("Get should have returned document not found")
 			}
 		})
 	}))
@@ -693,14 +587,14 @@ func TestGetAndTouch(t *testing.T) {
 // This test will lock the document for 1 second, it will then perform set requests for up to 2 seconds,
 // the operation should succeed within the 2 seconds.
 func TestRetrySet(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -713,8 +607,8 @@ func TestRetrySet(t *testing.T) {
 	s.PushOp(agent.GetAndLockEx(GetAndLockOptions{
 		Key:            []byte("testRetrySet"),
 		LockTime:       1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetAndLockResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -728,8 +622,8 @@ func TestRetrySet(t *testing.T) {
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 		RetryStrategy:  NewBestEffortRetryStrategy(nil),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
@@ -742,13 +636,15 @@ func TestRetrySet(t *testing.T) {
 }
 
 func TestObserve(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	testEnsureSupportsFeature(t, TestFeatureReplicas)
+
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -757,8 +653,8 @@ func TestObserve(t *testing.T) {
 	s.PushOp(agent.ObserveEx(ObserveOptions{
 		Key:            []byte("testObserve"),
 		ReplicaIdx:     1,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *ObserveResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -770,14 +666,16 @@ func TestObserve(t *testing.T) {
 }
 
 func TestObserveSeqNo(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	testEnsureSupportsFeature(t, TestFeatureReplicas)
+
+	agent, s := testGetAgentAndHarness(t)
 
 	origMt := MutationToken{}
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -815,8 +713,8 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -847,15 +745,15 @@ func TestObserveSeqNo(t *testing.T) {
 }
 
 func TestRandomGet(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
-	distkeys := agent.makeDistKeys()
+	distkeys := s.MakeDistKeys(agent)
 	for _, k := range distkeys {
 		s.PushOp(agent.SetEx(SetOptions{
 			Key:            []byte(k),
 			Value:          []byte("Hello World!"),
-			CollectionName: agent.CollectionName(),
-			ScopeName:      agent.ScopeName(),
+			CollectionName: s.CollectionName,
+			ScopeName:      s.ScopeName,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -886,13 +784,13 @@ func TestRandomGet(t *testing.T) {
 }
 
 func TestSubdocXattrs(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("testXattr"),
 		Value:          []byte("{\"x\":\"xattrs\"}"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -909,7 +807,6 @@ func TestSubdocXattrs(t *testing.T) {
 			Path:  "xatest.test",
 			Value: []byte("\"test value\""),
 		},
-		// TODO: Turn on Macro Expansion part of the xattr test
 		/*{
 			Op: SubDocOpDictSet,
 			Flags: SubdocFlagXattrPath | SubdocFlagExpandMacros | SubdocFlagMkDirP,
@@ -926,8 +823,8 @@ func TestSubdocXattrs(t *testing.T) {
 	s.PushOp(agent.MutateInEx(MutateInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            mutateOps,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *MutateInResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -955,8 +852,8 @@ func TestSubdocXattrs(t *testing.T) {
 	s.PushOp(agent.LookupInEx(LookupInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            lookupOps,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *LookupInResult, err error) {
 		s.Wrap(func() {
 			if len(res.Ops) != 2 {
@@ -987,7 +884,7 @@ func TestSubdocXattrs(t *testing.T) {
 }
 
 func TestStats(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	numServers := agent.routingInfo.Get().clientMux.NumPipelines()
 
@@ -1013,7 +910,7 @@ func TestStats(t *testing.T) {
 }
 
 func TestGetHttpEps(t *testing.T) {
-	agent := getAgent()
+	agent, _ := testGetAgentAndHarness(t)
 
 	// Relies on a 3.0.0+ server
 	n1qlEpList := agent.N1qlEps()
@@ -1033,13 +930,10 @@ func TestGetHttpEps(t *testing.T) {
 }
 
 func TestMemcachedBucket(t *testing.T) {
-	if !globalAgent.SupportsFeature(TestMemdFeature) {
-		t.Skip("Skipping test because memcached buckets not supported")
-	}
+	testEnsureSupportsFeature(t, TestFeatureMemd)
 
-	// Ensure we can do upserts..
-	agent := globalMemdAgent
-	s := agent.getSignaler(t)
+	s := testGetHarness(t)
+	agent := s.MemdAgent()
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:   []byte("key"),
@@ -1076,21 +970,21 @@ func TestMemcachedBucket(t *testing.T) {
 		})
 	})
 
-	if err != ErrNotSupported {
+	if !errors.Is(err, ErrFeatureNotAvailable) {
 		t.Fatalf("Expected observe error for memcached bucket!")
 	}
 }
 
 func TestFlagsRoundTrip(t *testing.T) {
 	// Ensure flags are round-tripped with the server correctly.
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.SetEx(SetOptions{
 		Key:            []byte("flagskey"),
 		Value:          []byte(""),
 		Flags:          0x99889988,
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1102,8 +996,8 @@ func TestFlagsRoundTrip(t *testing.T) {
 
 	s.PushOp(agent.GetEx(GetOptions{
 		Key:            []byte("flagskey"),
-		CollectionName: agent.CollectionName(),
-		ScopeName:      agent.ScopeName(),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1118,50 +1012,55 @@ func TestFlagsRoundTrip(t *testing.T) {
 }
 
 func TestMetaOps(t *testing.T) {
-	// Currently disabled as CouchbaseMock does not support it
-	/*
-		agent, s := getAgentnSignaler(t)
+	testEnsureSupportsFeature(t, TestFeatureGetMeta)
 
-		var currentCas Cas
+	agent, s := testGetAgentAndHarness(t)
 
-		// Set
-		s.PushOp(agent.Set([]byte("test"), []byte("{}"), 0, 0, func(cas Cas, mt MutationToken, err error) {
-			s.Wrap(func() {
-				if err != nil {
-					s.Fatalf("Set operation failed")
-				}
-				if cas == Cas(0) {
-					s.Fatalf("Invalid cas received")
-				}
+	var currentCas Cas
 
-				currentCas = cas
-			})
+	// Set
+
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:   []byte("test"),
+		Value: []byte("{}"),
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed")
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+
+			currentCas = res.Cas
 		})
-		s.Wait(0)
+	}))
+	s.Wait(0)
 
-		// GetMeta
-		s.PushOp(agent.GetMeta([]byte("test"), func(value []byte, flags uint32, cas Cas, expiry uint32, seqNo SeqNo, dataType uint8, deleted uint32, err error) {
-			s.Wrap(func() {
-				if err != nil {
-					s.Fatalf("GetMeta operation failed")
-				}
-				if expiry != 0 {
-					s.Fatalf("Invalid expiry received")
-				}
-				if deleted != 0 {
-					s.Fatalf("Invalid deleted flag received")
-				}
-				if cas != currentCas {
-					s.Fatalf("Invalid cas received")
-				}
-			})
+	// GetMeta
+	s.PushOp(agent.GetMetaEx(GetMetaOptions{
+		Key: []byte("test"),
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed")
+			}
+			if res.Expiry != 0 {
+				s.Fatalf("Invalid expiry received")
+			}
+			if res.Deleted != 0 {
+				s.Fatalf("Invalid deleted flag received")
+			}
+			if res.Cas != currentCas {
+				s.Fatalf("Invalid cas received")
+			}
 		})
-		s.Wait(0)
-	*/
+	}))
+	s.Wait(0)
 }
 
 func TestPing(t *testing.T) {
-	agent, s := getAgentnSignaler(t)
+	agent, s := testGetAgentAndHarness(t)
 
 	s.PushOp(agent.PingKvEx(PingKvOptions{}, func(res *PingKvResult, err error) {
 		s.Wrap(func() {
@@ -1174,7 +1073,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestDiagnostics(t *testing.T) {
-	agent, _ := getAgentnSignaler(t)
+	agent, _ := testGetAgentAndHarness(t)
 
 	report, err := agent.Diagnostics()
 	if err != nil {
@@ -1240,7 +1139,7 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 	agent.networkType = "auto"
 	cfg := agent.buildFirstRouteConfig(cfgBk, "172.17.0.4:11210")
 
-	if globalAgent.networkType != "default" {
+	if agent.networkType != "default" {
 		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
 	}
 
@@ -1336,321 +1235,6 @@ func TestAlternateAddressesInvalidConfig(t *testing.T) {
 	}
 }
 
-type testLogger struct {
-	Parent   Logger
-	LogCount []uint64
-}
-
-func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
-	if level >= 0 && level < LogMaxVerbosity {
-		atomic.AddUint64(&logger.LogCount[level], 1)
-	}
-
-	return logger.Parent.Log(level, offset+1, format, v...)
-}
-
-func createTestLogger() *testLogger {
-	return &testLogger{
-		Parent:   VerboseStdioLogger(),
-		LogCount: make([]uint64, LogMaxVerbosity),
-	}
-}
-
-func TestMain(m *testing.M) {
-	initialGoroutineCount := runtime.NumGoroutine()
-
-	memdservers := flag.String("memdservers", "", "Comma separated list of connection strings to connect to for real memd servers")
-	httpservers := flag.String("httpservers", "", "Comma separated list of connection strings to connect to for real http servers")
-	bucketName := flag.String("bucket", "default", "The bucket to use to test against")
-	memdBucketName := flag.String("memd-bucket", "memd", "The memd bucket to use to test against")
-	dcpBucketName := flag.String("dcp-bucket", "", "The dcp bucket to use to test against")
-	user := flag.String("user", "", "The username to use to authenticate when using a real server")
-	password := flag.String("pass", "", "The password to use to authenticate when using a real server")
-	version := flag.String("version", "", "The server version being tested against (major.minor.patch.build_edition)")
-	collectionName := flag.String("collection-name", "", "The collection name to use to test with collections")
-	collectionsDcp := flag.Bool("dcp-collections", false, "Whether or not to use collections for dcp tests")
-	disableLogger := flag.Bool("disable-logger", false, "Whether or not to disable the logger")
-	flag.Parse()
-
-	var logger *testLogger
-	if !*disableLogger {
-		// Set up our special logger which logs the log level count
-		logger = createTestLogger()
-		SetLogger(logger)
-	}
-
-	if (*memdservers == "") != (*httpservers == "") {
-		panic("If one of memdservers or httpservers is present then both must be present")
-	}
-
-	var err error
-	var memdAddrs []string
-	var httpAddrs []string
-
-	var mock *gojcbmock.Mock
-	var httpAuth *PasswordAuthProvider
-	var memdAuth *PasswordAuthProvider
-	if *memdservers == "" {
-		if *version != "" {
-			panic("Version cannot be specified with mock")
-		}
-		mpath, err := gojcbmock.GetMockPath()
-		if err != nil {
-			panic(err.Error())
-		}
-
-		mock, err = gojcbmock.NewMock(mpath, 4, 1, 64, []gojcbmock.BucketSpec{
-			{Name: "default", Type: gojcbmock.BCouchbase},
-			{Name: "memd", Type: gojcbmock.BMemcached},
-		}...)
-
-		if err != nil {
-			panic(err.Error())
-		}
-		for _, mcport := range mock.MemcachedPorts() {
-			memdAddrs = append(memdAddrs, fmt.Sprintf("127.0.0.1:%d", mcport))
-		}
-
-		httpAddrs = []string{fmt.Sprintf("127.0.0.1:%d", mock.EntryPort)}
-
-		*version = mock.Version()
-
-		httpAuth = &PasswordAuthProvider{
-			Username: "default",
-			Password: "",
-		}
-		memdAuth = &PasswordAuthProvider{
-			Username: "memd",
-			Password: "",
-		}
-	} else {
-		memdAddrs = strings.Split(*memdservers, ",")
-		httpAddrs = strings.Split(*httpservers, ",")
-
-		if *version == "" {
-			*version = defaultServerVersion
-		}
-
-		httpAuth = &PasswordAuthProvider{
-			Username: *user,
-			Password: *password,
-		}
-		memdAuth = &PasswordAuthProvider{
-			Username: *user,
-			Password: *password,
-		}
-	}
-
-	nodeVersion, err := nodeVersionFromString(*version)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to get node version from string: %v", err))
-	}
-
-	useCollections := false
-	if *collectionName != "" {
-		useCollections = true
-	}
-
-	agentConfig := &AgentConfig{
-		MemdAddrs: memdAddrs,
-		HTTPAddrs: httpAddrs,
-		TLSConfig: nil,
-		// BucketName:           *bucketName,
-		Auth:                 httpAuth,
-		AuthMechanisms:       []AuthMechanism{PlainAuthMechanism},
-		ConnectTimeout:       5 * time.Second,
-		ServerConnectTimeout: 1 * time.Second,
-		UseMutationTokens:    true,
-		UseKvErrorMaps:       true,
-		UseEnhancedErrors:    true,
-		UseCollections:       useCollections,
-	}
-
-	agent, err := CreateAgent(agentConfig)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to connect to server, %v", err))
-	}
-	err = agent.SelectBucket(*bucketName, time.Now().Add(2*time.Second))
-	if err != nil {
-		panic(fmt.Sprintf("Failed to select bucket, %v", err))
-	}
-	globalAgent = &testNode{
-		Agent:          agent,
-		Mock:           mock,
-		Version:        nodeVersion,
-		collectionName: *collectionName,
-	}
-	timer := time.NewTimer(5 * time.Second)
-	ch := make(chan error)
-	op, err := globalAgent.PingKvEx(PingKvOptions{}, func(results *PingKvResult, err error) {
-		if err != nil {
-			ch <- err
-		}
-
-		for _, result := range results.Services {
-			if result.Error != nil {
-				ch <- result.Error
-			}
-		}
-
-		ch <- nil
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Failed to ping against bucket!: %v", err))
-	}
-
-	select {
-	case <-timer.C:
-		op.Cancel()
-		panic("Timed out ping against bucket!")
-	case err := <-ch:
-		timer.Stop()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to ping against bucket!: %v", err))
-		}
-	}
-
-	if globalAgent.SupportsFeature(TestMemdFeature) {
-		memdAgentConfig := &AgentConfig{}
-		*memdAgentConfig = *agentConfig
-		memdAgentConfig.UseCollections = false // memcached buckets don't have support for collections
-		memdAgentConfig.BucketName = *memdBucketName
-		memdAgentConfig.Auth = memdAuth
-		memdAgentConfig.AuthMechanisms = []AuthMechanism{PlainAuthMechanism}
-		memdAgent, err := CreateAgent(memdAgentConfig)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to connect to memcached bucket!: %v", err))
-		}
-		globalMemdAgent = &testNode{
-			Agent:   memdAgent,
-			Mock:    mock,
-			Version: nodeVersion,
-		}
-
-		timer := time.NewTimer(5 * time.Second)
-		memdCh := make(chan error)
-		op, err := memdAgent.PingKvEx(PingKvOptions{}, func(results *PingKvResult, err error) {
-			if err != nil {
-				memdCh <- err
-			}
-
-			for _, result := range results.Services {
-				if result.Error != nil {
-					memdCh <- result.Error
-				}
-			}
-
-			memdCh <- nil
-		})
-		if err != nil {
-			panic(fmt.Sprintf("Failed to ping against memcached bucket!: %v", err))
-		}
-
-		select {
-		case <-timer.C:
-			op.Cancel()
-			panic("Timed out ping against memcached bucket!")
-		case err := <-memdCh:
-			timer.Stop()
-			if err != nil {
-				panic(fmt.Sprintf("Failed to ping against memcached bucket!: %v", err))
-			}
-		}
-	}
-
-	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
-		dcpAgentConfig := &AgentConfig{}
-		*dcpAgentConfig = *agentConfig
-		dcpAgentConfig.UseCollections = *collectionsDcp
-		dcpAgentConfig.EnableStreamID = *collectionsDcp
-		dcpAgentConfig.BucketName = *dcpBucketName
-
-		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
-			dcpAgentConfig.UseDcpExpiry = true
-		}
-
-		dcpAgent, err := CreateDcpAgent(dcpAgentConfig, "dcp-stream", DcpOpenFlagProducer)
-		if err != nil {
-			panic("Failed to connect to server")
-		}
-		globalDCPAgent = &testNode{
-			Agent:   dcpAgent,
-			Mock:    mock,
-			Version: nodeVersion,
-		}
-		dcpOpAgent, err := CreateAgent(dcpAgentConfig)
-		if err != nil {
-			panic("Failed to connect to server")
-		}
-		globalDCPOpAgent = &testNode{
-			Agent:   dcpOpAgent,
-			Mock:    mock,
-			Version: nodeVersion,
-		}
-
-	}
-
-	result := m.Run()
-
-	err = agent.Close()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to shut down global agent: %s", err))
-	}
-
-	if globalMemdAgent != nil {
-		err = globalMemdAgent.Close()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to shut down global memcached agent: %s", err))
-		}
-	}
-
-	if globalDCPAgent != nil {
-		err = globalDCPAgent.Close()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to shut down global dcp agent: %s", err))
-		}
-
-		err = globalDCPOpAgent.Close()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to shut down global dcp op agent: %s", err))
-		}
-	}
-
-	if logger != nil {
-		log.Printf("Log Messages Emitted:")
-		for i := 0; i < int(LogMaxVerbosity); i++ {
-			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
-		}
-
-		abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
-		if abnormalLogCount > 0 {
-			log.Printf("Detected unexpected logging, failing")
-			result = 1
-		}
-	}
-
-	// Loop for at most a second checking for goroutines leaks, this gives any HTTP goroutines time to shutdown
-	start := time.Now()
-	var finalGoroutineCount int
-	for time.Now().Sub(start) <= 1*time.Second {
-		runtime.Gosched()
-		finalGoroutineCount = runtime.NumGoroutine()
-		if finalGoroutineCount == initialGoroutineCount {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if finalGoroutineCount != initialGoroutineCount {
-		log.Printf("Detected a goroutine leak (%d before != %d after), failing", initialGoroutineCount, finalGoroutineCount)
-		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-		result = 1
-	} else {
-		log.Printf("No goroutines appear to have leaked (%d before == %d after)", initialGoroutineCount, finalGoroutineCount)
-	}
-
-	os.Exit(result)
-}
-
 // These functions are likely temporary.
 
 type testManifestWithError struct {
@@ -1659,6 +1243,13 @@ type testManifestWithError struct {
 }
 
 func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
+	if scopeName == "" {
+		scopeName = "_default"
+	}
+	if name == "" {
+		name = "_default"
+	}
+
 	data := url.Values{}
 	data.Set("name", name)
 
@@ -1668,6 +1259,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		Method:  "POST",
 		Body:    []byte(data.Encode()),
 		Headers: make(map[string]string),
+		Timeout: 10 * time.Second,
 	}
 
 	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -1701,7 +1293,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
-	uid, err := strconv.Atoi(respBody.UID)
+	uid, err := strconv.ParseInt(respBody.UID, 16, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -1725,6 +1317,13 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 }
 
 func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
+	if scopeName == "" {
+		scopeName = "_default"
+	}
+	if name == "" {
+		name = "_default"
+	}
+
 	data := url.Values{}
 	data.Set("name", name)
 
@@ -1733,6 +1332,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
 		Method:  "DELETE",
 		Headers: make(map[string]string),
+		Timeout: 10 * time.Second,
 	}
 
 	resp, err := agent.DoHTTPRequest(req)
@@ -1764,7 +1364,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		return nil, err
 	}
 
-	uid, err := strconv.Atoi(respBody.UID)
+	uid, err := strconv.ParseInt(respBody.UID, 16, 64)
 	if err != nil {
 		return nil, err
 	}

@@ -185,6 +185,15 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 		opts.RetryStrategy = agent.defaultRetryStrategy
 	}
 
+	keyScopeName := scopeName
+	if keyScopeName == "" {
+		keyScopeName = "_default"
+	}
+	keyCollectionName := collectionName
+	if keyCollectionName == "" {
+		keyCollectionName = "_default"
+	}
+
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:    reqMagic,
@@ -192,7 +201,7 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
-			Key:      []byte(fmt.Sprintf("%s.%s", scopeName, collectionName)),
+			Key:      []byte(fmt.Sprintf("%s.%s", keyScopeName, keyCollectionName)),
 			Value:    nil,
 			Vbucket:  0,
 		},
@@ -343,7 +352,7 @@ func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 
 	if !cidMgr.agent.HasCollectionsSupport() {
 		if !(noCollection || defaultCollection) || collectionIDPresent {
-			return ErrCollectionsUnsupported
+			return errCollectionsUnsupported
 		}
 		err := cidMgr.agent.dispatchDirect(req)
 		if err != nil {

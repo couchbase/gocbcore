@@ -41,7 +41,7 @@ func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) 
 
 		if len(resp.Extras) != 4 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -117,7 +117,7 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 
 		if len(resp.Extras) != 4 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -197,7 +197,7 @@ func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback
 
 		if len(resp.Extras) != 4 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -271,13 +271,20 @@ type GetReplicaResult struct {
 	Flags    uint32
 	Datatype uint8
 	Cas      Cas
-	IsActive bool
 }
 
 // GetReplicaExCallback is invoked upon completion of a GetReplica operation.
 type GetReplicaExCallback func(*GetReplicaResult, error)
 
-func (agent *Agent) getOneReplica(tracer *opTracer, opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+// GetOneReplicaEx retrieves a document from a replica server.
+func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+	tracer := agent.createOpTrace("GetOneReplicaEx", opts.TraceContext)
+
+	if opts.ReplicaIdx <= 0 {
+		tracer.Finish()
+		return nil, errInvalidReplica
+	}
+
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -285,7 +292,7 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetOneReplicaOptions, c
 		}
 
 		if len(resp.Extras) != 4 {
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -323,140 +330,6 @@ func (agent *Agent) getOneReplica(tracer *opTracer, opts GetOneReplicaOptions, c
 	}
 
 	return agent.dispatchOp(req)
-}
-
-// GetOneReplicaEx retrieves a document from a replica server.
-func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetReplicaEx", opts.TraceContext)
-
-	if opts.ReplicaIdx <= 0 {
-		tracer.Finish()
-		return nil, ErrInvalidReplica
-	}
-
-	return agent.getOneReplica(tracer, opts, func(resp *GetReplicaResult, err error) {
-		tracer.Finish()
-		cb(resp, err)
-	})
-}
-
-// GetAnyReplicaEx retrieves a document from any replica or active server.
-func (agent *Agent) GetAnyReplicaEx(opts GetAnyReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetAnyReplicaEx", opts.TraceContext)
-
-	numReplicas := agent.NumReplicas()
-
-	if numReplicas == 0 {
-		tracer.Finish()
-		return nil, ErrInvalidReplica
-	}
-
-	var resultLock sync.Mutex
-	var firstResult *GetReplicaResult
-
-	op := new(multiPendingOp)
-	op.isIdempotent = true
-	expected := uint32(numReplicas) + 1
-
-	opHandledLocked := func() {
-		completed := op.IncrementCompletedOps()
-		if expected-completed == 0 {
-			if firstResult == nil {
-				tracer.Finish()
-				cb(nil, ErrNoReplicas)
-				return
-			}
-
-			tracer.Finish()
-			cb(firstResult, nil)
-		}
-	}
-
-	handler := func(resp *GetReplicaResult, err error) {
-		resultLock.Lock()
-
-		if err != nil {
-			opHandledLocked()
-			resultLock.Unlock()
-			return
-		}
-
-		if firstResult == nil {
-			newReplica := *resp
-			firstResult = &newReplica
-		}
-
-		// Mark this op as completed
-		opHandledLocked()
-
-		// Try to cancel every other operation so we can
-		// return as soon as possible to the user (and close
-		// any open tracing spans)
-		for _, op := range op.ops {
-			if op.Cancel() {
-				opHandledLocked()
-			}
-		}
-
-		resultLock.Unlock()
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	getOp, err := agent.GetEx(GetOptions{
-		ScopeName:      opts.ScopeName,
-		RetryStrategy:  opts.RetryStrategy,
-		CollectionName: opts.CollectionName,
-		TraceContext:   opts.TraceContext,
-		Key:            opts.Key,
-	}, func(result *GetResult, err error) {
-		if err != nil {
-			handler(nil, err)
-			return
-		}
-		handler(&GetReplicaResult{
-			Flags:    result.Flags,
-			Value:    result.Value,
-			Cas:      result.Cas,
-			Datatype: result.Datatype,
-			IsActive: true,
-		}, nil)
-	})
-
-	resultLock.Lock()
-	if err == nil {
-		op.ops = append(op.ops, getOp)
-	} else {
-		opHandledLocked()
-	}
-	resultLock.Unlock()
-
-	// Dispatch a getReplica for each replica server
-	for repIdx := 1; repIdx <= numReplicas; repIdx++ {
-		subOp, err := agent.getOneReplica(tracer, GetOneReplicaOptions{
-			Key:            opts.Key,
-			ReplicaIdx:     repIdx,
-			CollectionName: opts.CollectionName,
-			ScopeName:      opts.ScopeName,
-			CollectionID:   opts.CollectionID,
-			RetryStrategy:  opts.RetryStrategy,
-		}, handler)
-
-		resultLock.Lock()
-
-		if err != nil {
-			opHandledLocked()
-			resultLock.Unlock()
-			continue
-		}
-
-		op.ops = append(op.ops, subOp)
-		resultLock.Unlock()
-	}
-
-	return op, nil
 }
 
 // TouchOptions encapsulates the parameters for a TouchEx operation.
@@ -662,7 +535,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
 		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
+			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
 		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
@@ -751,7 +624,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
 		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
+			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
 		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
@@ -953,7 +826,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
 		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
+			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
 		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
@@ -1037,7 +910,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 
 		if len(resp.Value) != 8 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 		intVal := binary.BigEndian.Uint64(resp.Value)
@@ -1059,14 +932,14 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 
 	// You cannot have an expiry when you do not want to create the document.
 	if opts.Initial == uint64(0xFFFFFFFFFFFFFFFF) && opts.Expiry != 0 {
-		return nil, ErrInvalidArgs
+		return nil, errInvalidArgument
 	}
 
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
 		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
-			return nil, ErrEnhancedDurabilityUnsupported
+			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
 		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
@@ -1153,7 +1026,7 @@ func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (
 
 		if len(resp.Extras) != 4 {
 			tracer.Finish()
-			cb(nil, ErrProtocol)
+			cb(nil, errProtocol)
 			return
 		}
 
@@ -1231,13 +1104,13 @@ type StatsExCallback func(*StatsResult, error)
 // about the consistency of the results.  Occasionally, some nodes may not be
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
-func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellablePendingOp, error) {
+func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("StatsEx", opts.TraceContext)
 
 	config := agent.routingInfo.Get()
 	if config == nil {
 		tracer.Finish()
-		return nil, ErrShutdown
+		return nil, errShutdown
 	}
 
 	stats := make(map[string]SingleServerStats)
@@ -1266,7 +1139,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 
 		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
 	default:
-		return nil, ErrUnsupportedStatsTarget
+		return nil, errInvalidArgument
 	}
 
 	opHandledLocked := func() {
@@ -1307,7 +1180,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 			// When an error occurs, we need to cancel our persistent op.  However, because
 			// a previous error may already have cancelled this and then raced, we should
 			// ensure only a single completion is counted.
-			if req.Cancel() {
+			if req.internalCancel() {
 				opHandledLocked()
 			}
 
@@ -1320,7 +1193,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (CancellableP
 			// As this is a persistent request, we must manually cancel it to remove
 			// it from the pending ops list.  To ensure we do not race multiple cancels,
 			// we only handle it as completed the one time cancellation succeeds.
-			if req.Cancel() {
+			if req.internalCancel() {
 				opHandledLocked()
 			}
 

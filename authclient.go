@@ -75,7 +75,7 @@ func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password
 	// Perform the initial SASL step
 	scramMgr.Step(nil)
 	err := client.SaslAuth(saslName, scramMgr.Out(), deadline, func(b []byte, err error) {
-		if err != nil && !IsErrorStatus(err, StatusAuthContinue) {
+		if err != nil && !isErrorStatus(err, StatusAuthContinue) {
 			completedCb(err)
 			return
 		}
@@ -133,7 +133,7 @@ func saslMethod(method AuthMechanism, username, password string, client AuthClie
 	case ScramSha512AuthMechanism:
 		return SaslAuthScramSha512(username, password, client, deadline, continueCb, completedCb)
 	default:
-		return ErrNoAuthMethod
+		return errNoSupportedMechanisms
 	}
 }
 

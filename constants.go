@@ -330,15 +330,16 @@ const (
 	StatusSubDocMultiPathFailureDeleted = StatusCode(0xd3)
 )
 
-type streamEndStatus uint32
+// StreamEndStatus represents the reason for a DCP stream ending
+type StreamEndStatus uint32
 
 const (
-	streamEndOK           = streamEndStatus(0x00)
-	streamEndClosed       = streamEndStatus(0x01)
-	streamEndStateChanged = streamEndStatus(0x02)
-	streamEndDisconnected = streamEndStatus(0x03)
-	streamEndTooSlow      = streamEndStatus(0x04)
-	streamEndFilterEmpty  = streamEndStatus(0x07)
+	streamEndOK           = StreamEndStatus(0x00)
+	streamEndClosed       = StreamEndStatus(0x01)
+	streamEndStateChanged = StreamEndStatus(0x02)
+	streamEndDisconnected = StreamEndStatus(0x03)
+	streamEndTooSlow      = StreamEndStatus(0x04)
+	streamEndFilterEmpty  = StreamEndStatus(0x07)
 )
 
 // StreamEventCode is the code for a DCP Stream event
@@ -564,8 +565,8 @@ const (
 	// SubdocDocFlagMkDoc indicates that the document should be created if it does not already exist.
 	SubdocDocFlagMkDoc = SubdocDocFlag(0x01)
 
-	// SubdocDocFlagReplaceDoc indices that this operation should be a replace rather than upsert.
-	SubdocDocFlagReplaceDoc = SubdocDocFlag(0x02)
+	// SubdocDocFlagAddDoc indices that this operation should be an add rather than set.
+	SubdocDocFlagAddDoc = SubdocDocFlag(0x02)
 
 	// SubdocDocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
 	// Internal: This should never be used and is not supported.

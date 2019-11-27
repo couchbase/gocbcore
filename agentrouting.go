@@ -1,8 +1,8 @@
 package gocbcore
 
 import (
-	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"sort"
 	"time"
 )
@@ -19,20 +19,7 @@ func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool
 }
 
 func (agent *Agent) dialMemdClient(address string, deadline time.Time) (*memdClient, error) {
-	// Copy the tls configuration since we need to provide the hostname for each
-	// server that we connect to so that the certificate can be validated properly.
-	var tlsConfig *tls.Config
-	if agent.tlsConfig != nil {
-		host, err := hostFromHostPort(address)
-		if err != nil {
-			logErrorf("Failed to parse address for TLS config (%s)", err)
-		}
-
-		tlsConfig = cloneTLSConfig(agent.tlsConfig)
-		tlsConfig.ServerName = host
-	}
-
-	conn, err := dialMemdConn(address, tlsConfig, deadline)
+	conn, err := dialMemdConn(address, agent.tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
@@ -205,7 +192,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
 			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-			if nextAuth == nil || ErrorCause(authResp.Err) != ErrAuthError {
+			if nextAuth == nil || errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				return authResp.Err
 			}
 
@@ -241,7 +228,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 				}
 
 				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-				if ErrorCause(authResp.Err) != ErrAuthError {
+				if errors.Is(authResp.Err, ErrAuthenticationFailure) {
 					return authResp.Err
 				}
 			}
@@ -280,8 +267,8 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 
 func (agent *Agent) clientInfoString(connID string) string {
 	agentName := "gocbcore/" + goCbCoreVersionStr
-	if agent.userString != "" {
-		agentName += " " + agent.userString
+	if agent.userAgent != "" {
+		agentName += " " + agent.userAgent
 	}
 
 	clientInfo := struct {
@@ -312,9 +299,7 @@ func (agent *Agent) helloFeatures() []HelloFeature {
 	features = append(features, FeatureSelectBucket)
 
 	// If the user wants to use KV Error maps, lets enable them
-	if agent.useKvErrorMaps {
-		features = append(features, FeatureXerror)
-	}
+	features = append(features, FeatureXerror)
 
 	// If the user wants to use mutation tokens, lets enable them
 	if agent.useMutationTokens {
@@ -361,7 +346,7 @@ func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
 		}
 	}
 
-	deadline := time.Now().Add(agent.serverConnectTimeout)
+	deadline := time.Now().Add(agent.kvConnectTimeout)
 	client, err := agent.dialMemdClient(address, deadline)
 	if err != nil {
 		agent.serverFailuresLock.Lock()
@@ -440,7 +425,9 @@ func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
 	// against an existing connection then the revisions could be the same. In that case the configuration still
 	// needs to be applied.
 	if newRouting.revID == 0 {
-		logDebugf("Unversioned configuration data, ")
+		logDebugf("Unversioned configuration data, switching.")
+	} else if newRouting.bktType != oldRouting.bktType {
+		logDebugf("Configuration data changed bucket type, switching.")
 	} else if newRouting.revID == oldRouting.revID {
 		logDebugf("Ignoring configuration with identical revision number")
 		return false
@@ -514,7 +501,7 @@ func (agent *Agent) updateRoutingConfig(cfg cfgObj) bool {
 func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 	routingInfo := agent.routingInfo.Get()
 	if routingInfo == nil {
-		return nil, ErrShutdown
+		return nil, errShutdown
 	}
 
 	var srvIdx int
@@ -532,18 +519,19 @@ func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
 			}
 
 			srvIdx, err = routingInfo.vbMap.NodeByVbucket(req.Vbucket, uint32(repIdx))
+
 			if err != nil {
 				return nil, err
 			}
 		} else if routingInfo.bktType == bktTypeMemcached {
 			if repIdx > 0 {
 				// Error. Memcached buckets don't understand replicas!
-				return nil, ErrInvalidReplica
+				return nil, errInvalidReplica
 			}
 
 			if len(req.Key) == 0 {
 				// Non-broadcast keyless Memcached bucket request
-				return nil, ErrCliInternalError
+				return nil, errInvalidArgument
 			}
 
 			srvIdx, err = routingInfo.ketamaMap.NodeByKey(req.Key)
@@ -569,7 +557,7 @@ func (agent *Agent) dispatchDirect(req *memdQRequest) error {
 		if err == errPipelineClosed {
 			continue
 		} else if err == errPipelineFull {
-			return ErrOverload
+			return errOverload
 		} else if err != nil {
 			return err
 		}
@@ -586,14 +574,14 @@ func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) e
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
 	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
 	if req.ReplicaIdx != 0 {
-		return ErrInvalidReplica
+		return errInvalidReplica
 	}
 	req.ReplicaIdx = -999999999
 
 	for {
 		routingInfo := agent.routingInfo.Get()
 		if routingInfo == nil {
-			return ErrShutdown
+			return errShutdown
 		}
 
 		var foundPipeline *memdPipeline
@@ -605,14 +593,14 @@ func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) e
 		}
 
 		if foundPipeline == nil {
-			return ErrInvalidServer
+			return errInvalidServer
 		}
 
 		err := foundPipeline.SendRequest(req)
 		if err == errPipelineClosed {
 			continue
 		} else if err == errPipelineFull {
-			return ErrOverload
+			return errOverload
 		} else if err != nil {
 			return err
 		}
@@ -627,7 +615,7 @@ func (agent *Agent) requeueDirect(req *memdQRequest, isRetry bool) {
 	agent.startCmdTrace(req)
 	handleError := func(err error) {
 		// We only want to log an error on retries if the error isn't cancelled.
-		if !isRetry || (isRetry && err != ErrCancelled) {
+		if !isRetry || (isRetry && !errors.Is(err, ErrRequestCanceled)) {
 			logErrorf("Reschedule failed, failing request (%s)", err)
 		}
 

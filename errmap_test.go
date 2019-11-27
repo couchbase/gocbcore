@@ -85,27 +85,29 @@ func (lrs *errMapTestRetryStrategy) RetryAfter(request RetryRequest, reason Retr
 }
 
 func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
-	if !globalAgent.SupportsFeature(TestErrMapFeature) {
-		t.Skip("Cannot test error map with real server")
+	testEnsureSupportsFeature(t, TestFeatureErrMap)
+
+	agent, h := testGetAgentAndHarness(t)
+	if !h.IsMockServer() {
+		t.Skipf("only supported when testing against mock server")
 	}
-	agent, s := getAgentnSignaler(t)
 
 	testKey := "hello"
 
-	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
-		"bucket": globalAgent.bucket(),
+	h.mockInst.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+		"bucket": h.BucketName,
 		"code":   errCode,
 		"count":  3,
 	}))
 
 	strategy := &errMapTestRetryStrategy{}
-	s.PushOp(agent.GetEx(GetOptions{
+	h.PushOp(agent.GetEx(GetOptions{
 		Key:           []byte(testKey),
 		RetryStrategy: strategy,
 	}, func(res *GetResult, err error) {
-		s.Wrap(func() {})
+		h.Wrap(func() {})
 	}))
-	s.Wait(0)
+	h.Wait(0)
 
 	if strategy.retries != 3 {
 		t.Fatalf("Expected retries to be 3 but was %d", strategy.retries)
@@ -121,8 +123,8 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		}
 	}
 
-	globalAgent.Mock.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
-		"bucket": globalAgent.bucket(),
+	h.mockInst.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+		"bucket": h.BucketName,
 		"code":   errCode,
 		"count":  0,
 	}))

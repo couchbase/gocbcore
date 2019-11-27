@@ -111,23 +111,29 @@ func (mux *memdClientMux) Takeover(oldMux *memdClientMux) {
 }
 
 func (mux *memdClientMux) Close() error {
-	var errs MultiError
+	hadErrors := false
 
 	for _, pipeline := range mux.pipelines {
 		err := pipeline.Close()
 		if err != nil {
-			errs.add(err)
+			logErrorf("failed to shut down pipeline: %s", err)
+			hadErrors = true
 		}
 	}
 
 	if mux.deadPipe != nil {
 		err := mux.deadPipe.Close()
 		if err != nil {
-			errs.add(err)
+			logErrorf("failed to shut down deadpipe: %s", err)
+			hadErrors = true
 		}
 	}
 
-	return errs.get()
+	if hadErrors {
+		return errCliInternalError
+	}
+
+	return nil
 }
 
 // Drain will drain all requests from this muxers pipelines.  You must have

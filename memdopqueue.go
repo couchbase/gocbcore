@@ -102,11 +102,10 @@ func (q *memdOpQueue) Push(req *memdQRequest, maxItems int) error {
 	}
 
 	if req.isCancelled() {
-		// TODO(brett19): Maybe should ensure this was meant to be in this opqueue.
 		atomic.CompareAndSwapPointer(&req.queuedWith, unsafe.Pointer(q), nil)
 		q.lock.Unlock()
 
-		return ErrCancelled
+		return errRequestCanceled
 	}
 
 	q.items.PushBack(req)

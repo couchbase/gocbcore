@@ -53,7 +53,7 @@ func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOu
 			errOut = err
 			signal <- true
 		},
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
 	err := client.client.SendRequest(&qreq)
@@ -68,11 +68,9 @@ func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOu
 		return
 	case <-timeoutTmr.C:
 		ReleaseTimer(timeoutTmr, true)
-		if !qreq.Cancel() {
-			<-signal
-			return
-		}
-		return nil, ErrTimeout
+		qreq.Cancel(errAmbiguousTimeout)
+		<-signal
+		return
 	}
 }
 
@@ -113,7 +111,7 @@ func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time, cb
 			signalResp.Err = err
 			signal <- signalResp
 		},
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
 	err := client.client.SendRequest(&qreq)
@@ -130,12 +128,9 @@ func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time, cb
 			return
 		case <-timeoutTmr.C:
 			ReleaseTimer(timeoutTmr, true)
-			if !qreq.Cancel() {
-				resp := <-signal
-				cb(resp.Bytes, resp.Err)
-				return
-			}
-			cb(nil, ErrTimeout)
+			qreq.Cancel(errAmbiguousTimeout)
+			<-signal
+			return
 		}
 	}()
 
@@ -231,7 +226,7 @@ func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
 	_, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrCliInternalError
+		return errCliInternalError
 	}
 
 	extraBuf := make([]byte, 8)
@@ -244,7 +239,7 @@ func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOp
 func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.Time) error {
 	_, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrCliInternalError
+		return errCliInternalError
 	}
 	// The client will always reply to No-Op's.  No need to enable it
 
@@ -265,7 +260,7 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
 	memcli, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrCliInternalError
+		return errCliInternalError
 	}
 
 	err := client.ExecDcpControl("send_stream_end_on_client_close_stream", "true", deadline)
@@ -279,7 +274,7 @@ func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
 func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.Time) error {
 	mclient, ok := client.client.(*memdClient)
 	if !ok {
-		return ErrCliInternalError
+		return errCliInternalError
 	}
 
 	// Enable buffer acknowledgment on the client

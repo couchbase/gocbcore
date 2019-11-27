@@ -45,7 +45,6 @@ func TestBadConfig(t *testing.T) {
 	}
 }
 
-// TODO(mnunberg): Should test ketama separately from memcached config testing.
 func TestKetama(t *testing.T) {
 	cfg := getConfig(t, "testdata/memd_4node.config.json")
 	if cfg.bktType != bktTypeMemcached {

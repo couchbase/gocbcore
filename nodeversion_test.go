@@ -73,49 +73,49 @@ func (v NodeVersion) Lower(ov NodeVersion) bool {
 	return !v.Higher(ov) && !v.Equal(ov)
 }
 
-func nodeVersionFromString(version string) (*NodeVersion, error) {
+func nodeVersionFromString(version string) (NodeVersion, error) {
 	vSplit := strings.Split(version, ".")
 	lenSplit := len(vSplit)
 	if lenSplit == 0 {
-		return nil, fmt.Errorf("Must prove at least a major version")
+		return NodeVersion{}, fmt.Errorf("Must prove at least a major version")
 	}
 
 	var err error
 	nodeVersion := NodeVersion{}
 	nodeVersion.Major, err = strconv.Atoi(vSplit[0])
 	if err != nil {
-		return nil, fmt.Errorf("Major version is not a valid integer")
+		return NodeVersion{}, fmt.Errorf("Major version is not a valid integer")
 	}
 	if lenSplit == 1 {
-		return &nodeVersion, nil
+		return nodeVersion, nil
 	}
 
 	nodeVersion.Minor, err = strconv.Atoi(vSplit[1])
 	if err != nil {
-		return nil, fmt.Errorf("Minor version is not a valid integer")
+		return NodeVersion{}, fmt.Errorf("Minor version is not a valid integer")
 	}
 	if lenSplit == 2 {
-		return &nodeVersion, nil
+		return nodeVersion, nil
 	}
 
 	nodeVersion.Patch, err = strconv.Atoi(vSplit[2])
 	if err != nil {
-		return nil, fmt.Errorf("Patch version is not a valid integer")
+		return NodeVersion{}, fmt.Errorf("Patch version is not a valid integer")
 	}
 	if lenSplit == 3 {
-		return &nodeVersion, nil
+		return nodeVersion, nil
 	}
 
 	buildEdition := strings.Split(vSplit[3], "_")
 	nodeVersion.Build, err = strconv.Atoi(buildEdition[0])
 	if err != nil {
-		return nil, fmt.Errorf("Build version is not a valid integer")
+		return NodeVersion{}, fmt.Errorf("Build version is not a valid integer")
 	}
 	if len(buildEdition) == 1 {
-		return &nodeVersion, nil
+		return nodeVersion, nil
 	}
 
 	nodeVersion.Edition = buildEdition[1]
 
-	return &nodeVersion, nil
+	return nodeVersion, nil
 }

@@ -14,15 +14,6 @@ type cfgRestPool struct {
 	URI          string `json:"uri"`
 }
 
-// Pools represents the collection of pools as returned from the REST API.
-type jcPools struct {
-	ComponentsVersion     map[string]string `json:"componentsVersion,omitempty"`
-	ImplementationVersion string            `json:"implementationVersion"`
-	IsAdmin               bool              `json:"isAdminCreds"`
-	UUID                  string            `json:"uuid"`
-	Pools                 []cfgRestPool     `json:"pools"`
-}
-
 // A Node is a computer in a cluster running the couchbase software.
 type cfgNode struct {
 	ClusterCompatibility int                `json:"clusterCompatibility"`

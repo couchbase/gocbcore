@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -11,9 +12,9 @@ type RetryRequest interface {
 	Idempotent() bool
 	RetryReasons() []RetryReason
 
+	retryStrategy() RetryStrategy
 	addRetryReason(reason RetryReason)
 	incrementRetryAttempts()
-	setCancelRetry(cancelFunc func() bool)
 }
 
 // RetryReason represents the reason for an operation possibly being retried.
@@ -29,76 +30,92 @@ type retryReason struct {
 	description              string
 }
 
-func (rr *retryReason) AllowsNonIdempotentRetry() bool {
+func (rr retryReason) AllowsNonIdempotentRetry() bool {
 	return rr.allowsNonIdempotentRetry
 }
 
-func (rr *retryReason) AlwaysRetry() bool {
+func (rr retryReason) AlwaysRetry() bool {
 	return rr.alwaysRetry
 }
 
-func (rr *retryReason) Description() string {
+func (rr retryReason) Description() string {
 	return rr.description
 }
 
-func (rr *retryReason) String() string {
+func (rr retryReason) String() string {
 	return rr.description
+}
+
+func (rr retryReason) MarshalJSON() ([]byte, error) {
+	return json.Marshal(rr.description)
 }
 
 var (
 	// UnknownRetryReason indicates that the operation failed for an unknown reason.
-	UnknownRetryReason = &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: false, description: "UNKNOWN"}
+	UnknownRetryReason = retryReason{allowsNonIdempotentRetry: false, alwaysRetry: false, description: "UNKNOWN"}
 
 	// SocketNotAvailableRetryReason indicates that the operation failed because the underlying socket was not available.
-	SocketNotAvailableRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SOCKET_NOT_AVAILABLE"}
+	SocketNotAvailableRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SOCKET_NOT_AVAILABLE"}
 
 	// ServiceNotAvailableRetryReason indicates that the operation failed because the requested service was not available.
-	ServiceNotAvailableRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SERVICE_NOT_AVAILABLE"}
+	ServiceNotAvailableRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SERVICE_NOT_AVAILABLE"}
 
 	// NodeNotAvailableRetryReason indicates that the operation failed because the requested node was not available.
-	NodeNotAvailableRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "NODE_NOT_AVAILABLE"}
+	NodeNotAvailableRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "NODE_NOT_AVAILABLE"}
 
 	// KVNotMyVBucketRetryReason indicates that the operation failed because it was sent to the wrong node for the vbucket.
-	KVNotMyVBucketRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "KV_NOT_MY_VBUCKET"}
+	KVNotMyVBucketRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "KV_NOT_MY_VBUCKET"}
 
 	// KVCollectionOutdatedRetryReason indicates that the operation failed because the collection ID on the request is outdated.
-	KVCollectionOutdatedRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "KV_COLLECTION_OUTDATED"}
+	KVCollectionOutdatedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "KV_COLLECTION_OUTDATED"}
 
 	// KVErrMapRetryReason indicates that the operation failed for an unsupported reason but the KV error map indicated
 	// that the operation can be retried.
-	KVErrMapRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_ERROR_MAP_RETRY_INDICATED"}
+	KVErrMapRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_ERROR_MAP_RETRY_INDICATED"}
 
 	// KVLockedRetryReason indicates that the operation failed because the document was locked.
-	KVLockedRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_LOCKED"}
+	KVLockedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_LOCKED"}
 
 	// KVTemporaryFailureRetryReason indicates that the operation failed because of a temporary failure.
-	KVTemporaryFailureRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_TEMPORARY_FAILURE"}
+	KVTemporaryFailureRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_TEMPORARY_FAILURE"}
 
 	// KVSyncWriteInProgressRetryReason indicates that the operation failed because a sync write is in progress.
-	KVSyncWriteInProgressRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_SYNC_WRITE_IN_PROGRESS"}
+	KVSyncWriteInProgressRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_SYNC_WRITE_IN_PROGRESS"}
 
 	// KVSyncWriteRecommitInProgressRetryReason indicates that the operation failed because a sync write recommit is in progress.
-	KVSyncWriteRecommitInProgressRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_SYNC_WRITE_RE_COMMIT_IN_PROGRESS"}
+	KVSyncWriteRecommitInProgressRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "KV_SYNC_WRITE_RE_COMMIT_IN_PROGRESS"}
 
 	// ServiceResponseCodeIndicatedRetryReason indicates that the operation failed and the service responded stating that
 	// the request should be retried.
-	ServiceResponseCodeIndicatedRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SERVICE_RESPONSE_CODE_INDICATED"}
+	ServiceResponseCodeIndicatedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SERVICE_RESPONSE_CODE_INDICATED"}
 
 	// SocketCloseInFlightRetryReason indicates that the operation failed because the socket was closed whilst the operation
 	// was in flight.
-	SocketCloseInFlightRetryReason = &retryReason{allowsNonIdempotentRetry: false, alwaysRetry: false, description: "SOCKET_CLOSED_WHILE_IN_FLIGHT"}
+	SocketCloseInFlightRetryReason = retryReason{allowsNonIdempotentRetry: false, alwaysRetry: false, description: "SOCKET_CLOSED_WHILE_IN_FLIGHT"}
 
 	// PipelineOverloadedRetryReason indicates that the operation failed because the pipeline queue was full.
-	PipelineOverloadedRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "PIPELINE_OVERLOADED"}
+	PipelineOverloadedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "PIPELINE_OVERLOADED"}
 
 	// CircuitBreakerOpenRetryReason indicates that the operation failed because the circuit breaker for the underlying socket was open.
-	CircuitBreakerOpenRetryReason = &retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CIRCUIT_BREAKER_OPEN"}
+	CircuitBreakerOpenRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CIRCUIT_BREAKER_OPEN"}
+
+	// QueryIndexNotFoundRetryReason indicates that the operation failed to to a missing query index
+	QueryIndexNotFoundRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "QUERY_INDEX_NOT_FOUND"}
+
+	// QueryPreparedStatementFailureRetryReason indicates that the operation failed due to a prepared statement failure
+	QueryPreparedStatementFailureRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "QUERY_PREPARED_STATEMENT_FAILURE"}
+
+	// AnalyticsTemporaryFailureRetryReason indicates that an analytics operation failed due to a temporary failure
+	AnalyticsTemporaryFailureRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "ANALYTICS_TEMPORARY_FAILURE"}
+
+	// SearchTooManyRequestsRetryReason indicates that a search operation failed due to too many requests
+	SearchTooManyRequestsRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SEARCH_TOO_MANY_REQUESTS"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.
 // It will use the reason to determine whether or not the failure reason is one that can be retried.
-func (agent *Agent) MaybeRetryRequest(req RetryRequest, reason RetryReason, retryStrategy RetryStrategy, retryFunc func()) bool {
-	return agent.retryOrchestrator.MaybeRetry(req, reason, retryStrategy, retryFunc)
+func (agent *Agent) MaybeRetryRequest(req RetryRequest, reason RetryReason) (bool, time.Time) {
+	return retryOrchMaybeRetry(req, reason)
 }
 
 // RetryAction is used by a RetryStrategy to calculate the duration to wait before retrying an operation.
@@ -131,84 +148,54 @@ type RetryStrategy interface {
 	RetryAfter(req RetryRequest, reason RetryReason) RetryAction
 }
 
-// retryOrchestrator is responsible for handling operation retries.
-type retryOrchestrator struct {
-}
-
-func (ro *retryOrchestrator) retry(req RetryRequest, duration time.Duration, retryFunc func()) {
-	timer := AcquireTimer(duration)
-	stopSignal := make(chan struct{})
-	stop := func() bool {
-		if !timer.Stop() {
-			return false
-		}
-		stopSignal <- struct{}{}
-		return true
-	}
-	req.setCancelRetry(stop)
-
-	go func() {
-		select {
-		case <-timer.C:
-			ReleaseTimer(timer, true)
-			retryFunc()
-			return
-		case <-stopSignal:
-			ReleaseTimer(timer, true)
-			logInfof("Request retry cancelled, OperationID: %s", req.Identifier())
-			return
-		}
-	}()
-}
-
-// MaybeRetry will possibly retry an operation according to the strategy belonging to the request.
+// retryOrchMaybeRetry will possibly retry an operation according to the strategy belonging to the request.
 // It will use the reason to determine whether or not the failure reason is one that can be retried.
-func (ro *retryOrchestrator) MaybeRetry(req RetryRequest, reason RetryReason, retryStrategy RetryStrategy, retryFunc func()) bool {
+func retryOrchMaybeRetry(req RetryRequest, reason RetryReason) (bool, time.Time) {
 	if reason.AlwaysRetry() {
 		duration := ControlledBackoff(req.RetryAttempts())
 		logInfof("Will retry request. Backoff=%s, OperationID=%s. Reason=%s", duration, req.Identifier(), reason)
-		ro.retry(req, duration, retryFunc)
+
 		req.addRetryReason(reason)
 		req.incrementRetryAttempts()
 
-		return true
+		return true, time.Now().Add(duration)
 	}
 
+	retryStrategy := req.retryStrategy()
 	if retryStrategy == nil {
-		return false
+		return false, time.Time{}
 	}
 
 	action := retryStrategy.RetryAfter(req, reason)
 	if action == nil {
 		logInfof("Won't retry request.  OperationID=%s. Reason=%s", req.Identifier(), reason)
-		return false
+		return false, time.Time{}
 	}
 
 	duration := action.Duration()
 	if duration == 0 {
 		logInfof("Won't retry request.  OperationID=%s. Reason=%s", req.Identifier(), reason)
-		return false
+		return false, time.Time{}
 	}
 
 	logInfof("Will retry request. Backoff=%s, OperationID=%s. Reason=%s", duration, req.Identifier(), reason)
-	ro.retry(req, duration, retryFunc)
 	req.addRetryReason(reason)
 	req.incrementRetryAttempts()
 
-	return true
+	return true, time.Now().Add(duration)
 }
 
-// FailFastRetryStrategy represents a strategy that will never retry.
-type FailFastRetryStrategy struct {
+// failFastRetryStrategy represents a strategy that will never retry.
+type failFastRetryStrategy struct {
 }
 
-// NewFailFastRetryStrategy returns a new FailFastRetryStrategy.
-func NewFailFastRetryStrategy() *FailFastRetryStrategy {
-	return &FailFastRetryStrategy{}
+// newFailFastRetryStrategy returns a new FailFastRetryStrategy.
+func newFailFastRetryStrategy() *failFastRetryStrategy {
+	return &failFastRetryStrategy{}
 }
 
 // RetryAfter calculates and returns a RetryAction describing how long to wait before retrying an operation.
-func (rs *FailFastRetryStrategy) RetryAfter(req RetryRequest, reason RetryReason) RetryAction {
+func (rs *failFastRetryStrategy) RetryAfter(req RetryRequest, reason RetryReason) RetryAction {
 	return &NoRetryRetryAction{}
 }
 

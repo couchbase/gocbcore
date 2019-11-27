@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"errors"
 	"io"
 	"sync"
 )
@@ -149,14 +150,13 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 
 		if !pipecli.breaker.AllowsRequest() {
 			client.parent.stopCmdTrace(req)
-			canRetry := client.parent.waitAndRetryOperation(req, CircuitBreakerOpenRetryReason)
-			if canRetry {
-				// If the retry orchestrator is going to attempt to retry this then we don't want to return an
-				// error to the user.
+
+			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, errCircuitBreakerOpen)
+			if shortCircuited {
 				continue
 			}
 
-			req.tryCallback(nil, ErrCircuitBreakerOpen)
+			req.tryCallback(nil, routeErr)
 
 			// Keep looping, there may be more requests and those might be able to send
 			continue
@@ -174,7 +174,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 		if err != nil {
 			logDebugf("Pipeline client `%s/%p` encountered a socket write error: %v", pipecli.address, pipecli, err)
 
-			if err != io.EOF {
+			if !errors.Is(err, io.EOF) {
 				// If we errored the write, and the client was not already closed,
 				// lets go ahead and close it.  This will trigger the shutdown
 				// logic via the client watcher above.  If the socket error was EOF
@@ -186,25 +186,12 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 				}
 			}
 
-			// These are special case that can arise
-			// ErrCollectionsUnsupported should never be seen here but theoretically can be.
-			// ErrCancelled can occur if the request was cancelled during dispatch.
-			// In either case we should respond with the relevant error and neither should be retried.
-			if err == ErrCollectionsUnsupported || err == ErrCancelled {
-				req.tryCallback(nil, err)
+			// Send this request upwards to be processed by the higher level processor
+			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, err)
+			if !shortCircuited {
+				req.tryCallback(nil, routeErr)
 				break
 			}
-
-			// We can attempt to retry ops of this type if the socket fails on write.
-			canRetry := client.parent.waitAndRetryOperation(req, SocketNotAvailableRetryReason)
-			if canRetry {
-				// If we've successfully retried this then don't return an error to the caller, just refresh
-				// the client and pick the request up again later.
-				break
-			}
-
-			// We need to alert the caller that there was a network error
-			req.tryCallback(nil, ErrNetwork)
 
 			// Stop looping
 			break
@@ -297,7 +284,7 @@ func (pipecli *memdPipelineClient) sendCanary() {
 			Value:    nil,
 		},
 		Callback:      handler,
-		RetryStrategy: NewFailFastRetryStrategy(),
+		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
 	logDebugf("Sending NOOP request for %p/%s", pipecli, pipecli.address)
@@ -309,7 +296,7 @@ func (pipecli *memdPipelineClient) sendCanary() {
 	timer := AcquireTimer(pipecli.breaker.CanaryTimeout())
 	select {
 	case <-timer.C:
-		if !req.Cancel() {
+		if !req.internalCancel() {
 			err := <-errChan
 			if err == nil {
 				logDebugf("NOOP request successful for %p/%s", pipecli, pipecli.address)
