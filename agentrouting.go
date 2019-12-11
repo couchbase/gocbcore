@@ -180,7 +180,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 	helloResp := <-helloCh
 	if helloResp.Err != nil {
 		logDebugf("Failed to hello with server (%v)", helloResp.Err)
-		return err
+		return helloResp.Err
 	}
 
 	errMapResp := <-errMapCh
