@@ -135,7 +135,15 @@ func (s *rowStreamer) end() error {
 		return nil
 	}
 
-	var err error
+	// Read the ending ] for the rows
+	t, err := s.decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != ']' {
+		return errors.New("expected an ending bracket for the rows")
+	}
+
 	for {
 		if !s.decoder.More() {
 			// We reached the end of the object
@@ -144,10 +152,14 @@ func (s *rowStreamer) end() error {
 		}
 
 		// Read the attribute name
-		var key string
-		err = s.decoder.Decode(&key)
+		t, err := s.decoder.Token()
 		if err != nil {
 			return err
+		}
+
+		key, keyOk := t.(string)
+		if !keyOk {
+			return errors.New("expected an object property name")
 		}
 
 		// Read the attribute value
