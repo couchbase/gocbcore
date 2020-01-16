@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -40,6 +41,10 @@ type N1QLQueryOptions struct {
 }
 
 func wrapN1QLError(req *httpRequest, statement string, err error) N1QLError {
+	if err == nil {
+		err = errors.New("query error")
+	}
+
 	ierr := N1QLError{
 		InnerError: err,
 	}

@@ -158,6 +158,10 @@ func (agent *Agent) getCbasEp() (string, error) {
 }
 
 func wrapHTTPError(req *httpRequest, err error) HTTPError {
+	if err == nil {
+		err = errors.New("http error")
+	}
+
 	ierr := HTTPError{
 		InnerError: err,
 	}

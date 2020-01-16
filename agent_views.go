@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -45,6 +46,10 @@ type ViewQueryOptions struct {
 }
 
 func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) ViewError {
+	if err == nil {
+		err = errors.New("view error")
+	}
+
 	ierr := ViewError{
 		InnerError: err,
 	}

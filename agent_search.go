@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -46,6 +47,10 @@ type jsonSearchErrorResponse struct {
 }
 
 func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, query interface{}, err error) SearchError {
+	if err == nil {
+		err = errors.New("search error")
+	}
+
 	ierr := SearchError{
 		InnerError: err,
 	}

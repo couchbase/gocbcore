@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -41,6 +42,10 @@ type AnalyticsQueryOptions struct {
 }
 
 func wrapAnalyticsError(req *httpRequest, statement string, err error) AnalyticsError {
+	if err == nil {
+		err = errors.New("analytics error")
+	}
+
 	ierr := AnalyticsError{
 		InnerError: err,
 	}
