@@ -40,12 +40,12 @@ type N1QLQueryOptions struct {
 	Deadline      time.Time
 }
 
-func wrapN1QLError(req *httpRequest, statement string, err error) N1QLError {
+func wrapN1QLError(req *httpRequest, statement string, err error) *N1QLError {
 	if err == nil {
 		err = errors.New("query error")
 	}
 
-	ierr := N1QLError{
+	ierr := &N1QLError{
 		InnerError: err,
 	}
 
@@ -70,7 +70,7 @@ type jsonN1QLErrorResponse struct {
 	Errors []jsonN1QLError
 }
 
-func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) N1QLError {
+func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1QLError {
 	var err error
 	var errorDescs []N1QLErrorDesc
 

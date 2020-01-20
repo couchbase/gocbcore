@@ -227,7 +227,7 @@ func (err ncError) Unwrap() error {
 }
 
 func isErrorStatus(err error, code StatusCode) bool {
-	var kvErr KeyValueError
+	var kvErr *KeyValueError
 	if errors.As(err, &kvErr) {
 		return kvErr.StatusCode == code
 	}

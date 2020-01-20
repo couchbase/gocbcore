@@ -113,7 +113,7 @@ func (agent *Agent) getKvErrMapData(code StatusCode) *kvErrorMapError {
 }
 
 func (agent *Agent) enhanceKvError(err error, resp *memdQResponse, req *memdQRequest) error {
-	enhErr := KeyValueError{
+	enhErr := &KeyValueError{
 		InnerError: err,
 	}
 

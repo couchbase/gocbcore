@@ -41,12 +41,12 @@ type AnalyticsQueryOptions struct {
 	Deadline      time.Time
 }
 
-func wrapAnalyticsError(req *httpRequest, statement string, err error) AnalyticsError {
+func wrapAnalyticsError(req *httpRequest, statement string, err error) *AnalyticsError {
 	if err == nil {
 		err = errors.New("analytics error")
 	}
 
-	ierr := AnalyticsError{
+	ierr := &AnalyticsError{
 		InnerError: err,
 	}
 
@@ -71,7 +71,7 @@ type jsonAnalyticsErrorResponse struct {
 	Errors []jsonAnalyticsError
 }
 
-func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse) AnalyticsError {
+func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse) *AnalyticsError {
 	var err error
 	var errorDescs []AnalyticsErrorDesc
 

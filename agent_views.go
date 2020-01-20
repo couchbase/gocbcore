@@ -45,12 +45,12 @@ type ViewQueryOptions struct {
 	Deadline           time.Time
 }
 
-func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) ViewError {
+func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) *ViewError {
 	if err == nil {
 		err = errors.New("view error")
 	}
 
-	ierr := ViewError{
+	ierr := &ViewError{
 		InnerError: err,
 	}
 
@@ -66,7 +66,7 @@ func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) ViewErro
 	return ierr
 }
 
-func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse) ViewError {
+func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse) *ViewError {
 	var err error
 	var errorDescs []ViewQueryErrorDesc
 

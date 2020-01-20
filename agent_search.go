@@ -46,12 +46,12 @@ type jsonSearchErrorResponse struct {
 	Status string
 }
 
-func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, query interface{}, err error) SearchError {
+func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, query interface{}, err error) *SearchError {
 	if err == nil {
 		err = errors.New("search error")
 	}
 
-	ierr := SearchError{
+	ierr := &SearchError{
 		InnerError: err,
 	}
 
@@ -71,7 +71,7 @@ func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, que
 	return ierr
 }
 
-func parseSearchError(req *httpRequest, indexName string, query interface{}, resp *HTTPResponse) SearchError {
+func parseSearchError(req *httpRequest, indexName string, query interface{}, resp *HTTPResponse) *SearchError {
 	var err error
 	var errMsg string
 
