@@ -19,7 +19,7 @@ func (q *SearchRowReader) NextRow() []byte {
 	return q.streamer.NextRow()
 }
 
-// Err returns any errors that occured during streaming.
+// Err returns any errors that occurred during streaming.
 func (q SearchRowReader) Err() error {
 	return q.streamer.Err()
 }

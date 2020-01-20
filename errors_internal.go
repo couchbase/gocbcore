@@ -245,7 +245,7 @@ var (
 )
 
 // This list contains protected versions of all the errors we throw
-// to ensure no users inadvertenly rely on direct comparisons.
+// to ensure no users inadvertently rely on direct comparisons.
 var (
 	errTimeout               = ncError{ErrTimeout}
 	errRequestCanceled       = ncError{ErrRequestCanceled}

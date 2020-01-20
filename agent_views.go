@@ -20,7 +20,7 @@ func (q *ViewQueryRowReader) NextRow() []byte {
 	return q.streamer.NextRow()
 }
 
-// Err returns any errors that occured during streaming.
+// Err returns any errors that occurred during streaming.
 func (q ViewQueryRowReader) Err() error {
 	return q.streamer.Err()
 }

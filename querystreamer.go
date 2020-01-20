@@ -105,7 +105,7 @@ func (r *queryStreamer) finishWithError(err error) {
 
 // Close marks the results as closed, returning any errors that occurred during reading the results.
 func (r *queryStreamer) Close() error {
-	// If an error occured before, we should return that (forever)
+	// If an error occurred before, we should return that (forever)
 	err := r.Err()
 	if err != nil {
 		return err
@@ -115,7 +115,7 @@ func (r *queryStreamer) Close() error {
 	stream := r.stream
 	r.lock.Unlock()
 
-	// If the stream is already closed, we can imply that no error occured
+	// If the stream is already closed, we can imply that no error occurred
 	if stream == nil {
 		return nil
 	}

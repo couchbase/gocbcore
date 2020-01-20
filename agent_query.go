@@ -18,7 +18,7 @@ func (q *N1QLRowReader) NextRow() []byte {
 	return q.streamer.NextRow()
 }
 
-// Err returns any errors that occured during streaming.
+// Err returns any errors that occurred during streaming.
 func (q N1QLRowReader) Err() error {
 	return q.streamer.Err()
 }
@@ -131,9 +131,18 @@ func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
 		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
 	}
 
-	statement, _ := payloadMap["statement"].(string)
-	clientContextID, _ := payloadMap["client_context_id"].(string)
-	readOnly, _ := payloadMap["readonly"].(bool)
+	statement, ok := payloadMap["statement"].(string)
+	if !ok {
+		return nil, wrapAnalyticsError(nil, "", errors.New("expected a string for statement"))
+	}
+	clientContextID, ok := payloadMap["client_context_id"].(string)
+	if !ok {
+		return nil, wrapAnalyticsError(nil, "", errors.New("expected a string for client_context_id"))
+	}
+	readOnly, ok := payloadMap["readonly"].(bool)
+	if !ok {
+		return nil, wrapAnalyticsError(nil, "", errors.New("expected a boolean for readonly"))
+	}
 
 	ireq := &httpRequest{
 		Service:       N1qlService,
