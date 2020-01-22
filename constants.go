@@ -1,7 +1,7 @@
 package gocbcore
 
 const (
-	goCbCoreVersionStr = "v8.0.0"
+	goCbCoreVersionStr = "v8.0.1"
 )
 
 type commandMagic uint8
