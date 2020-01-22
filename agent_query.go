@@ -131,18 +131,9 @@ func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
 		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
 	}
 
-	statement, ok := payloadMap["statement"].(string)
-	if !ok {
-		return nil, wrapAnalyticsError(nil, "", errors.New("expected a string for statement"))
-	}
-	clientContextID, ok := payloadMap["client_context_id"].(string)
-	if !ok {
-		return nil, wrapAnalyticsError(nil, "", errors.New("expected a string for client_context_id"))
-	}
-	readOnly, ok := payloadMap["readonly"].(bool)
-	if !ok {
-		return nil, wrapAnalyticsError(nil, "", errors.New("expected a boolean for readonly"))
-	}
+	statement := getMapValueString(payloadMap, "statement", "")
+	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
+	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
 	ireq := &httpRequest{
 		Service:       N1qlService,

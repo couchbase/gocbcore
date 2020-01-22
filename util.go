@@ -6,6 +6,28 @@ import (
 	"fmt"
 )
 
+func getMapValueString(dict map[string]interface{}, key string, def string) string {
+	if dict != nil {
+		if val, ok := dict[key]; ok {
+			if valStr, ok := val.(string); ok {
+				return valStr
+			}
+		}
+	}
+	return def
+}
+
+func getMapValueBool(dict map[string]interface{}, key string, def bool) bool {
+	if dict != nil {
+		if val, ok := dict[key]; ok {
+			if valStr, ok := val.(bool); ok {
+				return valStr
+			}
+		}
+	}
+	return def
+}
+
 func randomCbUID() []byte {
 	out := make([]byte, 8)
 	_, err := rand.Read(out)
