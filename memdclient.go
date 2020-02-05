@@ -43,6 +43,12 @@ type memdClient struct {
 	streamEndNotSupported bool
 }
 
+type dcpBuffer struct {
+	resp       *memdQResponse
+	packetLen  int
+	isInternal bool
+}
+
 func newMemdClient(parent *Agent, conn memdConn) *memdClient {
 	client := memdClient{
 		parent:      parent,
@@ -62,9 +68,7 @@ func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
 	client.dcpAckSize = bufferAckSize
 }
 
-func (client *memdClient) maybeSendDcpBufferAck(packet *memdPacket) {
-	packetLen := 24 + len(packet.Extras) + len(packet.Key) + len(packet.Value)
-
+func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 	client.dcpFlowRecv += packetLen
 	if client.dcpFlowRecv < client.dcpAckSize {
 		return
@@ -253,25 +257,25 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 }
 
 func (client *memdClient) run() {
-	dcpBufferQ := make(chan *memdQResponse)
+	dcpBufferQ := make(chan *dcpBuffer)
 	dcpKillSwitch := make(chan bool)
 	dcpKillNotify := make(chan bool)
 	go func() {
 		for {
 			select {
-			case resp, more := <-dcpBufferQ:
+			case q, more := <-dcpBufferQ:
 				if !more {
 					dcpKillNotify <- true
 					return
 				}
 
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
-				client.resolveRequest(resp)
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Opcode, q.resp.Opaque)
+				client.resolveRequest(q.resp)
 
 				// See below for information on why this is here.
-				if !resp.isInternal {
+				if !q.isInternal {
 					if client.dcpAckSize > 0 {
-						client.maybeSendDcpBufferAck(&resp.memdPacket)
+						client.maybeSendDcpBufferAck(q.packetLen)
 					}
 				}
 			case <-dcpKillSwitch:
@@ -287,7 +291,7 @@ func (client *memdClient) run() {
 				sourceConnID: client.connID,
 			}
 
-			err := client.conn.ReadPacket(&resp.memdPacket)
+			n, err := client.conn.ReadPacket(&resp.memdPacket)
 			if err != nil {
 				if !client.closed {
 					logErrorf("memdClient read failure: %v", err)
@@ -330,9 +334,12 @@ func (client *memdClient) run() {
 								Opaque:  streamReq.Opaque,
 								Extras:  endExtras,
 							},
+						}
+						dcpBufferQ <- &dcpBuffer{
+							resp:       endResp,
+							packetLen:  int(n),
 							isInternal: true,
 						}
-						dcpBufferQ <- endResp
 					}
 				}
 			}
@@ -349,7 +356,10 @@ func (client *memdClient) run() {
 			case cmdDcpEvent:
 				fallthrough
 			case cmdDcpStreamEnd:
-				dcpBufferQ <- resp
+				dcpBufferQ <- &dcpBuffer{
+					resp:      resp,
+					packetLen: int(n),
+				}
 				continue
 			default:
 				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)

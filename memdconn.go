@@ -39,7 +39,7 @@ type memdConn interface {
 	LocalAddr() string
 	RemoteAddr() string
 	WritePacket(*memdPacket) error
-	ReadPacket(*memdPacket) error
+	ReadPacket(*memdPacket) (int32, error)
 	Close() error
 
 	EnableFramingExtras(bool)
@@ -230,10 +230,10 @@ func (s *memdTCPConn) readFullBuffer(buf []byte) error {
 	return nil
 }
 
-func (s *memdTCPConn) ReadPacket(resp *memdPacket) error {
+func (s *memdTCPConn) ReadPacket(resp *memdPacket) (int32, error) {
 	err := s.readFullBuffer(s.headerBuf)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	bodyLen := int(binary.BigEndian.Uint32(s.headerBuf[8:]))
@@ -241,7 +241,7 @@ func (s *memdTCPConn) ReadPacket(resp *memdPacket) error {
 	bodyBuf := make([]byte, bodyLen)
 	err = s.readFullBuffer(bodyBuf)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	resp.Magic = commandMagic(s.headerBuf[0])
@@ -321,7 +321,7 @@ func (s *memdTCPConn) ReadPacket(resp *memdPacket) error {
 	}
 	resp.Key = bodyBuf[frameExtrasLen+extLen+collectionIDLen : frameExtrasLen+extLen+keyLen]
 	resp.Value = bodyBuf[frameExtrasLen+extLen+keyLen:]
-	return nil
+	return 24 + int32(bodyLen), nil
 }
 
 func (s *memdTCPConn) EnableFramingExtras(use bool) {
