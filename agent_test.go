@@ -129,6 +129,68 @@ func TestBasicOps(t *testing.T) {
 	s.Wait(0)
 }
 
+func TestCasMismatch(t *testing.T) {
+	agent, s := testGetAgentAndHarness(t)
+
+	// Set
+	var cas Cas
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:            []byte("testCasMismatch"),
+		Value:          []byte("{}"),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			cas = res.Cas
+		})
+	}))
+	s.Wait(0)
+
+	// Replace to change cas on the server
+	s.PushOp(agent.ReplaceEx(ReplaceOptions{
+		Key:            []byte("testCasMismatch"),
+		Value:          []byte("{\"key\":\"value\"}"),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Replace which should fail with a cas mismatch
+	s.PushOp(agent.ReplaceEx(ReplaceOptions{
+		Key:            []byte("testCasMismatch"),
+		Value:          []byte("{\"key\":\"value2\"}"),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+		Cas:            cas,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err == nil {
+				s.Fatalf("Set operation succeeded but should have failed")
+			}
+
+			if !errors.Is(err, ErrCasMismatch) {
+				t.Fatalf("Expected CasMismatch error but was %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 func TestGetReplica(t *testing.T) {
 	testEnsureSupportsFeature(t, TestFeatureReplicas)
 	agent, s := testGetAgentAndHarness(t)
