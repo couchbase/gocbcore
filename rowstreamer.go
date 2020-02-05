@@ -12,7 +12,7 @@ const (
 	rowStreamStateStart    rowStreamState = 0
 	rowStreamStateRows     rowStreamState = 1
 	rowStreamStatePostRows rowStreamState = 2
-	rowStreamStateEnd      rowStreamState = 2
+	rowStreamStateEnd      rowStreamState = 3
 )
 
 type rowStreamer struct {
