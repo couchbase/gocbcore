@@ -57,10 +57,10 @@ func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh ch
 
 func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
 	for {
-		authMechanisms = authMechanisms[1:]
-		if len(authMechanisms) == 0 {
+		if len(authMechanisms) <= 1 {
 			break
 		}
+		authMechanisms = authMechanisms[1:]
 		mech := authMechanisms[0]
 		for _, serverMech := range serverAuthMechanisms {
 			if mech == serverMech {
@@ -98,8 +98,7 @@ func (agent *Agent) storeErrorMap(mapBytes []byte, client *memdClient) {
 	}
 }
 
-func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism,
-	nextAuth func(mechanism AuthMechanism), deadline time.Time) error {
+func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 
 	sclient := syncClient{
 		client: client,
@@ -124,6 +123,7 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
+	nextAuth := agent.getNextAuth()
 	if nextAuth != nil {
 		listMechsCh = make(chan SaslListMechsCompleted)
 		// We only need to list mechs if there's more than 1 way to do auth.
@@ -192,10 +192,11 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
 			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-			if nextAuth == nil || errors.Is(authResp.Err, ErrAuthenticationFailure) {
+			if agent.getNextAuth() == nil || errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				return authResp.Err
 			}
 
+			authMechanisms := agent.authMechanisms
 			for {
 				var found bool
 				var mech AuthMechanism
@@ -233,6 +234,8 @@ func (agent *Agent) bootstrap(client *memdClient, authMechanisms []AuthMechanism
 				}
 			}
 		}
+		// prevent the next client from attempting to figure out what auth to use as we already have.
+		agent.setNextAuth(nil)
 		logDebugf("Authenticated successfully")
 	}
 
@@ -356,7 +359,7 @@ func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
 		return nil, err
 	}
 
-	err = agent.bootstrap(client, nil, nil, deadline)
+	err = agent.bootstrap(client, deadline)
 	if err != nil {
 		closeErr := client.Close()
 		if closeErr != nil {

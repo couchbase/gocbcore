@@ -33,14 +33,17 @@ type agentConfig struct {
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
-	clientID    string
-	userAgent   string
-	auth        AuthProvider
-	authHandler authFunc
-	bucketName  string
-	bucketLock  sync.Mutex
-	tlsConfig   *tls.Config
-	initFn      memdInitFunc
+	clientID       string
+	userAgent      string
+	auth           AuthProvider
+	authHandler    authFunc
+	authMechanisms []AuthMechanism
+	nextAuth       func(mechanism AuthMechanism)
+	nextAuthLock   sync.Mutex
+	bucketName     string
+	bucketLock     sync.Mutex
+	tlsConfig      *tls.Config
+	initFn         memdInitFunc
 
 	closeNotify        chan struct{}
 	cccpLooperDoneSig  chan struct{}
@@ -316,23 +319,23 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
-	authMechanisms := []AuthMechanism{
+	c.authMechanisms = []AuthMechanism{
 		ScramSha512AuthMechanism,
 		ScramSha256AuthMechanism,
 		ScramSha1AuthMechanism}
 
 	// PLAIN authentication is only supported over TLS
 	if config.UseTLS {
-		authMechanisms = append(authMechanisms, PlainAuthMechanism)
+		c.authMechanisms = append(c.authMechanisms, PlainAuthMechanism)
 	}
 
 	deadline := time.Now().Add(connectTimeout)
 	if config.BucketName == "" {
-		if err := c.connectG3CP(config.MemdAddrs, config.HTTPAddrs, authMechanisms, deadline); err != nil {
+		if err := c.connectG3CP(config.MemdAddrs, config.HTTPAddrs, deadline); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := c.connectWithBucket(config.MemdAddrs, config.HTTPAddrs, authMechanisms, deadline); err != nil {
+		if err := c.connectWithBucket(config.MemdAddrs, config.HTTPAddrs, deadline); err != nil {
 			return nil, err
 		}
 	}
@@ -361,16 +364,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	return c, nil
 }
 
-func (agent *Agent) buildAuthHandler(client AuthClient, authMechanisms []AuthMechanism,
-	deadline time.Time) (func(mechanism AuthMechanism), error) {
+func (agent *Agent) buildAuthHandler(address string) (func(mechanism AuthMechanism), error) {
 
-	if len(authMechanisms) == 0 {
+	if len(agent.authMechanisms) == 0 {
 		// If we're using something like client auth then we might not want an auth handler.
 		return nil, nil
 	}
 
 	var nextAuth func(mechanism AuthMechanism)
-	creds, err := getKvAuthCreds(agent.auth, client.Address())
+	creds, err := getKvAuthCreds(agent.auth, address)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +380,7 @@ func (agent *Agent) buildAuthHandler(client AuthClient, authMechanisms []AuthMec
 	if creds.Username != "" || creds.Password != "" {
 		// If we only have 1 auth mechanism then we've either we've already decided what mechanism to use
 		// or the user has only decided to support 1. Either way we don't need to check what the server supports.
-		getAuthFunc := func(mechanism AuthMechanism, deadline time.Time) authFunc {
+		getAuthFunc := func(mechanism AuthMechanism) authFunc {
 			return func(client AuthClient, deadline time.Time) (chan BytesAndError, chan bool, error) {
 				continueCh := make(chan bool, 1)
 				completedCh := make(chan BytesAndError, 1)
@@ -405,20 +407,20 @@ func (agent *Agent) buildAuthHandler(client AuthClient, authMechanisms []AuthMec
 			}
 		}
 
-		if len(authMechanisms) == 1 {
-			agent.authHandler = getAuthFunc(authMechanisms[0], deadline)
+		if len(agent.authMechanisms) == 1 {
+			agent.authHandler = getAuthFunc(agent.authMechanisms[0])
 		} else {
 			nextAuth = func(mechanism AuthMechanism) {
-				agent.authHandler = getAuthFunc(mechanism, deadline)
+				agent.authHandler = getAuthFunc(mechanism)
 			}
-			agent.authHandler = getAuthFunc(authMechanisms[0], deadline)
+			agent.authHandler = getAuthFunc(agent.authMechanisms[0])
 		}
 	}
 
 	return nextAuth, nil
 }
 
-func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechanisms []AuthMechanism, deadline time.Time) error {
+func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, deadline time.Time) error {
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s for %p", thisHostPort, agent)
 
@@ -438,9 +440,8 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 			client: client,
 		}
 
-		var nextAuth func(mechanism AuthMechanism)
 		if agent.authHandler == nil {
-			nextAuth, err = agent.buildAuthHandler(&syncCli, authMechanisms, srvDeadlineTm)
+			agent.nextAuth, err = agent.buildAuthHandler(client.Address())
 			if err != nil {
 				logDebugf("Building auth failed %p/%s! %v", agent, thisHostPort, err)
 				continue
@@ -448,7 +449,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 		}
 
 		logDebugf("Trying to bootstrap agent %p against %s", agent, thisHostPort)
-		err = agent.bootstrap(client, authMechanisms, nextAuth, srvDeadlineTm)
+		err = agent.bootstrap(client, srvDeadlineTm)
 		if errors.Is(err, ErrAuthenticationFailure) {
 			agent.disconnectClient(client)
 			return err
@@ -538,7 +539,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, authMechani
 	return agent.tryStartHTTPLooper(httpAddrs)
 }
 
-func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []AuthMechanism, deadline time.Time) error {
+func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, deadline time.Time) error {
 	logDebugf("Attempting to connect %p...", agent)
 
 	var routeCfg *routeConfig
@@ -562,9 +563,8 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 			client: client,
 		}
 
-		var nextAuth func(mechanism AuthMechanism)
 		if agent.authHandler == nil {
-			nextAuth, err = agent.buildAuthHandler(&syncCli, authMechanisms, srvDeadlineTm)
+			agent.nextAuth, err = agent.buildAuthHandler(client.Address())
 			if err != nil {
 				logDebugf("Building auth failed %p/%s! %v", agent, thisHostPort, err)
 				continue
@@ -572,7 +572,7 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, authMechanisms []
 		}
 
 		logDebugf("Trying to bootstrap agent %p against %s", agent, thisHostPort)
-		err = agent.bootstrap(client, authMechanisms, nextAuth, srvDeadlineTm)
+		err = agent.bootstrap(client, srvDeadlineTm)
 		if errors.Is(err, ErrAuthenticationFailure) {
 			agent.disconnectClient(client)
 			for _, cli := range agent.cachedClients {
@@ -711,6 +711,12 @@ func (agent *Agent) tryStartHTTPLooper(httpAddrs []string) error {
 		if err != nil {
 			signal <- err
 			return true
+		}
+
+		_, err = agent.buildAuthHandler(srcServer)
+		if err != nil {
+			logDebugf("Building auth failed %p/%s! %v", agent, srcServer, err)
+			return false
 		}
 
 		if agent.useCollections {
@@ -1268,4 +1274,16 @@ func (agent *Agent) newMemdClientMux(hostPorts []string) *memdClientMux {
 	}
 
 	return newMemdClientMux(hostPorts, agent.kvPoolSize, agent.maxQueueSize, agent.slowDialMemdClient, agent.circuitBreakerConfig)
+}
+
+func (agent *Agent) getNextAuth() func(AuthMechanism) {
+	agent.nextAuthLock.Lock()
+	defer agent.nextAuthLock.Unlock()
+	return agent.nextAuth
+}
+
+func (agent *Agent) setNextAuth(fn func(AuthMechanism)) {
+	agent.nextAuthLock.Lock()
+	agent.nextAuth = fn
+	defer agent.nextAuthLock.Unlock()
 }
