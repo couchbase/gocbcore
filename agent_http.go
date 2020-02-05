@@ -249,10 +249,18 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 		return nil, err
 	}
 
-	// Create a context to deadline with
+	// This creates a context that has a parent with no cancel function. As such WithCancel will not setup any
+	// extra go routines and we only need to call cancel on (non-timeout) failure.
 	ctx := context.Background()
-	ctx, ctxCancel := context.WithDeadline(ctx, req.Deadline)
-	defer ctxCancel()
+	ctx, ctxCancel := context.WithCancel(ctx)
+
+	// This is easy to do with a bool and a defer than to ensure that we cancel after every error.
+	querySuccess := false
+	defer func() {
+		if !querySuccess {
+			ctxCancel()
+		}
+	}()
 
 	// Lets add our context to the httpRequest
 	hreq = hreq.WithContext(ctx)
@@ -346,8 +354,7 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 			select {
 			case <-time.After(retryTime.Sub(time.Now())):
 				// continue!
-			case <-ctx.Done():
-				// context timed out
+			case <-time.After(time.Now().Sub(req.Deadline)):
 				if errors.Is(err, context.DeadlineExceeded) {
 					err = errUnambiguousTimeout
 				}
@@ -363,6 +370,8 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 			StatusCode: hresp.StatusCode,
 			Body:       hresp.Body,
 		}
+
+		querySuccess = true
 
 		return &respOut, nil
 	}
