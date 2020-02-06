@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"sync"
@@ -57,6 +58,11 @@ func (r *queryStreamer) Err() error {
 	r.lock.Unlock()
 
 	return err
+}
+
+// EarlyMetadata returns the value (or nil) of an attribute from a query metadata before the query has completed.
+func (r *queryStreamer) EarlyMetadata(key string) json.RawMessage {
+	return r.streamer.EarlyAttrib(key)
 }
 
 func (r *queryStreamer) finishWithoutError() {

@@ -207,3 +207,12 @@ func (s *rowStreamer) Finalize() (json.RawMessage, error) {
 
 	return json.RawMessage(metaBytes), nil
 }
+
+func (s *rowStreamer) EarlyAttrib(key string) json.RawMessage {
+	val, ok := s.attribs[key]
+	if !ok {
+		return nil
+	}
+
+	return val
+}

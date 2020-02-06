@@ -33,6 +33,24 @@ func (q *N1QLRowReader) Close() error {
 	return q.streamer.Close()
 }
 
+// PreparedName returns the name of the prepared statement created when using enhanced prepared statements.
+// If the prepared name has not been seen on the stream then this will return an error.
+// Volatile: This API is subject to change.
+func (q N1QLRowReader) PreparedName() (string, error) {
+	val := q.streamer.EarlyMetadata("prepared")
+	if val == nil {
+		return "", wrapN1QLError(nil, "", errors.New("prepared name not found in metadata"))
+	}
+
+	var name string
+	err := json.Unmarshal(val, &name)
+	if err != nil {
+		return "", wrapN1QLError(nil, "", errors.New("failed to parse prepared name"))
+	}
+
+	return name, nil
+}
+
 // N1QLQueryOptions represents the various options available for a n1ql query.
 type N1QLQueryOptions struct {
 	Payload       []byte
