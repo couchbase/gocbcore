@@ -11,6 +11,20 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 )
 
+func parseDurationOrInt(valStr string) (time.Duration, error) {
+	dur, err := time.ParseDuration(valStr)
+	if err != nil {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+
+		dur = time.Duration(val) * time.Millisecond
+	}
+
+	return dur, nil
+}
+
 // AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
 	UserAgent   string
@@ -94,23 +108,23 @@ func (config *AgentConfig) redacted() interface{} {
 //   bootstrap_on (bool) - Specifies what protocol to bootstrap on (cccp, http).
 //   ca_cert_path (string) - Specifies the path to a CA certificate.
 //   network (string) - The network type to use.
-//   kv_connect_timeout (int) - Maximum period to attempt to connect to cluster in ms.
-//   config_poll_interval (int) - Period to wait between CCCP config polling in ms.
-//   config_poll_timeout (int) - Maximum period of time to wait for a CCCP request.
+//   kv_connect_timeout (duration) - Maximum period to attempt to connect to cluster in ms.
+//   config_poll_interval (duration) - Period to wait between CCCP config polling in ms.
+//   config_poll_timeout (duration) - Maximum period of time to wait for a CCCP request.
 //   compression (bool) - Whether to enable network-wise compression of documents.
-//   compression_min_size (int) - The minimal size of the document to consider compression.
+//   compression_min_size (int) - The minimal size of the document in bytes to consider compression.
 //   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
 //   enable_server_durations (bool) - Whether to enable fetching server operation durations.
 //   max_idle_http_connections (int) - Maximum number of idle http connections in the pool.
 //   max_perhost_idle_http_connections (int) - Maximum number of idle http connections in the pool per host.
-//   idle_http_connection_timeout (int) - Maximum length of time for an idle connection to stay in the pool in ms.
+//   idle_http_connection_timeout (duration) - Maximum length of time for an idle connection to stay in the pool in ms.
 //   orphaned_response_logging (bool) - Whether to enable orphaned response logging.
-//   orphaned_response_logging_interval (int) - How often to print the orphan log records.
+//   orphaned_response_logging_interval (duration) - How often to print the orphan log records.
 //   orphaned_response_logging_sample_size (int) - The maximum number of orphan log records to track.
 //   dcp_priority (int) - Specifies the priority to request from the Cluster when connecting for DCP.
 //   enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
-//   http_redial_period (int) - The maximum length of time in ms for the HTTP poller to stay connected before reconnecting.
-//   http_retry_delay (int) - The length of time in ms to wait between HTTP poller retries if connecting fails.
+//   http_redial_period (duration) - The maximum length of time for the HTTP poller to stay connected before reconnecting.
+//   http_retry_delay (duration) - The length of time to wait between HTTP poller retries if connecting fails.
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
 func (config *AgentConfig) FromConnStr(connStr string) error {
@@ -206,27 +220,27 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("kv_connect_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("kv_connect_timeout option must be a number")
+			return fmt.Errorf("kv_connect_timeout option must be a duration or a number")
 		}
-		config.KVConnectTimeout = time.Duration(val) * time.Millisecond
+		config.KVConnectTimeout = val
 	}
 
 	if valStr, ok := fetchOption("config_poll_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("config poll timeout option must be a number")
+			return fmt.Errorf("config poll timeout option must be a duration or a number")
 		}
-		config.CccpMaxWait = time.Duration(val) * time.Millisecond
+		config.CccpMaxWait = val
 	}
 
 	if valStr, ok := fetchOption("config_poll_interval"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("config pool interval option must be a number")
+			return fmt.Errorf("config pool interval option must be duration or a number")
 		}
-		config.CccpPollPeriod = time.Duration(val) * time.Millisecond
+		config.CccpPollPeriod = val
 	}
 
 	if valStr, ok := fetchOption("enable_mutation_tokens"); ok {
@@ -286,11 +300,11 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("idle_http_connection_timeout"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("idle_http_connection_timeout option must be a number")
+			return fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
 		}
-		config.HTTPIdleConnectionTimeout = time.Duration(val) * time.Millisecond
+		config.HTTPIdleConnectionTimeout = val
 	}
 
 	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
@@ -302,11 +316,11 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("orphaned_response_logging_interval"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
 			return fmt.Errorf("orphaned_response_logging_interval option must be a number")
 		}
-		config.ZombieLoggerInterval = time.Duration(val) * time.Millisecond
+		config.ZombieLoggerInterval = val
 	}
 
 	if valStr, ok := fetchOption("orphaned_response_logging_sample_size"); ok {
@@ -346,20 +360,20 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 
 	// This option is experimental
 	if valStr, ok := fetchOption("http_redial_period"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("http redial period option must be a number")
+			return fmt.Errorf("http redial period option must be a duration or a number")
 		}
-		config.HTTPRedialPeriod = time.Duration(val) * time.Millisecond
+		config.HTTPRedialPeriod = val
 	}
 
 	// This option is experimental
 	if valStr, ok := fetchOption("http_retry_delay"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
+		val, err := parseDurationOrInt(valStr)
 		if err != nil {
-			return fmt.Errorf("http retry delay option must be a number")
+			return fmt.Errorf("http retry delay option must be a duration or a number")
 		}
-		config.HTTPRetryDelay = time.Duration(val) * time.Millisecond
+		config.HTTPRetryDelay = val
 	}
 
 	// This option is experimental
