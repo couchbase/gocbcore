@@ -140,6 +140,7 @@ func testN1QLBasic(t *testing.T) {
 
 		if sleepDeadline == deadline {
 			t.Errorf("timed out waiting for indexing: %s", lastError)
+			break
 		}
 	}
 }
