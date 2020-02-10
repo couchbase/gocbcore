@@ -51,6 +51,10 @@ type Agent struct {
 	gcccpLooperDoneSig chan struct{}
 	gcccpLooperStopSig chan struct{}
 
+	// Used exclusively for testing to overcome GOCBC-780. It allows a test to pause the cccp looper preventing
+	// unwanted requests from being sent to the mock once it has been setup for error map testing.
+	cccpLooperPauseSig chan bool
+
 	configLock  sync.Mutex
 	routingInfo routeDataPtr
 	kvErrorMap  kvErrorMapPtr
@@ -277,6 +281,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			useDurations:        config.UseDurations,
 			noRootTraceSpans:    config.NoRootTraceSpans,
 		},
+		cccpLooperPauseSig: make(chan bool),
 	}
 	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
 

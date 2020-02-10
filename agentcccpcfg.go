@@ -8,6 +8,7 @@ import (
 func (agent *Agent) cccpLooper() {
 	tickTime := agent.confCccpPollPeriod
 	maxWaitTime := agent.confCccpMaxWait
+	paused := false
 
 	logDebugf("CCCP Looper starting.")
 
@@ -15,8 +16,14 @@ func (agent *Agent) cccpLooper() {
 	for {
 		// Wait for either the agent to be shut down, or our tick time to expire
 		select {
+		case pause := <-agent.cccpLooperPauseSig:
+			paused = pause
 		case <-time.After(tickTime):
 		case <-agent.closeNotify:
+		}
+
+		if paused {
+			continue
 		}
 
 		routingInfo := agent.routingInfo.Get()
