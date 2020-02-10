@@ -1152,64 +1152,62 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 		}
 	}
 
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		serverAddress := resp.sourceAddr
-
-		statsLock.Lock()
-		defer statsLock.Unlock()
-
-		// Fetch the specific stats key for this server.  Creating a new entry
-		// for the server if we did not previously have one.
-		curStats, ok := stats[serverAddress]
-		if !ok {
-			stats[serverAddress] = SingleServerStats{
-				Stats: make(map[string]string),
-			}
-			curStats = stats[serverAddress]
-		}
-
-		if err != nil {
-			// Store the first (and hopefully only) error into the Error field of this
-			// server's stats entry.
-			if curStats.Error == nil {
-				curStats.Error = err
-			} else {
-				logDebugf("Got additional error for stats: %s: %v", serverAddress, err)
-			}
-
-			// When an error occurs, we need to cancel our persistent op.  However, because
-			// a previous error may already have cancelled this and then raced, we should
-			// ensure only a single completion is counted.
-			if req.internalCancel() {
-				opHandledLocked()
-			}
-
-			return
-		}
-
-		// Check if the key length is zero.  This indicates that we have reached
-		// the ending of the stats listing by this server.
-		if len(resp.Key) == 0 {
-			// As this is a persistent request, we must manually cancel it to remove
-			// it from the pending ops list.  To ensure we do not race multiple cancels,
-			// we only handle it as completed the one time cancellation succeeds.
-			if req.internalCancel() {
-				opHandledLocked()
-			}
-
-			return
-		}
-
-		// Add the stat for this server to the list of stats.
-		curStats.Stats[string(resp.Key)] = string(resp.Value)
-	}
-
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = agent.defaultRetryStrategy
 	}
 
 	for _, pipeline := range pipelines {
 		serverAddress := pipeline.Address()
+
+		handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+			statsLock.Lock()
+			defer statsLock.Unlock()
+
+			// Fetch the specific stats key for this server.  Creating a new entry
+			// for the server if we did not previously have one.
+			curStats, ok := stats[serverAddress]
+			if !ok {
+				stats[serverAddress] = SingleServerStats{
+					Stats: make(map[string]string),
+				}
+				curStats = stats[serverAddress]
+			}
+
+			if err != nil {
+				// Store the first (and hopefully only) error into the Error field of this
+				// server's stats entry.
+				if curStats.Error == nil {
+					curStats.Error = err
+				} else {
+					logDebugf("Got additional error for stats: %s: %v", serverAddress, err)
+				}
+
+				// When an error occurs, we need to cancel our persistent op.  However, because
+				// a previous error may already have cancelled this and then raced, we should
+				// ensure only a single completion is counted.
+				if req.internalCancel() {
+					opHandledLocked()
+				}
+
+				return
+			}
+
+			// Check if the key length is zero.  This indicates that we have reached
+			// the ending of the stats listing by this server.
+			if len(resp.Key) == 0 {
+				// As this is a persistent request, we must manually cancel it to remove
+				// it from the pending ops list.  To ensure we do not race multiple cancels,
+				// we only handle it as completed the one time cancellation succeeds.
+				if req.internalCancel() {
+					opHandledLocked()
+				}
+
+				return
+			}
+
+			// Add the stat for this server to the list of stats.
+			curStats.Stats[string(resp.Key)] = string(resp.Value)
+		}
 
 		req := &memdQRequest{
 			memdPacket: memdPacket{
