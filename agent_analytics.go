@@ -101,6 +101,9 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 		if errCodeGroup == 20 {
 			err = errAuthenticationFailure
 		}
+		if errCodeGroup == 24 {
+			err = errCompilationFailure
+		}
 		if errCode == 23000 || errCode == 23003 {
 			err = errTemporaryFailure
 		}
@@ -114,9 +117,6 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 			err = errIndexExists
 		}
 
-		if errCodeGroup == 24 {
-			err = errCompilationFailure
-		}
 		if errCode == 23007 {
 			err = errJobQueueFull
 		}
