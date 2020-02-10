@@ -97,8 +97,6 @@ func (config *AgentConfig) redacted() interface{} {
 //   kv_connect_timeout (int) - Maximum period to attempt to connect to cluster in ms.
 //   config_poll_interval (int) - Period to wait between CCCP config polling in ms.
 //   config_poll_timeout (int) - Maximum period of time to wait for a CCCP request.
-//   enable_kverrmaps (bool) - Whether to enable error maps from the server.
-//   enable_enhanced_errors (bool) - Whether to enable enhanced error information.
 //   compression (bool) - Whether to enable network-wise compression of documents.
 //   compression_min_size (int) - The minimal size of the document to consider compression.
 //   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
@@ -110,6 +108,11 @@ func (config *AgentConfig) redacted() interface{} {
 //   orphaned_response_logging_interval (int) - How often to print the orphan log records.
 //   orphaned_response_logging_sample_size (int) - The maximum number of orphan log records to track.
 //   dcp_priority (int) - Specifies the priority to request from the Cluster when connecting for DCP.
+//   enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
+//   http_redial_period (int) - The maximum length of time in ms for the HTTP poller to stay connected before reconnecting.
+//   http_retry_delay (int) - The length of time in ms to wait between HTTP poller retries if connecting fails.
+//   kv_pool_size (int) - The number of connections to create to each kv node.
+//   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
 func (config *AgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := gocbconnstr.Parse(connStr)
 	if err != nil {
