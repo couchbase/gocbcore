@@ -23,10 +23,6 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// ScramClient implements a SCRAM-{SHA-1,etc} client per RFC5802.
-//
-// http://tools.ietf.org/html/rfc5802
-
 package gocbcore
 
 import (
@@ -40,7 +36,9 @@ import (
 	"strings"
 )
 
-type scramClient struct {
+// Client implements a SCRAM-{SHA-1,etc} client per RFC5802.
+// http://tools.ietf.org/html/rfc5802
+type Client struct {
 	newHash func() hash.Hash
 
 	user string
@@ -55,8 +53,9 @@ type scramClient struct {
 	authMsg     bytes.Buffer
 }
 
-func newScramClient(newHash func() hash.Hash, user, pass string) *scramClient {
-	c := &scramClient{
+// NewClient returns a new instance of the SCRAM client.
+func NewClient(newHash func() hash.Hash, user, pass string) *Client {
+	c := &Client{
 		newHash: newHash,
 		user:    user,
 		pass:    pass,
@@ -67,7 +66,7 @@ func newScramClient(newHash func() hash.Hash, user, pass string) *scramClient {
 }
 
 // Out returns the data to be sent to the server in the current step.
-func (c *scramClient) Out() []byte {
+func (c *Client) Out() []byte {
 	if c.out.Len() == 0 {
 		return nil
 	}
@@ -75,13 +74,13 @@ func (c *scramClient) Out() []byte {
 }
 
 // Err returns the error that occurred, or nil if there were no errors.
-func (c *scramClient) Err() error {
+func (c *Client) Err() error {
 	return c.err
 }
 
 // SetNonce sets the client nonce to the provided value.
 // If not set, the nonce is generated automatically out of crypto/rand on the first step.
-func (c *scramClient) SetNonce(nonce []byte) {
+func (c *Client) SetNonce(nonce []byte) {
 	c.clientNonce = nonce
 }
 
@@ -91,7 +90,7 @@ var escaper = strings.NewReplacer("=", "=3D", ",", "=2C")
 // next round of data for the server available via Client.Out.
 // Step returns false if there are no errors and more data is
 // still expected.
-func (c *scramClient) Step(in []byte) bool {
+func (c *Client) Step(in []byte) bool {
 	c.out.Reset()
 	if c.step > 2 || c.err != nil {
 		return false
@@ -109,7 +108,7 @@ func (c *scramClient) Step(in []byte) bool {
 	return !(c.step > 2 || c.err != nil)
 }
 
-func (c *scramClient) step1(in []byte) error {
+func (c *Client) step1(in []byte) error {
 	if len(c.clientNonce) == 0 {
 		const nonceLen = 6
 		buf := make([]byte, nonceLen+b64.EncodedLen(nonceLen))
@@ -133,7 +132,7 @@ func (c *scramClient) step1(in []byte) error {
 
 var b64 = base64.StdEncoding
 
-func (c *scramClient) step2(in []byte) error {
+func (c *Client) step2(in []byte) error {
 	c.authMsg.WriteByte(',')
 	c.authMsg.Write(in)
 
@@ -184,7 +183,7 @@ func (c *scramClient) step2(in []byte) error {
 	return nil
 }
 
-func (c *scramClient) step3(in []byte) error {
+func (c *Client) step3(in []byte) error {
 	var isv, ise bool
 	var fields = bytes.Split(in, []byte(","))
 	if len(fields) == 1 {
@@ -208,7 +207,7 @@ func (c *scramClient) step3(in []byte) error {
 	return nil
 }
 
-func (c *scramClient) saltPassword(salt []byte, iterCount int) error {
+func (c *Client) saltPassword(salt []byte, iterCount int) error {
 	mac := hmac.New(c.newHash, []byte(c.pass))
 	if _, err := mac.Write(salt); err != nil {
 		return err
@@ -233,7 +232,7 @@ func (c *scramClient) saltPassword(salt []byte, iterCount int) error {
 	return nil
 }
 
-func (c *scramClient) clientProof() ([]byte, error) {
+func (c *Client) clientProof() ([]byte, error) {
 	mac := hmac.New(c.newHash, c.saltedPass)
 	if _, err := mac.Write([]byte("Client Key")); err != nil {
 		return nil, err
@@ -257,7 +256,7 @@ func (c *scramClient) clientProof() ([]byte, error) {
 	return clientProof64, nil
 }
 
-func (c *scramClient) serverSignature() ([]byte, error) {
+func (c *Client) serverSignature() ([]byte, error) {
 	mac := hmac.New(c.newHash, c.saltedPass)
 	if _, err := mac.Write([]byte("Server Key")); err != nil {
 		return nil, err

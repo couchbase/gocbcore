@@ -6,6 +6,8 @@ import (
 	"crypto/sha512"
 	"hash"
 	"time"
+
+	scram "github.com/couchbase/gocbcore/v8/scram"
 )
 
 // AuthMechanism represents a type of auth that can be performed.
@@ -70,7 +72,7 @@ func SaslAuthPlain(username, password string, client AuthClient, deadline time.T
 
 func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password string, client AuthClient,
 	deadline time.Time, continueCb func(), completedCb func(err error)) error {
-	scramMgr := newScramClient(newHash, username, password)
+	scramMgr := scram.NewClient(newHash, username, password)
 
 	// Perform the initial SASL step
 	scramMgr.Step(nil)
