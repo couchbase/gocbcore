@@ -99,7 +99,6 @@ func (agent *Agent) storeErrorMap(mapBytes []byte, client *memdClient) {
 }
 
 func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
-
 	sclient := syncClient{
 		client: client,
 	}
@@ -109,6 +108,7 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 	bucket := agent.bucket()
 	features := agent.helloFeatures()
 	clientInfoStr := agent.clientInfoString(client.connID)
+	authMechanisms := agent.authMechanisms
 
 	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
@@ -123,10 +123,10 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
-	nextAuth := agent.getNextAuth()
-	if nextAuth != nil {
+	firstAuthMethod := agent.authHandler(&sclient, deadline, authMechanisms[0])
+	// If the auth method is nil then we don't actually need to do any auth so no need to get the mechanisms.
+	if firstAuthMethod != nil {
 		listMechsCh = make(chan SaslListMechsCompleted)
-		// We only need to list mechs if there's more than 1 way to do auth.
 		err = sclient.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
 				logDebugf("Failed to fetch list auth mechs (%v)", err)
@@ -143,8 +143,8 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 
 	var completedAuthCh chan BytesAndError
 	var continueAuthCh chan bool
-	if agent.authHandler != nil {
-		completedAuthCh, continueAuthCh, err = agent.authHandler(&sclient, deadline)
+	if firstAuthMethod != nil {
+		completedAuthCh, continueAuthCh, err = firstAuthMethod()
 		if err != nil {
 			logDebugf("Failed to execute auth (%v)", err)
 			return err
@@ -188,15 +188,16 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 		}
 	}
 
+	// If completedAuthCh isn't nil then we have attempted to do auth so we need to wait on the result of that.
 	if completedAuthCh != nil {
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
 			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-			if agent.getNextAuth() == nil || errors.Is(authResp.Err, ErrAuthenticationFailure) {
+			// If there's an auth failure or there was only 1 mechanism to use then fail.
+			if len(authMechanisms) == 1 || errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				return authResp.Err
 			}
 
-			authMechanisms := agent.authMechanisms
 			for {
 				var found bool
 				var mech AuthMechanism
@@ -206,8 +207,13 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 					return authResp.Err
 				}
 
-				nextAuth(mech)
-				completedAuthCh, continueAuthCh, err = agent.authHandler(&sclient, deadline)
+				nextAuthFunc := agent.authHandler(&sclient, deadline, mech)
+				if nextAuthFunc == nil {
+					// This can't really happen but just in case it somehow does.
+					logDebugf("Failed to authenticate, no available credentials")
+					return authResp.Err
+				}
+				completedAuthCh, continueAuthCh, err = nextAuthFunc()
 				if err != nil {
 					logDebugf("Failed to execute auth (%v)", err)
 					return err
@@ -234,8 +240,6 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 				}
 			}
 		}
-		// prevent the next client from attempting to figure out what auth to use as we already have.
-		agent.setNextAuth(nil)
 		logDebugf("Authenticated successfully")
 	}
 
