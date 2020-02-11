@@ -186,7 +186,7 @@ func translateMemdError(err error, req *memdQRequest) error {
 		// BUGFIX(brett19): This resolves a bug in the server processing of the LOCKED
 		// operation where the server will respond with LOCKED rather than a CAS mismatch.
 		if req.Opcode == cmdUnlockKey {
-			return errDocumentNotFound
+			return errCasMismatch
 		}
 		return errDocumentLocked
 	case ErrMemdTooBig:
