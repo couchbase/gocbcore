@@ -334,12 +334,13 @@ const (
 type StreamEndStatus uint32
 
 const (
-	streamEndOK           = StreamEndStatus(0x00)
-	streamEndClosed       = StreamEndStatus(0x01)
-	streamEndStateChanged = StreamEndStatus(0x02)
-	streamEndDisconnected = StreamEndStatus(0x03)
-	streamEndTooSlow      = StreamEndStatus(0x04)
-	streamEndFilterEmpty  = StreamEndStatus(0x07)
+	streamEndOK             = StreamEndStatus(0x00)
+	streamEndClosed         = StreamEndStatus(0x01)
+	streamEndStateChanged   = StreamEndStatus(0x02)
+	streamEndDisconnected   = StreamEndStatus(0x03)
+	streamEndTooSlow        = StreamEndStatus(0x04)
+	streamEndBackfillFailed = StreamEndStatus(0x05)
+	streamEndFilterEmpty    = StreamEndStatus(0x07)
 )
 
 // StreamEventCode is the code for a DCP Stream event

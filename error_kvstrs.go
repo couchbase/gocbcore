@@ -122,6 +122,8 @@ func getKvStreamEndStatusText(code StreamEndStatus) string {
 		return "too slow"
 	case streamEndFilterEmpty:
 		return "filter empty"
+	case streamEndBackfillFailed:
+		return "backfill failed"
 	default:
 		return fmt.Sprintf("unknown stream close reason (%d)", code)
 	}

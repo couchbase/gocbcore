@@ -37,6 +37,10 @@ var (
 	// not keeping up with the rate of flow of DCP events sent by the server.
 	ErrDCPStreamTooSlow = makeStreamEndStatusError(streamEndTooSlow)
 
+	// ErrDCPBackfillFailed occurs when there was an issue starting the backfill on
+	// the server e.g. the requested start seqno was behind the purge seqno.
+	ErrDCPBackfillFailed = makeStreamEndStatusError(streamEndBackfillFailed)
+
 	// ErrDCPStreamFilterEmpty occurs when all of the collections for a DCP stream are
 	// dropped.
 	ErrDCPStreamFilterEmpty = makeStreamEndStatusError(streamEndFilterEmpty)
