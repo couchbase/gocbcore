@@ -42,7 +42,7 @@ func (client *syncClient) Address() string {
 }
 
 func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOut *memdPacket, errOut error) {
-	signal := make(chan bool)
+	signal := make(chan bool, 1)
 
 	qreq := memdQRequest{
 		memdPacket: *req,
