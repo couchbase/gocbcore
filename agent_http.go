@@ -255,10 +255,19 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	// This is easy to do with a bool and a defer than to ensure that we cancel after every error.
+	doneCh := make(chan struct{}, 1)
 	querySuccess := false
 	defer func() {
+		doneCh <- struct{}{}
 		if !querySuccess {
 			ctxCancel()
+		}
+	}()
+	go func() {
+		select {
+		case <-time.After(req.Deadline.Sub(time.Now())):
+			ctxCancel()
+		case <-doneCh:
 		}
 	}()
 
@@ -320,8 +329,8 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 		hresp, err := agent.httpCli.Do(hreq)
 		if err != nil {
 			// Because we have to hijack the context for our own timeout specification
-			// purposes, we need to perform some translation here if we hijacked it.
-			if errors.Is(err, context.DeadlineExceeded) {
+			// purposes and we manually cancel it, we need to perform some translation here if we hijacked it.
+			if errors.Is(err, context.Canceled) {
 				err = errAmbiguousTimeout
 			}
 
@@ -354,7 +363,7 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 			select {
 			case <-time.After(retryTime.Sub(time.Now())):
 				// continue!
-			case <-time.After(time.Now().Sub(req.Deadline)):
+			case <-time.After(req.Deadline.Sub(time.Now())):
 				if errors.Is(err, context.DeadlineExceeded) {
 					err = errUnambiguousTimeout
 				}
