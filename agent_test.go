@@ -945,6 +945,124 @@ func TestSubdocXattrs(t *testing.T) {
 	s.Wait(0)
 }
 
+func TestSubdocXattrsReorder(t *testing.T) {
+	agent, s := testGetAgentAndHarness(t)
+
+	s.PushOp(agent.SetEx(SetOptions{
+		Key:            []byte("testXattrReorder"),
+		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\"}"),
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// This should reorder the ops before sending to the server.
+	mutateOps := []SubDocOp{
+		{
+			Op:    SubDocOpDictSet,
+			Flags: SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+		{
+			Op:    SubDocOpDictSet,
+			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Path:  "xatest.test",
+			Value: []byte("\"test value\""),
+		},
+		{
+			Op:    SubDocOpDictSet,
+			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Path:  "xatest.ytest",
+			Value: []byte("\"test value2\""),
+		},
+	}
+	s.PushOp(agent.MutateInEx(MutateInOptions{
+		Key:            []byte("testXattrReorder"),
+		Ops:            mutateOps,
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Mutate operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			if len(res.Ops) != 3 {
+				s.Fatalf("MutateIn operation wrong count was %d", len(res.Ops))
+			}
+			if res.Ops[0].Err != nil {
+				s.Fatalf("MutateIn operation 1 failed: %v", res.Ops[0].Err)
+			}
+			if res.Ops[1].Err != nil {
+				s.Fatalf("MutateIn operation 2 failed: %v", res.Ops[1].Err)
+			}
+			if res.Ops[2].Err != nil {
+				s.Fatalf("MutateIn operation 3 failed: %v", res.Ops[2].Err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	lookupOps := []SubDocOp{
+		{
+			Op:    SubDocOpGet,
+			Flags: SubdocFlagXattrPath,
+			Path:  "xatest.test",
+		},
+		{
+			Op:    SubDocOpGet,
+			Flags: SubdocFlagNone,
+			Path:  "x",
+		},
+		{
+			Op:    SubDocOpGet,
+			Flags: SubdocFlagXattrPath,
+			Path:  "xatest.ytest",
+		},
+	}
+	s.PushOp(agent.LookupInEx(LookupInOptions{
+		Key:            []byte("testXattrReorder"),
+		Ops:            lookupOps,
+		CollectionName: s.CollectionName,
+		ScopeName:      s.ScopeName,
+	}, func(res *LookupInResult, err error) {
+		s.Wrap(func() {
+			if len(res.Ops) != 3 {
+				s.Fatalf("Lookup operation wrong count: %d", len(res.Ops))
+			}
+			if res.Ops[0].Err != nil {
+				s.Fatalf("Lookup operation 1 failed: %v", res.Ops[0].Err)
+			}
+			if res.Ops[1].Err != nil {
+				s.Fatalf("Lookup operation 2 failed: %v", res.Ops[1].Err)
+			}
+			if res.Ops[2].Err != nil {
+				s.Fatalf("Lookup operation 3 failed: %v", res.Ops[2].Err)
+			}
+
+			if !bytes.Equal(res.Ops[0].Value, []byte(`"test value"`)) {
+				s.Fatalf("Unexpected xatest.test value %s", res.Ops[0].Value)
+			}
+			if !bytes.Equal(res.Ops[1].Value, []byte(`"x value"`)) {
+				s.Fatalf("Unexpected document value %s", res.Ops[1].Value)
+			}
+			if !bytes.Equal(res.Ops[2].Value, []byte(`"test value2"`)) {
+				s.Fatalf("Unexpected xatest.ytest value %s", res.Ops[2].Value)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 func TestStats(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 

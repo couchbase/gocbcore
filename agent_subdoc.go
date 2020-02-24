@@ -525,11 +525,27 @@ type LookupInResult struct {
 // LookupInExCallback is invoked upon completion of a LookupInEx operation.
 type LookupInExCallback func(*LookupInResult, error)
 
+type subdocOpList struct {
+	ops     []SubDocOp
+	indexes []int
+}
+
+func (sol *subdocOpList) Prepend(op SubDocOp, index int) {
+	sol.ops = append([]SubDocOp{op}, sol.ops...)
+	sol.indexes = append([]int{index}, sol.indexes...)
+}
+
+func (sol *subdocOpList) Append(op SubDocOp, index int) {
+	sol.ops = append(sol.ops, op)
+	sol.indexes = append(sol.indexes, index)
+}
+
 // LookupInEx performs a multiple-lookup sub-document operation on a document.
 func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("LookupInEx", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
+	var subdocs subdocOpList
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
@@ -559,10 +575,10 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 			}
 
 			if resError != StatusSuccess {
-				results[i].Err = agent.makeSubDocError(i, resError, req, resp)
+				results[subdocs.indexes[i]].Err = agent.makeSubDocError(i, resError, req, resp)
 			}
 
-			results[i].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
+			results[subdocs.indexes[i]].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
 			respIter += 6 + resValueLen
 		}
 
@@ -573,9 +589,17 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 		}, err)
 	}
 
+	for i, op := range opts.Ops {
+		if op.Flags&SubdocFlagXattrPath != 0 {
+			subdocs.Prepend(op, i)
+		} else {
+			subdocs.Append(op, i)
+		}
+	}
+
 	pathBytesList := make([][]byte, len(opts.Ops))
 	pathBytesTotal := 0
-	for i, op := range opts.Ops {
+	for i, op := range subdocs.ops {
 		pathBytes := []byte(op.Path)
 		pathBytesList[i] = pathBytes
 		pathBytesTotal += len(pathBytes)
@@ -584,7 +608,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 	valueBuf := make([]byte, len(opts.Ops)*4+pathBytesTotal)
 
 	valueIter := 0
-	for i, op := range opts.Ops {
+	for i, op := range subdocs.ops {
 		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
 			op.Op != SubDocOpGetDoc && op.Op != SubDocOpGetCount {
 			return nil, errInvalidArgument
@@ -666,6 +690,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 	tracer := agent.createOpTrace("MutateInEx", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
+	var subdocs subdocOpList
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
@@ -696,12 +721,12 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 
-			results[opIndex].Err = agent.makeSubDocError(opIndex, opStatus, req, resp)
+			results[subdocs.indexes[opIndex]].Err = agent.makeSubDocError(opIndex, opStatus, req, resp)
 			readPos += 3
 
 			if opStatus == StatusSuccess {
 				valLength := binary.BigEndian.Uint32(resp.Value[readPos:])
-				results[opIndex].Value = resp.Value[readPos+4 : readPos+4+valLength]
+				results[subdocs.indexes[opIndex]].Value = resp.Value[readPos+4 : readPos+4+valLength]
 				readPos += 4 + valLength
 			}
 		}
@@ -733,10 +758,18 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 		magic = altReqMagic
 	}
 
+	for i, op := range opts.Ops {
+		if op.Flags&SubdocFlagXattrPath != 0 {
+			subdocs.Prepend(op, i)
+		} else {
+			subdocs.Append(op, i)
+		}
+	}
+
 	pathBytesList := make([][]byte, len(opts.Ops))
 	pathBytesTotal := 0
 	valueBytesTotal := 0
-	for i, op := range opts.Ops {
+	for i, op := range subdocs.ops {
 		pathBytes := []byte(op.Path)
 		pathBytesList[i] = pathBytes
 		pathBytesTotal += len(pathBytes)
@@ -746,7 +779,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 	valueBuf := make([]byte, len(opts.Ops)*8+pathBytesTotal+valueBytesTotal)
 
 	valueIter := 0
-	for i, op := range opts.Ops {
+	for i, op := range subdocs.ops {
 		if op.Op != SubDocOpDictAdd && op.Op != SubDocOpDictSet &&
 			op.Op != SubDocOpDelete && op.Op != SubDocOpReplace &&
 			op.Op != SubDocOpArrayPushLast && op.Op != SubDocOpArrayPushFirst &&
