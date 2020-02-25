@@ -302,3 +302,108 @@ func TestControlledBackoff(t *testing.T) {
 		}
 	}
 }
+
+func TestExponentialBackoff(t *testing.T) {
+	type test struct {
+		attempts        uint32
+		expectedBackoff time.Duration
+	}
+	tests := []test{
+		{
+			attempts:        0,
+			expectedBackoff: 1 * time.Millisecond,
+		},
+		{
+			attempts:        1,
+			expectedBackoff: 2 * time.Millisecond,
+		},
+		{
+			attempts:        2,
+			expectedBackoff: 4 * time.Millisecond,
+		},
+		{
+			attempts:        3,
+			expectedBackoff: 8 * time.Millisecond,
+		},
+		{
+			attempts:        4,
+			expectedBackoff: 16 * time.Millisecond,
+		},
+		{
+			attempts:        5,
+			expectedBackoff: 32 * time.Millisecond,
+		},
+		{
+			attempts:        6,
+			expectedBackoff: 64 * time.Millisecond,
+		},
+		{
+			attempts:        7,
+			expectedBackoff: 128 * time.Millisecond,
+		},
+		{
+			attempts:        8,
+			expectedBackoff: 256 * time.Millisecond,
+		},
+		{
+			attempts:        9,
+			expectedBackoff: 500 * time.Millisecond,
+		},
+		{
+			attempts:        10,
+			expectedBackoff: 500 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		calc := ExponentialBackoff(0, 0, 0)
+		backoff := calc(tt.attempts)
+		if backoff != tt.expectedBackoff {
+			t.Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
+		}
+	}
+}
+func TestExponentialBackoffNonDefaults(t *testing.T) {
+	type test struct {
+		attempts        uint32
+		expectedBackoff time.Duration
+	}
+	tests := []test{
+		{
+			attempts:        0,
+			expectedBackoff: 10 * time.Millisecond,
+		},
+		{
+			attempts:        1,
+			expectedBackoff: 30 * time.Millisecond,
+		},
+		{
+			attempts:        2,
+			expectedBackoff: 90 * time.Millisecond,
+		},
+		{
+			attempts:        3,
+			expectedBackoff: 270 * time.Millisecond,
+		},
+		{
+			attempts:        4,
+			expectedBackoff: 810 * time.Millisecond,
+		},
+		{
+			attempts:        5,
+			expectedBackoff: 1000 * time.Millisecond,
+		},
+		{
+			attempts:        6,
+			expectedBackoff: 1000 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		calc := ExponentialBackoff(10*time.Millisecond, 1000*time.Millisecond, 3)
+		backoff := calc(tt.attempts)
+		if backoff != tt.expectedBackoff {
+			t.Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
+		}
+	}
+}
