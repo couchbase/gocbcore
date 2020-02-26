@@ -66,7 +66,7 @@ func (r *queryStreamer) EarlyMetadata(key string) json.RawMessage {
 }
 
 func (r *queryStreamer) finishWithoutError() {
-	// Lets finalize the streamer so we get the meta-data
+	// Lets finalize the streamer so we Get the meta-data
 	metaDataBytes, err := r.streamer.Finalize()
 	if err != nil {
 		r.finishWithError(err)

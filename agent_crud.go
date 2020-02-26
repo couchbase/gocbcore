@@ -1107,8 +1107,8 @@ type StatsExCallback func(*StatsResult, error)
 func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("StatsEx", opts.TraceContext)
 
-	config := agent.routingInfo.Get()
-	if config == nil {
+	muxer := agent.kvMux.GetState()
+	if muxer == nil {
 		tracer.Finish()
 		return nil, errShutdown
 	}
@@ -1124,20 +1124,20 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 
 	switch target := opts.Target.(type) {
 	case nil:
-		expected = uint32(config.clientMux.NumPipelines())
+		expected = uint32(muxer.NumPipelines())
 
-		for i := 0; i < config.clientMux.NumPipelines(); i++ {
-			pipelines = append(pipelines, config.clientMux.GetPipeline(i))
+		for i := 0; i < muxer.NumPipelines(); i++ {
+			pipelines = append(pipelines, muxer.GetPipeline(i))
 		}
 	case VBucketIDStatsTarget:
 		expected = 1
 
-		srvIdx, err := config.vbMap.NodeByVbucket(target.VbID, 0)
+		srvIdx, err := muxer.vbMap.NodeByVbucket(target.VbID, 0)
 		if err != nil {
 			return nil, err
 		}
 
-		pipelines = append(pipelines, config.clientMux.GetPipeline(srvIdx))
+		pipelines = append(pipelines, muxer.GetPipeline(srvIdx))
 	default:
 		return nil, errInvalidArgument
 	}

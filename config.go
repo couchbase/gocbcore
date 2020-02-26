@@ -52,6 +52,7 @@ type cfgNodeAltAddress struct {
 	Ports    *cfgNodeServices `json:"ports,omitempty"`
 	Hostname string           `json:"hostname"`
 }
+
 type cfgNodeExt struct {
 	Services     cfgNodeServices              `json:"services"`
 	Hostname     string                       `json:"hostname"`
@@ -90,118 +91,6 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
-// Cluster is an entry point for service level operations.
-type cfgCluster struct {
-	Rev            int64 `json:"rev"`
-	SourceHostname string
-
-	// These are used for JSON IO, but isn't used for processing
-	// since it needs to be swapped out safely.
-	NodesExt               []cfgNodeExt        `json:"nodesExt,omitempty"`
-	ClusterCapabilitiesVer []int               `json:"clusterCapabilitiesVer,omitempty"`
-	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
-}
-
-type cfgType uint8
-
-const (
-	bktCfgType     = cfgType(0)
-	clusterCfgType = cfgType(1)
-)
-
-type cfgObj interface {
-	Type() cfgType
-	BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig
-	ClusterCaps() map[string][]string
-	ClusterCapsVer() []int
-}
-
-func (cfg *cfgCluster) Type() cfgType {
-	return clusterCfgType
-}
-
-func (cfg *cfgCluster) ClusterCaps() map[string][]string {
-	return cfg.ClusterCapabilities
-}
-
-func (cfg *cfgCluster) ClusterCapsVer() []int {
-	return cfg.ClusterCapabilitiesVer
-}
-
-func (cfg *cfgCluster) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
-	var kvServerList []string
-	var capiEpList []string
-	var mgmtEpList []string
-	var n1qlEpList []string
-	var ftsEpList []string
-	var cbasEpList []string
-
-	if cfg.NodesExt != nil {
-		for _, node := range cfg.NodesExt {
-			hostname := node.Hostname
-			ports := node.Services
-
-			if networkType != "default" {
-				if altAddr, ok := node.AltAddresses[networkType]; ok {
-					hostname = altAddr.Hostname
-					if altAddr.Ports != nil {
-						ports = *altAddr.Ports
-					}
-				} else {
-					if !firstConnect {
-						logDebugf("Invalid config network type %s", networkType)
-					}
-					continue
-				}
-			}
-
-			hostname = getHostname(hostname, cfg.SourceHostname)
-
-			endpoints := endpointsFromPorts(useSsl, ports, "", hostname)
-			if endpoints.kvServer != "" {
-				kvServerList = append(kvServerList, endpoints.kvServer)
-			}
-			if endpoints.capiEp != "" {
-				capiEpList = append(capiEpList, endpoints.capiEp)
-			}
-			if endpoints.mgmtEp != "" {
-				mgmtEpList = append(mgmtEpList, endpoints.mgmtEp)
-			}
-			if endpoints.n1qlEp != "" {
-				n1qlEpList = append(n1qlEpList, endpoints.n1qlEp)
-			}
-			if endpoints.ftsEp != "" {
-				ftsEpList = append(ftsEpList, endpoints.ftsEp)
-			}
-			if endpoints.cbasEp != "" {
-				cbasEpList = append(cbasEpList, endpoints.cbasEp)
-			}
-		}
-	} else {
-		if useSsl {
-			logErrorf("Received config without nodesExt while for GCCCP config.  Generating invalid config.")
-			return &routeConfig{}
-		}
-	}
-
-	rc := &routeConfig{
-		revID:        cfg.Rev,
-		kvServerList: kvServerList,
-		capiEpList:   capiEpList,
-		mgmtEpList:   mgmtEpList,
-		n1qlEpList:   n1qlEpList,
-		ftsEpList:    ftsEpList,
-		cbasEpList:   cbasEpList,
-		bktType:      bktTypeNone,
-	}
-
-	return rc
-}
-
-func (cfg *cfgBucket) Type() cfgType {
-	return bktCfgType
-}
-
 func (cfg *cfgBucket) supports(needleCap string) bool {
 	for _, cap := range cfg.Capabilities {
 		if cap == needleCap {
@@ -230,8 +119,12 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 	case "vbucket":
 		bktType = bktTypeCouchbase
 	default:
-		logDebugf("Invalid nodeLocator %s", cfg.NodeLocator)
-		bktType = bktTypeInvalid
+		if cfg.UUID == "" {
+			bktType = bktTypeNone
+		} else {
+			logDebugf("Invalid nodeLocator %s", cfg.NodeLocator)
+			bktType = bktTypeInvalid
+		}
 	}
 
 	if cfg.NodesExt != nil {
@@ -258,7 +151,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 
 			endpoints := endpointsFromPorts(useSsl, ports, cfg.Name, hostname)
 			if endpoints.kvServer != "" {
-				if i >= lenNodes {
+				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer)
 				} else {
 					kvServerList = append(kvServerList, endpoints.kvServer)
@@ -316,15 +209,18 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 	}
 
 	rc := &routeConfig{
-		revID:        cfg.Rev,
-		uuid:         cfg.UUID,
-		kvServerList: kvServerList,
-		capiEpList:   capiEpList,
-		mgmtEpList:   mgmtEpList,
-		n1qlEpList:   n1qlEpList,
-		ftsEpList:    ftsEpList,
-		cbasEpList:   cbasEpList,
-		bktType:      bktType,
+		revID:                  cfg.Rev,
+		uuid:                   cfg.UUID,
+		name:                   cfg.Name,
+		kvServerList:           kvServerList,
+		capiEpList:             capiEpList,
+		mgmtEpList:             mgmtEpList,
+		n1qlEpList:             n1qlEpList,
+		ftsEpList:              ftsEpList,
+		cbasEpList:             cbasEpList,
+		bktType:                bktType,
+		clusterCapabilities:    cfg.ClusterCapabilities,
+		clusterCapabilitiesVer: cfg.ClusterCapabilitiesVer,
 	}
 
 	if bktType == bktTypeCouchbase {
@@ -336,14 +232,6 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 	}
 
 	return rc
-}
-
-func (cfg *cfgBucket) ClusterCaps() map[string][]string {
-	return cfg.ClusterCapabilities
-}
-
-func (cfg *cfgBucket) ClusterCapsVer() []int {
-	return cfg.ClusterCapabilitiesVer
 }
 
 type serverEps struct {
@@ -430,35 +318,15 @@ func hostFromHostPort(hostport string) (string, error) {
 	return host, nil
 }
 
-func parseBktConfig(config []byte, srcHost string) (*cfgBucket, error) {
-	bk := &cfgBucket{}
-	err := parseConfig(config, srcHost, bk)
-	if err != nil {
-		return nil, err
-	}
-
-	bk.SourceHostname = srcHost
-	return bk, nil
-}
-
-func parseClusterConfig(config []byte, srcHost string) (*cfgCluster, error) {
-	bk := &cfgCluster{}
-	err := parseConfig(config, srcHost, bk)
-	if err != nil {
-		return nil, err
-	}
-
-	bk.SourceHostname = srcHost
-	return bk, nil
-}
-
-func parseConfig(config []byte, srcHost string, target cfgObj) error {
+func parseConfig(config []byte, srcHost string) (*cfgBucket, error) {
 	configStr := strings.Replace(string(config), "$HOST", srcHost, -1)
 
-	err := json.Unmarshal([]byte(configStr), target)
+	bk := new(cfgBucket)
+	err := json.Unmarshal([]byte(configStr), bk)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	bk.SourceHostname = srcHost
+	return bk, nil
 }

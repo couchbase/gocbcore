@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"sort"
 	"time"
 )
 
@@ -122,7 +121,7 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 
 	bucket := agent.bucket()
 	features := agent.helloFeatures()
-	clientInfoStr := agent.clientInfoString(client.connID)
+	clientInfoStr := clientInfoString(client.connID, agent.userAgent)
 	authMechanisms := agent.authMechanisms
 
 	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
@@ -134,12 +133,12 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 	errMapCh, err := sclient.ExecGetErrorMap(1, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
-		logDebugf("Failed to execute get error map (%v)", err)
+		logDebugf("Failed to execute Get error map (%v)", err)
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
 	firstAuthMethod := agent.authHandler(&sclient, deadline, authMechanisms[0])
-	// If the auth method is nil then we don't actually need to do any auth so no need to get the mechanisms.
+	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 	if firstAuthMethod != nil {
 		listMechsCh = make(chan SaslListMechsCompleted)
 		err = sclient.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
@@ -287,10 +286,10 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 	return nil
 }
 
-func (agent *Agent) clientInfoString(connID string) string {
+func clientInfoString(connID, userAgent string) string {
 	agentName := "gocbcore/" + goCbCoreVersionStr
-	if agent.userAgent != "" {
-		agentName += " " + agent.userAgent
+	if userAgent != "" {
+		agentName += " " + userAgent
 	}
 
 	clientInfo := struct {
@@ -392,275 +391,4 @@ func (agent *Agent) slowDialMemdClient(address string) (*memdClient, error) {
 	}
 
 	return client, nil
-}
-
-type memdQRequestSorter []*memdQRequest
-
-func (list memdQRequestSorter) Len() int {
-	return len(list)
-}
-
-func (list memdQRequestSorter) Less(i, j int) bool {
-	return list[i].dispatchTime.Before(list[j].dispatchTime)
-}
-
-func (list memdQRequestSorter) Swap(i, j int) {
-	list[i], list[j] = list[j], list[i]
-}
-
-// Accepts a cfgBucket object representing a cluster configuration and rebuilds the server list
-//  along with any routing information for the Client.  Passing no config will refresh the existing one.
-//  This method MUST NEVER BLOCK due to its use from various contention points.
-func (agent *Agent) applyRoutingConfig(cfg *routeConfig) bool {
-	// Check some basic things to ensure consistency!
-	if cfg.vbMap != nil && cfg.vbMap.NumVbuckets() != agent.numVbuckets {
-		logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
-		return false
-	}
-
-	// Only a single thing can modify the config at any time
-	agent.configLock.Lock()
-	defer agent.configLock.Unlock()
-
-	newRouting := &routeData{
-		revID:      cfg.revID,
-		uuid:       cfg.uuid,
-		capiEpList: cfg.capiEpList,
-		mgmtEpList: cfg.mgmtEpList,
-		n1qlEpList: cfg.n1qlEpList,
-		ftsEpList:  cfg.ftsEpList,
-		cbasEpList: cfg.cbasEpList,
-		vbMap:      cfg.vbMap,
-		ketamaMap:  cfg.ketamaMap,
-		bktType:    cfg.bktType,
-		source:     cfg,
-	}
-
-	newRouting.clientMux = agent.newMemdClientMux(cfg.kvServerList)
-
-	oldRouting := agent.routingInfo.Get()
-	if oldRouting == nil {
-		return false
-	}
-
-	// Check that the new config data is newer than the current one, in the case where we've done a select bucket
-	// against an existing connection then the revisions could be the same. In that case the configuration still
-	// needs to be applied.
-	if newRouting.revID == 0 {
-		logDebugf("Unversioned configuration data, switching.")
-	} else if newRouting.bktType != oldRouting.bktType {
-		logDebugf("Configuration data changed bucket type, switching.")
-	} else if newRouting.revID == oldRouting.revID {
-		logDebugf("Ignoring configuration with identical revision number")
-		return false
-	} else if newRouting.revID < oldRouting.revID {
-		logDebugf("Ignoring new configuration as it has an older revision id")
-		return false
-	}
-
-	// Attempt to atomically update the routing data
-	if !agent.routingInfo.Update(oldRouting, newRouting) {
-		logErrorf("Someone preempted the config update, skipping update")
-		return false
-	}
-
-	logDebugf("Switching routing data (update)...")
-	logDebugf("New Routing Data:\n%s", newRouting.DebugString())
-
-	if oldRouting.clientMux == nil {
-		// This is a new agent so there is no existing muxer.  We can
-		// simply start the new muxer.
-		newRouting.clientMux.Start()
-	} else {
-		// Get the new muxer to takeover the pipelines from the older one
-		newRouting.clientMux.Takeover(oldRouting.clientMux)
-
-		// Gather all the requests from all the old pipelines and then
-		//  sort and redispatch them (which will use the new pipelines)
-		var requestList []*memdQRequest
-		oldRouting.clientMux.Drain(func(req *memdQRequest) {
-			requestList = append(requestList, req)
-		})
-
-		sort.Sort(memdQRequestSorter(requestList))
-
-		for _, req := range requestList {
-			agent.stopCmdTrace(req)
-			agent.requeueDirect(req, false)
-		}
-	}
-
-	return true
-}
-
-func (agent *Agent) updateRoutingConfig(cfg cfgObj) bool {
-	if cfg == nil {
-		// Use the existing config if none was passed.
-		oldRouting := agent.routingInfo.Get()
-		if oldRouting == nil {
-			// If there is no previous config, we can't do anything
-			return false
-		}
-
-		return agent.applyRoutingConfig(oldRouting.source)
-	}
-
-	// Normalize the cfgBucket to a routeConfig and apply it.
-	routeCfg := buildRouteConfig(cfg, agent.IsSecure(), agent.networkType, false)
-	if !routeCfg.IsValid() {
-		// We received an invalid configuration, lets shutdown.
-		err := agent.Close()
-		if err != nil {
-			logErrorf("Invalid config caused agent close failure (%s)", err)
-		}
-
-		return false
-	}
-
-	return agent.applyRoutingConfig(routeCfg)
-}
-
-func (agent *Agent) routeRequest(req *memdQRequest) (*memdPipeline, error) {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil, errShutdown
-	}
-
-	var srvIdx int
-	repIdx := req.ReplicaIdx
-
-	// Route to specific server
-	if repIdx < 0 {
-		srvIdx = -repIdx - 1
-	} else {
-		var err error
-
-		if routingInfo.bktType == bktTypeCouchbase {
-			if req.Key != nil {
-				req.Vbucket = routingInfo.vbMap.VbucketByKey(req.Key)
-			}
-
-			srvIdx, err = routingInfo.vbMap.NodeByVbucket(req.Vbucket, uint32(repIdx))
-
-			if err != nil {
-				return nil, err
-			}
-		} else if routingInfo.bktType == bktTypeMemcached {
-			if repIdx > 0 {
-				// Error. Memcached buckets don't understand replicas!
-				return nil, errInvalidReplica
-			}
-
-			if len(req.Key) == 0 {
-				// Non-broadcast keyless Memcached bucket request
-				return nil, errInvalidArgument
-			}
-
-			srvIdx, err = routingInfo.ketamaMap.NodeByKey(req.Key)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return routingInfo.clientMux.GetPipeline(srvIdx), nil
-}
-
-func (agent *Agent) dispatchDirect(req *memdQRequest) error {
-	agent.startCmdTrace(req)
-
-	for {
-		pipeline, err := agent.routeRequest(req)
-		if err != nil {
-			return err
-		}
-
-		err = pipeline.SendRequest(req)
-		if err == errPipelineClosed {
-			continue
-		} else if err == errPipelineFull {
-			return errOverload
-		} else if err != nil {
-			return err
-		}
-
-		break
-	}
-
-	return nil
-}
-
-func (agent *Agent) dispatchDirectToAddress(req *memdQRequest, address string) error {
-	agent.startCmdTrace(req)
-
-	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
-	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
-	if req.ReplicaIdx != 0 {
-		return errInvalidReplica
-	}
-	req.ReplicaIdx = -999999999
-
-	for {
-		routingInfo := agent.routingInfo.Get()
-		if routingInfo == nil {
-			return errShutdown
-		}
-
-		var foundPipeline *memdPipeline
-		for _, pipeline := range routingInfo.clientMux.pipelines {
-			if pipeline.Address() == address {
-				foundPipeline = pipeline
-				break
-			}
-		}
-
-		if foundPipeline == nil {
-			return errInvalidServer
-		}
-
-		err := foundPipeline.SendRequest(req)
-		if err == errPipelineClosed {
-			continue
-		} else if err == errPipelineFull {
-			return errOverload
-		} else if err != nil {
-			return err
-		}
-
-		break
-	}
-
-	return nil
-}
-
-func (agent *Agent) requeueDirect(req *memdQRequest, isRetry bool) {
-	agent.startCmdTrace(req)
-	handleError := func(err error) {
-		// We only want to log an error on retries if the error isn't cancelled.
-		if !isRetry || (isRetry && !errors.Is(err, ErrRequestCanceled)) {
-			logErrorf("Reschedule failed, failing request (%s)", err)
-		}
-
-		req.tryCallback(nil, err)
-	}
-
-	logDebugf("Request being requeued, Opaque=%d", req.Opaque)
-
-	for {
-		pipeline, err := agent.routeRequest(req)
-		if err != nil {
-			handleError(err)
-			return
-		}
-
-		err = pipeline.RequeueRequest(req)
-		if err == errPipelineClosed {
-			continue
-		} else if err != nil {
-			handleError(err)
-			return
-		}
-
-		break
-	}
 }

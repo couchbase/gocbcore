@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"sync/atomic"
 	"time"
@@ -34,9 +33,54 @@ func hostnameFromURI(uri string) string {
 	return hostname
 }
 
-func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) {
-	waitPeriod := agent.confHTTPRetryDelay
-	maxConnPeriod := agent.confHTTPRedialPeriod
+type httpConfigController struct {
+	muxer                *httpMux
+	watcher              func(config *cfgBucket)
+	confHTTPRetryDelay   time.Duration
+	confHTTPRedialPeriod time.Duration
+	httpComponent        *httpComponent
+	bucketName           string
+
+	looperStopSig chan struct{}
+	looperDoneSig chan struct{}
+}
+
+type httpPollerProperties struct {
+	confHTTPRetryDelay   time.Duration
+	confHTTPRedialPeriod time.Duration
+	httpComponent        *httpComponent
+}
+
+func newHTTPConfigController(bucketName string, props httpPollerProperties, muxer *httpMux,
+	watcher func(config *cfgBucket)) *httpConfigController {
+	return &httpConfigController{
+		muxer:                muxer,
+		watcher:              watcher,
+		confHTTPRedialPeriod: props.confHTTPRedialPeriod,
+		confHTTPRetryDelay:   props.confHTTPRetryDelay,
+		httpComponent:        props.httpComponent,
+		bucketName:           bucketName,
+
+		looperStopSig: make(chan struct{}),
+		looperDoneSig: make(chan struct{}),
+	}
+}
+
+func (hcc *httpConfigController) Pause(paused bool) {
+
+}
+
+func (hcc *httpConfigController) Done() chan struct{} {
+	return hcc.looperDoneSig
+}
+
+func (hcc *httpConfigController) Stop() {
+	close(hcc.looperStopSig)
+}
+
+func (hcc *httpConfigController) DoLoop(firstCfgFn func(*cfgBucket, string, error) bool) {
+	waitPeriod := hcc.confHTTPRetryDelay
+	maxConnPeriod := hcc.confHTTPRedialPeriod
 
 	var iterNum uint64 = 1
 	iterSawConfig := false
@@ -44,15 +88,17 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 	isFirstTry := true
 
 	logDebugf("HTTP Looper starting.")
+
+Looper:
 	for {
-		routingInfo := agent.routingInfo.Get()
-		if routingInfo == nil {
-			// Shutdown the looper if the agent is shutdown
-			break
+		select {
+		case <-hcc.looperStopSig:
+			break Looper
+		default:
 		}
 
 		var pickedSrv string
-		for _, srv := range routingInfo.mgmtEpList {
+		for _, srv := range hcc.muxer.MgmtEps() {
 			if seenNodes[srv] >= iterNum {
 				continue
 			}
@@ -74,8 +120,9 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 				// Wait for a period before trying again if there was a problem...
 				// We also watch for the client being shut down.
 				select {
+				case <-hcc.looperStopSig:
+					break Looper
 				case <-time.After(waitPeriod):
-				case <-agent.closeNotify:
 				}
 			}
 			logDebugf("Looping again.")
@@ -92,7 +139,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 		hostname := hostnameFromURI(pickedSrv)
 		logDebugf("HTTP Hostname: %s.", hostname)
 
-		var resp *http.Response
+		var resp *HTTPResponse
 		// 1 on success, 0 on failure for node, -1 for generic failure
 		var doConfigRequest func(bool) int
 
@@ -102,24 +149,18 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 				streamPath = "bucketsStreaming"
 			}
 			// HTTP request time!
-			uri := fmt.Sprintf("%s/pools/default/%s/%s", pickedSrv, streamPath, agent.bucket())
-			logDebugf("Requesting config from: %s.", uri)
+			uri := fmt.Sprintf("/pools/default/%s/%s", streamPath, hcc.bucketName)
+			logDebugf("Requesting config from: %s/%s.", pickedSrv, uri)
 
-			req, err := http.NewRequest("GET", uri, nil)
-			if err != nil {
-				logDebugf("Failed to build HTTP config request. %v", err)
-				return 0
+			req := &httpRequest{
+				Service:  MgmtService,
+				Method:   "GET",
+				Path:     uri,
+				Endpoint: pickedSrv,
 			}
 
-			creds, err := getMgmtAuthCreds(agent.auth, pickedSrv)
-			if err != nil {
-				logDebugf("Failed to build get config credentials. %v", err)
-				return 0
-			}
-
-			req.SetBasicAuth(creds.Username, creds.Password)
-
-			resp, err = agent.httpCli.Do(req)
+			var err error
+			resp, err = hcc.httpComponent.ExecHTTPRequest(req)
 			if err != nil {
 				logDebugf("Failed to connect to host. %v", err)
 				return 0
@@ -160,7 +201,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 		go func() {
 			select {
 			case <-time.After(maxConnPeriod):
-			case <-agent.closeNotify:
+			case <-hcc.looperStopSig:
 			}
 
 			logDebugf("Automatically resetting our HTTP connection")
@@ -199,7 +240,7 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 
 			logDebugf("Got Block: %v", string(configBlock.Bytes))
 
-			bkCfg, err := parseBktConfig(configBlock.Bytes, hostname)
+			bkCfg, err := parseConfig(configBlock.Bytes, hostname)
 			if err != nil {
 				logDebugf("Got error while parsing config: %v", err)
 
@@ -229,12 +270,12 @@ func (agent *Agent) httpLooper(firstCfgFn func(*cfgBucket, string, error) bool) 
 				isFirstTry = false
 			} else {
 				logDebugf("HTTP Config Update")
-				agent.updateConfig(bkCfg)
+				hcc.watcher(bkCfg)
 			}
 		}
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)
 	}
 
-	close(agent.httpLooperDoneSig)
+	close(hcc.looperDoneSig)
 }

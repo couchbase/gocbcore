@@ -1066,14 +1066,14 @@ func TestSubdocXattrsReorder(t *testing.T) {
 func TestStats(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	numServers := agent.routingInfo.Get().clientMux.NumPipelines()
+	numServers := agent.NumServers()
 
 	s.PushOp(agent.StatsEx(StatsOptions{
 		Key: "",
 	}, func(res *StatsResult, err error) {
 		s.Wrap(func() {
 			if len(res.Servers) != numServers {
-				s.Fatalf("Didn't get all stats!")
+				s.Fatalf("Didn't Get all stats!")
 			}
 			for srv, curStats := range res.Servers {
 				if curStats.Error != nil {
@@ -1132,7 +1132,7 @@ func TestMemcachedBucket(t *testing.T) {
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Couldn't get back key: %v", err)
+				s.Fatalf("Couldn't Get back key: %v", err)
 			}
 			if string(res.Value) != "value" {
 				s.Fatalf("Got back wrong value!")
@@ -1181,7 +1181,7 @@ func TestFlagsRoundTrip(t *testing.T) {
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
-				s.Fatalf("Couldn't get back key: %v", err)
+				s.Fatalf("Couldn't Get back key: %v", err)
 			}
 			if res.Flags != 0x99889988 {
 				s.Fatalf("flags failed to round-trip")
@@ -1275,10 +1275,17 @@ func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1295,11 +1302,19 @@ func TestAlternateAddressesAutoConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	agent.networkType = "auto"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "auto",
+	}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1316,11 +1331,19 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	agent.networkType = "auto"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "172.17.0.4:11210")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "auto",
+	}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "default" {
-		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "172.17.0.4:11210")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "default" {
+		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1337,11 +1360,19 @@ func TestAlternateAddressesDefaultConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	agent.networkType = "default"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "default",
+	}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "default" {
-		t.Fatalf("Expected agent networkType to be default, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "default" {
+		t.Fatalf("Expected agent networkType to be default, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1358,11 +1389,19 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	agent.networkType = "external"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "external",
+	}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1379,11 +1418,19 @@ func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses_without_ports.json")
 
 	agent := Agent{}
-	agent.networkType = "external"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	var cfg *routeConfig
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "external",
+	}, []routeConfigWatch{func(config *routeConfig) {
+		cfg = config
+	}}, func() {
 
-	if agent.networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", agent.networkType)
+	})
+	agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range cfg.kvServerList {
@@ -1400,18 +1447,21 @@ func TestAlternateAddressesInvalidConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	agent := Agent{}
-	agent.networkType = "invalid"
-	cfg := agent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+	agent.cfgManager = newConfigManager(configManagerProperties{
+		NetworkType: "invalid",
+	}, []routeConfigWatch{func(config *routeConfig) {
+	}}, func() {
 
-	if agent.networkType != "invalid" {
-		t.Fatalf("Expected agent networkType to be invalid, was %s", agent.networkType)
+	})
+	valid := agent.cfgManager.OnFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	networkType := agent.cfgManager.NetworkType()
+	if networkType != "invalid" {
+		t.Fatalf("Expected agent networkType to be invalid, was %s", networkType)
 	}
 
-	if cfg.IsValid() {
+	if valid {
 		t.Fatalf("Expected route config to be invalid, was valid")
-	}
-	if len(cfg.kvServerList) != 0 {
-		t.Fatalf("Expected kvServerList to be empty, had %d items", len(cfg.kvServerList))
 	}
 }
 

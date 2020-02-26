@@ -30,7 +30,7 @@ type ObserveExCallback func(*ObserveResult, error)
 func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("ObserveEx", opts.TraceContext)
 
-	if agent.bucketType() != bktTypeCouchbase {
+	if agent.kvMux.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
 		return nil, errFeatureNotAvailable
 	}
@@ -129,7 +129,7 @@ type ObserveVbExCallback func(*ObserveVbResult, error)
 func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
 	tracer := agent.createOpTrace("ObserveVbEx", nil)
 
-	if agent.bucketType() != bktTypeCouchbase {
+	if agent.kvMux.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
 		return nil, errFeatureNotAvailable
 	}

@@ -16,7 +16,6 @@ import (
 )
 
 type agentConfig struct {
-	networkType          string
 	useMutationTokens    bool
 	useCompression       bool
 	useDurations         bool
@@ -43,27 +42,17 @@ type Agent struct {
 	tlsConfig      *tls.Config
 	initFn         memdInitFunc
 
-	closeNotify        chan struct{}
-	cccpLooperDoneSig  chan struct{}
-	httpLooperDoneSig  chan struct{}
-	gcccpLooperDoneSig chan struct{}
-	gcccpLooperStopSig chan struct{}
+	closeNotify chan struct{}
 
-	// Used exclusively for testing to overcome GOCBC-780. It allows a test to pause the cccp looper preventing
-	// unwanted requests from being sent to the mock once it has been setup for error map testing.
-	cccpLooperPauseSig chan bool
-
-	configLock  sync.Mutex
-	routingInfo routeDataPtr
-	kvErrorMap  kvErrorMapPtr
-	numVbuckets int
+	configLock sync.Mutex
+	kvErrorMap kvErrorMapPtr
 
 	tracer RequestTracer
 
 	serverFailuresLock sync.Mutex
 	serverFailures     map[string]time.Time
 
-	httpCli *http.Client
+	httpComponent *httpComponent
 
 	confHTTPRedialPeriod time.Duration
 	confHTTPRetryDelay   time.Duration
@@ -85,17 +74,21 @@ type Agent struct {
 	cidMgr *collectionIDManager
 
 	durabilityLevelStatus durabilityLevelStatus
-	clusterCapabilities   uint32
 	supportsCollections   bool
 
 	cachedClients       map[string]*memdClient
 	cachedClientsLock   sync.Mutex
 	cachedHTTPEndpoints []string
-	supportsGCCCP       bool
 
 	defaultRetryStrategy RetryStrategy
 
 	circuitBreakerConfig CircuitBreakerConfig
+
+	cfgManager       *configManager
+	pollerController configPollerController
+	kvMux            *kvMux
+	httpMux          *httpMux
+	clusterCapsMgr   *clusterCapabilitiesManager
 
 	agentConfig
 }
@@ -114,7 +107,7 @@ func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
 // Couchbase Server.  You must still specify authentication information
 // for any dispatched requests.
 func (agent *Agent) HTTPClient() *http.Client {
-	return agent.httpCli
+	return agent.httpComponent.cli
 }
 
 func (agent *Agent) getErrorMap() *kvErrorMap {
@@ -261,7 +254,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		auth:        config.Auth,
 		tlsConfig:   tlsConfig,
 		initFn:      initFn,
-		httpCli:     httpCli,
 		closeNotify: make(chan struct{}),
 		tracer:      tracer,
 
@@ -282,7 +274,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		circuitBreakerConfig:  config.CircuitBreakerConfig,
 
 		agentConfig: agentConfig{
-			networkType:          config.NetworkType,
 			useMutationTokens:    config.UseMutationTokens,
 			disableDecompression: config.DisableDecompression,
 			useCompression:       config.UseCompression,
@@ -292,9 +283,20 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			useDurations:         config.UseDurations,
 			noRootTraceSpans:     config.NoRootTraceSpans,
 		},
-		cccpLooperPauseSig: make(chan bool),
 	}
 	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
+	c.kvMux = newKVMux(c.maxQueueSize, c.kvPoolSize, c.slowDialMemdClient)
+	c.httpMux = newHTTPMux(c.circuitBreakerConfig)
+	c.clusterCapsMgr = newClusterCapabilitiesManager()
+	c.cfgManager = newConfigManager(
+		configManagerProperties{
+			NetworkType: config.NetworkType,
+			UseSSL:      config.UseTLS,
+		},
+		[]routeConfigWatch{c.kvMux.ApplyRoutingConfig, c.httpMux.ApplyRoutingConfig, c.clusterCapsMgr.UpdateClusterCapabilities},
+		c.onInvalidConfig,
+	)
+	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
 
 	connectTimeout := 60000 * time.Millisecond
 	if config.ConnectTimeout > 0 {
@@ -469,6 +471,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, deadline ti
 			agent.durabilityLevelStatus = durabilityLevelStatusUnsupported
 		}
 
+		// I feel like something else should own this.
 		logDebugf("Attempting to request CCCP configuration")
 		cfgBytes, err := syncCli.ExecGetClusterConfig(srvDeadlineTm)
 		if err != nil {
@@ -484,7 +487,7 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, deadline ti
 			continue
 		}
 
-		bk, err := parseBktConfig(cfgBytes, hostName)
+		bk, err := parseConfig(cfgBytes, hostName)
 		if err != nil {
 			logDebugf("Failed to parse cluster configuration %p/%s. %v", agent, thisHostPort, err)
 			agent.disconnectClient(client)
@@ -497,35 +500,23 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, deadline ti
 			break
 		}
 
-		routeCfg := agent.buildFirstRouteConfig(bk, thisHostPort)
-		logDebugf("Using network type %s for connections", agent.networkType)
-		if !routeCfg.IsValid() {
-			logDebugf("Configuration was deemed invalid %+v", routeCfg)
+		validCfg := agent.cfgManager.OnFirstRouteConfig(bk, thisHostPort)
+		if !validCfg {
 			agent.disconnectClient(client)
 			continue
 		}
 
-		agent.updateClusterCapabilities(bk)
 		logDebugf("Successfully connected agent %p to %s", agent, thisHostPort)
 
-		// Build some fake routing data, this is used to indicate that
-		//  client is "alive".  A nil routeData causes immediate shutdown.
-		agent.routingInfo.Update(nil, &routeData{
-			revID: -1,
-		})
+		agent.cacheClient(client)
 
-		agent.cacheClientNoLock(client)
+		cccpController := newCCCPConfigController(cccpPollerProperties{
+			confCccpMaxWait:    agent.confCccpMaxWait,
+			confCccpPollPeriod: agent.confCccpPollPeriod,
+		}, agent.kvMux, agent.cfgManager.OnNewConfig)
 
-		if routeCfg.vbMap != nil {
-			agent.numVbuckets = routeCfg.vbMap.NumVbuckets()
-		} else {
-			agent.numVbuckets = 0
-		}
-
-		agent.applyRoutingConfig(routeCfg)
-
-		agent.cccpLooperDoneSig = make(chan struct{})
-		go agent.cccpLooper()
+		go cccpController.DoLoop()
+		agent.pollerController = cccpController
 
 		return nil
 	}
@@ -535,8 +526,6 @@ func (agent *Agent) connectWithBucket(memdAddrs, httpAddrs []string, deadline ti
 
 func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, deadline time.Time) error {
 	logDebugf("Attempting to connect %p...", agent)
-
-	var routeCfg *routeConfig
 
 	for _, thisHostPort := range memdAddrs {
 		logDebugf("Trying server at %s for %p", thisHostPort, agent)
@@ -571,7 +560,7 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, deadline time.Tim
 			return err
 		} else if err != nil {
 			logDebugf("Bootstrap failed %p/%s! %v", agent, thisHostPort, err)
-			agent.cacheClientNoLock(client)
+			agent.cacheClient(client)
 			continue
 		}
 		logDebugf("Bootstrapped %p/%s", agent, thisHostPort)
@@ -595,35 +584,32 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, deadline time.Tim
 		cfgBytes, err := syncCli.ExecGetClusterConfig(srvDeadlineTm)
 		if err != nil {
 			logDebugf("Failed to retrieve CCCP config %p/%s. %v", agent, thisHostPort, err)
-			agent.cacheClientNoLock(client)
+			agent.cacheClient(client)
 			continue
 		}
 
 		hostName, err := hostFromHostPort(thisHostPort)
 		if err != nil {
 			logErrorf("Failed to parse CCCP source address %p/%s. %v", agent, thisHostPort, err)
-			agent.cacheClientNoLock(client)
+			agent.cacheClient(client)
 			continue
 		}
 
-		cfg, err := parseClusterConfig(cfgBytes, hostName)
+		cfg, err := parseConfig(cfgBytes, hostName)
 		if err != nil {
 			logDebugf("Failed to parse cluster configuration %p/%s. %v", agent, thisHostPort, err)
-			agent.cacheClientNoLock(client)
+			agent.cacheClient(client)
 			continue
 		}
 
-		routeCfg = agent.buildFirstRouteConfig(cfg, thisHostPort)
-		logDebugf("Using network type %s for connections", agent.networkType)
-		if !routeCfg.IsValid() {
-			logDebugf("Configuration was deemed invalid %+v", routeCfg)
+		validCfg := agent.cfgManager.OnFirstRouteConfig(cfg, thisHostPort)
+		if !validCfg {
 			agent.disconnectClient(client)
 			continue
 		}
 
-		agent.updateClusterCapabilities(cfg)
 		logDebugf("Successfully connected agent %p to %s", agent, thisHostPort)
-		agent.cacheClientNoLock(client)
+		agent.cacheClient(client)
 	}
 
 	if len(agent.cachedClients) == 0 {
@@ -635,29 +621,19 @@ func (agent *Agent) connectG3CP(memdAddrs, httpAddrs []string, deadline time.Tim
 	// In the case of G3CP we don't need to worry about connecting over HTTP as there's no bucket.
 	// If we've got cached clients then we made a connection and we want to use gcccp so no errors here.
 	agent.cachedHTTPEndpoints = httpAddrs
-	if routeCfg == nil {
+	if !agent.kvMux.SupportsGCCCP() {
 		// No error but we don't support GCCCP.
 		logDebugf("GCCCP unsupported, connections being held in trust.")
 		return nil
 	}
-	agent.supportsGCCCP = true
-	// Build some fake routing data, this is used to indicate that
-	//  client is "alive".  A nil routeData causes immediate shutdown.
-	agent.routingInfo.Update(nil, &routeData{
-		revID: -1,
-	})
 
-	if routeCfg.vbMap != nil {
-		agent.numVbuckets = routeCfg.vbMap.NumVbuckets()
-	} else {
-		agent.numVbuckets = 0
-	}
+	cccpController := newCCCPConfigController(cccpPollerProperties{
+		confCccpMaxWait:    agent.confCccpMaxWait,
+		confCccpPollPeriod: agent.confCccpPollPeriod,
+	}, agent.kvMux, agent.cfgManager.OnNewConfig)
 
-	agent.applyRoutingConfig(routeCfg)
-
-	agent.gcccpLooperDoneSig = make(chan struct{})
-	agent.gcccpLooperStopSig = make(chan struct{})
-	go agent.gcccpLooper()
+	go cccpController.DoLoop()
+	agent.pollerController = cccpController
 
 	return nil
 
@@ -670,13 +646,14 @@ func (agent *Agent) disconnectClient(client *memdClient) {
 	}
 }
 
-func (agent *Agent) cacheClientNoLock(client *memdClient) {
+func (agent *Agent) cacheClient(client *memdClient) {
+	agent.cachedClientsLock.Lock()
 	agent.cachedClients[client.Address()] = client
+	agent.cachedClientsLock.Unlock()
 }
 
 func (agent *Agent) tryStartHTTPLooper(httpAddrs []string) error {
 	signal := make(chan error, 1)
-	var routeCfg *routeConfig
 
 	var epList []string
 	for _, hostPort := range httpAddrs {
@@ -687,110 +664,65 @@ func (agent *Agent) tryStartHTTPLooper(httpAddrs []string) error {
 		}
 	}
 
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		agent.routingInfo.Update(nil, &routeData{
-			revID:      -1,
-			mgmtEpList: epList,
-		})
-	}
+	// We need to inject a fake config to jump start the http looper.
+	agent.httpMux.ApplyRoutingConfig(&routeConfig{
+		revID:      -1,
+		mgmtEpList: epList,
+	})
 
 	logDebugf("Starting HTTP looper! %v", epList)
-	agent.httpLooperDoneSig = make(chan struct{})
-	go agent.httpLooper(func(cfg *cfgBucket, srcServer string, err error) bool {
-		if err != nil {
-			signal <- err
-			return true
-		}
+	httpController := newHTTPConfigController(
+		agent.bucket(),
+		httpPollerProperties{
+			httpComponent:        agent.httpComponent,
+			confHTTPRetryDelay:   agent.confHTTPRetryDelay,
+			confHTTPRedialPeriod: agent.confHTTPRedialPeriod,
+		},
+		agent.httpMux,
+		agent.cfgManager.OnNewConfig,
+	)
 
-		agent.authHandler = agent.buildAuthHandler()
-
-		if agent.useCollections {
-			agent.supportsCollections = cfg.supports("collections")
-			if !agent.supportsCollections {
-				logDebugf("Collections disabled as unsupported")
+	go httpController.DoLoop(
+		func(cfg *cfgBucket, srcServer string, err error) bool {
+			if err != nil {
+				signal <- err
+				return true
 			}
-		} else {
-			agent.supportsCollections = false
-		}
 
-		if cfg.supports("syncreplication") {
-			agent.durabilityLevelStatus = durabilityLevelStatusSupported
-		} else {
-			agent.durabilityLevelStatus = durabilityLevelStatusUnsupported
-		}
+			agent.authHandler = agent.buildAuthHandler()
 
-		newRouteCfg := agent.buildFirstRouteConfig(cfg, srcServer)
-		if !newRouteCfg.IsValid() {
-			// Something is invalid about this config, keep trying
-			return false
-		}
+			if agent.useCollections {
+				agent.supportsCollections = cfg.supports("collections")
+				if !agent.supportsCollections {
+					logDebugf("Collections disabled as unsupported")
+				}
+			} else {
+				agent.supportsCollections = false
+			}
 
-		agent.updateClusterCapabilities(cfg)
-		routeCfg = newRouteCfg
-		signal <- nil
-		return true
-	})
+			if cfg.supports("syncreplication") {
+				agent.durabilityLevelStatus = durabilityLevelStatusSupported
+			} else {
+				agent.durabilityLevelStatus = durabilityLevelStatusUnsupported
+			}
+
+			validCfg := agent.cfgManager.OnFirstRouteConfig(cfg, srcServer)
+			if !validCfg {
+				// Something is invalid about this config, keep trying
+				return false
+			}
+
+			signal <- nil
+			return true
+		})
+	agent.pollerController = httpController
 
 	err := <-signal
 	if err != nil {
 		return err
 	}
 
-	if routeCfg.vbMap != nil {
-		agent.numVbuckets = routeCfg.vbMap.NumVbuckets()
-	} else {
-		agent.numVbuckets = 0
-	}
-
-	agent.applyRoutingConfig(routeCfg)
-
 	return nil
-}
-
-func (agent *Agent) buildFirstRouteConfig(config cfgObj, srcServer string) *routeConfig {
-	if agent.networkType != "" && agent.networkType != "auto" {
-		return buildRouteConfig(config, agent.IsSecure(), agent.networkType, true)
-	}
-
-	defaultRouteConfig := buildRouteConfig(config, agent.IsSecure(), "default", true)
-
-	// First we check if the source server is from the defaults list
-	srcInDefaultConfig := false
-	for _, endpoint := range defaultRouteConfig.kvServerList {
-		if endpoint == srcServer {
-			srcInDefaultConfig = true
-		}
-	}
-	for _, endpoint := range defaultRouteConfig.mgmtEpList {
-		if endpoint == srcServer {
-			srcInDefaultConfig = true
-		}
-	}
-	if srcInDefaultConfig {
-		agent.networkType = "default"
-		return defaultRouteConfig
-	}
-
-	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := buildRouteConfig(config, agent.IsSecure(), "external", true)
-	if externalRouteCfg.IsValid() {
-		agent.networkType = "external"
-		return externalRouteCfg
-	}
-
-	// If all else fails, default to the implicit default config
-	agent.networkType = "default"
-	return defaultRouteConfig
-}
-
-func (agent *Agent) updateConfig(cfg cfgObj) {
-	updated := agent.updateRoutingConfig(cfg)
-	if !updated {
-		return
-	}
-
-	agent.updateClusterCapabilities(cfg)
 }
 
 func (agent *Agent) getCachedClient(address string) *memdClient {
@@ -806,33 +738,21 @@ func (agent *Agent) getCachedClient(address string) *memdClient {
 	return cli
 }
 
+func (agent *Agent) onInvalidConfig() {
+	err := agent.Close()
+	if err != nil {
+		logErrorf("Invalid config caused agent close failure (%s)", err)
+	}
+}
+
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
-	agent.configLock.Lock()
-
-	// Clear the routingInfo so no new operations are performed
-	//   and retrieve the last active routing configuration
-	routingInfo := agent.routingInfo.Clear()
-	if routingInfo == nil {
-		agent.configLock.Unlock()
-		return errShutdown
-	}
+	routeCloseErr := agent.kvMux.Close()
+	agent.pollerController.Stop()
 
 	// Notify everyone that we are shutting down
 	close(agent.closeNotify)
-
-	// Shut down the client multiplexer which will close all its queues
-	// effectively causing all the clients to shut down.
-	muxCloseErr := routingInfo.clientMux.Close()
-
-	// Drain all the pipelines and error their requests, then
-	//  drain the dead queue and error those requests.
-	routingInfo.clientMux.Drain(func(req *memdQRequest) {
-		req.tryCallback(nil, errShutdown)
-	})
-
-	agent.configLock.Unlock()
 
 	agent.cachedClientsLock.Lock()
 	for _, cli := range agent.cachedClients {
@@ -847,24 +767,12 @@ func (agent *Agent) Close() error {
 	// Wait for our external looper goroutines to finish, note that if the
 	// specific looper wasn't used, it will be a nil value otherwise it
 	// will be an open channel till its closed to signal completion.
-	if agent.cccpLooperDoneSig != nil {
-		<-agent.cccpLooperDoneSig
-	}
-	if agent.gcccpLooperDoneSig != nil {
-		<-agent.gcccpLooperDoneSig
-	}
-	if agent.httpLooperDoneSig != nil {
-		<-agent.httpLooperDoneSig
-	}
+	<-agent.pollerController.Done()
 
 	// Close the transports so that they don't hold open goroutines.
-	if tsport, ok := agent.httpCli.Transport.(*http.Transport); ok {
-		tsport.CloseIdleConnections()
-	} else {
-		logDebugf("Could not close idle connections for transport")
-	}
+	agent.httpComponent.Close()
 
-	return muxCloseErr
+	return routeCloseErr
 }
 
 // IsSecure returns whether this client is connected via SSL.
@@ -874,133 +782,44 @@ func (agent *Agent) IsSecure() bool {
 
 // BucketUUID returns the UUID of the bucket we are connected to.
 func (agent *Agent) BucketUUID() string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return ""
-	}
-
-	return routingInfo.uuid
+	return agent.kvMux.ConfigUUID()
 }
 
 // KeyToVbucket translates a particular key to its assigned vbucket.
 func (agent *Agent) KeyToVbucket(key []byte) uint16 {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return 0
-	}
-
-	if routingInfo.vbMap == nil {
-		return 0
-	}
-
-	return routingInfo.vbMap.VbucketByKey(key)
+	return agent.kvMux.KeyToVbucket(key)
 }
 
 // KeyToServer translates a particular key to its assigned server index.
 func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return -1
-	}
-
-	if routingInfo.vbMap != nil {
-		serverIdx, err := routingInfo.vbMap.NodeByKey(key, replicaIdx)
-		if err != nil {
-			return -1
-		}
-
-		return serverIdx
-	}
-
-	if routingInfo.ketamaMap != nil {
-		serverIdx, err := routingInfo.ketamaMap.NodeByKey(key)
-		if err != nil {
-			return -1
-		}
-
-		return serverIdx
-	}
-
-	return -1
+	return agent.kvMux.KeyToServer(key, replicaIdx)
 }
 
 // VbucketToServer returns the server index for a particular vbucket.
 func (agent *Agent) VbucketToServer(vbID uint16, replicaIdx uint32) int {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return -1
-	}
-
-	if routingInfo.vbMap == nil {
-		return -1
-	}
-
-	serverIdx, err := routingInfo.vbMap.NodeByVbucket(vbID, replicaIdx)
-	if err != nil {
-		return -1
-	}
-
-	return serverIdx
+	return agent.kvMux.VbucketToServer(vbID, replicaIdx)
 }
 
 // NumVbuckets returns the number of VBuckets configured on the
 // connected cluster.
 func (agent *Agent) NumVbuckets() int {
-	return agent.numVbuckets
-}
-
-func (agent *Agent) bucketType() bucketType {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return bktTypeInvalid
-	}
-
-	return routingInfo.bktType
+	return agent.kvMux.NumVBuckets()
 }
 
 // NumReplicas returns the number of replicas configured on the
 // connected cluster.
 func (agent *Agent) NumReplicas() int {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return 0
-	}
-
-	if routingInfo.vbMap == nil {
-		return 0
-	}
-
-	return routingInfo.vbMap.NumReplicas()
+	return agent.kvMux.NumReplicas()
 }
 
 // NumServers returns the number of servers accessible for K/V.
 func (agent *Agent) NumServers() int {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return 0
-	}
-	return routingInfo.clientMux.NumPipelines()
+	return agent.kvMux.NumPipelines()
 }
 
 // VbucketsOnServer returns the list of VBuckets for a server.
 func (agent *Agent) VbucketsOnServer(index int) []uint16 {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-
-	if routingInfo.vbMap == nil {
-		return nil
-	}
-
-	vbList := routingInfo.vbMap.VbucketsByServer(0)
-
-	if len(vbList) <= index {
-		// Invalid server index
-		return nil
-	}
-
-	return vbList[index]
+	return agent.kvMux.VbucketsOnServer(index)
 }
 
 // ClientID returns the unique id for this agent
@@ -1011,51 +830,31 @@ func (agent *Agent) ClientID() string {
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-	return routingInfo.capiEpList
+	return agent.httpMux.CapiEps()
 }
 
 // MgmtEps returns all the available endpoints for performing
 // management queries.
 func (agent *Agent) MgmtEps() []string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-	return routingInfo.mgmtEpList
+	return agent.httpMux.MgmtEps()
 }
 
 // N1qlEps returns all the available endpoints for performing
 // N1QL queries.
 func (agent *Agent) N1qlEps() []string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-	return routingInfo.n1qlEpList
+	return agent.httpMux.N1qlEps()
 }
 
 // FtsEps returns all the available endpoints for performing
 // FTS queries.
 func (agent *Agent) FtsEps() []string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-	return routingInfo.ftsEpList
+	return agent.httpMux.FtsEps()
 }
 
 // CbasEps returns all the available endpoints for performing
 // CBAS queries.
 func (agent *Agent) CbasEps() []string {
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		return nil
-	}
-	return routingInfo.cbasEpList
+	return agent.httpMux.CbasEps()
 }
 
 // HasCollectionsSupport verifies whether or not collections are available on the agent.
@@ -1065,7 +864,7 @@ func (agent *Agent) HasCollectionsSupport() bool {
 
 // UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
 func (agent *Agent) UsingGCCCP() bool {
-	return agent.supportsGCCCP
+	return agent.kvMux.SupportsGCCCP()
 }
 
 func (agent *Agent) bucket() string {
@@ -1081,183 +880,172 @@ func (agent *Agent) setBucket(bucket string) {
 }
 
 // SelectBucket performs a select bucket operation against the cluster.
-func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
-	if agent.bucket() != "" {
-		return errBucketAlreadySelected
-	}
-
-	logDebugf("Selecting on %p", agent)
-
-	// Stop the gcccp looper if it's running, if we connected to a node but gcccp wasn't supported then the looper
-	// won't be running.
-	if agent.gcccpLooperStopSig != nil {
-		agent.gcccpLooperStopSig <- struct{}{}
-		<-agent.gcccpLooperDoneSig
-		logDebugf("GCCCP poller halted for %p", agent)
-	}
-
-	agent.setBucket(bucketName)
-	var routeCfg *routeConfig
-
-	if agent.UsingGCCCP() {
-		routingInfo := agent.routingInfo.Get()
-		if routingInfo != nil {
-			// We should only get here if cachedClients was empty.
-			for i := 0; i < routingInfo.clientMux.NumPipelines(); i++ {
-				// Each pipeline should only have 1 connection whilst using GCCCP.
-				pipeline := routingInfo.clientMux.GetPipeline(i)
-				client := syncClient{
-					client: &memdPipelineSenderWrap{
-						pipeline: pipeline,
-					},
-				}
-				logDebugf("Selecting bucket against pipeline %p/%s", pipeline, pipeline.Address())
-
-				_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
-				if err != nil {
-					// This means that we can't connect to the bucket because something is invalid so bail.
-					if errors.Is(err, ErrAuthenticationFailure) {
-						agent.setBucket("")
-						return err
-					}
-
-					// Otherwise close the pipeline and let the later config refresh create a new set of connections to this
-					// node.
-					logDebugf("Shutting down pipeline %s/%p after failing to select bucket", pipeline.Address(), pipeline)
-					err = pipeline.Close()
-					if err != nil {
-						logDebugf("Failed to shutdown pipeline %s/%p (%v)", pipeline.Address(), pipeline, err)
-					}
-					continue
-				}
-				logDebugf("Bucket selected successfully against pipeline %p/%s", pipeline, pipeline.Address())
-
-				//if routeCfg == nil {
-				cccpBytes, err := client.ExecGetClusterConfig(deadline)
-				if err != nil {
-					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-					continue
-				}
-
-				hostName, err := hostFromHostPort(pipeline.Address())
-				if err != nil {
-					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-					continue
-				}
-
-				bk, err := parseBktConfig(cccpBytes, hostName)
-				if err != nil {
-					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-					continue
-				}
-
-				routeCfg = buildRouteConfig(bk, agent.IsSecure(), agent.networkType, false)
-				if !routeCfg.IsValid() {
-					logDebugf("Configuration was deemed invalid %+v", routeCfg)
-					routeCfg = nil
-					continue
-				}
-				//}
-			}
-		}
-	} else {
-		// We don't need to keep the lock on this, if we have cached clients then we don't support gcccp so no pipelines are running.
-		agent.cachedClientsLock.Lock()
-		clients := agent.cachedClients
-		agent.cachedClientsLock.Unlock()
-
-		for _, cli := range clients {
-			// waitCh := make(chan error)
-			client := syncClient{
-				client: cli,
-			}
-
-			logDebugf("Selecting bucket against client %p/%s", cli, cli.Address())
-
-			_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
-			if err != nil {
-				// This means that we can't connect to the bucket because something is invalid so bail.
-				if errors.Is(err, ErrAuthenticationFailure) {
-					agent.setBucket("")
-					return err
-				}
-
-				// Otherwise keep the client around and it'll get used for pipeline client later, it might connect correctly
-				// later.
-				continue
-			}
-			logDebugf("Bucket selected successfully against client %p/%s", cli, cli.Address())
-
-			//if routeCfg == nil {
-			cccpBytes, err := client.ExecGetClusterConfig(deadline)
-			if err != nil {
-				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-				continue
-			}
-
-			hostName, err := hostFromHostPort(cli.Address())
-			if err != nil {
-				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-				continue
-			}
-
-			bk, err := parseBktConfig(cccpBytes, hostName)
-			if err != nil {
-				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-				continue
-			}
-
-			routeCfg = agent.buildFirstRouteConfig(bk, cli.Address())
-			if !routeCfg.IsValid() {
-				logDebugf("Configuration was deemed invalid %+v", routeCfg)
-				routeCfg = nil
-				continue
-			}
-			//}
-		}
-	}
-
-	if routeCfg == nil || !routeCfg.IsValid() {
-		logDebugf("No valid route config created, starting HTTP looper.")
-		// If we failed to get a routeCfg then try the http looper instead, this will be the case for memcached buckets.
-		err := agent.tryStartHTTPLooper(agent.cachedHTTPEndpoints)
-		if err != nil {
-			agent.setBucket("")
-			return err
-		}
-		return nil
-	}
-
-	routingInfo := agent.routingInfo.Get()
-	if routingInfo == nil {
-		// Build some fake routing data, this is used to indicate that
-		// client is "alive".  A nil routeData causes immediate shutdown.
-		// If we don't support GCCP then we could hit this.
-		agent.routingInfo.Update(nil, &routeData{
-			revID: -1,
-		})
-	}
-
-	// We need to update the numVbuckets as previously they would have been 0 even if we had been gcccp looping
-	if routeCfg.vbMap != nil {
-		agent.numVbuckets = routeCfg.vbMap.NumVbuckets()
-	} else {
-		agent.numVbuckets = 0
-	}
-
-	agent.applyRoutingConfig(routeCfg)
-
-	logDebugf("Select bucket completed, starting CCCP looper.")
-
-	agent.cccpLooperDoneSig = make(chan struct{})
-	go agent.cccpLooper()
-	return nil
-}
-
-func (agent *Agent) newMemdClientMux(hostPorts []string) *memdClientMux {
-	if agent.bucket() == "" {
-		return newMemdClientMux(hostPorts, 1, agent.maxQueueSize, agent.slowDialMemdClient)
-	}
-
-	return newMemdClientMux(hostPorts, agent.kvPoolSize, agent.maxQueueSize, agent.slowDialMemdClient)
-}
+// func (agent *Agent) SelectBucket(bucketName string, deadline time.Time) error {
+// 	if agent.bucket() != "" {
+// 		return errBucketAlreadySelected
+// 	}
+//
+// 	logDebugf("Selecting on %p", agent)
+//
+// 	// Stop the cccp looper if it's running, if we connected to a node but gcccp wasn't supported then the looper
+// 	// won't be running.
+// 	agent.pollerController.StopLooper()
+// 	doneSig := agent.pollerController.Done()
+// 	if doneSig != nil {
+// 		<-doneSig
+// 		logDebugf("GCCCP poller halted for %p", agent)
+// 	}
+//
+// 	agent.setBucket(bucketName)
+// 	var routeCfg *routeConfig
+//
+// 	if agent.UsingGCCCP() {
+// 		routingInfo := agent.routingInfo.Get()
+// 		if routingInfo != nil {
+// 			// We should only Get here if cachedClients was empty.
+// 			for i := 0; i < agent.NumPipelines(); i++ {
+// 				// Each pipeline should only have 1 connection whilst using GCCCP.
+// 				pipeline := agent.getClientMux().GetPipeline(i)
+// 				client := syncClient{
+// 					client: &memdPipelineSenderWrap{
+// 						pipeline: pipeline,
+// 					},
+// 				}
+// 				logDebugf("Selecting bucket against pipeline %p/%s", pipeline, pipeline.Address())
+//
+// 				_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
+// 				if err != nil {
+// 					// This means that we can't connect to the bucket because something is invalid so bail.
+// 					if errors.Is(err, ErrAuthenticationFailure) {
+// 						agent.setBucket("")
+// 						return err
+// 					}
+//
+// 					// Otherwise close the pipeline and let the later config refresh create a new set of connections to this
+// 					// node.
+// 					logDebugf("Shutting down pipeline %s/%p after failing to select bucket", pipeline.Address(), pipeline)
+// 					err = pipeline.Close()
+// 					if err != nil {
+// 						logDebugf("Failed to shutdown pipeline %s/%p (%v)", pipeline.Address(), pipeline, err)
+// 					}
+// 					continue
+// 				}
+// 				logDebugf("Bucket selected successfully against pipeline %p/%s", pipeline, pipeline.Address())
+//
+// 				//if routeCfg == nil {
+// 				cccpBytes, err := client.ExecGetClusterConfig(deadline)
+// 				if err != nil {
+// 					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+// 					continue
+// 				}
+//
+// 				hostName, err := hostFromHostPort(pipeline.Address())
+// 				if err != nil {
+// 					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+// 					continue
+// 				}
+//
+// 				bk, err := parseConfig(cccpBytes, hostName)
+// 				if err != nil {
+// 					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+// 					continue
+// 				}
+//
+// 				routeCfg = buildRouteConfig(bk, agent.IsSecure(), agent.networkType, false)
+// 				if !routeCfg.IsValid() {
+// 					logDebugf("Configuration was deemed invalid %+v", routeCfg)
+// 					routeCfg = nil
+// 					continue
+// 				}
+// 				//}
+// 			}
+// 		}
+// 	} else {
+// 		// We don't need to keep the lock on this, if we have cached clients then we don't support gcccp so no pipelines are running.
+// 		agent.cachedClientsLock.Lock()
+// 		clients := agent.cachedClients
+// 		agent.cachedClientsLock.Unlock()
+//
+// 		for _, cli := range clients {
+// 			// waitCh := make(chan error)
+// 			client := syncClient{
+// 				client: cli,
+// 			}
+//
+// 			logDebugf("Selecting bucket against client %p/%s", cli, cli.Address())
+//
+// 			_, err := client.doBasicOp(cmdSelectBucket, []byte(bucketName), nil, nil, deadline)
+// 			if err != nil {
+// 				// This means that we can't connect to the bucket because something is invalid so bail.
+// 				if errors.Is(err, ErrAuthenticationFailure) {
+// 					agent.setBucket("")
+// 					return err
+// 				}
+//
+// 				// Otherwise keep the client around and it'll Get used for pipeline client later, it might connect correctly
+// 				// later.
+// 				continue
+// 			}
+// 			logDebugf("Bucket selected successfully against client %p/%s", cli, cli.Address())
+//
+// 			//if routeCfg == nil {
+// 			cccpBytes, err := client.ExecGetClusterConfig(deadline)
+// 			if err != nil {
+// 				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+// 				continue
+// 			}
+//
+// 			hostName, err := hostFromHostPort(cli.Address())
+// 			if err != nil {
+// 				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+// 				continue
+// 			}
+//
+// 			bk, err := parseConfig(cccpBytes, hostName)
+// 			if err != nil {
+// 				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+// 				continue
+// 			}
+//
+// 			routeCfg = agent.cfgManager.BuildFirstRouteConfig(bk, cli.Address())
+// 			if !routeCfg.IsValid() {
+// 				logDebugf("Configuration was deemed invalid %+v", routeCfg)
+// 				routeCfg = nil
+// 				continue
+// 			}
+// 			//}
+// 		}
+// 	}
+//
+// 	if routeCfg == nil || !routeCfg.IsValid() {
+// 		logDebugf("No valid route config created, starting HTTP looper.")
+// 		// If we failed to Get a routeCfg then try the http looper instead, this will be the case for memcached buckets.
+// 		err := agent.tryStartHTTPLooper(agent.cachedHTTPEndpoints)
+// 		if err != nil {
+// 			agent.setBucket("")
+// 			return err
+// 		}
+// 		return nil
+// 	}
+//
+// 	routingInfo := agent.routingInfo.Get()
+// 	if routingInfo == nil {
+// 		// Build some fake routing data, this is used to indicate that
+// 		// client is "alive".  A nil routeData causes immediate shutdown.
+// 		// If we don't support GCCP then we could hit this.
+// 		agent.routingInfo.Update(nil, &routeData{
+// 			revID: -1,
+// 		})
+// 	}
+//
+// 	agent.applyRoutingConfig(routeCfg)
+//
+// 	logDebugf("Select bucket completed, starting CCCP looper.")
+//
+// 	agent.pollerController.StartCCCPLooper(cccpPollerProperties{
+// 		closeNotify:        agent.closeNotify,
+// 		confCccpMaxWait:    agent.confCccpMaxWait,
+// 		confCccpPollPeriod: agent.confCccpPollPeriod,
+// 	}, agent.cfgManager.OnNewConfig, agent.routingInfo.Get)
+// 	return nil
+// }

@@ -509,7 +509,7 @@ const (
 	//DcpStreamAddFlagDiskOnly indicates that stream should only send items if they are on disk
 	DcpStreamAddFlagDiskOnly = DcpStreamAddFlag(0x02)
 
-	// DcpStreamAddFlagLatest indicates this stream wants to get data up to the latest seqno.
+	// DcpStreamAddFlagLatest indicates this stream wants to Get data up to the latest seqno.
 	DcpStreamAddFlagLatest = DcpStreamAddFlag(0x04)
 
 	// DcpStreamAddFlagActiveOnly indicates this stream should only connect to an active vbucket.

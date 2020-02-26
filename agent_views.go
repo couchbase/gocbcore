@@ -137,7 +137,7 @@ func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error
 	view := opts.ViewName
 
 	for {
-		resp, err := agent.execHTTPRequest(ireq)
+		resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

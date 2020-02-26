@@ -282,7 +282,7 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	cid.lock.Lock()
 	req.CollectionID = cid.id
 	cid.lock.Unlock()
-	return cid.agent.dispatchDirect(req)
+	return cid.agent.kvMux.DispatchDirect(req)
 }
 
 func (cid *collectionIDCache) rejectRequest(req *memdQRequest) error {
@@ -313,7 +313,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 			cid.opQueue.Close()
 			cid.opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = collectionID
-				cid.agent.requeueDirect(request, false)
+				cid.agent.kvMux.RequeueDirect(request, false)
 			})
 		},
 	)
@@ -354,7 +354,7 @@ func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 		if !(noCollection || defaultCollection) || collectionIDPresent {
 			return errCollectionsUnsupported
 		}
-		err := cidMgr.agent.dispatchDirect(req)
+		err := cidMgr.agent.kvMux.DispatchDirect(req)
 		if err != nil {
 			return err
 		}
@@ -363,7 +363,7 @@ func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 	}
 
 	if noCollection || defaultCollection || collectionIDPresent {
-		err := cidMgr.agent.dispatchDirect(req)
+		err := cidMgr.agent.kvMux.DispatchDirect(req)
 		if err != nil {
 			return err
 		}
