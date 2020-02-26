@@ -77,11 +77,6 @@ type memdQRequest struct {
 	lastDispatchedFrom string
 	lastConnectionID   string
 
-	// If the request is in the process of being retried then this is the function
-	// to call to stop the retry wait for this request.
-	cancelRetryTimerFunc func() bool
-	cancelTimerLock      sync.Mutex
-
 	RootTraceContext RequestSpanContext
 	cmdTraceSpan     RequestSpan
 	netTraceSpan     RequestSpan
@@ -127,12 +122,6 @@ func (req *memdQRequest) RemoteEndpoint() string {
 
 func (req *memdQRequest) ConnectionID() string {
 	return req.lastConnectionID
-}
-
-func (req *memdQRequest) setCancelRetry(cancelFunc func() bool) {
-	req.cancelTimerLock.Lock()
-	req.cancelRetryTimerFunc = cancelFunc
-	req.cancelTimerLock.Unlock()
 }
 
 func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
@@ -189,14 +178,6 @@ func (req *memdQRequest) internalCancel() bool {
 		req.processingLock.Unlock()
 		return false
 	}
-
-	req.cancelTimerLock.Lock()
-	if req.cancelRetryTimerFunc != nil {
-		// It doesn't really matter if this succeeds or fails but we should try to do it anyway.
-		// At worst the request will be requeued and then rejected.
-		req.cancelRetryTimerFunc()
-	}
-	req.cancelTimerLock.Unlock()
 
 	queuedWith := (*memdOpQueue)(atomic.LoadPointer(&req.queuedWith))
 	if queuedWith != nil {
