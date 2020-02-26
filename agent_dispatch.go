@@ -125,6 +125,9 @@ func (agent *Agent) enhanceKvError(err error, resp *memdQResponse, req *memdQReq
 
 		enhErr.RetryReasons = req.retryReasons
 		enhErr.RetryAttempts = req.retryCount
+		enhErr.LastDispatchedTo = req.lastDispatchedTo
+		enhErr.LastDispatchedFrom = req.lastDispatchedFrom
+		enhErr.LastConnectionID = req.lastConnectionID
 	}
 
 	if resp != nil {
