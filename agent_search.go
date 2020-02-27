@@ -182,7 +182,7 @@ ExecuteLoop:
 			}
 		}
 
-		streamer, err := newQueryStreamer(resp.Body, "results")
+		streamer, err := newQueryStreamer(resp.Body, "hits")
 		if err != nil {
 			return nil, wrapSearchError(ireq, resp, indexName, query, err)
 		}
