@@ -273,14 +273,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		circuitBreakerConfig:  config.CircuitBreakerConfig,
 
 		agentConfig: agentConfig{
-			networkType:         config.NetworkType,
-			useMutationTokens:   config.UseMutationTokens,
-			useCompression:      config.UseCompression,
-			useCollections:      config.UseCollections,
-			compressionMinSize:  32,
-			compressionMinRatio: 0.83,
-			useDurations:        config.UseDurations,
-			noRootTraceSpans:    config.NoRootTraceSpans,
+			networkType:          config.NetworkType,
+			useMutationTokens:    config.UseMutationTokens,
+			disableDecompression: config.DisableDecompression,
+			useCompression:       config.UseCompression,
+			useCollections:       config.UseCollections,
+			compressionMinSize:   32,
+			compressionMinRatio:  0.83,
+			useDurations:         config.UseDurations,
+			noRootTraceSpans:     config.NoRootTraceSpans,
 		},
 		cccpLooperPauseSig: make(chan bool),
 	}
