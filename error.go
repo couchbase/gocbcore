@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"
@@ -758,4 +759,27 @@ func ErrorCause(err error) error {
 		return newSimpleError(typedErr.Code)
 	}
 	return err
+}
+
+func isAccessError(err error) bool {
+	if IsErrorStatus(err, StatusAuthError) ||
+		IsErrorStatus(err, StatusAccessError) {
+		return true
+	}
+	switch err.(type) {
+	case x509.UnknownAuthorityError:
+		return true
+	case x509.CertificateInvalidError:
+		return true
+	case x509.ConstraintViolationError:
+		return true
+	case x509.InsecureAlgorithmError:
+		return true
+	case x509.HostnameError:
+		return true
+	case x509.SystemRootsError:
+		return true
+	default:
+		return false
+	}
 }
