@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"errors"
 	"io"
 )
@@ -182,13 +183,37 @@ var (
 	ErrDesignDocumentNotFound = errors.New("design document not found")
 )
 
-// Management Error Definitions RFC#58@15
-var (
-	ErrCollectionExists   = errors.New("collection exists")
-	ErrScopeExists        = errors.New("scope exists")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrGroupNotFound      = errors.New("group not found")
-	ErrBucketExists       = errors.New("bucket exists")
-	ErrUserExists         = errors.New("user exists")
-	ErrBucketNotFlushable = errors.New("bucket not flushable")
-)
+// ErrorCause returns an error object representing the underlying cause
+// for an error (without detailed information).
+func ErrorCause(err error) error {
+	if typedErr, ok := err.(*KvError); ok {
+		if ok, err := findMemdError(typedErr.Code); ok {
+			return err
+		}
+		return newSimpleError(typedErr.Code)
+	}
+	return err
+}
+
+func isAccessError(err error) bool {
+	if IsErrorStatus(err, StatusAuthError) ||
+		IsErrorStatus(err, StatusAccessError) {
+		return true
+	}
+	switch err.(type) {
+	case x509.UnknownAuthorityError:
+		return true
+	case x509.CertificateInvalidError:
+		return true
+	case x509.ConstraintViolationError:
+		return true
+	case x509.InsecureAlgorithmError:
+		return true
+	case x509.HostnameError:
+		return true
+	case x509.SystemRootsError:
+		return true
+	default:
+		return false
+	}
+}

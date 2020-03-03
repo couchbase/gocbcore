@@ -344,6 +344,84 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		if config.ZombieLoggerSampleSize > 0 {
 			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
 		}
+		// zombieOps must have a static capacity for its lifetime, the capacity should
+		// never be altered so that it is consistent across the zombieLogger and
+		// recordZombieResponse.
+		c.zombieOps = make([]*zombieLogEntry, 0, zombieLoggerSampleSize)
+		go c.zombieLogger(zombieLoggerInterval, zombieLoggerSampleSize)
+	}
+
+	return c, nil
+}
+
+func (agent *Agent) connect(memdAddrs, httpAddrs []string, deadline time.Time) error {
+	logDebugf("Attempting to connect...")
+
+	for _, thisHostPort := range memdAddrs {
+		logDebugf("Trying server at %s", thisHostPort)
+
+		srvDeadlineTm := time.Now().Add(agent.serverConnectTimeout)
+		if srvDeadlineTm.After(deadline) {
+			srvDeadlineTm = deadline
+		}
+
+		logDebugf("Trying to connect")
+		client, err := agent.dialMemdClient(thisHostPort)
+		if isAccessError(err) {
+			return err
+		} else if err != nil {
+			logDebugf("Connecting failed! %v", err)
+			continue
+		}
+
+		disconnectClient := func() {
+			err := client.Close()
+			if err != nil {
+				logErrorf("Failed to shut down client connection (%s)", err)
+			}
+		}
+
+		syncCli := syncClient{
+			client: client,
+		}
+
+		logDebugf("Attempting to request CCCP configuration")
+		cccpBytes, err := syncCli.ExecCccpRequest(srvDeadlineTm)
+		if err != nil {
+			logDebugf("Failed to retrieve CCCP config. %v", err)
+			disconnectClient()
+			continue
+		}
+
+		hostName, err := hostFromHostPort(thisHostPort)
+		if err != nil {
+			logErrorf("Failed to parse CCCP source address. %v", err)
+			disconnectClient()
+			continue
+		}
+
+		bk, err := parseConfig(cccpBytes, hostName)
+		if err != nil {
+			logDebugf("Failed to parse CCCP configuration. %v", err)
+			disconnectClient()
+			continue
+		}
+
+		if !bk.supportsCccp() {
+			logDebugf("Bucket does not support CCCP")
+			disconnectClient()
+			break
+		}
+
+		routeCfg := agent.buildFirstRouteConfig(bk, thisHostPort)
+		logDebugf("Using network type %s for connections", agent.networkType)
+		if !routeCfg.IsValid() {
+			logDebugf("Configuration was deemed invalid %+v", routeCfg)
+			disconnectClient()
+			continue
+		}
+
+		logDebugf("Successfully connected")
 
 		c.zombieLogger = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
 		go c.zombieLogger.Start()
