@@ -25,19 +25,18 @@ type memdPipeline struct {
 	breakerCfg  CircuitBreakerConfig
 }
 
-func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn, breakerCfg CircuitBreakerConfig) *memdPipeline {
+func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
 	return &memdPipeline{
 		address:     address,
 		getClientFn: getClientFn,
 		maxClients:  maxClients,
 		maxItems:    maxItems,
 		queue:       newMemdOpQueue(),
-		breakerCfg:  breakerCfg,
 	}
 }
 
 func newDeadPipeline(maxItems int) *memdPipeline {
-	return newPipeline("", 0, maxItems, nil, CircuitBreakerConfig{})
+	return newPipeline("", 0, maxItems, nil)
 }
 
 func (pipeline *memdPipeline) debugString() string {

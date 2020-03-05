@@ -41,6 +41,7 @@ type memdClient struct {
 	features              []HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
+	breaker               circuitBreaker
 }
 
 type dcpBuffer struct {
@@ -49,13 +50,20 @@ type dcpBuffer struct {
 	isInternal bool
 }
 
-func newMemdClient(parent *Agent, conn memdConn) *memdClient {
+func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig) *memdClient {
 	client := memdClient{
 		parent:      parent,
 		conn:        conn,
 		closeNotify: make(chan bool),
 		connID:      parent.clientID + "/" + formatCbUID(randomCbUID()),
 	}
+
+	if breakerCfg.Enabled {
+		client.breaker = newLazyCircuitBreaker(breakerCfg, client.sendCanary)
+	} else {
+		client.breaker = newNoopCircuitBreaker()
+	}
+
 	client.run()
 	return &client
 }
@@ -130,7 +138,7 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
 	return true
 }
 
-func (client *memdClient) CancelRequest(req *memdQRequest) bool {
+func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 	client.lock.Lock()
 	defer client.lock.Unlock()
 
@@ -144,10 +152,28 @@ func (client *memdClient) CancelRequest(req *memdQRequest) bool {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
+	if client.breaker.CompletionCallback(err) {
+		client.breaker.MarkSuccessful()
+	} else {
+		client.breaker.MarkFailure()
+	}
+
 	return removed
 }
 
 func (client *memdClient) SendRequest(req *memdQRequest) error {
+	if !client.breaker.AllowsRequest() {
+		logSchedf("Circuit breaker interrupting request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
+
+		req.Cancel(errCircuitBreakerOpen)
+
+		return nil
+	}
+
+	return client.internalSendRequest(req)
+}
+
+func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 	addSuccess := client.takeRequestOwnership(req)
 	if !addSuccess {
 		return errRequestCanceled
@@ -175,7 +201,7 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 	err := client.conn.WritePacket(packet)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
-		client.CancelRequest(req)
+		client.CancelRequest(req, err)
 		return err
 	}
 
@@ -230,8 +256,10 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		err = getKvStatusCodeError(resp.Status)
 	}
 
-	if req.onCompletion != nil {
-		req.onCompletion(err)
+	if client.breaker.CompletionCallback(err) {
+		client.breaker.MarkSuccessful()
+	} else {
+		client.breaker.MarkFailure()
 	}
 
 	if client.parent == nil {
@@ -411,4 +439,52 @@ func (client *memdClient) Close() error {
 	client.lock.Unlock()
 
 	return client.conn.Close()
+}
+
+func (client *memdClient) sendCanary() {
+	errChan := make(chan error)
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		errChan <- err
+	}
+
+	req := &memdQRequest{
+		memdPacket: memdPacket{
+			Magic:    reqMagic,
+			Opcode:   cmdNoop,
+			Datatype: 0,
+			Cas:      0,
+			Key:      nil,
+			Value:    nil,
+		},
+		Callback:      handler,
+		RetryStrategy: newFailFastRetryStrategy(),
+	}
+
+	logDebugf("Sending NOOP request for %p/%s", client, client.Address())
+	err := client.internalSendRequest(req)
+	if err != nil {
+		client.breaker.MarkFailure()
+	}
+
+	timer := AcquireTimer(client.breaker.CanaryTimeout())
+	select {
+	case <-timer.C:
+		if !req.internalCancel(errRequestCanceled) {
+			err := <-errChan
+			if err == nil {
+				logDebugf("NOOP request successful for %p/%s", client, client.Address())
+				client.breaker.MarkSuccessful()
+			} else {
+				logDebugf("NOOP request failed for %p/%s", client, client.Address())
+				client.breaker.MarkFailure()
+			}
+		}
+		client.breaker.MarkFailure()
+	case err := <-errChan:
+		if err == nil {
+			client.breaker.MarkSuccessful()
+		} else {
+			client.breaker.MarkFailure()
+		}
+	}
 }

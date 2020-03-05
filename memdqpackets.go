@@ -83,8 +83,6 @@ type memdQRequest struct {
 
 	CollectionName string
 	ScopeName      string
-
-	onCompletion func(err error)
 }
 
 func (req *memdQRequest) RetryAttempts() uint32 {
@@ -170,7 +168,7 @@ func (req *memdQRequest) isCancelled() bool {
 	return atomic.LoadUint32(&req.isCompleted) != 0
 }
 
-func (req *memdQRequest) internalCancel() bool {
+func (req *memdQRequest) internalCancel(err error) bool {
 	req.processingLock.Lock()
 
 	if atomic.SwapUint32(&req.isCompleted, 1) != 0 {
@@ -186,11 +184,7 @@ func (req *memdQRequest) internalCancel() bool {
 
 	waitingIn := (*memdClient)(atomic.LoadPointer(&req.waitingIn))
 	if waitingIn != nil {
-		waitingIn.CancelRequest(req)
-	}
-
-	if req.onCompletion != nil {
-		req.onCompletion(errRequestCanceled)
+		waitingIn.CancelRequest(req, err)
 	}
 
 	req.owner.cancelReqTrace(req, errRequestCanceled)
@@ -202,7 +196,12 @@ func (req *memdQRequest) internalCancel() bool {
 func (req *memdQRequest) Cancel(err error) {
 	// Try to perform the cancellation, if it succeeds, we call the
 	// callback immediately on the users behalf.
-	if req.internalCancel() {
+	if req.internalCancel(err) {
+		// Requests that originate from syncclient don't have an owner so just fail them.
+		if req.owner == nil {
+			req.Callback(nil, req, err)
+			return
+		}
 		shortCircuited, routeErr := req.owner.handleOpRoutingResp(nil, req, err)
 		if !shortCircuited {
 			req.Callback(nil, req, routeErr)

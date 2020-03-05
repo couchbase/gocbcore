@@ -13,23 +13,14 @@ type memdPipelineClient struct {
 	consumer  *memdOpConsumer
 	lock      sync.Mutex
 	closedSig chan struct{}
-	breaker   circuitBreaker
 }
 
 func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
-	client := &memdPipelineClient{
+	return &memdPipelineClient{
 		parent:    parent,
 		address:   parent.address,
 		closedSig: make(chan struct{}),
 	}
-
-	if parent.breakerCfg.Enabled {
-		client.breaker = newLazyCircuitBreaker(parent.breakerCfg, client.sendCanary)
-	} else {
-		client.breaker = newNoopCircuitBreaker()
-	}
-
-	return client
 }
 
 func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
@@ -148,28 +139,6 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 			continue
 		}
 
-		if !pipecli.breaker.AllowsRequest() {
-			client.parent.stopCmdTrace(req)
-
-			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, errCircuitBreakerOpen)
-			if shortCircuited {
-				continue
-			}
-
-			req.tryCallback(nil, routeErr)
-
-			// Keep looping, there may be more requests and those might be able to send
-			continue
-		}
-
-		req.onCompletion = func(err error) {
-			if pipecli.breaker.CompletionCallback(err) {
-				pipecli.breaker.MarkSuccessful()
-			} else {
-				pipecli.breaker.MarkFailure()
-			}
-		}
-
 		err := client.SendRequest(req)
 		if err != nil {
 			logDebugf("Pipeline client `%s/%p` encountered a socket write error: %v", pipecli.address, pipecli, err)
@@ -220,8 +189,6 @@ func (pipecli *memdPipelineClient) Run() {
 			break
 		}
 
-		pipecli.breaker.Reset()
-
 		logDebugf("Pipeline Client `%s/%p` retrieving new client connection for parent %p", pipecli.address, pipecli, pipeline)
 		client, err := pipeline.getClientFn()
 		if err != nil {
@@ -266,52 +233,4 @@ func (pipecli *memdPipelineClient) Close() error {
 	<-pipecli.closedSig
 
 	return nil
-}
-
-func (pipecli *memdPipelineClient) sendCanary() {
-	errChan := make(chan error)
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		errChan <- err
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdNoop,
-			Datatype: 0,
-			Cas:      0,
-			Key:      nil,
-			Value:    nil,
-		},
-		Callback:      handler,
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
-
-	logDebugf("Sending NOOP request for %p/%s", pipecli, pipecli.address)
-	err := pipecli.client.SendRequest(req)
-	if err != nil {
-		pipecli.breaker.MarkFailure()
-	}
-
-	timer := AcquireTimer(pipecli.breaker.CanaryTimeout())
-	select {
-	case <-timer.C:
-		if !req.internalCancel() {
-			err := <-errChan
-			if err == nil {
-				logDebugf("NOOP request successful for %p/%s", pipecli, pipecli.address)
-				pipecli.breaker.MarkSuccessful()
-			} else {
-				logDebugf("NOOP request failed for %p/%s", pipecli, pipecli.address)
-				pipecli.breaker.MarkFailure()
-			}
-		}
-		pipecli.breaker.MarkFailure()
-	case err := <-errChan:
-		if err == nil {
-			pipecli.breaker.MarkSuccessful()
-		} else {
-			pipecli.breaker.MarkFailure()
-		}
-	}
 }

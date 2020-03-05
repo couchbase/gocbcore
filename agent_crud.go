@@ -1185,7 +1185,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 				// When an error occurs, we need to cancel our persistent op.  However, because
 				// a previous error may already have cancelled this and then raced, we should
 				// ensure only a single completion is counted.
-				if req.internalCancel() {
+				if req.internalCancel(err) {
 					opHandledLocked()
 				}
 
@@ -1198,7 +1198,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 				// As this is a persistent request, we must manually cancel it to remove
 				// it from the pending ops list.  To ensure we do not race multiple cancels,
 				// we only handle it as completed the one time cancellation succeeds.
-				if req.internalCancel() {
+				if req.internalCancel(err) {
 					opHandledLocked()
 				}
 

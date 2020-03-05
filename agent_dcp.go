@@ -96,7 +96,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 		if resp != nil && resp.Magic == resMagic {
 			// This is the response to the open stream request.
 			if err != nil {
-				req.internalCancel()
+				req.internalCancel(err)
 
 				// All client errors are handled by the StreamObserver
 				cb(nil, err)
@@ -117,7 +117,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 		}
 
 		if err != nil {
-			req.internalCancel()
+			req.internalCancel(err)
 			streamID := noStreamID
 			if filter != nil {
 				streamID = filter.StreamID
@@ -219,7 +219,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 				streamID = resp.FrameExtras.StreamID
 			}
 			evtHandler.End(vbID, streamID, getStreamEndStatusError(code))
-			req.internalCancel()
+			req.internalCancel(err)
 		}
 	}
 

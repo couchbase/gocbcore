@@ -24,7 +24,8 @@ func (agent *Agent) dialMemdClient(address string, deadline time.Time) (*memdCli
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
 	}
-	client := newMemdClient(agent, conn)
+
+	client := newMemdClient(agent, conn, agent.circuitBreakerConfig)
 
 	return client, err
 }
