@@ -40,6 +40,9 @@ type SearchQueryOptions struct {
 	Payload       []byte
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 type jsonSearchErrorResponse struct {
@@ -101,6 +104,9 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 
 // SearchQuery executes a Search query
 func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
+	tracer := agent.createOpTrace("SearchQuery", opts.TraceContext)
+	defer tracer.Finish()
+
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
@@ -124,13 +130,14 @@ func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, erro
 
 	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
 	ireq := &httpRequest{
-		Service:       FtsService,
-		Method:        "POST",
-		Path:          reqURI,
-		Body:          opts.Payload,
-		IsIdempotent:  true,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
+		Service:          FtsService,
+		Method:           "POST",
+		Path:             reqURI,
+		Body:             opts.Payload,
+		IsIdempotent:     true,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:

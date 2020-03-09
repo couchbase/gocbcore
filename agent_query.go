@@ -56,6 +56,9 @@ type N1QLQueryOptions struct {
 	Payload       []byte
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 func wrapN1QLError(req *httpRequest, statement string, err error) *N1QLError {
@@ -143,6 +146,9 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 
 // N1QLQuery executes a N1QL query
 func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	tracer := agent.createOpTrace("N1QLQuery", opts.TraceContext)
+	defer tracer.Finish()
+
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
@@ -154,14 +160,15 @@ func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
 	ireq := &httpRequest{
-		Service:       N1qlService,
-		Method:        "POST",
-		Path:          "/query/service",
-		Body:          opts.Payload,
-		IsIdempotent:  readOnly,
-		UniqueID:      clientContextID,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
+		Service:          N1qlService,
+		Method:           "POST",
+		Path:             "/query/service",
+		Body:             opts.Payload,
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: opts.TraceContext,
 	}
 
 ExecuteLoop:

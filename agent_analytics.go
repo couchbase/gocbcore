@@ -39,6 +39,9 @@ type AnalyticsQueryOptions struct {
 	Priority      int
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 func wrapAnalyticsError(req *httpRequest, statement string, err error) *AnalyticsError {
@@ -144,6 +147,9 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 
 // AnalyticsQuery executes an analytics query
 func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
+	tracer := agent.createOpTrace("AnalyticsQuery", opts.TraceContext)
+	defer tracer.Finish()
+
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
@@ -161,11 +167,12 @@ func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowRea
 		Headers: map[string]string{
 			"Analytics-Priority": fmt.Sprintf("%d", opts.Priority),
 		},
-		Body:          opts.Payload,
-		IsIdempotent:  readOnly,
-		UniqueID:      clientContextID,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
+		Body:             opts.Payload,
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:

@@ -43,6 +43,9 @@ type ViewQueryOptions struct {
 	Options            url.Values
 	RetryStrategy      RetryStrategy
 	Deadline           time.Time
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) *ViewError {
@@ -114,16 +117,20 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 
 // ViewQuery executes a view query
 func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
+	tracer := agent.createOpTrace("ViewQuery", opts.TraceContext)
+	defer tracer.Finish()
+
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",
 		opts.DesignDocumentName, opts.ViewType, opts.ViewName, opts.Options.Encode())
 
 	ireq := &httpRequest{
-		Service:       CapiService,
-		Method:        "GET",
-		Path:          reqURI,
-		IsIdempotent:  true,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
+		Service:          CapiService,
+		Method:           "GET",
+		Path:             reqURI,
+		IsIdempotent:     true,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 	ddoc := opts.DesignDocumentName

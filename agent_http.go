@@ -17,19 +17,20 @@ import (
 )
 
 type httpRequest struct {
-	Service       ServiceType
-	Endpoint      string
-	Method        string
-	Path          string
-	Username      string
-	Password      string
-	Headers       map[string]string
-	ContentType   string
-	Body          []byte
-	IsIdempotent  bool
-	UniqueID      string
-	Deadline      time.Time
-	RetryStrategy RetryStrategy
+	Service          ServiceType
+	Endpoint         string
+	Method           string
+	Path             string
+	Username         string
+	Password         string
+	Headers          map[string]string
+	ContentType      string
+	Body             []byte
+	IsIdempotent     bool
+	UniqueID         string
+	Deadline         time.Time
+	RetryStrategy    RetryStrategy
+	RootTraceContext RequestSpanContext
 
 	retryCount   uint32
 	retryReasons []RetryReason
@@ -85,6 +86,9 @@ type HTTPRequest struct {
 	UniqueID      string
 	Timeout       time.Duration
 	RetryStrategy RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
 }
 
 // HTTPResponse encapsulates the response from an HTTP request.
@@ -179,6 +183,9 @@ func wrapHTTPError(req *httpRequest, err error) HTTPError {
 // DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
 func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
+	tracer := agent.createOpTrace("http", req.TraceContext)
+	defer tracer.Finish()
+
 	retryStrategy := agent.defaultRetryStrategy
 	if req.RetryStrategy != nil {
 		retryStrategy = req.RetryStrategy
@@ -187,19 +194,20 @@ func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 	deadline := time.Now().Add(req.Timeout)
 
 	ireq := &httpRequest{
-		Service:       req.Service,
-		Endpoint:      req.Endpoint,
-		Method:        req.Method,
-		Path:          req.Path,
-		Headers:       req.Headers,
-		ContentType:   req.ContentType,
-		Username:      req.Username,
-		Password:      req.Password,
-		Body:          req.Body,
-		IsIdempotent:  req.IsIdempotent,
-		UniqueID:      req.UniqueID,
-		Deadline:      deadline,
-		RetryStrategy: retryStrategy,
+		Service:          req.Service,
+		Endpoint:         req.Endpoint,
+		Method:           req.Method,
+		Path:             req.Path,
+		Headers:          req.Headers,
+		ContentType:      req.ContentType,
+		Username:         req.Username,
+		Password:         req.Password,
+		Body:             req.Body,
+		IsIdempotent:     req.IsIdempotent,
+		UniqueID:         req.UniqueID,
+		Deadline:         deadline,
+		RetryStrategy:    retryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 	resp, err := agent.execHTTPRequest(ireq)
@@ -326,7 +334,10 @@ func (agent *Agent) execHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 	hreq.Header.Set("User-Agent", agent.clientInfoString(uniqueID))
 
 	for {
+		dSpan := agent.tracer.StartSpan("dispatch_to_server", req.RootTraceContext).
+			SetTag("retry", req.retryCount)
 		hresp, err := agent.httpCli.Do(hreq)
+		dSpan.Finish()
 		if err != nil {
 			// Because we have to hijack the context for our own timeout specification
 			// purposes and we manually cancel it, we need to perform some translation here if we hijacked it.
