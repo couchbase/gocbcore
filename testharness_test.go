@@ -224,7 +224,7 @@ func (h *TestHarness) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureReplicas:
 		return true
 	case TestFeatureN1ql:
-		return !h.IsMockServer()
+		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
 	case TestFeatureAdjoin:
 		return !h.IsMockServer()
 	case TestFeatureCollections:
