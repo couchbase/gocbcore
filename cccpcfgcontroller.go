@@ -1,13 +1,14 @@
 package gocbcore
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 )
 
 type cccpConfigController struct {
 	muxer              *kvMux
-	watcher            func(config *cfgBucket)
+	watcher            configWatch
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
 
@@ -19,7 +20,7 @@ type cccpConfigController struct {
 	looperDoneSig chan struct{}
 }
 
-func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, watcher func(config *cfgBucket)) *cccpConfigController {
+func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, watcher configWatch) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		watcher:            watcher,
@@ -49,7 +50,7 @@ func (ccc *cccpConfigController) Done() chan struct{} {
 	return ccc.looperDoneSig
 }
 
-func (ccc *cccpConfigController) DoLoop() {
+func (ccc *cccpConfigController) DoLoop() error {
 	tickTime := ccc.confCccpPollPeriod
 	paused := false
 
@@ -91,10 +92,20 @@ Looper:
 		iter.Offset(nodeIdx)
 
 		var foundConfig *cfgBucket
-		for pipeline := iter.Next(); pipeline != nil; {
+		var srcServer string
+		// Until this gets a valid config the pipeline addresses will be the ones from the connection string, there is
+		// an assumed contract between the looper and the upstream config manager that this is the case. This allows
+		// the config manager to setup its network type correctly.
+		for iter.Next() {
+			pipeline := iter.Pipeline()
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
 				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+				if errors.Is(err, ErrDocumentNotFound) {
+					// This error is indicative of a memcached bucket which we can't handle so return the error.
+					logDebugf("CCCPPOLL: Document not found error detecting, returning error upstream.")
+					return err
+				}
 				continue
 			}
 
@@ -111,6 +122,7 @@ Looper:
 			}
 
 			foundConfig = bk
+			srcServer = pipeline.Address()
 			break
 		}
 
@@ -120,14 +132,15 @@ Looper:
 		}
 
 		logDebugf("CCCPPOLL: Received new config")
-		ccc.watcher(foundConfig)
+		ccc.watcher(foundConfig, srcServer)
 	}
 
 	close(ccc.looperDoneSig)
+	return nil
 }
 
 func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOut []byte, errOut error) {
-	signal := make(chan struct{})
+	signal := make(chan struct{}, 1)
 	req := &memdQRequest{
 		memdPacket: memdPacket{
 			Magic:  reqMagic,

@@ -12,6 +12,10 @@ const (
 	unknownCid = uint32(0xFFFFFFFF)
 	pendingCid = uint32(0xFFFFFFFE)
 	invalidCid = uint32(0xFFFFFFFD)
+
+	collectionsSupportUnknown = 0
+	collectionsUnsupported    = 1
+	collectionsSupported      = 2
 )
 
 // ManifestCollection is the representation of a collection within a manifest.

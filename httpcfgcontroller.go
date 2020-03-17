@@ -35,7 +35,7 @@ func hostnameFromURI(uri string) string {
 
 type httpConfigController struct {
 	muxer                *httpMux
-	watcher              func(config *cfgBucket)
+	watcher              configWatch
 	confHTTPRetryDelay   time.Duration
 	confHTTPRedialPeriod time.Duration
 	httpComponent        *httpComponent
@@ -52,7 +52,7 @@ type httpPollerProperties struct {
 }
 
 func newHTTPConfigController(bucketName string, props httpPollerProperties, muxer *httpMux,
-	watcher func(config *cfgBucket)) *httpConfigController {
+	watcher configWatch) *httpConfigController {
 	return &httpConfigController{
 		muxer:                muxer,
 		watcher:              watcher,
@@ -78,14 +78,13 @@ func (hcc *httpConfigController) Stop() {
 	close(hcc.looperStopSig)
 }
 
-func (hcc *httpConfigController) DoLoop(firstCfgFn func(*cfgBucket, string, error) bool) {
+func (hcc *httpConfigController) DoLoop() {
 	waitPeriod := hcc.confHTTPRetryDelay
 	maxConnPeriod := hcc.confHTTPRedialPeriod
 
 	var iterNum uint64 = 1
 	iterSawConfig := false
 	seenNodes := make(map[string]uint64)
-	isFirstTry := true
 
 	logDebugf("HTTP Looper starting.")
 
@@ -109,11 +108,6 @@ Looper:
 		if pickedSrv == "" {
 			logDebugf("Pick Failed.")
 			// All servers have been visited during this iteration
-			if isFirstTry {
-				logDebugf("Could not find any alive http hosts.")
-				firstCfgFn(nil, "", errBadHosts)
-				break
-			}
 
 			if !iterSawConfig {
 				logDebugf("Looper waiting...")
@@ -169,12 +163,12 @@ Looper:
 			if resp.StatusCode != 200 {
 				if resp.StatusCode == 401 {
 					logDebugf("Failed to connect to host, bad auth.")
-					firstCfgFn(nil, "", errAuthenticationFailure)
+					// firstCfgFn(nil, "", errAuthenticationFailure)
 					return -1
 				} else if resp.StatusCode == 404 {
 					if is2x {
 						logDebugf("Failed to connect to host, bad bucket.")
-						firstCfgFn(nil, "", errAuthenticationFailure)
+						// firstCfgFn(nil, "", errAuthenticationFailure)
 						return -1
 					}
 
@@ -255,23 +249,8 @@ Looper:
 			logDebugf("Got Config.")
 
 			iterSawConfig = true
-			if isFirstTry {
-				logDebugf("HTTP Config Init")
-				if !firstCfgFn(bkCfg, pickedSrv, nil) {
-					logDebugf("Got error while activating first config")
-
-					err = resp.Body.Close()
-					if err != nil {
-						logErrorf("Socket close failed after config init (%s)", err)
-					}
-
-					break
-				}
-				isFirstTry = false
-			} else {
-				logDebugf("HTTP Config Update")
-				hcc.watcher(bkCfg)
-			}
+			logDebugf("HTTP Config Update")
+			hcc.watcher(bkCfg, pickedSrv)
 		}
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)

@@ -88,7 +88,6 @@ func (mux *kvMux) ApplyRoutingConfig(cfg *routeConfig) {
 		}
 	}
 }
-
 func (mux *kvMux) ConfigUUID() string {
 	clientMux := mux.GetState()
 	if clientMux == nil {
@@ -506,11 +505,15 @@ func (pi *pipelineIterator) Offset(offset int) {
 	pi.idx = offset
 }
 
-func (pi *pipelineIterator) Next() *memdPipeline {
+func (pi *pipelineIterator) Next() bool {
 	if pi.iterations == pi.len {
-		return nil
+		return false
 	}
 
+	return true
+}
+
+func (pi *pipelineIterator) Pipeline() *memdPipeline {
 	pi.iterations++
 	pi.idx = (pi.idx + 1) % pi.len
 	return pi.pipelines[pi.idx]

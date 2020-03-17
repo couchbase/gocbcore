@@ -144,11 +144,17 @@ func (h *TestHarness) initDefaultAgent() error {
 		return err
 	}
 
-	// TODO: Reenable this
-	// err = agent.SelectBucket(h.BucketName, time.Now().Add(2*time.Second))
-	// if err != nil {
-	// 	return err
-	// }
+	ch := make(chan struct{})
+	op := agent.WaitUntilReady(func() {
+		ch <- struct{}{}
+	})
+
+	select {
+	case <-time.After(5 * time.Second):
+		op.Cancel(ErrTimeout)
+		return ErrTimeout
+	case <-ch:
+	}
 
 	h.defaultAgent = agent
 
@@ -171,10 +177,17 @@ func (h *TestHarness) initMemdAgent() error {
 		return err
 	}
 
-	// err = agent.SelectBucket(h.MemdBucketName, time.Now().Add(2*time.Second))
-	// if err != nil {
-	// 	return err
-	// }
+	ch := make(chan struct{})
+	op := agent.WaitUntilReady(func() {
+		ch <- struct{}{}
+	})
+
+	select {
+	case <-time.After(5 * time.Second):
+		op.Cancel(ErrTimeout)
+		return ErrTimeout
+	case <-ch:
+	}
 
 	h.memdAgent = agent
 

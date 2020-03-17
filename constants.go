@@ -628,7 +628,7 @@ const (
 	PersistToMajority = DurabilityLevel(0x03)
 )
 
-type durabilityLevelStatus uint8
+type durabilityLevelStatus uint32
 
 const (
 	durabilityLevelStatusUnknown     = durabilityLevelStatus(0x00)

@@ -1,5 +1,10 @@
 package gocbcore
 
+import (
+	"fmt"
+	"sync"
+)
+
 type configManager struct {
 	useSSL      bool
 	networkType string
@@ -7,7 +12,13 @@ type configManager struct {
 	currentConfig *routeConfig
 
 	cfgChangeWatchers []routeConfigWatch
+	watchersLock      sync.Mutex
 	invalidWatcher    func()
+
+	collectionsSupported bool
+	collectionsEnabled   bool
+
+	seenConfig bool
 }
 
 type configManagerProperties struct {
@@ -16,6 +27,11 @@ type configManagerProperties struct {
 }
 
 type routeConfigWatch func(config *routeConfig)
+type configWatch func(cfg *cfgBucket, srcAddr string)
+
+func (rcw routeConfigWatch) Equal(watch routeConfigWatch) bool {
+	return fmt.Sprintf("%p", rcw) == fmt.Sprintf("%p", watch)
+}
 
 func newConfigManager(props configManagerProperties, cfgChangeWatchers []routeConfigWatch, invalidCfgWatcher func()) *configManager {
 	return &configManager{
@@ -29,8 +45,14 @@ func newConfigManager(props configManagerProperties, cfgChangeWatchers []routeCo
 	}
 }
 
-func (cm *configManager) OnNewConfig(cfg *cfgBucket) {
-	routeCfg := cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false)
+func (cm *configManager) OnNewConfig(cfg *cfgBucket, srcAddr string) {
+	var routeCfg *routeConfig
+	if cm.seenConfig {
+		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false)
+	} else {
+		routeCfg = cm.buildFirstRouteConfig(cfg, srcAddr)
+		logDebugf("Using network type %s for connections", cm.networkType)
+	}
 	if !routeCfg.IsValid() {
 		// This will trigger something upstream to react, i.e. agent to shutdown.
 		cm.invalidWatcher()
@@ -45,7 +67,12 @@ func (cm *configManager) OnNewConfig(cfg *cfgBucket) {
 	logDebugf("Sending out mux routing data (update)...")
 	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
 
-	for _, watcher := range cm.cfgChangeWatchers {
+	cm.seenConfig = true
+
+	cm.watchersLock.Lock()
+	watchers := cm.cfgChangeWatchers
+	cm.watchersLock.Unlock()
+	for _, watcher := range watchers {
 		watcher(routeCfg)
 	}
 }
@@ -64,11 +91,37 @@ func (cm *configManager) OnFirstRouteConfig(config *cfgBucket, srcServer string)
 		return false
 	}
 
+	logDebugf("Sending out mux routing data (update)...")
+	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
+
 	for _, watcher := range cm.cfgChangeWatchers {
 		watcher(routeCfg)
 	}
 
 	return true
+}
+
+func (cm *configManager) AddConfigWatcher(watcher routeConfigWatch) {
+	cm.watchersLock.Lock()
+	cm.cfgChangeWatchers = append(cm.cfgChangeWatchers, watcher)
+	cm.watchersLock.Unlock()
+}
+
+func (cm *configManager) RemoveConfigWatcher(watcher routeConfigWatch) {
+	var idx int
+	cm.watchersLock.Lock()
+	for i, w := range cm.cfgChangeWatchers {
+		if w.Equal(watcher) {
+			idx = i
+		}
+	}
+
+	if idx == len(cm.cfgChangeWatchers) {
+		cm.cfgChangeWatchers = cm.cfgChangeWatchers[:idx]
+	} else {
+		cm.cfgChangeWatchers = append(cm.cfgChangeWatchers[:idx], cm.cfgChangeWatchers[idx+1:]...)
+	}
+	cm.watchersLock.Unlock()
 }
 
 // We should never be receiving concurrent updates and nothing should be accessing

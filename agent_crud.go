@@ -534,7 +534,7 @@ func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+		if agent.hasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
@@ -623,7 +623,7 @@ func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+		if agent.hasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
@@ -825,7 +825,7 @@ func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptio
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+		if agent.hasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
@@ -938,7 +938,7 @@ func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOpt
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == durabilityLevelStatusUnsupported {
+		if agent.hasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}
