@@ -9,3 +9,8 @@ func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
 func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
 	return agent.analyticsCmpt.AnalyticsQuery(opts)
 }
+
+// SearchQuery executes a Search query
+func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
+	return agent.searchCmpt.SearchQuery(opts)
+}

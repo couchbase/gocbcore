@@ -102,10 +102,20 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 	return errOut
 }
 
+type searchQueryComponent struct {
+	httpComponent *httpComponent
+}
+
+func newSearchQueryComponent(httpComponent *httpComponent) *searchQueryComponent {
+	return &searchQueryComponent{
+		httpComponent: httpComponent,
+	}
+}
+
 // SearchQuery executes a Search query
-func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
-	tracer := agent.createOpTrace("SearchQuery", opts.TraceContext)
-	defer tracer.Finish()
+func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
+	// tracer := agent.createOpTrace("SearchQuery", opts.TraceContext)
+	// defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -130,14 +140,14 @@ func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, erro
 
 	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
 	ireq := &httpRequest{
-		Service:          FtsService,
-		Method:           "POST",
-		Path:             reqURI,
-		Body:             opts.Payload,
-		IsIdempotent:     true,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
+		Service:       FtsService,
+		Method:        "POST",
+		Path:          reqURI,
+		Body:          opts.Payload,
+		IsIdempotent:  true,
+		Deadline:      opts.Deadline,
+		RetryStrategy: opts.RetryStrategy,
+		// RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:
@@ -155,7 +165,7 @@ ExecuteLoop:
 			ireq.Body = newPayload
 		}
 
-		resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := sqc.httpComponent.ExecHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
