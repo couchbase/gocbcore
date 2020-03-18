@@ -14,15 +14,20 @@ type kvMux struct {
 	queueSize   int
 	poolSize    int
 	getClientFn memdGetClientFunc
-	breakerCfg  CircuitBreakerConfig
+	cfgMgr      *configManager
 }
 
-func newKVMux(qSize, poolSize int, getClientFn memdGetClientFunc) *kvMux {
-	return &kvMux{
+func newKVMux(qSize, poolSize int, cfgMgr *configManager, getClientFn memdGetClientFunc) *kvMux {
+	mux := &kvMux{
 		queueSize:   qSize,
 		poolSize:    poolSize,
 		getClientFn: getClientFn,
+		cfgMgr:      cfgMgr,
 	}
+
+	cfgMgr.AddConfigWatcher(mux)
+
+	return mux
 }
 
 func (mux *kvMux) GetState() *kvMuxState {
@@ -53,7 +58,7 @@ func (mux *kvMux) clear() *kvMuxState {
 }
 
 //  This method MUST NEVER BLOCK due to its use from various contention points.
-func (mux *kvMux) ApplyRoutingConfig(cfg *routeConfig) {
+func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	oldClientMux := mux.GetState()
 	newClientMux := mux.newKVMuxState(cfg)
 
@@ -349,6 +354,7 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) err
 }
 
 func (mux *kvMux) Close() error {
+	mux.cfgMgr.RemoveConfigWatcher(mux)
 	clientMux := mux.clear()
 
 	if clientMux == nil {

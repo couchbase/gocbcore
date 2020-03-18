@@ -8,12 +8,18 @@ import (
 type httpMux struct {
 	muxPtr     unsafe.Pointer
 	breakerCfg CircuitBreakerConfig
+	cfgMgr     *configManager
 }
 
-func newHTTPMux(breakerCfg CircuitBreakerConfig) *httpMux {
-	return &httpMux{
+func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr *configManager) *httpMux {
+	mux := &httpMux{
 		breakerCfg: breakerCfg,
+		cfgMgr:     cfgMgr,
 	}
+
+	cfgMgr.AddConfigWatcher(mux)
+
+	return mux
 }
 
 func (mux *httpMux) Get() *httpClientMux {
@@ -43,7 +49,7 @@ func (mux *httpMux) Clear() *httpClientMux {
 	return (*httpClientMux)(val)
 }
 
-func (mux *httpMux) ApplyRoutingConfig(cfg *routeConfig) {
+func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 	oldHTTPMux := mux.Get()
 
 	newHTTPMux := newHTTPClientMux(cfg, mux.breakerCfg)
@@ -97,6 +103,7 @@ func (mux *httpMux) FtsEps() []string {
 }
 
 func (mux *httpMux) Close() error {
+	mux.cfgMgr.RemoveConfigWatcher(mux)
 	mux.Clear()
 	return nil
 }

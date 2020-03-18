@@ -145,9 +145,12 @@ func (h *TestHarness) initDefaultAgent() error {
 	}
 
 	ch := make(chan struct{})
-	op := agent.WaitUntilReady(func() {
+	op, err := agent.WaitUntilReady(func() {
 		ch <- struct{}{}
 	})
+	if err != nil {
+		return err
+	}
 
 	select {
 	case <-time.After(5 * time.Second):
@@ -178,9 +181,12 @@ func (h *TestHarness) initMemdAgent() error {
 	}
 
 	ch := make(chan struct{})
-	op := agent.WaitUntilReady(func() {
+	op, err := agent.WaitUntilReady(func() {
 		ch <- struct{}{}
 	})
+	if err != nil {
+		return err
+	}
 
 	select {
 	case <-time.After(5 * time.Second):

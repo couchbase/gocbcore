@@ -8,7 +8,7 @@ import (
 
 type cccpConfigController struct {
 	muxer              *kvMux
-	watcher            configWatch
+	cfgMgr             *configManager
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
 
@@ -20,10 +20,10 @@ type cccpConfigController struct {
 	looperDoneSig chan struct{}
 }
 
-func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, watcher configWatch) *cccpConfigController {
+func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *configManager) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
-		watcher:            watcher,
+		cfgMgr:             cfgMgr,
 		confCccpPollPeriod: props.confCccpPollPeriod,
 		confCccpMaxWait:    props.confCccpMaxWait,
 
@@ -132,7 +132,7 @@ Looper:
 		}
 
 		logDebugf("CCCPPOLL: Received new config")
-		ccc.watcher(foundConfig, srcServer)
+		ccc.cfgMgr.OnNewConfig(foundConfig, srcServer)
 	}
 
 	close(ccc.looperDoneSig)

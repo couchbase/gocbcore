@@ -4,10 +4,16 @@ import "sync/atomic"
 
 type clusterCapabilitiesManager struct {
 	clusterCapabilities uint32
+	cfgMgr              *configManager
 }
 
-func newClusterCapabilitiesManager() *clusterCapabilitiesManager {
-	return &clusterCapabilitiesManager{}
+func newClusterCapabilitiesManager(cfgMgr *configManager) *clusterCapabilitiesManager {
+	mgr := &clusterCapabilitiesManager{
+		cfgMgr: cfgMgr,
+	}
+	cfgMgr.AddConfigWatcher(mgr)
+
+	return mgr
 }
 
 // SupportsClusterCapability returns whether or not the cluster supports a given capability.
@@ -17,7 +23,7 @@ func (ccm *clusterCapabilitiesManager) SupportsClusterCapability(capability Clus
 	return capabilities&capability != 0
 }
 
-func (ccm *clusterCapabilitiesManager) UpdateClusterCapabilities(cfg *routeConfig) {
+func (ccm *clusterCapabilitiesManager) OnNewRouteConfig(cfg *routeConfig) {
 	capabilities := ccm.buildClusterCapabilities(cfg)
 	if capabilities == 0 {
 		return
@@ -49,4 +55,8 @@ func (ccm *clusterCapabilitiesManager) buildClusterCapabilities(cfg *routeConfig
 	}
 
 	return agentCapabilities
+}
+
+func (ccm *clusterCapabilitiesManager) Close() {
+	ccm.cfgMgr.RemoveConfigWatcher(ccm)
 }

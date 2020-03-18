@@ -84,7 +84,7 @@ type Agent struct {
 	httpMux          *httpMux
 	clusterCapsMgr   *clusterCapabilitiesManager
 
-	firstConfigSeenCh chan struct{}
+	waitCmpt *waitUntilConfigComponent
 
 	agentConfig
 }
@@ -277,27 +277,42 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			useDurations:         config.UseDurations,
 			noRootTraceSpans:     config.NoRootTraceSpans,
 		},
-
-		firstConfigSeenCh: make(chan struct{}),
 	}
 	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
-	c.kvMux = newKVMux(c.maxQueueSize, c.kvPoolSize, c.slowDialMemdClient)
-	c.httpMux = newHTTPMux(c.circuitBreakerConfig)
-	c.clusterCapsMgr = newClusterCapabilitiesManager()
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
 			NetworkType: config.NetworkType,
 			UseSSL:      config.UseTLS,
 		},
-		[]routeConfigWatch{
-			c.kvMux.ApplyRoutingConfig,
-			c.httpMux.ApplyRoutingConfig,
-			c.clusterCapsMgr.UpdateClusterCapabilities,
-			c.firstConfigApplied,
-		},
 		c.onInvalidConfig,
 	)
+
+	c.kvMux = newKVMux(c.maxQueueSize, c.kvPoolSize, c.cfgManager, c.slowDialMemdClient)
+	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
 	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
+	c.pollerController = newPollerController(
+		newCCCPConfigController(
+			cccpPollerProperties{
+				confCccpMaxWait:    c.confCccpMaxWait,
+				confCccpPollPeriod: c.confCccpPollPeriod,
+			},
+			c.kvMux,
+			c.cfgManager,
+		),
+		newHTTPConfigController(
+			c.bucket(),
+			httpPollerProperties{
+				httpComponent:        c.httpComponent,
+				confHTTPRetryDelay:   c.confHTTPRetryDelay,
+				confHTTPRedialPeriod: c.confHTTPRedialPeriod,
+			},
+			c.httpMux,
+			c.cfgManager,
+		),
+	)
+	c.clusterCapsMgr = newClusterCapabilitiesManager(c.cfgManager)
+	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	if config.KVConnectTimeout > 0 {
 		c.kvConnectTimeout = config.KVConnectTimeout
@@ -427,29 +442,8 @@ func (agent *Agent) connect(memdAddrs, httpAddrs []string) {
 		revID:        -1,
 	}
 
-	agent.httpMux.ApplyRoutingConfig(cfg)
-	agent.kvMux.ApplyRoutingConfig(cfg)
-
-	agent.pollerController = newPollerController(
-		newCCCPConfigController(
-			cccpPollerProperties{
-				confCccpMaxWait:    agent.confCccpMaxWait,
-				confCccpPollPeriod: agent.confCccpPollPeriod,
-			},
-			agent.kvMux,
-			agent.cfgManager.OnNewConfig,
-		),
-		newHTTPConfigController(
-			agent.bucket(),
-			httpPollerProperties{
-				httpComponent:        agent.httpComponent,
-				confHTTPRetryDelay:   agent.confHTTPRetryDelay,
-				confHTTPRedialPeriod: agent.confHTTPRedialPeriod,
-			},
-			agent.httpMux,
-			agent.cfgManager.OnNewConfig,
-		),
-	)
+	agent.httpMux.OnNewRouteConfig(cfg)
+	agent.kvMux.OnNewRouteConfig(cfg)
 
 	go agent.pollerController.Start()
 }
@@ -459,11 +453,6 @@ func (agent *Agent) disconnectClient(client *memdClient) {
 	if err != nil {
 		logErrorf("Failed to shut down client connection (%s)", err)
 	}
-}
-
-func (agent *Agent) firstConfigApplied(_ *routeConfig) {
-	agent.cfgManager.RemoveConfigWatcher(agent.firstConfigApplied)
-	close(agent.firstConfigSeenCh)
 }
 
 func (agent *Agent) onInvalidConfig() {
@@ -476,6 +465,8 @@ func (agent *Agent) onInvalidConfig() {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
+	agent.clusterCapsMgr.Close()
+
 	routeCloseErr := agent.kvMux.Close()
 	agent.pollerController.Stop()
 
@@ -591,20 +582,8 @@ func (op *waitOp) Cancel(err error) {
 }
 
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
-func (agent *Agent) WaitUntilReady(cb func()) PendingOp {
-	op := &waitOp{
-		cancelCh: make(chan struct{}),
-	}
-
-	go func() {
-		select {
-		case <-agent.firstConfigSeenCh:
-			cb()
-		case <-op.cancelCh:
-		}
-	}()
-
-	return op
+func (agent *Agent) WaitUntilReady(cb func()) (PendingOp, error) {
+	return agent.waitCmpt.WaitUntilFirstConfig(cb)
 }
 
 func (agent *Agent) updateCollectionsSupport(supported bool) {

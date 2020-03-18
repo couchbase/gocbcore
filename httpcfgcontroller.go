@@ -35,7 +35,7 @@ func hostnameFromURI(uri string) string {
 
 type httpConfigController struct {
 	muxer                *httpMux
-	watcher              configWatch
+	cfgMgr               *configManager
 	confHTTPRetryDelay   time.Duration
 	confHTTPRedialPeriod time.Duration
 	httpComponent        *httpComponent
@@ -52,10 +52,10 @@ type httpPollerProperties struct {
 }
 
 func newHTTPConfigController(bucketName string, props httpPollerProperties, muxer *httpMux,
-	watcher configWatch) *httpConfigController {
+	cfgMgr *configManager) *httpConfigController {
 	return &httpConfigController{
 		muxer:                muxer,
-		watcher:              watcher,
+		cfgMgr:               cfgMgr,
 		confHTTPRedialPeriod: props.confHTTPRedialPeriod,
 		confHTTPRetryDelay:   props.confHTTPRetryDelay,
 		httpComponent:        props.httpComponent,
@@ -250,7 +250,7 @@ Looper:
 
 			iterSawConfig = true
 			logDebugf("HTTP Config Update")
-			hcc.watcher(bkCfg, pickedSrv)
+			hcc.cfgMgr.OnNewConfig(bkCfg, pickedSrv)
 		}
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)

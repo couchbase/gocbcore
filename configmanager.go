@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -11,7 +10,7 @@ type configManager struct {
 
 	currentConfig *routeConfig
 
-	cfgChangeWatchers []routeConfigWatch
+	cfgChangeWatchers []routeConfigWatcher
 	watchersLock      sync.Mutex
 	invalidWatcher    func()
 
@@ -26,19 +25,15 @@ type configManagerProperties struct {
 	NetworkType string
 }
 
-type routeConfigWatch func(config *routeConfig)
-type configWatch func(cfg *cfgBucket, srcAddr string)
-
-func (rcw routeConfigWatch) Equal(watch routeConfigWatch) bool {
-	return fmt.Sprintf("%p", rcw) == fmt.Sprintf("%p", watch)
+type routeConfigWatcher interface {
+	OnNewRouteConfig(cfg *routeConfig)
 }
 
-func newConfigManager(props configManagerProperties, cfgChangeWatchers []routeConfigWatch, invalidCfgWatcher func()) *configManager {
+func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *configManager {
 	return &configManager{
-		useSSL:            props.UseSSL,
-		networkType:       props.NetworkType,
-		cfgChangeWatchers: cfgChangeWatchers,
-		invalidWatcher:    invalidCfgWatcher,
+		useSSL:         props.UseSSL,
+		networkType:    props.NetworkType,
+		invalidWatcher: invalidCfgWatcher,
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
@@ -69,49 +64,28 @@ func (cm *configManager) OnNewConfig(cfg *cfgBucket, srcAddr string) {
 
 	cm.seenConfig = true
 
+	// We can end up deadlocking if we iterate whilst in the lock and a watcher decides to remove itself.
 	cm.watchersLock.Lock()
-	watchers := cm.cfgChangeWatchers
+	watchers := make([]routeConfigWatcher, len(cm.cfgChangeWatchers))
+	copy(watchers, cm.cfgChangeWatchers)
 	cm.watchersLock.Unlock()
+
 	for _, watcher := range watchers {
-		watcher(routeCfg)
+		watcher.OnNewRouteConfig(routeCfg)
 	}
 }
 
-func (cm *configManager) OnFirstRouteConfig(config *cfgBucket, srcServer string) bool {
-	routeCfg := cm.buildFirstRouteConfig(config, srcServer)
-	logDebugf("Using network type %s for connections", cm.networkType)
-	if !routeCfg.IsValid() {
-		logDebugf("Configuration was deemed invalid %+v", routeCfg)
-		return false
-	}
-
-	// There's something wrong with this route config so don't send it to the watchers
-	// and inform the caller that it was bad.
-	if !cm.updateRouteConfig(routeCfg) {
-		return false
-	}
-
-	logDebugf("Sending out mux routing data (update)...")
-	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
-
-	for _, watcher := range cm.cfgChangeWatchers {
-		watcher(routeCfg)
-	}
-
-	return true
-}
-
-func (cm *configManager) AddConfigWatcher(watcher routeConfigWatch) {
+func (cm *configManager) AddConfigWatcher(watcher routeConfigWatcher) {
 	cm.watchersLock.Lock()
 	cm.cfgChangeWatchers = append(cm.cfgChangeWatchers, watcher)
 	cm.watchersLock.Unlock()
 }
 
-func (cm *configManager) RemoveConfigWatcher(watcher routeConfigWatch) {
+func (cm *configManager) RemoveConfigWatcher(watcher routeConfigWatcher) {
 	var idx int
 	cm.watchersLock.Lock()
 	for i, w := range cm.cfgChangeWatchers {
-		if w.Equal(watcher) {
+		if w == watcher {
 			idx = i
 		}
 	}
