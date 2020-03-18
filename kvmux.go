@@ -85,8 +85,27 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 			pipeline.StartClients()
 		}
 	} else {
-		// Get the new muxer to takeover the pipelines from the older one
-		mux.muxTakeover(oldClientMux, newClientMux)
+		if !mux.collectionsEnabled {
+			// If collections just aren't enabled then we never need to refresh the connections because collections
+			// have come online.
+			mux.muxTakeover(oldClientMux, newClientMux)
+		} else if oldClientMux.collectionsSupported == newClientMux.collectionsSupported {
+			// Get the new muxer to takeover the pipelines from the older one
+			mux.muxTakeover(oldClientMux, newClientMux)
+		} else {
+			// Collections support has changed so we need to reconnect all connections in order to support the new
+			// state.
+			for _, pipeline := range oldClientMux.pipelines {
+				err := pipeline.Close()
+				if err != nil {
+					logErrorf("failed to shut down pipeline: %s", err)
+				}
+			}
+
+			for _, pipeline := range newClientMux.pipelines {
+				pipeline.StartClients()
+			}
+		}
 
 		// Gather all the requests from all the old pipelines and then
 		//  sort and redispatch them (which will use the new pipelines)
