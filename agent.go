@@ -71,9 +71,6 @@ type Agent struct {
 
 	cidMgr *collectionIDManager
 
-	durabilityLevelStatus uint32
-	supportsCollections   uint32
-
 	defaultRetryStrategy RetryStrategy
 
 	circuitBreakerConfig CircuitBreakerConfig
@@ -252,20 +249,19 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		initFn:     initFn,
 		tracer:     tracer,
 
-		serverFailures:        make(map[string]time.Time),
-		kvConnectTimeout:      7000 * time.Millisecond,
-		serverWaitTimeout:     5 * time.Second,
-		kvPoolSize:            1,
-		maxQueueSize:          maxQueueSize,
-		confHTTPRetryDelay:    10 * time.Second,
-		confHTTPRedialPeriod:  10 * time.Second,
-		confCccpMaxWait:       3 * time.Second,
-		confCccpPollPeriod:    2500 * time.Millisecond,
-		dcpPriority:           config.DcpAgentPriority,
-		useDcpExpiry:          config.UseDCPExpiry,
-		durabilityLevelStatus: uint32(durabilityLevelStatusUnknown),
-		defaultRetryStrategy:  config.DefaultRetryStrategy,
-		circuitBreakerConfig:  config.CircuitBreakerConfig,
+		serverFailures:       make(map[string]time.Time),
+		kvConnectTimeout:     7000 * time.Millisecond,
+		serverWaitTimeout:    5 * time.Second,
+		kvPoolSize:           1,
+		maxQueueSize:         maxQueueSize,
+		confHTTPRetryDelay:   10 * time.Second,
+		confHTTPRedialPeriod: 10 * time.Second,
+		confCccpMaxWait:      3 * time.Second,
+		confCccpPollPeriod:   2500 * time.Millisecond,
+		dcpPriority:          config.DcpAgentPriority,
+		useDcpExpiry:         config.UseDCPExpiry,
+		defaultRetryStrategy: config.DefaultRetryStrategy,
+		circuitBreakerConfig: config.CircuitBreakerConfig,
 
 		agentConfig: agentConfig{
 			useMutationTokens:    config.UseMutationTokens,
@@ -288,7 +284,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.onInvalidConfig,
 	)
 
-	c.kvMux = newKVMux(c.maxQueueSize, c.kvPoolSize, c.cfgManager, c.slowDialMemdClient)
+	c.kvMux = newKVMux(
+		kvMuxProps{
+			queueSize:          c.maxQueueSize,
+			poolSize:           c.kvPoolSize,
+			collectionsEnabled: c.useCollections,
+		},
+		c.cfgManager,
+		c.slowDialMemdClient,
+	)
 	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
 	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
 	c.pollerController = newPollerController(
@@ -563,7 +567,7 @@ func (agent *Agent) CbasEps() []string {
 
 // HasCollectionsSupport verifies whether or not collections are available on the agent.
 func (agent *Agent) HasCollectionsSupport() bool {
-	return atomic.LoadUint32(&agent.supportsCollections) == collectionsSupported
+	return agent.kvMux.SupportsCollections()
 }
 
 // UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
@@ -571,40 +575,9 @@ func (agent *Agent) UsingGCCCP() bool {
 	return agent.kvMux.SupportsGCCCP()
 }
 
-type waitOp struct {
-	cancelCh chan struct{}
-}
-
-func (op *waitOp) Cancel(err error) {
-	op.cancelCh <- struct{}{}
-}
-
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *Agent) WaitUntilReady(cb func()) (PendingOp, error) {
 	return agent.waitCmpt.WaitUntilFirstConfig(cb)
-}
-
-func (agent *Agent) updateCollectionsSupport(supported bool) {
-	if supported {
-		atomic.StoreUint32(&agent.supportsCollections, collectionsSupported)
-	} else {
-		if agent.useCollections && atomic.LoadUint32(&agent.supportsCollections) == collectionsSupportUnknown {
-			logDebugf("Collections disabled as unsupported")
-		}
-		atomic.StoreUint32(&agent.supportsCollections, collectionsUnsupported)
-	}
-}
-
-func (agent *Agent) updateDurabilitySupport(supported bool) {
-	if supported {
-		atomic.StoreUint32(&agent.durabilityLevelStatus, uint32(durabilityLevelStatusSupported))
-	} else {
-		atomic.StoreUint32(&agent.durabilityLevelStatus, uint32(durabilityLevelStatusUnsupported))
-	}
-}
-
-func (agent *Agent) hasDurabilityLevelStatus(status durabilityLevelStatus) bool {
-	return atomic.LoadUint32(&agent.durabilityLevelStatus) == uint32(status)
 }
 
 func (agent *Agent) bucket() string {

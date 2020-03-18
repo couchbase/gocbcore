@@ -274,8 +274,6 @@ func (agent *Agent) bootstrap(client *memdClient, deadline time.Time) error {
 	if collectionsSupported {
 		client.conn.EnableCollections(true)
 	}
-	agent.updateCollectionsSupport(collectionsSupported)
-	agent.updateDurabilitySupport(client.SupportsFeature(FeatureEnhancedDurability))
 
 	if client.SupportsFeature(FeatureDurations) {
 		client.conn.EnableFramingExtras(true)

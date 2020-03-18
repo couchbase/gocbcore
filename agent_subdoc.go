@@ -749,7 +749,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 	magic := reqMagic
 	var flexibleFrameExtras *memdFrameExtras
 	if opts.DurabilityLevel > 0 {
-		if agent.durabilityLevelStatus == 2 {
+		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		flexibleFrameExtras = &memdFrameExtras{}

@@ -11,18 +11,26 @@ import (
 type kvMux struct {
 	muxPtr unsafe.Pointer
 
-	queueSize   int
-	poolSize    int
-	getClientFn memdGetClientFunc
-	cfgMgr      *configManager
+	collectionsEnabled bool
+	queueSize          int
+	poolSize           int
+	getClientFn        memdGetClientFunc
+	cfgMgr             *configManager
 }
 
-func newKVMux(qSize, poolSize int, cfgMgr *configManager, getClientFn memdGetClientFunc) *kvMux {
+type kvMuxProps struct {
+	collectionsEnabled bool
+	queueSize          int
+	poolSize           int
+}
+
+func newKVMux(props kvMuxProps, cfgMgr *configManager, getClientFn memdGetClientFunc) *kvMux {
 	mux := &kvMux{
-		queueSize:   qSize,
-		poolSize:    poolSize,
-		getClientFn: getClientFn,
-		cfgMgr:      cfgMgr,
+		queueSize:          props.queueSize,
+		poolSize:           props.poolSize,
+		collectionsEnabled: props.collectionsEnabled,
+		getClientFn:        getClientFn,
+		cfgMgr:             cfgMgr,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -69,6 +77,9 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	}
 
 	if oldClientMux == nil {
+		if mux.collectionsEnabled && !newClientMux.collectionsSupported {
+			logDebugf("Collections disabled as unsupported")
+		}
 		// There is no existing muxer.  We can simply start the new pipelines.
 		for _, pipeline := range newClientMux.pipelines {
 			pipeline.StartClients()
@@ -195,17 +206,51 @@ func (mux *kvMux) VbucketsOnServer(index int) []uint16 {
 
 func (mux *kvMux) SupportsGCCCP() bool {
 	clientMux := mux.GetState()
+	if clientMux == nil {
+		return false
+	}
+
 	return clientMux.BucketType() == bktTypeNone
 }
 
 func (mux *kvMux) NumVBuckets() int {
 	clientMux := mux.GetState()
+	if clientMux == nil {
+		return 0
+	}
+
 	return clientMux.vbMap.NumVbuckets()
 }
 
 func (mux *kvMux) NumPipelines() int {
 	clientMux := mux.GetState()
+	if clientMux == nil {
+		return 0
+	}
+
 	return clientMux.NumPipelines()
+}
+
+func (mux *kvMux) SupportsCollections() bool {
+	if !mux.collectionsEnabled {
+		return false
+	}
+
+	clientMux := mux.GetState()
+	if clientMux == nil {
+		return false
+	}
+
+	return clientMux.collectionsSupported
+}
+
+func (mux *kvMux) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
+	clientMux := mux.GetState()
+	if clientMux == nil {
+		return false
+	}
+
+	return clientMux.durabilityLevelStatus == status
 }
 
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {

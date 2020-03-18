@@ -163,7 +163,7 @@ func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager) 
 }
 
 func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
-	if cfg.containsClusterCapabilityClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
+	if cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
 		// Once supported this can't be unsupported
 		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 	}

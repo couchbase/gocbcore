@@ -5,6 +5,14 @@ type waitUntilConfigComponent struct {
 	cfgMgr       *configManager
 }
 
+type waitOp struct {
+	cancelCh chan struct{}
+}
+
+func (op *waitOp) Cancel(err error) {
+	op.cancelCh <- struct{}{}
+}
+
 func newWaitUntilConfigComponent(cfgMgr *configManager) *waitUntilConfigComponent {
 	w := &waitUntilConfigComponent{
 		cfgMgr:       cfgMgr,

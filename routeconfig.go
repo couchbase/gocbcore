@@ -18,6 +18,9 @@ type routeConfig struct {
 
 	clusterCapabilitiesVer []int
 	clusterCapabilities    map[string][]string
+
+	bucketCapabilities    []string
+	bucketCapabilitiesVer string
 }
 
 func (config *routeConfig) DebugString() string {
@@ -90,7 +93,7 @@ func (config *routeConfig) IsGCCCPConfig() bool {
 	return config.bktType == bktTypeNone
 }
 
-func (config *routeConfig) containsClusterCapabilityClusterCapability(version int, category, capability string) bool {
+func (config *routeConfig) ContainsClusterCapability(version int, category, capability string) bool {
 	caps := config.clusterCapabilities
 	capsVer := config.clusterCapabilitiesVer
 	if capsVer == nil || len(capsVer) == 0 || caps == nil {
@@ -111,5 +114,14 @@ func (config *routeConfig) containsClusterCapabilityClusterCapability(version in
 		}
 	}
 
+	return false
+}
+
+func (config *routeConfig) ContainsBucketCapability(needleCap string) bool {
+	for _, capa := range config.bucketCapabilities {
+		if capa == needleCap {
+			return true
+		}
+	}
 	return false
 }

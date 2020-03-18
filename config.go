@@ -91,19 +91,6 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
-func (cfg *cfgBucket) supports(needleCap string) bool {
-	for _, cap := range cfg.Capabilities {
-		if cap == needleCap {
-			return true
-		}
-	}
-	return false
-}
-
-func (cfg *cfgBucket) supportsCccp() bool {
-	return cfg.supports("cccp")
-}
-
 func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
 	var kvServerList []string
 	var capiEpList []string
@@ -221,6 +208,8 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		bktType:                bktType,
 		clusterCapabilities:    cfg.ClusterCapabilities,
 		clusterCapabilitiesVer: cfg.ClusterCapabilitiesVer,
+		bucketCapabilities:     cfg.Capabilities,
+		bucketCapabilitiesVer:  cfg.CapabilitiesVersion,
 	}
 
 	if bktType == bktTypeCouchbase {

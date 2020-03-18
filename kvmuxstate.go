@@ -16,6 +16,9 @@ type kvMuxState struct {
 	ketamaMap    *ketamaContinuum
 	uuid         string
 	revID        int64
+
+	durabilityLevelStatus durabilityLevelStatus
+	collectionsSupported  bool
 }
 
 func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
@@ -29,6 +32,14 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		ketamaMap:    cfg.ketamaMap,
 		uuid:         cfg.uuid,
 		revID:        cfg.revID,
+
+		collectionsSupported: cfg.ContainsBucketCapability("collections"),
+	}
+
+	if cfg.ContainsBucketCapability("syncreplication") {
+		mux.durabilityLevelStatus = durabilityLevelStatusSupported
+	} else {
+		mux.durabilityLevelStatus = durabilityLevelStatusUnsupported
 	}
 
 	return mux
