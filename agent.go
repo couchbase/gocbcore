@@ -82,8 +82,8 @@ type Agent struct {
 	pollerController *pollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
-	clusterCapsMgr   *clusterCapabilitiesManager
 
+	n1qlCmpt *n1qlQueryComponent
 	waitCmpt *waitUntilConfigComponent
 
 	agentConfig
@@ -311,7 +311,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		),
 	)
-	c.clusterCapsMgr = newClusterCapabilitiesManager(c.cfgManager)
+	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
 	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	if config.KVConnectTimeout > 0 {
@@ -465,8 +465,6 @@ func (agent *Agent) onInvalidConfig() {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
-	agent.clusterCapsMgr.Close()
-
 	routeCloseErr := agent.kvMux.Close()
 	agent.pollerController.Stop()
 

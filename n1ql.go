@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -144,10 +145,34 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 	return errOut
 }
 
+type n1qlQueryComponent struct {
+	httpComponent *httpComponent
+	cfgMgr        *configManager
+
+	enhancedPreparedSupported uint32
+}
+
+func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager) *n1qlQueryComponent {
+	nqc := &n1qlQueryComponent{
+		httpComponent: httpComponent,
+		cfgMgr:        cfgMgr,
+	}
+	cfgMgr.AddConfigWatcher(nqc)
+
+	return nqc
+}
+
+func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
+	if cfg.containsClusterCapabilityClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
+		// Once supported this can't be unsupported
+		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
+	}
+}
+
 // N1QLQuery executes a N1QL query
-func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	tracer := agent.createOpTrace("N1QLQuery", opts.TraceContext)
-	defer tracer.Finish()
+func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	// tracer := agent.createOpTrace("N1QLQuery", opts.TraceContext)
+	// defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -184,7 +209,7 @@ ExecuteLoop:
 			ireq.Body = newPayload
 		}
 
-		resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := nqc.httpComponent.ExecHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

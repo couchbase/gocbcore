@@ -89,3 +89,27 @@ func (config *routeConfig) IsValid() bool {
 func (config *routeConfig) IsGCCCPConfig() bool {
 	return config.bktType == bktTypeNone
 }
+
+func (config *routeConfig) containsClusterCapabilityClusterCapability(version int, category, capability string) bool {
+	caps := config.clusterCapabilities
+	capsVer := config.clusterCapabilitiesVer
+	if capsVer == nil || len(capsVer) == 0 || caps == nil {
+		return false
+	}
+
+	if capsVer[0] == version {
+		for cat, catCapabilities := range caps {
+			switch cat {
+			case category:
+				for _, capa := range catCapabilities {
+					switch capa {
+					case capability:
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
