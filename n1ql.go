@@ -185,15 +185,15 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
 	ireq := &httpRequest{
-		Service:          N1qlService,
-		Method:           "POST",
-		Path:             "/query/service",
-		Body:             opts.Payload,
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: opts.TraceContext,
+		Service:       N1qlService,
+		Method:        "POST",
+		Path:          "/query/service",
+		Body:          opts.Payload,
+		IsIdempotent:  readOnly,
+		UniqueID:      clientContextID,
+		Deadline:      opts.Deadline,
+		RetryStrategy: opts.RetryStrategy,
+		// RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:

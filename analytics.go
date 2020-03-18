@@ -145,10 +145,20 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 	return errOut
 }
 
+type analyticsQueryComponent struct {
+	httpComponent *httpComponent
+}
+
+func newAnalyticsQueryComponent(httpComponent *httpComponent) *analyticsQueryComponent {
+	return &analyticsQueryComponent{
+		httpComponent: httpComponent,
+	}
+}
+
 // AnalyticsQuery executes an analytics query
-func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
-	tracer := agent.createOpTrace("AnalyticsQuery", opts.TraceContext)
-	defer tracer.Finish()
+func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
+	// tracer := agent.createOpTrace("AnalyticsQuery", opts.TraceContext)
+	// defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -167,12 +177,12 @@ func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowRea
 		Headers: map[string]string{
 			"Analytics-Priority": fmt.Sprintf("%d", opts.Priority),
 		},
-		Body:             opts.Payload,
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
+		Body:          opts.Payload,
+		IsIdempotent:  readOnly,
+		UniqueID:      clientContextID,
+		Deadline:      opts.Deadline,
+		RetryStrategy: opts.RetryStrategy,
+		// RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:
@@ -188,7 +198,7 @@ ExecuteLoop:
 			ireq.Body = newPayload
 		}
 
-		resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := aqc.httpComponent.ExecHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

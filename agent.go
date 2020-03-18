@@ -80,8 +80,9 @@ type Agent struct {
 	kvMux            *kvMux
 	httpMux          *httpMux
 
-	n1qlCmpt *n1qlQueryComponent
-	waitCmpt *waitUntilConfigComponent
+	n1qlCmpt      *n1qlQueryComponent
+	analyticsCmpt *analyticsQueryComponent
+	waitCmpt      *waitUntilConfigComponent
 
 	agentConfig
 }
@@ -316,6 +317,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		),
 	)
 	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
+	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent)
 	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	if config.KVConnectTimeout > 0 {
