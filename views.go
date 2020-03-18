@@ -115,29 +115,39 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 	return errOut
 }
 
+type viewQueryComponent struct {
+	httpComponent *httpComponent
+}
+
+func newViewQueryComponent(httpComponent *httpComponent) *viewQueryComponent {
+	return &viewQueryComponent{
+		httpComponent: httpComponent,
+	}
+}
+
 // ViewQuery executes a view query
-func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
-	tracer := agent.createOpTrace("ViewQuery", opts.TraceContext)
-	defer tracer.Finish()
+func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
+	// tracer := agent.createOpTrace("ViewQuery", opts.TraceContext)
+	// defer tracer.Finish()
 
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",
 		opts.DesignDocumentName, opts.ViewType, opts.ViewName, opts.Options.Encode())
 
 	ireq := &httpRequest{
-		Service:          CapiService,
-		Method:           "GET",
-		Path:             reqURI,
-		IsIdempotent:     true,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
+		Service:       CapiService,
+		Method:        "GET",
+		Path:          reqURI,
+		IsIdempotent:  true,
+		Deadline:      opts.Deadline,
+		RetryStrategy: opts.RetryStrategy,
+		// RootTraceContext: tracer.RootContext(),
 	}
 
 	ddoc := opts.DesignDocumentName
 	view := opts.ViewName
 
 	for {
-		resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := vqc.httpComponent.ExecHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

@@ -14,3 +14,8 @@ func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowRea
 func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
 	return agent.searchCmpt.SearchQuery(opts)
 }
+
+// ViewQuery executes a view query
+func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
+	return agent.viewCmpt.ViewQuery(opts)
+}
