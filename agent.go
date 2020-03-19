@@ -42,7 +42,6 @@ type Agent struct {
 	tlsConfig      *tls.Config
 	initFn         memdInitFunc
 
-	configLock sync.Mutex
 	kvErrorMap kvErrorMapPtr
 
 	tracer RequestTracer
@@ -52,15 +51,8 @@ type Agent struct {
 
 	httpComponent *httpComponent
 
-	confHTTPRedialPeriod time.Duration
-	confHTTPRetryDelay   time.Duration
-	confCccpMaxWait      time.Duration
-	confCccpPollPeriod   time.Duration
-
 	kvConnectTimeout  time.Duration
 	serverWaitTimeout time.Duration
-	kvPoolSize        int
-	maxQueueSize      int
 
 	zombieLock      sync.RWMutex
 	zombieOps       []*zombieLogEntry
@@ -104,10 +96,6 @@ func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
 // for any dispatched requests.
 func (agent *Agent) HTTPClient() *http.Client {
 	return agent.httpComponent.cli
-}
-
-func (agent *Agent) getErrorMap() *kvErrorMap {
-	return agent.kvErrorMap.Get()
 }
 
 // AuthFunc is invoked by the agent to authenticate a client. This function returns two channels to allow for for multi-stage
@@ -241,8 +229,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		tracer = noopTracer{}
 	}
 
-	maxQueueSize := 2048
-
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),
 		userAgent:  config.UserAgent,
@@ -255,12 +241,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		serverFailures:       make(map[string]time.Time),
 		kvConnectTimeout:     7000 * time.Millisecond,
 		serverWaitTimeout:    5 * time.Second,
-		kvPoolSize:           1,
-		maxQueueSize:         maxQueueSize,
-		confHTTPRetryDelay:   10 * time.Second,
-		confHTTPRedialPeriod: 10 * time.Second,
-		confCccpMaxWait:      3 * time.Second,
-		confCccpPollPeriod:   2500 * time.Millisecond,
 		dcpPriority:          config.DcpAgentPriority,
 		useDcpExpiry:         config.UseDCPExpiry,
 		defaultRetryStrategy: config.DefaultRetryStrategy,
@@ -277,74 +257,41 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			noRootTraceSpans:     config.NoRootTraceSpans,
 		},
 	}
-	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
-
-	c.cfgManager = newConfigManager(
-		configManagerProperties{
-			NetworkType: config.NetworkType,
-			UseSSL:      config.UseTLS,
-		},
-		c.onInvalidConfig,
-	)
-
-	c.kvMux = newKVMux(
-		kvMuxProps{
-			queueSize:          c.maxQueueSize,
-			poolSize:           c.kvPoolSize,
-			collectionsEnabled: c.useCollections,
-		},
-		c.cfgManager,
-		c.slowDialMemdClient,
-	)
-	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
-	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
-	c.pollerController = newPollerController(
-		newCCCPConfigController(
-			cccpPollerProperties{
-				confCccpMaxWait:    c.confCccpMaxWait,
-				confCccpPollPeriod: c.confCccpPollPeriod,
-			},
-			c.kvMux,
-			c.cfgManager,
-		),
-		newHTTPConfigController(
-			c.bucket(),
-			httpPollerProperties{
-				httpComponent:        c.httpComponent,
-				confHTTPRetryDelay:   c.confHTTPRetryDelay,
-				confHTTPRedialPeriod: c.confHTTPRedialPeriod,
-			},
-			c.httpMux,
-			c.cfgManager,
-		),
-	)
-	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
-	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent)
-	c.searchCmpt = newSearchQueryComponent(c.httpComponent)
-	c.viewCmpt = newViewQueryComponent(c.httpComponent)
-	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	if config.KVConnectTimeout > 0 {
 		c.kvConnectTimeout = config.KVConnectTimeout
 	}
+
+	kvPoolSize := 1
 	if config.KvPoolSize > 0 {
-		c.kvPoolSize = config.KvPoolSize
+		kvPoolSize = config.KvPoolSize
 	}
+
+	maxQueueSize := 2048
 	if config.MaxQueueSize > 0 {
-		c.maxQueueSize = config.MaxQueueSize
+		maxQueueSize = config.MaxQueueSize
 	}
+
+	confHTTPRetryDelay := 10 * time.Second
 	if config.HTTPRetryDelay > 0 {
-		c.confHTTPRetryDelay = config.HTTPRetryDelay
+		confHTTPRetryDelay = config.HTTPRetryDelay
 	}
+
+	confHTTPRedialPeriod := 10 * time.Second
 	if config.HTTPRedialPeriod > 0 {
-		c.confHTTPRedialPeriod = config.HTTPRedialPeriod
+		confHTTPRedialPeriod = config.HTTPRedialPeriod
 	}
+
+	confCccpMaxWait := 3 * time.Second
 	if config.CccpMaxWait > 0 {
-		c.confCccpMaxWait = config.CccpMaxWait
+		confCccpMaxWait = config.CccpMaxWait
 	}
+
+	confCccpPollPeriod := 2500 * time.Millisecond
 	if config.CccpPollPeriod > 0 {
-		c.confCccpPollPeriod = config.CccpPollPeriod
+		confCccpPollPeriod = config.CccpPollPeriod
 	}
+
 	if config.CompressionMinSize > 0 {
 		c.compressionMinSize = config.CompressionMinSize
 	}
@@ -357,6 +304,53 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if c.defaultRetryStrategy == nil {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
+
+	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
+
+	c.cfgManager = newConfigManager(
+		configManagerProperties{
+			NetworkType: config.NetworkType,
+			UseSSL:      config.UseTLS,
+		},
+		c.onInvalidConfig,
+	)
+
+	c.kvMux = newKVMux(
+		kvMuxProps{
+			queueSize:          maxQueueSize,
+			poolSize:           kvPoolSize,
+			collectionsEnabled: c.useCollections,
+		},
+		c.cfgManager,
+		c.slowDialMemdClient,
+	)
+	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
+	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
+	c.pollerController = newPollerController(
+		newCCCPConfigController(
+			cccpPollerProperties{
+				confCccpMaxWait:    confCccpMaxWait,
+				confCccpPollPeriod: confCccpPollPeriod,
+			},
+			c.kvMux,
+			c.cfgManager,
+		),
+		newHTTPConfigController(
+			c.bucket(),
+			httpPollerProperties{
+				httpComponent:        c.httpComponent,
+				confHTTPRetryDelay:   confHTTPRetryDelay,
+				confHTTPRedialPeriod: confHTTPRedialPeriod,
+			},
+			c.httpMux,
+			c.cfgManager,
+		),
+	)
+	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
+	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent)
+	c.searchCmpt = newSearchQueryComponent(c.httpComponent)
+	c.viewCmpt = newViewQueryComponent(c.httpComponent)
+	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	c.authMechanisms = []AuthMechanism{
 		ScramSha512AuthMechanism,

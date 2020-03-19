@@ -13,22 +13,6 @@ type memdSenderClient interface {
 	SendRequest(*memdQRequest) error
 }
 
-type memdPipelineSenderWrap struct {
-	pipeline *memdPipeline
-}
-
-func (wrap *memdPipelineSenderWrap) SupportsFeature(feature HelloFeature) bool {
-	return false
-}
-
-func (wrap *memdPipelineSenderWrap) Address() string {
-	return wrap.pipeline.Address()
-}
-
-func (wrap *memdPipelineSenderWrap) SendRequest(req *memdQRequest) error {
-	return wrap.pipeline.SendRequest(req)
-}
-
 type syncClient struct {
 	client memdSenderClient
 }

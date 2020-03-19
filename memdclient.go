@@ -37,7 +37,6 @@ type memdClient struct {
 	parent                *Agent
 	conn                  memdConn
 	opList                memdOpMap
-	errorMap              *kvErrorMap
 	features              []HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
@@ -97,10 +96,6 @@ func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 	}
 
 	client.dcpFlowRecv -= ackAmt
-}
-
-func (client *memdClient) SetErrorMap(errorMap *kvErrorMap) {
-	client.errorMap = errorMap
 }
 
 func (client *memdClient) Address() string {

@@ -95,9 +95,6 @@ func (agent *Agent) storeErrorMap(mapBytes []byte, client *memdClient) {
 
 	logDebugf("Fetched error map: %+v", errMap)
 
-	// Tell the local client to use this error map
-	client.SetErrorMap(errMap)
-
 	// Check if we need to switch the agent itself to a better
 	//  error map revision.
 	for {
