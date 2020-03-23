@@ -575,7 +575,7 @@ func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (Pen
 			}
 
 			if resError != StatusSuccess {
-				results[subdocs.indexes[i]].Err = agent.makeSubDocError(i, resError, req, resp)
+				results[subdocs.indexes[i]].Err = agent.errMapManager.MakeSubDocError(i, resError, req, resp)
 			}
 
 			results[subdocs.indexes[i]].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
@@ -711,7 +711,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 			opIndex := int(resp.Value[0])
 			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
-			err := agent.makeSubDocError(opIndex, resError, req, resp)
+			err := agent.errMapManager.MakeSubDocError(opIndex, resError, req, resp)
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -721,7 +721,7 @@ func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (Pen
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 
-			results[subdocs.indexes[opIndex]].Err = agent.makeSubDocError(opIndex, opStatus, req, resp)
+			results[subdocs.indexes[opIndex]].Err = agent.errMapManager.MakeSubDocError(opIndex, opStatus, req, resp)
 			readPos += 3
 
 			if opStatus == StatusSuccess {

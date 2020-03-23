@@ -42,8 +42,6 @@ type Agent struct {
 	tlsConfig      *tls.Config
 	initFn         memdInitFunc
 
-	kvErrorMap kvErrorMapPtr
-
 	tracer RequestTracer
 
 	serverFailuresLock sync.Mutex
@@ -71,6 +69,7 @@ type Agent struct {
 	pollerController *pollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
+	errMapManager    *errMapManager
 
 	n1qlCmpt      *n1qlQueryComponent
 	analyticsCmpt *analyticsQueryComponent
@@ -245,6 +244,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		useDcpExpiry:         config.UseDCPExpiry,
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 		circuitBreakerConfig: config.CircuitBreakerConfig,
+		errMapManager:        newErrMapManager(config.BucketName),
 
 		agentConfig: agentConfig{
 			useMutationTokens:    config.UseMutationTokens,

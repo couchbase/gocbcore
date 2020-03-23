@@ -137,17 +137,6 @@ func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
 	}
 }
 
-func (req *memdQRequest) cloneNew() *memdQRequest {
-	return &memdQRequest{
-		memdPacket:       req.memdPacket,
-		ReplicaIdx:       req.ReplicaIdx,
-		Callback:         req.Callback,
-		Persistent:       req.Persistent,
-		owner:            req.owner,
-		RootTraceContext: req.RootTraceContext,
-	}
-}
-
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
 	if req.Persistent {
 		if atomic.LoadUint32(&req.isCompleted) == 0 {
