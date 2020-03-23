@@ -307,10 +307,21 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
 
+	var httpEpList []string
+	for _, hostPort := range config.HTTPAddrs {
+		if !c.IsSecure() {
+			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
+		} else {
+			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+		}
+	}
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType: config.NetworkType,
-			UseSSL:      config.UseTLS,
+			NetworkType:  config.NetworkType,
+			UseSSL:       config.UseTLS,
+			SrcMemdAddrs: config.MemdAddrs,
+			SrcHTTPAddrs: httpEpList,
 		},
 		c.onInvalidConfig,
 	)
@@ -366,7 +377,16 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.authHandler = c.buildAuthHandler()
 	}
 
-	c.connect(config.MemdAddrs, config.HTTPAddrs)
+	cfg := &routeConfig{
+		kvServerList: config.MemdAddrs,
+		mgmtEpList:   httpEpList,
+		revID:        -1,
+	}
+
+	c.httpMux.OnNewRouteConfig(cfg)
+	c.kvMux.OnNewRouteConfig(cfg)
+
+	go c.pollerController.Start()
 
 	if config.UseZombieLogger {
 		// We setup the zombie logger after connecting so that we don't end up leaking the logging goroutine.
@@ -428,28 +448,6 @@ func (agent *Agent) buildAuthHandler() authFuncHandler {
 
 		return nil
 	}
-}
-
-func (agent *Agent) connect(memdAddrs, httpAddrs []string) {
-	var httpEpList []string
-	for _, hostPort := range httpAddrs {
-		if !agent.IsSecure() {
-			httpEpList = append(httpAddrs, fmt.Sprintf("http://%s", hostPort))
-		} else {
-			httpEpList = append(httpAddrs, fmt.Sprintf("https://%s", hostPort))
-		}
-	}
-
-	cfg := &routeConfig{
-		kvServerList: memdAddrs,
-		mgmtEpList:   httpEpList,
-		revID:        -1,
-	}
-
-	agent.httpMux.OnNewRouteConfig(cfg)
-	agent.kvMux.OnNewRouteConfig(cfg)
-
-	go agent.pollerController.Start()
 }
 
 func (agent *Agent) disconnectClient(client *memdClient) {

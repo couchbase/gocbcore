@@ -250,7 +250,7 @@ Looper:
 
 			iterSawConfig = true
 			logDebugf("HTTP Config Update")
-			hcc.cfgMgr.OnNewConfig(bkCfg, pickedSrv)
+			hcc.cfgMgr.OnNewConfig(bkCfg)
 		}
 
 		logDebugf("HTTP, Setting %s to iter %d", pickedSrv, iterNum)

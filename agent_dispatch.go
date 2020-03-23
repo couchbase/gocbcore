@@ -76,7 +76,7 @@ func (agent *Agent) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) b
 		// Try to parse the value as a bucket configuration
 		bk, err := parseConfig(resp.Value, sourceHost)
 		if err == nil {
-			agent.cfgManager.OnNewConfig(bk, sourceHost)
+			agent.cfgManager.OnNewConfig(bk)
 		}
 	}
 

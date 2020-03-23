@@ -17,12 +17,16 @@ type configManager struct {
 	collectionsSupported bool
 	collectionsEnabled   bool
 
+	srcServers []string
+
 	seenConfig bool
 }
 
 type configManagerProperties struct {
-	UseSSL      bool
-	NetworkType string
+	UseSSL       bool
+	NetworkType  string
+	SrcMemdAddrs []string
+	SrcHTTPAddrs []string
 }
 
 type routeConfigWatcher interface {
@@ -33,6 +37,7 @@ func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *
 	return &configManager{
 		useSSL:         props.UseSSL,
 		networkType:    props.NetworkType,
+		srcServers:     append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		invalidWatcher: invalidCfgWatcher,
 		currentConfig: &routeConfig{
 			revID: -1,
@@ -40,12 +45,12 @@ func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *
 	}
 }
 
-func (cm *configManager) OnNewConfig(cfg *cfgBucket, srcAddr string) {
+func (cm *configManager) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	if cm.seenConfig {
 		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false)
 	} else {
-		routeCfg = cm.buildFirstRouteConfig(cfg, srcAddr)
+		routeCfg = cm.buildFirstRouteConfig(cfg)
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
@@ -136,35 +141,38 @@ func (cm *configManager) updateRouteConfig(cfg *routeConfig) bool {
 	return true
 }
 
-func (cm *configManager) buildFirstRouteConfig(config *cfgBucket, srcServer string) *routeConfig {
+func (cm *configManager) buildFirstRouteConfig(config *cfgBucket) *routeConfig {
 	if cm.networkType != "" && cm.networkType != "auto" {
 		return config.BuildRouteConfig(cm.useSSL, cm.networkType, true)
 	}
 
 	defaultRouteConfig := config.BuildRouteConfig(cm.useSSL, "default", true)
 
-	// First we check if the source server is from the defaults list
-	srcInDefaultConfig := false
-	for _, endpoint := range defaultRouteConfig.kvServerList {
-		if endpoint == srcServer {
-			srcInDefaultConfig = true
+	// Iterate over all of the source servers and check if any addresses match as default or external network types
+	for _, srcServer := range cm.srcServers {
+		// First we check if the source server is from the defaults list
+		srcInDefaultConfig := false
+		for _, endpoint := range defaultRouteConfig.kvServerList {
+			if endpoint == srcServer {
+				srcInDefaultConfig = true
+			}
 		}
-	}
-	for _, endpoint := range defaultRouteConfig.mgmtEpList {
-		if endpoint == srcServer {
-			srcInDefaultConfig = true
+		for _, endpoint := range defaultRouteConfig.mgmtEpList {
+			if endpoint == srcServer {
+				srcInDefaultConfig = true
+			}
 		}
-	}
-	if srcInDefaultConfig {
-		cm.networkType = "default"
-		return defaultRouteConfig
-	}
+		if srcInDefaultConfig {
+			cm.networkType = "default"
+			return defaultRouteConfig
+		}
 
-	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := config.BuildRouteConfig(cm.useSSL, "external", true)
-	if externalRouteCfg.IsValid() {
-		cm.networkType = "external"
-		return externalRouteCfg
+		// Next lets see if we have an external config, if so, default to that
+		externalRouteCfg := config.BuildRouteConfig(cm.useSSL, "external", true)
+		if externalRouteCfg.IsValid() {
+			cm.networkType = "external"
+			return externalRouteCfg
+		}
 	}
 
 	// If all else fails, default to the implicit default config

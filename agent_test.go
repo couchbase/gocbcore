@@ -1283,11 +1283,13 @@ func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
-	cfgManager := newConfigManager(configManagerProperties{}, func() {
+	cfgManager := newConfigManager(configManagerProperties{
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+	}, func() {
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
@@ -1309,12 +1311,13 @@ func TestAlternateAddressesAutoConfig(t *testing.T) {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "auto",
+		NetworkType:  "auto",
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
 	}, func() {
 
 	})
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
@@ -1336,12 +1339,13 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "auto",
+		NetworkType:  "auto",
+		SrcMemdAddrs: []string{"172.17.0.4:11210"},
 	}, func() {
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "172.17.0.4:11210")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "default" {
@@ -1363,12 +1367,13 @@ func TestAlternateAddressesDefaultConfig(t *testing.T) {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "default",
+		NetworkType:  "default",
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
 	}, func() {
 
 	})
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "default" {
@@ -1390,12 +1395,13 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "external",
+		NetworkType:  "external",
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
 	}, func() {
 
 	})
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
@@ -1417,11 +1423,12 @@ func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "external",
+		NetworkType:  "external",
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
 	}, func() {
 	})
 	cfgManager.AddConfigWatcher(mgr)
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
@@ -1443,11 +1450,12 @@ func TestAlternateAddressesInvalidConfig(t *testing.T) {
 
 	var invalid bool
 	cfgManager := newConfigManager(configManagerProperties{
-		NetworkType: "invalid",
+		NetworkType:  "invalid",
+		SrcMemdAddrs: []string{"192.168.132.234:32799"},
 	}, func() {
 		invalid = true
 	})
-	cfgManager.OnNewConfig(cfgBk, "192.168.132.234:32799")
+	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "invalid" {

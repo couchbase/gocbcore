@@ -92,7 +92,6 @@ Looper:
 		iter.Offset(nodeIdx)
 
 		var foundConfig *cfgBucket
-		var srcServer string
 		// Until this gets a valid config the pipeline addresses will be the ones from the connection string, there is
 		// an assumed contract between the looper and the upstream config manager that this is the case. This allows
 		// the config manager to setup its network type correctly.
@@ -122,7 +121,6 @@ Looper:
 			}
 
 			foundConfig = bk
-			srcServer = pipeline.Address()
 			break
 		}
 
@@ -132,7 +130,7 @@ Looper:
 		}
 
 		logDebugf("CCCPPOLL: Received new config")
-		ccc.cfgMgr.OnNewConfig(foundConfig, srcServer)
+		ccc.cfgMgr.OnNewConfig(foundConfig)
 	}
 
 	close(ccc.looperDoneSig)
