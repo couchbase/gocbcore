@@ -27,6 +27,8 @@ func isCompressibleOp(command commandCode) bool {
 	return false
 }
 
+type postCompleteErrorHandler func(resp *memdQResponse, req *memdQRequest, err error) (bool, error)
+
 type memdClient struct {
 	lastActivity          int64
 	dcpAckSize            int
@@ -41,6 +43,8 @@ type memdClient struct {
 	lock                  sync.Mutex
 	streamEndNotSupported bool
 	breaker               circuitBreaker
+	postErrHandler        postCompleteErrorHandler
+	tracer                RequestTracer
 }
 
 type dcpBuffer struct {
@@ -49,12 +53,15 @@ type dcpBuffer struct {
 	isInternal bool
 }
 
-func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig) *memdClient {
+func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
+	tracer RequestTracer) *memdClient {
 	client := memdClient{
-		parent:      parent,
-		conn:        conn,
-		closeNotify: make(chan bool),
-		connID:      parent.clientID + "/" + formatCbUID(randomCbUID()),
+		parent:         parent,
+		conn:           conn,
+		closeNotify:    make(chan bool),
+		connID:         parent.clientID + "/" + formatCbUID(randomCbUID()),
+		postErrHandler: postErrHandler,
+		tracer:         tracer,
 	}
 
 	if breakerCfg.Enabled {
@@ -191,7 +198,7 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
 
-	client.parent.startNetTrace(req)
+	startNetTrace(req, client.tracer)
 
 	err := client.conn.WritePacket(packet)
 	if err != nil {
@@ -229,7 +236,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	req.processingLock.Lock()
 
 	if !req.Persistent {
-		client.parent.stopNetTrace(req, resp, client)
+		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
 	}
 
 	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
@@ -261,12 +268,12 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		req.processingLock.Unlock()
 	} else {
 		if !req.Persistent {
-			client.parent.stopCmdTrace(req)
+			stopCmdTrace(req)
 		}
 
 		req.processingLock.Unlock()
 
-		shortCircuited, routeErr := client.parent.handleOpRoutingResp(resp, req, err)
+		shortCircuited, routeErr := client.postErrHandler(resp, req, err)
 		if shortCircuited {
 			logSchedf("Routing callback intercepted response")
 			return
@@ -412,7 +419,7 @@ func (client *memdClient) run() {
 				logWarnf("Encountered an unowned request in a client opMap")
 			}
 
-			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, io.EOF)
+			shortCircuited, routeErr := client.postErrHandler(nil, req, io.EOF)
 			if shortCircuited {
 				return
 			}

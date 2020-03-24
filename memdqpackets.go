@@ -31,11 +31,6 @@ type memdQRequest struct {
 	Callback   callback
 	Persistent bool
 
-	// Owner represents the agent which created and currently owns
-	// this request.  This is used for specialized routing such as
-	// not-my-vbucket and enhanced errors.
-	owner *Agent
-
 	// This tracks when the request was dispatched so that we can
 	//  properly prioritize older requests to try and meet timeout
 	//  requirements.
@@ -176,7 +171,7 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		waitingIn.CancelRequest(req, err)
 	}
 
-	req.owner.cancelReqTrace(req, errRequestCanceled)
+	cancelReqTrace(req)
 	req.processingLock.Unlock()
 
 	return true
@@ -186,14 +181,6 @@ func (req *memdQRequest) Cancel(err error) {
 	// Try to perform the cancellation, if it succeeds, we call the
 	// callback immediately on the users behalf.
 	if req.internalCancel(err) {
-		// Requests that originate from syncclient don't have an owner so just fail them.
-		if req.owner == nil {
-			req.Callback(nil, req, err)
-			return
-		}
-		shortCircuited, routeErr := req.owner.handleOpRoutingResp(nil, req, err)
-		if !shortCircuited {
-			req.Callback(nil, req, routeErr)
-		}
+		req.Callback(nil, req, err)
 	}
 }

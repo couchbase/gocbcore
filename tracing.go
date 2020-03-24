@@ -88,88 +88,6 @@ func (agent *Agent) createOpTrace(operationName string, parentContext RequestSpa
 	}
 }
 
-func (agent *Agent) startCmdTrace(req *memdQRequest) {
-	if req.cmdTraceSpan != nil {
-		logWarnf("Attempted to start tracing on traced request")
-		return
-	}
-
-	if req.RootTraceContext == nil {
-		return
-	}
-
-	req.processingLock.Lock()
-	req.cmdTraceSpan = agent.tracer.StartSpan(getCommandName(req.memdPacket.Opcode), req.RootTraceContext).
-		SetTag("retry", req.RetryAttempts())
-
-	req.processingLock.Unlock()
-}
-
-func (agent *Agent) stopCmdTrace(req *memdQRequest) {
-	if req.RootTraceContext == nil {
-		return
-	}
-
-	if req.cmdTraceSpan == nil {
-		logWarnf("Attempted to stop tracing on untraced request")
-		return
-	}
-
-	req.cmdTraceSpan.Finish()
-	req.cmdTraceSpan = nil
-}
-
-func (agent *Agent) startNetTrace(req *memdQRequest) {
-	if req.cmdTraceSpan == nil {
-		return
-	}
-
-	if req.netTraceSpan != nil {
-		logWarnf("Attempted to start net tracing on traced request")
-		return
-	}
-
-	req.processingLock.Lock()
-	req.netTraceSpan = agent.tracer.StartSpan("rpc", req.cmdTraceSpan.Context()).
-		SetTag("span.kind", "client")
-	req.processingLock.Unlock()
-}
-
-func (agent *Agent) stopNetTrace(req *memdQRequest, resp *memdQResponse, client *memdClient) {
-	if req.cmdTraceSpan == nil {
-		return
-	}
-
-	if req.netTraceSpan == nil {
-		logWarnf("Attempted to stop net tracing on an untraced request")
-		return
-	}
-
-	req.netTraceSpan.SetTag("couchbase.operation_id", fmt.Sprintf("0x%x", resp.Opaque))
-	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnID)
-	if isLogRedactionLevelNone() {
-		req.netTraceSpan.SetTag("couchbase.document_key", string(req.Key))
-	}
-	req.netTraceSpan.SetTag("local.address", client.conn.LocalAddr())
-	req.netTraceSpan.SetTag("peer.address", client.conn.RemoteAddr())
-	if resp.FrameExtras != nil && resp.FrameExtras.HasSrvDuration {
-		req.netTraceSpan.SetTag("server_duration", resp.FrameExtras.SrvDuration)
-	}
-
-	req.netTraceSpan.Finish()
-	req.netTraceSpan = nil
-}
-
-func (agent *Agent) cancelReqTrace(req *memdQRequest, err error) {
-	if req.cmdTraceSpan != nil {
-		if req.netTraceSpan != nil {
-			req.netTraceSpan.Finish()
-		}
-
-		req.cmdTraceSpan.Finish()
-	}
-}
-
 type zombieLogEntry struct {
 	connectionID string
 	operationID  string
@@ -313,4 +231,86 @@ func (agent *Agent) recordZombieResponse(resp *memdQResponse, client *memdClient
 	}
 
 	agent.zombieLock.Unlock()
+}
+
+func startCmdTrace(req *memdQRequest, tracer RequestTracer) {
+	if req.cmdTraceSpan != nil {
+		logWarnf("Attempted to start tracing on traced request")
+		return
+	}
+
+	if req.RootTraceContext == nil {
+		return
+	}
+
+	req.processingLock.Lock()
+	req.cmdTraceSpan = tracer.StartSpan(getCommandName(req.memdPacket.Opcode), req.RootTraceContext).
+		SetTag("retry", req.RetryAttempts())
+
+	req.processingLock.Unlock()
+}
+
+func stopCmdTrace(req *memdQRequest) {
+	if req.RootTraceContext == nil {
+		return
+	}
+
+	if req.cmdTraceSpan == nil {
+		logWarnf("Attempted to stop tracing on untraced request")
+		return
+	}
+
+	req.cmdTraceSpan.Finish()
+	req.cmdTraceSpan = nil
+}
+
+func cancelReqTrace(req *memdQRequest) {
+	if req.cmdTraceSpan != nil {
+		if req.netTraceSpan != nil {
+			req.netTraceSpan.Finish()
+		}
+
+		req.cmdTraceSpan.Finish()
+	}
+}
+
+func startNetTrace(req *memdQRequest, tracer RequestTracer) {
+	if req.cmdTraceSpan == nil {
+		return
+	}
+
+	if req.netTraceSpan != nil {
+		logWarnf("Attempted to start net tracing on traced request")
+		return
+	}
+
+	req.processingLock.Lock()
+	req.netTraceSpan = tracer.StartSpan("rpc", req.cmdTraceSpan.Context()).
+		SetTag("span.kind", "client")
+	req.processingLock.Unlock()
+}
+
+func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress string) {
+	if req.cmdTraceSpan == nil {
+		return
+	}
+
+	if req.netTraceSpan == nil {
+		logWarnf("Attempted to stop net tracing on an untraced request")
+		return
+	}
+
+	req.netTraceSpan.SetTag("couchbase.operation_id", fmt.Sprintf("0x%x", resp.Opaque))
+	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnID)
+	if isLogRedactionLevelNone() {
+		req.netTraceSpan.SetTag("couchbase.document_key", string(req.Key))
+	}
+	req.netTraceSpan.SetTag("local.address", localAddress)
+	req.netTraceSpan.SetTag("peer.address", remoteAddress)
+	if resp.FrameExtras != nil && resp.FrameExtras.HasSrvDuration {
+		req.netTraceSpan.SetTag("server_duration", resp.FrameExtras.SrvDuration)
+	}
+
+	req.netTraceSpan.Finish()
+	req.netTraceSpan = nil
 }

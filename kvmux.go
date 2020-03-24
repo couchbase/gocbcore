@@ -3,8 +3,10 @@ package gocbcore
 import (
 	"container/list"
 	"errors"
+	"io"
 	"sort"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -16,6 +18,11 @@ type kvMux struct {
 	poolSize           int
 	getClientFn        memdGetClientFunc
 	cfgMgr             *configManager
+	errMapMgr          *errMapManager
+
+	tracer RequestTracer
+
+	postCompleteErrHandler postCompleteErrorHandler
 }
 
 type kvMuxProps struct {
@@ -24,13 +31,15 @@ type kvMuxProps struct {
 	poolSize           int
 }
 
-func newKVMux(props kvMuxProps, cfgMgr *configManager, getClientFn memdGetClientFunc) *kvMux {
+func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer RequestTracer, getClientFn memdGetClientFunc) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.queueSize,
 		poolSize:           props.poolSize,
 		collectionsEnabled: props.collectionsEnabled,
 		getClientFn:        getClientFn,
 		cfgMgr:             cfgMgr,
+		errMapMgr:          errMapMgr,
+		tracer:             tracer,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -118,11 +127,16 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 
 		// TODO: don't forget these
 		for _, req := range requestList {
-			// 	agent.stopCmdTrace(req)
+			// 	mux.stopCmdTrace(req)
 			mux.RequeueDirect(req, false)
 		}
 	}
 }
+
+func (mux *kvMux) SetPostCompleteErrorHandler(handler postCompleteErrorHandler) {
+	mux.postCompleteErrHandler = handler
+}
+
 func (mux *kvMux) ConfigUUID() string {
 	clientMux := mux.GetState()
 	if clientMux == nil {
@@ -319,7 +333,8 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 }
 
 func (mux *kvMux) DispatchDirect(req *memdQRequest) error {
-	// agent.startCmdTrace(req)
+	startCmdTrace(req, mux.tracer)
+	req.dispatchTime = time.Now()
 
 	for {
 		pipeline, err := mux.RouteRequest(req)
@@ -330,10 +345,17 @@ func (mux *kvMux) DispatchDirect(req *memdQRequest) error {
 		err = pipeline.SendRequest(req)
 		if err == errPipelineClosed {
 			continue
-		} else if err == errPipelineFull {
-			return errOverload
 		} else if err != nil {
-			return err
+			if err == errPipelineFull {
+				err = errOverload
+			}
+
+			shortCircuit, routeErr := mux.handleOpRoutingResp(nil, req, err)
+			if shortCircuit {
+				return nil
+			}
+
+			return routeErr
 		}
 
 		break
@@ -343,7 +365,8 @@ func (mux *kvMux) DispatchDirect(req *memdQRequest) error {
 }
 
 func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
-	// agent.startCmdTrace(req)
+	startCmdTrace(req, mux.tracer)
+
 	handleError := func(err error) {
 		// We only want to log an error on retries if the error isn't cancelled.
 		if !isRetry || (isRetry && !errors.Is(err, ErrRequestCanceled)) {
@@ -375,7 +398,8 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 }
 
 func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) error {
-	// agent.startCmdTrace(req)
+	startCmdTrace(req, mux.tracer)
+	req.dispatchTime = time.Now()
 
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
 	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
@@ -405,10 +429,17 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) err
 		err := foundPipeline.SendRequest(req)
 		if err == errPipelineClosed {
 			continue
-		} else if err == errPipelineFull {
-			return errOverload
 		} else if err != nil {
-			return err
+			if err == errPipelineFull {
+				err = errOverload
+			}
+
+			shortCircuit, routeErr := mux.handleOpRoutingResp(nil, req, err)
+			if shortCircuit {
+				return nil
+			}
+
+			return routeErr
 		}
 
 		break
@@ -453,6 +484,92 @@ func (mux *kvMux) Close() error {
 	mux.muxDrain(clientMux, cb)
 
 	return muxErr
+}
+
+func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
+	// If there is no error, we should return immediately
+	if err == nil {
+		return false, nil
+	}
+
+	// If this operation has been cancelled, we just fail immediately.
+	if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrTimeout) {
+		return false, err
+	}
+
+	err = translateMemdError(err, req)
+
+	// Handle potentially retrying the operation
+	if resp != nil && resp.Status == StatusNotMyVBucket {
+		if mux.handleNotMyVbucket(resp, req) {
+			return true, nil
+		}
+	} else if errors.Is(err, ErrDocumentLocked) {
+		if mux.waitAndRetryOperation(req, KVLockedRetryReason) {
+			return true, nil
+		}
+	} else if errors.Is(err, ErrTemporaryFailure) {
+		if mux.waitAndRetryOperation(req, KVTemporaryFailureRetryReason) {
+			return true, nil
+		}
+	} else if errors.Is(err, ErrDurableWriteInProgress) {
+		if mux.waitAndRetryOperation(req, KVSyncWriteInProgressRetryReason) {
+			return true, nil
+		}
+	} else if errors.Is(err, ErrDurableWriteReCommitInProgress) {
+		if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
+			return true, nil
+		}
+	} else if errors.Is(err, io.EOF) {
+		if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
+			return true, nil
+		}
+	}
+
+	if resp != nil && resp.Magic == resMagic {
+		shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
+		if shouldRetry {
+			if mux.waitAndRetryOperation(req, KVErrMapRetryReason) {
+				return true, nil
+			}
+		}
+	}
+
+	err = mux.errMapMgr.EnhanceKvError(err, resp, req)
+
+	return mux.postCompleteErrHandler(resp, req, err)
+}
+
+func (mux *kvMux) waitAndRetryOperation(req *memdQRequest, reason RetryReason) bool {
+	shouldRetry, retryTime := retryOrchMaybeRetry(req, reason)
+	if shouldRetry {
+		go func() {
+			time.Sleep(retryTime.Sub(time.Now()))
+			mux.RequeueDirect(req, true)
+		}()
+		return true
+	}
+
+	return false
+}
+
+func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) bool {
+	// Grab just the hostname from the source address
+	sourceHost, err := hostFromHostPort(resp.sourceAddr)
+	if err != nil {
+		logErrorf("NMV response source address was invalid, skipping config update")
+	} else {
+		// Try to parse the value as a bucket configuration
+		bk, err := parseConfig(resp.Value, sourceHost)
+		if err == nil {
+			// We need to push this upstream which will then update us with a new config.
+			mux.cfgMgr.OnNewConfig(bk)
+		}
+	}
+
+	// Redirect it!  This may actually come back to this server, but I won't tell
+	//   if you don't ;)
+	return mux.waitAndRetryOperation(req, KVNotMyVBucketRetryReason)
 }
 
 func (mux *kvMux) muxDrain(clientMux *kvMuxState, cb func(req *memdQRequest)) {

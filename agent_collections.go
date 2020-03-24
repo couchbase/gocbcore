@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
@@ -108,33 +109,11 @@ type GetCollectionManifestOptions struct {
 // GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
 // id cache.
 func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			cb(nil, err)
-			return
-		}
-
-		cb(resp.Value, nil)
-	}
-
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = agent.defaultRetryStrategy
 	}
 
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdCollectionsGetManifest,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
-		},
-		Callback:      handler,
-		RetryStrategy: opts.RetryStrategy,
-	}
-	return agent.dispatchOp(req)
+	return agent.cidMgr.GetCollectionManifest(opts, cb)
 }
 
 // CollectionIDCallback is invoked upon completion of a GetCollectionID operation.
@@ -150,13 +129,134 @@ type GetCollectionIDOptions struct {
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
 // and collection name. This function will also prime the client's collection id cache.
 func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetCollectionID", opts.TraceContext)
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = agent.defaultRetryStrategy
+	}
+
+	return agent.cidMgr.GetCollectionID(scopeName, collectionName, opts, cb)
+}
+
+func (cidMgr *collectionIDManager) createKey(scopeName, collectionName string) string {
+	return fmt.Sprintf("%s.%s", scopeName, collectionName)
+}
+
+type collectionIDManager struct {
+	idMap            map[string]*collectionIDCache
+	mapLock          sync.Mutex
+	mux              *kvMux
+	maxQueueSize     int
+	tracer           RequestTracer
+	noRootTraceSpans bool
+	bucket           string
+}
+
+type collectionIDProps struct {
+	MaxQueueSize     int
+	NoRootTraceSpans bool
+	Bucket           string
+}
+
+func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracer RequestTracer) *collectionIDManager {
+	cidMgr := &collectionIDManager{
+		mux:              mux,
+		idMap:            make(map[string]*collectionIDCache),
+		maxQueueSize:     props.MaxQueueSize,
+		tracer:           tracer,
+		noRootTraceSpans: props.NoRootTraceSpans,
+		bucket:           props.Bucket,
+	}
+
+	mux.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
+
+	return cidMgr
+}
+
+func (cidMgr *collectionIDManager) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
+	if cidMgr.noRootTraceSpans {
+		return &opTracer{
+			parentContext: parentContext,
+			opSpan:        nil,
+		}
+	}
+
+	opSpan := cidMgr.tracer.StartSpan(operationName, parentContext).
+		SetTag("component", "couchbase-go-sdk").
+		SetTag("db.instance", cidMgr.bucket).
+		SetTag("span.kind", "client")
+
+	return &opTracer{
+		parentContext: parentContext,
+		opSpan:        opSpan,
+	}
+}
+
+func (cidMgr *collectionIDManager) handleCollectionUnknown(req *memdQRequest) bool {
+	// We cannot retry requests with no collection information
+	if req.CollectionName == "" && req.ScopeName == "" {
+		return false
+	}
+
+	shouldRetry, retryTime := retryOrchMaybeRetry(req, KVCollectionOutdatedRetryReason)
+	if shouldRetry {
+		go func() {
+			time.Sleep(retryTime.Sub(time.Now()))
+			cidMgr.requeue(req)
+		}()
+	}
+
+	return false
+}
+
+func (cidMgr *collectionIDManager) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
+	if resp != nil && resp.Status == StatusCollectionUnknown {
+		if cidMgr.handleCollectionUnknown(req) {
+			return true, nil
+		}
+	}
+
+	return false, err
+}
+
+func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		if err != nil {
+			cb(nil, err)
+			return
+		}
+
+		cb(resp.Value, nil)
+	}
+
+	req := &memdQRequest{
+		memdPacket: memdPacket{
+			Magic:    reqMagic,
+			Opcode:   cmdCollectionsGetManifest,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   nil,
+			Key:      nil,
+			Value:    nil,
+		},
+		Callback:      handler,
+		RetryStrategy: opts.RetryStrategy,
+	}
+
+	err := cidMgr.mux.DispatchDirect(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+func (cidMgr *collectionIDManager) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
+	tracer := cidMgr.createOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		cidCache, ok := agent.cidMgr.get(scopeName, collectionName)
+		cidCache, ok := cidMgr.get(scopeName, collectionName)
 		if !ok {
-			cidCache = agent.cidMgr.newCollectionIDCache()
-			agent.cidMgr.add(cidCache, scopeName, collectionName)
+			cidCache = cidMgr.newCollectionIDCache()
+			cidMgr.add(cidCache, scopeName, collectionName)
 		}
 
 		if err != nil {
@@ -179,10 +279,6 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 
 		tracer.Finish()
 		cb(manifestID, collectionID, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
 	}
 
 	keyScopeName := scopeName
@@ -212,28 +308,12 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 
 	req.Callback = handler
 
-	return agent.dispatchOp(req)
-}
-
-func (cidMgr *collectionIDManager) createKey(scopeName, collectionName string) string {
-	return fmt.Sprintf("%s.%s", scopeName, collectionName)
-}
-
-type collectionIDManager struct {
-	idMap        map[string]*collectionIDCache
-	mapLock      sync.Mutex
-	agent        *Agent
-	maxQueueSize int
-}
-
-func newCollectionIDManager(agent *Agent, maxQueueSize int) *collectionIDManager {
-	cidMgr := &collectionIDManager{
-		agent:        agent,
-		idMap:        make(map[string]*collectionIDCache),
-		maxQueueSize: maxQueueSize,
+	err := cidMgr.mux.DispatchDirect(req)
+	if err != nil {
+		return nil, err
 	}
 
-	return cidMgr
+	return req, nil
 }
 
 func (cidMgr *collectionIDManager) add(id *collectionIDCache, scopeName, collectionName string) {
@@ -262,8 +342,9 @@ func (cidMgr *collectionIDManager) remove(scopeName, collectionName string) {
 
 func (cidMgr *collectionIDManager) newCollectionIDCache() *collectionIDCache {
 	return &collectionIDCache{
-		agent:        cidMgr.agent,
+		mux:          cidMgr.mux,
 		maxQueueSize: cidMgr.maxQueueSize,
+		parent:       cidMgr,
 	}
 }
 
@@ -272,7 +353,8 @@ type collectionIDCache struct {
 	id             uint32
 	collectionName string
 	scopeName      string
-	agent          *Agent
+	parent         *collectionIDManager
+	mux            *kvMux
 	lock           sync.Mutex
 	err            error
 	maxQueueSize   int
@@ -282,7 +364,7 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	cid.lock.Lock()
 	req.CollectionID = cid.id
 	cid.lock.Unlock()
-	return cid.agent.kvMux.DispatchDirect(req)
+	return cid.mux.DispatchDirect(req)
 }
 
 func (cid *collectionIDCache) rejectRequest(req *memdQRequest) error {
@@ -298,7 +380,8 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 	if err != nil {
 		return err
 	}
-	_, err = cid.agent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
+
+	_, err = cid.parent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
 		func(manifestID uint64, collectionID uint32, err error) {
 			// GetCollectionID will handle updating the id cache so we don't need to do it here
 			if err != nil {
@@ -313,7 +396,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 			cid.opQueue.Close()
 			cid.opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = collectionID
-				cid.agent.kvMux.RequeueDirect(request, false)
+				cid.mux.RequeueDirect(request, false)
 			})
 		},
 	)
@@ -350,11 +433,11 @@ func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
 	collectionIDPresent := req.CollectionID > 0
 
-	if !cidMgr.agent.HasCollectionsSupport() {
+	if !cidMgr.mux.SupportsCollections() {
 		if !(noCollection || defaultCollection) || collectionIDPresent {
 			return errCollectionsUnsupported
 		}
-		err := cidMgr.agent.kvMux.DispatchDirect(req)
+		err := cidMgr.mux.DispatchDirect(req)
 		if err != nil {
 			return err
 		}
@@ -363,7 +446,7 @@ func (cidMgr *collectionIDManager) dispatch(req *memdQRequest) error {
 	}
 
 	if noCollection || defaultCollection || collectionIDPresent {
-		err := cidMgr.agent.kvMux.DispatchDirect(req)
+		err := cidMgr.mux.DispatchDirect(req)
 		if err != nil {
 			return err
 		}

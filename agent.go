@@ -305,8 +305,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
-	c.cidMgr = newCollectionIDManager(c, maxQueueSize)
-
 	var httpEpList []string
 	for _, hostPort := range config.HTTPAddrs {
 		if !c.IsSecure() {
@@ -333,8 +331,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			collectionsEnabled: c.useCollections,
 		},
 		c.cfgManager,
+		c.errMapManager,
+		c.tracer,
 		c.slowDialMemdClient,
 	)
+	c.cidMgr = newCollectionIDManager(collectionIDProps{
+		Bucket:           config.BucketName,
+		MaxQueueSize:     config.MaxQueueSize,
+		NoRootTraceSpans: config.NoRootTraceSpans,
+	}, c.kvMux, c.tracer)
 	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
 	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
 	c.pollerController = newPollerController(

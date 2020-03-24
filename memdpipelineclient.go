@@ -156,7 +156,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 			}
 
 			// Send this request upwards to be processed by the higher level processor
-			shortCircuited, routeErr := client.parent.handleOpRoutingResp(nil, req, err)
+			shortCircuited, routeErr := client.postErrHandler(nil, req, err)
 			if !shortCircuited {
 				req.tryCallback(nil, routeErr)
 				break
