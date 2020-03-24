@@ -71,6 +71,7 @@ type Agent struct {
 	httpMux          *httpMux
 	errMapManager    *errMapManager
 
+	crudCmpt      *crudComponent
 	n1qlCmpt      *n1qlQueryComponent
 	analyticsCmpt *analyticsQueryComponent
 	searchCmpt    *searchQueryComponent
@@ -362,6 +363,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		),
 	)
+	c.crudCmpt = newCRUDComponent(c.cidMgr, c.defaultRetryStrategy, crudTracerConfig{
+		Bucket:           config.BucketName,
+		NoRootTraceSpans: config.NoRootTraceSpans,
+		Tracer:           c.tracer,
+	}, c.errMapManager)
 	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
 	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent)
 	c.searchCmpt = newSearchQueryComponent(c.httpComponent)

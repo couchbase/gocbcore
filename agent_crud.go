@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"encoding/binary"
 	"sync"
 )
 
@@ -30,54 +29,7 @@ type GetExCallback func(*GetResult, error)
 
 // GetEx retrieves a document.
 func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetEx", opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		if len(resp.Extras) != 4 {
-			tracer.Finish()
-			cb(nil, errProtocol)
-			return
-		}
-
-		res := GetResult{}
-		res.Value = resp.Value
-		res.Flags = binary.BigEndian.Uint32(resp.Extras[0:])
-		res.Cas = Cas(resp.Cas)
-		res.Datatype = resp.Datatype
-
-		tracer.Finish()
-		cb(&res, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGet,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        nil,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.Get(opts, cb)
 }
 
 // GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
@@ -106,58 +58,7 @@ type GetAndTouchExCallback func(*GetAndTouchResult, error)
 
 // GetAndTouchEx retrieves a document and updates its expiry.
 func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetAndTouchEx", opts.TraceContext)
-
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		if len(resp.Extras) != 4 {
-			tracer.Finish()
-			cb(nil, errProtocol)
-			return
-		}
-
-		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		tracer.Finish()
-		cb(&GetAndTouchResult{
-			Value:    resp.Value,
-			Flags:    flags,
-			Cas:      Cas(resp.Cas),
-			Datatype: resp.Datatype,
-		}, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGAT,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        nil,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.GetAndTouch(opts, cb)
 }
 
 // GetAndLockOptions encapsulates the parameters for a GetAndLockEx operation.
@@ -186,58 +87,7 @@ type GetAndLockExCallback func(*GetAndLockResult, error)
 
 // GetAndLockEx retrieves a document and locks it.
 func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetAndLockEx", opts.TraceContext)
-
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		if len(resp.Extras) != 4 {
-			tracer.Finish()
-			cb(nil, errProtocol)
-			return
-		}
-
-		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		tracer.Finish()
-		cb(&GetAndLockResult{
-			Value:    resp.Value,
-			Flags:    flags,
-			Cas:      Cas(resp.Cas),
-			Datatype: resp.Datatype,
-		}, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], opts.LockTime)
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGetLocked,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        nil,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.GetAndLock(opts, cb)
 }
 
 // GetAnyReplicaOptions encapsulates the parameters for a GetAnyReplicaEx operation.
@@ -278,58 +128,7 @@ type GetReplicaExCallback func(*GetReplicaResult, error)
 
 // GetOneReplicaEx retrieves a document from a replica server.
 func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetOneReplicaEx", opts.TraceContext)
-
-	if opts.ReplicaIdx <= 0 {
-		tracer.Finish()
-		return nil, errInvalidReplica
-	}
-
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			cb(nil, err)
-			return
-		}
-
-		if len(resp.Extras) != 4 {
-			cb(nil, errProtocol)
-			return
-		}
-
-		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		cb(&GetReplicaResult{
-			Value:    resp.Value,
-			Flags:    flags,
-			Cas:      Cas(resp.Cas),
-			Datatype: resp.Datatype,
-		}, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGetReplica,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        nil,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		ReplicaIdx:       opts.ReplicaIdx,
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.GetOneReplica(opts, cb)
 }
 
 // TouchOptions encapsulates the parameters for a TouchEx operation.
@@ -356,58 +155,7 @@ type TouchExCallback func(*TouchResult, error)
 
 // TouchEx updates the expiry for a document.
 func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("TouchEx", opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&TouchResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdTouch,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.Touch(opts, cb)
 }
 
 // UnlockOptions encapsulates the parameters for a UnlockEx operation.
@@ -434,52 +182,7 @@ type UnlockExCallback func(*UnlockResult, error)
 
 // UnlockEx unlocks a locked document.
 func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("UnlockEx", opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&UnlockResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdUnlockKey,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        nil,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.Unlock(opts, cb)
 }
 
 // DeleteOptions encapsulates the parameters for a DeleteEx operation.
@@ -508,65 +211,13 @@ type DeleteExCallback func(*DeleteResult, error)
 
 // DeleteEx removes a document.
 func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("DeleteEx", opts.TraceContext)
+	return agent.crudCmpt.Delete(opts, cb)
+}
 
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&DeleteResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
-			return nil, errFeatureNotAvailable
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdDelete,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+// StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
+type StoreResult struct {
+	Cas           Cas
+	MutationToken MutationToken
 }
 
 type storeOptions struct {
@@ -587,79 +238,8 @@ type storeOptions struct {
 	TraceContext RequestSpanContext
 }
 
-// StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
-type StoreResult struct {
-	Cas           Cas
-	MutationToken MutationToken
-}
-
 // StoreExCallback is invoked upon completion of a AddEx, SetEx or ReplaceEx operation.
 type StoreExCallback func(*StoreResult, error)
-
-func (agent *Agent) storeEx(opName string, opcode commandCode, opts storeOptions, cb StoreExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace(opName, opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&StoreResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
-			return nil, errFeatureNotAvailable
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	extraBuf := make([]byte, 8)
-	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
-	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     opts.Datatype,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        opts.Value,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
-}
 
 // AddOptions encapsulates the parameters for a AddEx operation.
 type AddOptions struct {
@@ -681,21 +261,7 @@ type AddOptions struct {
 
 // AddEx stores a document as long as it does not already exist.
 func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
-	return agent.storeEx("AddEx", cmdAdd, storeOptions{
-		Key:                    opts.Key,
-		CollectionName:         opts.CollectionName,
-		ScopeName:              opts.ScopeName,
-		RetryStrategy:          opts.RetryStrategy,
-		Value:                  opts.Value,
-		Flags:                  opts.Flags,
-		Datatype:               opts.Datatype,
-		Cas:                    0,
-		Expiry:                 opts.Expiry,
-		TraceContext:           opts.TraceContext,
-		DurabilityLevel:        opts.DurabilityLevel,
-		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionID:           opts.CollectionID,
-	}, cb)
+	return agent.crudCmpt.Add(opts, cb)
 }
 
 // SetOptions encapsulates the parameters for a SetEx operation.
@@ -718,21 +284,7 @@ type SetOptions struct {
 
 // SetEx stores a document.
 func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
-	return agent.storeEx("SetEx", cmdSet, storeOptions{
-		Key:                    opts.Key,
-		CollectionName:         opts.CollectionName,
-		ScopeName:              opts.ScopeName,
-		RetryStrategy:          opts.RetryStrategy,
-		Value:                  opts.Value,
-		Flags:                  opts.Flags,
-		Datatype:               opts.Datatype,
-		Cas:                    0,
-		Expiry:                 opts.Expiry,
-		TraceContext:           opts.TraceContext,
-		DurabilityLevel:        opts.DurabilityLevel,
-		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionID:           opts.CollectionID,
-	}, cb)
+	return agent.crudCmpt.Set(opts, cb)
 }
 
 // ReplaceOptions encapsulates the parameters for a ReplaceEx operation.
@@ -756,21 +308,7 @@ type ReplaceOptions struct {
 
 // ReplaceEx replaces the value of a Couchbase document with another value.
 func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
-	return agent.storeEx("ReplaceEx", cmdReplace, storeOptions{
-		Key:                    opts.Key,
-		CollectionName:         opts.CollectionName,
-		ScopeName:              opts.ScopeName,
-		RetryStrategy:          opts.RetryStrategy,
-		Value:                  opts.Value,
-		Flags:                  opts.Flags,
-		Datatype:               opts.Datatype,
-		Cas:                    opts.Cas,
-		Expiry:                 opts.Expiry,
-		TraceContext:           opts.TraceContext,
-		DurabilityLevel:        opts.DurabilityLevel,
-		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionID:           opts.CollectionID,
-	}, cb)
+	return agent.crudCmpt.Replace(opts, cb)
 }
 
 // AdjoinOptions encapsulates the parameters for a AppendEx or PrependEx operation.
@@ -798,76 +336,14 @@ type AdjoinResult struct {
 // AdjoinExCallback is invoked upon completion of a AppendEx or PrependEx operation.
 type AdjoinExCallback func(*AdjoinResult, error)
 
-func (agent *Agent) adjoinEx(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace(opName, opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&AdjoinResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
-			return nil, errFeatureNotAvailable
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        opts.Value,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
-}
-
 // AppendEx appends some bytes to a document.
 func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	return agent.adjoinEx("AppendEx", cmdAppend, opts, cb)
+	return agent.crudCmpt.Append(opts, cb)
 }
 
 // PrependEx prepends some bytes to a document.
 func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	return agent.adjoinEx("PrependEx", cmdPrepend, opts, cb)
+	return agent.crudCmpt.Prepend(opts, cb)
 }
 
 // CounterOptions encapsulates the parameters for a IncrementEx or DecrementEx operation.
@@ -898,99 +374,14 @@ type CounterResult struct {
 // CounterExCallback is invoked upon completion of a IncrementEx or DecrementEx operation.
 type CounterExCallback func(*CounterResult, error)
 
-func (agent *Agent) counterEx(opName string, opcode commandCode, opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace(opName, opts.TraceContext)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		if len(resp.Value) != 8 {
-			tracer.Finish()
-			cb(nil, errProtocol)
-			return
-		}
-		intVal := binary.BigEndian.Uint64(resp.Value)
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&CounterResult{
-			Value:         intVal,
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	// You cannot have an expiry when you do not want to create the document.
-	if opts.Initial == uint64(0xFFFFFFFFFFFFFFFF) && opts.Expiry != 0 {
-		return nil, errInvalidArgument
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
-			return nil, errFeatureNotAvailable
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	extraBuf := make([]byte, 20)
-	binary.BigEndian.PutUint64(extraBuf[0:], opts.Delta)
-	if opts.Initial != uint64(0xFFFFFFFFFFFFFFFF) {
-		binary.BigEndian.PutUint64(extraBuf[8:], opts.Initial)
-		binary.BigEndian.PutUint32(extraBuf[16:], opts.Expiry)
-	} else {
-		binary.BigEndian.PutUint64(extraBuf[8:], 0x0000000000000000)
-		binary.BigEndian.PutUint32(extraBuf[16:], 0xFFFFFFFF)
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
-}
-
 // IncrementEx increments the unsigned integer value in a document.
 func (agent *Agent) IncrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	return agent.counterEx("IncrementEx", cmdIncrement, opts, cb)
+	return agent.crudCmpt.Increment(opts, cb)
 }
 
 // DecrementEx decrements the unsigned integer value in a document.
 func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	return agent.counterEx("DecrementEx", cmdDecrement, opts, cb)
+	return agent.crudCmpt.Decrement(opts, cb)
 }
 
 // GetRandomOptions encapsulates the parameters for a GetRandomEx operation.
@@ -1015,53 +406,106 @@ type GetRandomExCallback func(*GetRandomResult, error)
 
 // GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
 func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetRandomEx", opts.TraceContext)
+	return agent.crudCmpt.GetRandom(opts, cb)
+}
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
+// GetMetaOptions encapsulates the parameters for a GetMetaEx operation.
+type GetMetaOptions struct {
+	Key            []byte
+	CollectionName string
+	ScopeName      string
+	CollectionID   uint32
+	RetryStrategy  RetryStrategy
 
-		if len(resp.Extras) != 4 {
-			tracer.Finish()
-			cb(nil, errProtocol)
-			return
-		}
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
+}
 
-		flags := binary.BigEndian.Uint32(resp.Extras[0:])
+// GetMetaResult encapsulates the result of a GetMetaEx operation.
+type GetMetaResult struct {
+	Value    []byte
+	Flags    uint32
+	Cas      Cas
+	Expiry   uint32
+	SeqNo    SeqNo
+	Datatype uint8
+	Deleted  uint32
+}
 
-		tracer.Finish()
-		cb(&GetRandomResult{
-			Key:      resp.Key,
-			Value:    resp.Value,
-			Flags:    flags,
-			Cas:      Cas(resp.Cas),
-			Datatype: resp.Datatype,
-		}, nil)
-	}
+// GetMetaExCallback is invoked upon completion of a GetMetaEx operation.
+type GetMetaExCallback func(*GetMetaResult, error)
 
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
+// GetMetaEx retrieves a document along with some internal Couchbase meta-data.
+func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
+	return agent.crudCmpt.GetMeta(opts, cb)
+}
 
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGetRandom,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		RetryStrategy:    opts.RetryStrategy,
-	}
+// SetMetaOptions encapsulates the parameters for a SetMetaEx operation.
+type SetMetaOptions struct {
+	Key            []byte
+	Value          []byte
+	Extra          []byte
+	Datatype       uint8
+	Options        uint32
+	Flags          uint32
+	Expiry         uint32
+	Cas            Cas
+	RevNo          uint64
+	CollectionName string
+	ScopeName      string
+	CollectionID   uint32
+	RetryStrategy  RetryStrategy
 
-	return agent.dispatchOp(req)
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
+}
+
+// SetMetaResult encapsulates the result of a SetMetaEx operation.
+type SetMetaResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// SetMetaExCallback is invoked upon completion of a SetMetaEx operation.
+type SetMetaExCallback func(*SetMetaResult, error)
+
+// SetMetaEx stores a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
+	return agent.crudCmpt.SetMeta(opts, cb)
+}
+
+// DeleteMetaOptions encapsulates the parameters for a DeleteMetaEx operation.
+type DeleteMetaOptions struct {
+	Key            []byte
+	Value          []byte
+	Extra          []byte
+	Datatype       uint8
+	Options        uint32
+	Flags          uint32
+	Expiry         uint32
+	Cas            Cas
+	RevNo          uint64
+	CollectionName string
+	ScopeName      string
+	CollectionID   uint32
+	RetryStrategy  RetryStrategy
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
+}
+
+// DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
+type DeleteMetaResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+}
+
+// DeleteMetaExCallback is invoked upon completion of a DeleteMetaEx operation.
+type DeleteMetaExCallback func(*DeleteMetaResult, error)
+
+// DeleteMetaEx deletes a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
+	return agent.crudCmpt.DeleteMeta(opts, cb)
 }
 
 // SingleServerStats represents the stats returned from a single server.
@@ -1224,7 +668,7 @@ func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, e
 			RetryStrategy:    opts.RetryStrategy,
 		}
 
-		curOp, err := agent.dispatchOpToAddress(req, serverAddress)
+		curOp, err := agent.kvMux.DispatchDirectToAddress(req, serverAddress)
 		if err != nil {
 			statsLock.Lock()
 			stats[serverAddress] = SingleServerStats{

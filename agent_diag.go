@@ -121,7 +121,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 			RetryStrategy: retryStrat,
 		}
 
-		curOp, err := agent.dispatchOpToAddress(req, serverAddress)
+		curOp, err := agent.kvMux.DispatchDirectToAddress(req, serverAddress)
 		if err != nil {
 			op.lock.Lock()
 			op.results = append(op.results, PingResult{

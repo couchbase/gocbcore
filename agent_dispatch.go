@@ -49,21 +49,3 @@ func (mp *multiPendingOp) CompletedOps() uint32 {
 func (mp *multiPendingOp) IncrementCompletedOps() uint32 {
 	return atomic.AddUint32(&mp.completedOps, 1)
 }
-
-func (agent *Agent) dispatchOp(req *memdQRequest) (PendingOp, error) {
-	err := agent.cidMgr.dispatch(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-func (agent *Agent) dispatchOpToAddress(req *memdQRequest, address string) (PendingOp, error) {
-	err := agent.kvMux.DispatchDirectToAddress(req, address)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}

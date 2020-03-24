@@ -332,14 +332,14 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 	return clientMux.GetPipeline(srvIdx), nil
 }
 
-func (mux *kvMux) DispatchDirect(req *memdQRequest) error {
+func (mux *kvMux) DispatchDirect(req *memdQRequest) (PendingOp, error) {
 	startCmdTrace(req, mux.tracer)
 	req.dispatchTime = time.Now()
 
 	for {
 		pipeline, err := mux.RouteRequest(req)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		err = pipeline.SendRequest(req)
@@ -352,16 +352,16 @@ func (mux *kvMux) DispatchDirect(req *memdQRequest) error {
 
 			shortCircuit, routeErr := mux.handleOpRoutingResp(nil, req, err)
 			if shortCircuit {
-				return nil
+				return req, nil
 			}
 
-			return routeErr
+			return nil, routeErr
 		}
 
 		break
 	}
 
-	return nil
+	return req, nil
 }
 
 func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
@@ -397,21 +397,21 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 	}
 }
 
-func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) error {
+func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error) {
 	startCmdTrace(req, mux.tracer)
 	req.dispatchTime = time.Now()
 
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
 	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
 	if req.ReplicaIdx != 0 {
-		return errInvalidReplica
+		return nil, errInvalidReplica
 	}
 	req.ReplicaIdx = -999999999
 
 	for {
 		clientMux := mux.GetState()
 		if clientMux == nil {
-			return errShutdown
+			return nil, errShutdown
 		}
 
 		var foundPipeline *memdPipeline
@@ -423,7 +423,7 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) err
 		}
 
 		if foundPipeline == nil {
-			return errInvalidServer
+			return nil, errInvalidServer
 		}
 
 		err := foundPipeline.SendRequest(req)
@@ -436,16 +436,16 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) err
 
 			shortCircuit, routeErr := mux.handleOpRoutingResp(nil, req, err)
 			if shortCircuit {
-				return nil
+				return req, nil
 			}
 
-			return routeErr
+			return nil, routeErr
 		}
 
 		break
 	}
 
-	return nil
+	return req, nil
 }
 
 func (mux *kvMux) Close() error {

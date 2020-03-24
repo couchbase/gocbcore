@@ -1,9 +1,5 @@
 package gocbcore
 
-import (
-	"encoding/binary"
-)
-
 // SubDocResult encapsulates the results from a single sub-document operation.
 type SubDocResult struct {
 	Err   error
@@ -35,51 +31,7 @@ type GetInExCallback func(*GetInResult, error)
 
 // GetInEx retrieves the value at a particular path within a JSON document.
 func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("GetInEx", nil)
-
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		tracer.Finish()
-		cb(&GetInResult{
-			Value: resp.Value,
-			Cas:   Cas(resp.Cas),
-		}, nil)
-	}
-
-	pathBytes := []byte(opts.Path)
-
-	extraBuf := make([]byte, 3)
-	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(opts.Flags)
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdSubDocGet,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        pathBytes,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.GetIn(opts, cb)
 }
 
 // ExistsInOptions encapsulates the parameters for a ExistsInEx operation.
@@ -106,50 +58,7 @@ type ExistsInExCallback func(*ExistsInResult, error)
 
 // ExistsInEx returns whether a particular path exists within a document.
 func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("ExistsInEx", nil)
-
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		tracer.Finish()
-		cb(&ExistsInResult{
-			Cas: Cas(resp.Cas),
-		}, nil)
-	}
-
-	pathBytes := []byte(opts.Path)
-
-	extraBuf := make([]byte, 3)
-	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(opts.Flags)
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdSubDocExists,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        pathBytes,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.ExistsIn(opts, cb)
 }
 
 // StoreInOptions encapsulates the parameters for a SetInEx, AddInEx, ReplaceInEx,
@@ -184,120 +93,43 @@ type StoreInResult struct {
 // AddUniqueInEx operation.
 type StoreInExCallback func(*StoreInResult, error)
 
-func (agent *Agent) storeInEx(opName string, opcode commandCode, opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace(opName, nil)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&StoreInResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	pathBytes := []byte(opts.Path)
-
-	valueBuf := make([]byte, len(pathBytes)+len(opts.Value))
-	copy(valueBuf[0:], pathBytes)
-	copy(valueBuf[len(pathBytes):], opts.Value)
-
-	var extraBuf []byte
-	if opts.Expiry != 0 {
-		extraBuf = make([]byte, 7)
-	} else {
-		extraBuf = make([]byte, 3)
-	}
-	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(opts.Flags)
-	if len(extraBuf) >= 7 {
-		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
-}
-
 // SetInEx sets the value at a path within a document.
 func (agent *Agent) SetInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("SetInEx", cmdSubDocDictSet, opts, cb)
+	return agent.crudCmpt.SetIn(opts, cb)
 }
 
 // AddInEx adds a value at the path within a document.  This method
 // works like SetIn, but only only succeeds if the path does not
 // currently exist.
 func (agent *Agent) AddInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("AddInEx", cmdSubDocDictAdd, opts, cb)
+	return agent.crudCmpt.AddIn(opts, cb)
 }
 
 // ReplaceInEx replaces the value at the path within a document.
 // This method works like SetIn, but only only succeeds
 // if the path currently exists.
 func (agent *Agent) ReplaceInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("ReplaceInEx", cmdSubDocReplace, opts, cb)
+	return agent.crudCmpt.ReplaceIn(opts, cb)
 }
 
 // PushFrontInEx pushes an entry to the front of an array at a path within a document.
 func (agent *Agent) PushFrontInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("PushFrontInEx", cmdSubDocArrayPushFirst, opts, cb)
+	return agent.crudCmpt.PushFrontIn(opts, cb)
 }
 
 // PushBackInEx pushes an entry to the back of an array at a path within a document.
 func (agent *Agent) PushBackInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("PushBackInEx", cmdSubDocArrayPushLast, opts, cb)
+	return agent.crudCmpt.PushBackIn(opts, cb)
 }
 
 // ArrayInsertInEx inserts an entry to an array at a path within the document.
 func (agent *Agent) ArrayInsertInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("ArrayInsertInEx", cmdSubDocArrayInsert, opts, cb)
+	return agent.crudCmpt.ArrayInsertIn(opts, cb)
 }
 
 // AddUniqueInEx adds an entry to an array at a path but only if the value doesn't already exist in the array.
 func (agent *Agent) AddUniqueInEx(opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	return agent.storeInEx("AddUniqueInEx", cmdSubDocArrayAddUnique, opts, cb)
+	return agent.crudCmpt.AddUniqueIn(opts, cb)
 }
 
 // CounterInOptions encapsulates the parameters for a CounterInEx operation.
@@ -315,81 +147,7 @@ type CounterInExCallback func(*CounterInResult, error)
 
 // CounterInEx performs an arithmetic add or subtract on a value at a path in the document.
 func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("CounterInEx", nil)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&CounterInResult{
-			Value:         resp.Value,
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	pathBytes := []byte(opts.Path)
-
-	valueBuf := make([]byte, len(pathBytes)+len(opts.Value))
-	copy(valueBuf[0:], pathBytes)
-	copy(valueBuf[len(pathBytes):], opts.Value)
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	var extraBuf []byte
-	if opts.Expiry != 0 {
-		extraBuf = make([]byte, 7)
-	} else {
-		extraBuf = make([]byte, 3)
-	}
-	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(opts.Flags)
-	if len(extraBuf) >= 7 {
-		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdSubDocCounter,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.CounterIn(opts, cb)
 }
 
 // DeleteInOptions encapsulates the parameters for a DeleteInEx operation.
@@ -421,76 +179,7 @@ type DeleteInExCallback func(*DeleteInResult, error)
 
 // DeleteInEx removes the value at a path within the document.
 func (agent *Agent) DeleteInEx(opts DeleteInOptions, cb DeleteInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("DeleteInEx", nil)
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&DeleteInResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-		}, nil)
-	}
-
-	pathBytes := []byte(opts.Path)
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	var extraBuf []byte
-	if opts.Expiry != 0 {
-		extraBuf = make([]byte, 7)
-	} else {
-		extraBuf = make([]byte, 3)
-	}
-	binary.BigEndian.PutUint16(extraBuf[0:], uint16(len(pathBytes)))
-	extraBuf[2] = uint8(opts.Flags)
-	if len(extraBuf) >= 7 {
-		binary.BigEndian.PutUint32(extraBuf[3:], opts.Expiry)
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdSubDocDelete,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        pathBytes,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.DeleteIn(opts, cb)
 }
 
 // SubDocOp defines a per-operation structure to be passed to MutateIn
@@ -542,119 +231,7 @@ func (sol *subdocOpList) Append(op SubDocOp, index int) {
 
 // LookupInEx performs a multiple-lookup sub-document operation on a document.
 func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("LookupInEx", opts.TraceContext)
-
-	results := make([]SubDocResult, len(opts.Ops))
-	var subdocs subdocOpList
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil &&
-			!isErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
-			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!isErrorStatus(err, StatusSubDocBadMulti) {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		respIter := 0
-		for i := range results {
-			if respIter+6 > len(resp.Value) {
-				tracer.Finish()
-				cb(nil, errProtocol)
-				return
-			}
-
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
-			resValueLen := int(binary.BigEndian.Uint32(resp.Value[respIter+2:]))
-
-			if respIter+6+resValueLen > len(resp.Value) {
-				tracer.Finish()
-				cb(nil, errProtocol)
-				return
-			}
-
-			if resError != StatusSuccess {
-				results[subdocs.indexes[i]].Err = agent.errMapManager.MakeSubDocError(i, resError, req, resp)
-			}
-
-			results[subdocs.indexes[i]].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
-			respIter += 6 + resValueLen
-		}
-
-		tracer.Finish()
-		cb(&LookupInResult{
-			Cas: Cas(resp.Cas),
-			Ops: results,
-		}, err)
-	}
-
-	for i, op := range opts.Ops {
-		if op.Flags&SubdocFlagXattrPath != 0 {
-			subdocs.Prepend(op, i)
-		} else {
-			subdocs.Append(op, i)
-		}
-	}
-
-	pathBytesList := make([][]byte, len(opts.Ops))
-	pathBytesTotal := 0
-	for i, op := range subdocs.ops {
-		pathBytes := []byte(op.Path)
-		pathBytesList[i] = pathBytes
-		pathBytesTotal += len(pathBytes)
-	}
-
-	valueBuf := make([]byte, len(opts.Ops)*4+pathBytesTotal)
-
-	valueIter := 0
-	for i, op := range subdocs.ops {
-		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
-			op.Op != SubDocOpGetDoc && op.Op != SubDocOpGetCount {
-			return nil, errInvalidArgument
-		}
-		if op.Value != nil {
-			return nil, errInvalidArgument
-		}
-
-		pathBytes := pathBytesList[i]
-		pathBytesLen := len(pathBytes)
-
-		valueBuf[valueIter+0] = uint8(op.Op)
-		valueBuf[valueIter+1] = uint8(op.Flags)
-		binary.BigEndian.PutUint16(valueBuf[valueIter+2:], uint16(pathBytesLen))
-		copy(valueBuf[valueIter+4:], pathBytes)
-		valueIter += 4 + pathBytesLen
-	}
-
-	var extraBuf []byte
-	if opts.Flags != 0 {
-		extraBuf = append(extraBuf, uint8(opts.Flags))
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdSubDocMultiLookup,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.LookupIn(opts, cb)
 }
 
 // MutateInOptions encapsulates the parameters for a MutateInEx operation.
@@ -687,153 +264,5 @@ type MutateInExCallback func(*MutateInResult, error)
 
 // MutateInEx performs a multiple-mutation sub-document operation on a document.
 func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("MutateInEx", opts.TraceContext)
-
-	results := make([]SubDocResult, len(opts.Ops))
-	var subdocs subdocOpList
-
-	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		if err != nil &&
-			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!isErrorStatus(err, StatusSubDocBadMulti) {
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		if isErrorStatus(err, StatusSubDocBadMulti) {
-			if len(resp.Value) != 3 {
-				tracer.Finish()
-				cb(nil, errProtocol)
-				return
-			}
-
-			opIndex := int(resp.Value[0])
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
-
-			err := agent.errMapManager.MakeSubDocError(opIndex, resError, req, resp)
-			tracer.Finish()
-			cb(nil, err)
-			return
-		}
-
-		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
-			opIndex := int(resp.Value[readPos+0])
-			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
-
-			results[subdocs.indexes[opIndex]].Err = agent.errMapManager.MakeSubDocError(opIndex, opStatus, req, resp)
-			readPos += 3
-
-			if opStatus == StatusSuccess {
-				valLength := binary.BigEndian.Uint32(resp.Value[readPos:])
-				results[subdocs.indexes[opIndex]].Value = resp.Value[readPos+4 : readPos+4+valLength]
-				readPos += 4 + valLength
-			}
-		}
-
-		mutToken := MutationToken{}
-		if len(resp.Extras) >= 16 {
-			mutToken.VbID = req.Vbucket
-			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
-			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
-		}
-
-		tracer.Finish()
-		cb(&MutateInResult{
-			Cas:           Cas(resp.Cas),
-			MutationToken: mutToken,
-			Ops:           results,
-		}, nil)
-	}
-
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
-	if opts.DurabilityLevel > 0 {
-		if agent.kvMux.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
-			return nil, errFeatureNotAvailable
-		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
-	}
-
-	for i, op := range opts.Ops {
-		if op.Flags&SubdocFlagXattrPath != 0 {
-			subdocs.Prepend(op, i)
-		} else {
-			subdocs.Append(op, i)
-		}
-	}
-
-	pathBytesList := make([][]byte, len(opts.Ops))
-	pathBytesTotal := 0
-	valueBytesTotal := 0
-	for i, op := range subdocs.ops {
-		pathBytes := []byte(op.Path)
-		pathBytesList[i] = pathBytes
-		pathBytesTotal += len(pathBytes)
-		valueBytesTotal += len(op.Value)
-	}
-
-	valueBuf := make([]byte, len(opts.Ops)*8+pathBytesTotal+valueBytesTotal)
-
-	valueIter := 0
-	for i, op := range subdocs.ops {
-		if op.Op != SubDocOpDictAdd && op.Op != SubDocOpDictSet &&
-			op.Op != SubDocOpDelete && op.Op != SubDocOpReplace &&
-			op.Op != SubDocOpArrayPushLast && op.Op != SubDocOpArrayPushFirst &&
-			op.Op != SubDocOpArrayInsert && op.Op != SubDocOpArrayAddUnique &&
-			op.Op != SubDocOpCounter && op.Op != SubDocOpSetDoc &&
-			op.Op != SubDocOpAddDoc && op.Op != SubDocOpDeleteDoc {
-			return nil, errInvalidArgument
-		}
-
-		pathBytes := pathBytesList[i]
-		pathBytesLen := len(pathBytes)
-		valueBytesLen := len(op.Value)
-
-		valueBuf[valueIter+0] = uint8(op.Op)
-		valueBuf[valueIter+1] = uint8(op.Flags)
-		binary.BigEndian.PutUint16(valueBuf[valueIter+2:], uint16(pathBytesLen))
-		binary.BigEndian.PutUint32(valueBuf[valueIter+4:], uint32(valueBytesLen))
-		copy(valueBuf[valueIter+8:], pathBytes)
-		copy(valueBuf[valueIter+8+pathBytesLen:], op.Value)
-		valueIter += 8 + pathBytesLen + valueBytesLen
-	}
-
-	var extraBuf []byte
-	if opts.Expiry != 0 {
-		tmpBuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(tmpBuf[0:], opts.Expiry)
-		extraBuf = append(extraBuf, tmpBuf...)
-	}
-	if opts.Flags != 0 {
-		extraBuf = append(extraBuf, uint8(opts.Flags))
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
-	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdSubDocMultiMutation,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
-		},
-		Callback:         handler,
-		RootTraceContext: tracer.RootContext(),
-		CollectionName:   opts.CollectionName,
-		ScopeName:        opts.ScopeName,
-		RetryStrategy:    opts.RetryStrategy,
-	}
-
-	return agent.dispatchOp(req)
+	return agent.crudCmpt.MutateIn(opts, cb)
 }
