@@ -60,6 +60,67 @@ func (ccc *cccpConfigController) DoLoop() error {
 
 Looper:
 	for {
+		if !paused {
+			iter, err := ccc.muxer.PipelineIterator()
+			if err != nil {
+				// If we have an error it indicates the client is shut down.
+				break
+			}
+
+			numNodes := iter.Len()
+			if numNodes == 0 {
+				logDebugf("CCCPPOLL: No nodes available to poll")
+				continue
+			}
+
+			if nodeIdx < 0 {
+				nodeIdx = rand.Intn(numNodes)
+			}
+
+			iter.Offset(nodeIdx)
+
+			var foundConfig *cfgBucket
+			// Until this gets a valid config the pipeline addresses will be the ones from the connection string, there is
+			// an assumed contract between the looper and the upstream config manager that this is the case. This allows
+			// the config manager to setup its network type correctly.
+			for iter.Next() {
+				pipeline := iter.Pipeline()
+				cccpBytes, err := ccc.getClusterConfig(pipeline)
+				if err != nil {
+					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+					if errors.Is(err, ErrDocumentNotFound) {
+						// This error is indicative of a memcached bucket which we can't handle so return the error.
+						logDebugf("CCCPPOLL: Document not found error detecting, returning error upstream.")
+						return err
+					}
+					continue
+				}
+
+				hostName, err := hostFromHostPort(pipeline.Address())
+				if err != nil {
+					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+					continue
+				}
+
+				bk, err := parseConfig(cccpBytes, hostName)
+				if err != nil {
+					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+					continue
+				}
+
+				foundConfig = bk
+				break
+			}
+
+			if foundConfig == nil {
+				logDebugf("CCCPPOLL: Failed to retrieve config from any node.")
+				continue
+			}
+
+			logDebugf("CCCPPOLL: Received new config")
+			ccc.cfgMgr.OnNewConfig(foundConfig)
+		}
+
 		// Wait for either the agent to be shut down, or our tick time to expire
 		select {
 		case <-ccc.looperStopSig:
@@ -68,69 +129,6 @@ Looper:
 			paused = pause
 		case <-time.After(tickTime):
 		}
-
-		if paused {
-			continue
-		}
-
-		iter, err := ccc.muxer.PipelineIterator()
-		if err != nil {
-			// If we have an error it indicates the client is shut down.
-			break
-		}
-
-		numNodes := iter.Len()
-		if numNodes == 0 {
-			logDebugf("CCCPPOLL: No nodes available to poll")
-			continue
-		}
-
-		if nodeIdx < 0 {
-			nodeIdx = rand.Intn(numNodes)
-		}
-
-		iter.Offset(nodeIdx)
-
-		var foundConfig *cfgBucket
-		// Until this gets a valid config the pipeline addresses will be the ones from the connection string, there is
-		// an assumed contract between the looper and the upstream config manager that this is the case. This allows
-		// the config manager to setup its network type correctly.
-		for iter.Next() {
-			pipeline := iter.Pipeline()
-			cccpBytes, err := ccc.getClusterConfig(pipeline)
-			if err != nil {
-				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-				if errors.Is(err, ErrDocumentNotFound) {
-					// This error is indicative of a memcached bucket which we can't handle so return the error.
-					logDebugf("CCCPPOLL: Document not found error detecting, returning error upstream.")
-					return err
-				}
-				continue
-			}
-
-			hostName, err := hostFromHostPort(pipeline.Address())
-			if err != nil {
-				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-				continue
-			}
-
-			bk, err := parseConfig(cccpBytes, hostName)
-			if err != nil {
-				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-				continue
-			}
-
-			foundConfig = bk
-			break
-		}
-
-		if foundConfig == nil {
-			logDebugf("CCCPPOLL: Failed to retrieve config from any node.")
-			continue
-		}
-
-		logDebugf("CCCPPOLL: Received new config")
-		ccc.cfgMgr.OnNewConfig(foundConfig)
 	}
 
 	close(ccc.looperDoneSig)
