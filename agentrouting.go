@@ -38,7 +38,7 @@ func (agent *Agent) dialMemdClient(address string, deadline time.Time) (*memdCli
 		return nil, err
 	}
 
-	client := newMemdClient(agent, conn, agent.circuitBreakerConfig, agent.kvMux.handleOpRoutingResp, agent.tracer)
+	client := newMemdClient(agent, conn, agent.circuitBreakerConfig, agent.kvMux.handleOpRoutingResp, agent.tracer, agent.zombieLoggerCmpt)
 
 	return client, err
 }

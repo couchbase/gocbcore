@@ -52,10 +52,6 @@ type Agent struct {
 	kvConnectTimeout  time.Duration
 	serverWaitTimeout time.Duration
 
-	zombieLock      sync.RWMutex
-	zombieOps       []*zombieLogEntry
-	useZombieLogger uint32
-
 	dcpPriority  DcpAgentPriority
 	useDcpExpiry bool
 
@@ -71,12 +67,13 @@ type Agent struct {
 	httpMux          *httpMux
 	errMapManager    *errMapManager
 
-	crudCmpt      *crudComponent
-	n1qlCmpt      *n1qlQueryComponent
-	analyticsCmpt *analyticsQueryComponent
-	searchCmpt    *searchQueryComponent
-	viewCmpt      *viewQueryComponent
-	waitCmpt      *waitUntilConfigComponent
+	crudCmpt         *crudComponent
+	n1qlCmpt         *n1qlQueryComponent
+	analyticsCmpt    *analyticsQueryComponent
+	searchCmpt       *searchQueryComponent
+	viewCmpt         *viewQueryComponent
+	waitCmpt         *waitUntilConfigComponent
+	zombieLoggerCmpt *zombieLoggerComponent
 
 	agentConfig
 }
@@ -388,6 +385,21 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.authHandler = c.buildAuthHandler()
 	}
 
+	if config.UseZombieLogger {
+		zombieLoggerInterval := 10 * time.Second
+		zombieLoggerSampleSize := 10
+		if config.ZombieLoggerInterval > 0 {
+			zombieLoggerInterval = config.ZombieLoggerInterval
+		}
+		if config.ZombieLoggerSampleSize > 0 {
+			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
+		}
+
+		c.zombieLoggerCmpt = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
+		go c.zombieLoggerCmpt.Start()
+	}
+
+	// Kick everything off.
 	cfg := &routeConfig{
 		kvServerList: config.MemdAddrs,
 		mgmtEpList:   httpEpList,
@@ -398,27 +410,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.kvMux.OnNewRouteConfig(cfg)
 
 	go c.pollerController.Start()
-
-	if config.UseZombieLogger {
-		// We setup the zombie logger after connecting so that we don't end up leaking the logging goroutine.
-		// We also don't enable the zombie logger on the agent until here so that the operations performed
-		// when connecting don't trigger a zombie log to occur when the logger isn't yet setup.
-		atomic.StoreUint32(&c.useZombieLogger, 1)
-
-		zombieLoggerInterval := 10 * time.Second
-		zombieLoggerSampleSize := 10
-		if config.ZombieLoggerInterval > 0 {
-			zombieLoggerInterval = config.ZombieLoggerInterval
-		}
-		if config.ZombieLoggerSampleSize > 0 {
-			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
-		}
-		// zombieOps must have a static capacity for its lifetime, the capacity should
-		// never be altered so that it is consistent across the zombieLogger and
-		// recordZombieResponse.
-		c.zombieOps = make([]*zombieLogEntry, 0, zombieLoggerSampleSize)
-		go c.zombieLogger(zombieLoggerInterval, zombieLoggerSampleSize)
-	}
 
 	return c, nil
 }
@@ -480,6 +471,10 @@ func (agent *Agent) onInvalidConfig() {
 func (agent *Agent) Close() error {
 	routeCloseErr := agent.kvMux.Close()
 	agent.pollerController.Stop()
+
+	if agent.zombieLoggerCmpt != nil {
+		agent.zombieLoggerCmpt.Stop()
+	}
 
 	// Wait for our external looper goroutines to finish, note that if the
 	// specific looper wasn't used, it will be a nil value otherwise it

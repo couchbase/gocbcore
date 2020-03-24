@@ -45,6 +45,7 @@ type memdClient struct {
 	breaker               circuitBreaker
 	postErrHandler        postCompleteErrorHandler
 	tracer                RequestTracer
+	zombieLogger          *zombieLoggerComponent
 }
 
 type dcpBuffer struct {
@@ -54,7 +55,7 @@ type dcpBuffer struct {
 }
 
 func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
-	tracer RequestTracer) *memdClient {
+	tracer RequestTracer, zombieLogger *zombieLoggerComponent) *memdClient {
 	client := memdClient{
 		parent:         parent,
 		conn:           conn,
@@ -62,6 +63,7 @@ func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig
 		connID:         parent.clientID + "/" + formatCbUID(randomCbUID()),
 		postErrHandler: postErrHandler,
 		tracer:         tracer,
+		zombieLogger:   zombieLogger,
 	}
 
 	if breakerCfg.Enabled {
@@ -224,8 +226,8 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
 		logDebugf("Received response with no corresponding request.")
-		if atomic.LoadUint32(&client.parent.useZombieLogger) == 1 {
-			client.parent.recordZombieResponse(resp, client)
+		if client.zombieLogger != nil {
+			client.zombieLogger.RecordZombieResponse(resp, client.connID, client.Address())
 		}
 		return
 	}
