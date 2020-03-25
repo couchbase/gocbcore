@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -149,13 +150,28 @@ type n1qlQueryComponent struct {
 	httpComponent *httpComponent
 	cfgMgr        *configManager
 
+	queryCache map[string]*n1qlQueryCacheEntry
+	cacheLock  sync.RWMutex
+
 	enhancedPreparedSupported uint32
+}
+
+type n1qlQueryCacheEntry struct {
+	enhanced    bool
+	name        string
+	encodedPlan string
+}
+
+type n1qlJSONPrepData struct {
+	EncodedPlan string `json:"encoded_plan"`
+	Name        string `json:"name"`
 }
 
 func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,
+		queryCache:    make(map[string]*n1qlQueryCacheEntry),
 	}
 	cfgMgr.AddConfigWatcher(nqc)
 
@@ -163,9 +179,13 @@ func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager) 
 }
 
 func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
-	if cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
+	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 0 &&
+		cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
 		// Once supported this can't be unsupported
 		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
+		nqc.cacheLock.Lock()
+		nqc.queryCache = make(map[string]*n1qlQueryCacheEntry)
+		nqc.cacheLock.Unlock()
 	}
 }
 
@@ -188,7 +208,6 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 		Service:          N1qlService,
 		Method:           "POST",
 		Path:             "/query/service",
-		Body:             opts.Payload,
 		IsIdempotent:     readOnly,
 		UniqueID:         clientContextID,
 		Deadline:         opts.Deadline,
@@ -196,6 +215,186 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 		RootTraceContext: tracer.RootContext(),
 	}
 
+	return nqc.execute(statement, ireq, payloadMap)
+}
+
+// PreparedN1QLQuery executes a prepared N1QL query
+func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	tracer := nqc.httpComponent.CreateOpTrace("N1QLQuery", opts.TraceContext)
+	defer tracer.Finish()
+
+	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1 {
+		return nqc.executeEnhPrepared(opts, tracer)
+	}
+
+	return nqc.executeOldPrepared(opts, tracer)
+}
+
+func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer *opTracer) (*N1QLRowReader, error) {
+	var payloadMap map[string]interface{}
+	err := json.Unmarshal(opts.Payload, &payloadMap)
+	if err != nil {
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
+	}
+
+	statement := getMapValueString(payloadMap, "statement", "")
+	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
+	readOnly := getMapValueBool(payloadMap, "readonly", false)
+
+	nqc.cacheLock.RLock()
+	cachedStmt := nqc.queryCache[statement]
+	nqc.cacheLock.RUnlock()
+
+	if cachedStmt != nil {
+		// Attempt to execute our cached query plan
+		delete(payloadMap, "statement")
+		payloadMap["prepared"] = cachedStmt.name
+
+		ireq := &httpRequest{
+			Service:      N1qlService,
+			Method:       "POST",
+			Path:         "/query/service",
+			IsIdempotent: readOnly,
+			UniqueID:     clientContextID,
+			Deadline:     opts.Deadline,
+			// We need to not retry this request.
+			RetryStrategy:    newFailFastRetryStrategy(),
+			RootTraceContext: tracer.RootContext(),
+		}
+
+		results, err := nqc.execute("", ireq, payloadMap)
+		if err == nil {
+			return results, nil
+		}
+		// if we fail to send the prepared statement name then retry a PREPARE.
+		delete(payloadMap, "prepared")
+	}
+
+	payloadMap["statement"] = "PREPARE " + statement
+	payloadMap["auto_execute"] = true
+
+	ireq := &httpRequest{
+		Service:          N1qlService,
+		Method:           "POST",
+		Path:             "/query/service",
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
+	}
+
+	results, err := nqc.execute("", ireq, payloadMap)
+	if err != nil {
+		return nil, err
+	}
+
+	preparedName, err := results.PreparedName()
+	if err != nil {
+		logWarnf("Failed to read prepared name from result: %s", err)
+		return results, nil
+	}
+
+	cachedStmt = &n1qlQueryCacheEntry{}
+	cachedStmt.name = preparedName
+	cachedStmt.enhanced = true
+
+	nqc.cacheLock.Lock()
+	nqc.queryCache[statement] = cachedStmt
+	nqc.cacheLock.Unlock()
+
+	return results, nil
+}
+
+func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer *opTracer) (*N1QLRowReader, error) {
+	var payloadMap map[string]interface{}
+	err := json.Unmarshal(opts.Payload, &payloadMap)
+	if err != nil {
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
+	}
+
+	statement := getMapValueString(payloadMap, "statement", "")
+	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
+	readOnly := getMapValueBool(payloadMap, "readonly", false)
+
+	nqc.cacheLock.RLock()
+	cachedStmt := nqc.queryCache[statement]
+	nqc.cacheLock.RUnlock()
+
+	if cachedStmt != nil {
+		// Attempt to execute our cached query plan
+		delete(payloadMap, "statement")
+		payloadMap["prepared"] = cachedStmt.name
+		payloadMap["encoded_plan"] = cachedStmt.encodedPlan
+
+		ireq := &httpRequest{
+			Service:          N1qlService,
+			Method:           "POST",
+			Path:             "/query/service",
+			IsIdempotent:     readOnly,
+			UniqueID:         clientContextID,
+			Deadline:         opts.Deadline,
+			RetryStrategy:    opts.RetryStrategy,
+			RootTraceContext: tracer.RootContext(),
+		}
+
+		results, err := nqc.execute("", ireq, payloadMap)
+		if err == nil {
+			return results, nil
+		}
+		// if we fail to send the prepared statement name then retry a PREPARE.
+	}
+
+	delete(payloadMap, "prepared")
+	delete(payloadMap, "encoded_plan")
+	delete(payloadMap, "auto_execute")
+	prepStatement := "PREPARE " + statement
+	payloadMap["statement"] = prepStatement
+
+	ireq := &httpRequest{
+		Service:          N1qlService,
+		Method:           "POST",
+		Path:             "/query/service",
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
+	}
+
+	cacheRes, err := nqc.execute(prepStatement, ireq, payloadMap)
+	if err != nil {
+		return nil, err
+	}
+
+	b := cacheRes.NextRow()
+	if b == nil {
+		return nil, wrapN1QLError(ireq, statement, errCliInternalError)
+	}
+
+	var prepData n1qlJSONPrepData
+	err = json.Unmarshal(b, &prepData)
+	if err != nil {
+		return nil, wrapN1QLError(ireq, statement, err)
+	}
+
+	cachedStmt = &n1qlQueryCacheEntry{}
+	cachedStmt.name = prepData.Name
+	cachedStmt.encodedPlan = prepData.EncodedPlan
+
+	nqc.cacheLock.Lock()
+	nqc.queryCache[statement] = cachedStmt
+	nqc.cacheLock.Unlock()
+
+	// Attempt to execute our cached query plan
+	delete(payloadMap, "statement")
+	payloadMap["prepared"] = cachedStmt.name
+	payloadMap["encoded_plan"] = cachedStmt.encodedPlan
+
+	return nqc.execute(cachedStmt.encodedPlan, ireq, payloadMap)
+}
+
+func (nqc *n1qlQueryComponent) execute(statement string, ireq *httpRequest, payloadMap map[string]interface{}) (*N1QLRowReader, error) {
 ExecuteLoop:
 	for {
 		{ // Produce an updated payload with the appropriate timeout

@@ -32,7 +32,8 @@ type httpComponentProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux, auth AuthProvider) *httpComponent {
+func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux, auth AuthProvider,
+	tracer RequestTracer) *httpComponent {
 	return &httpComponent{
 		cli:                  cli,
 		muxer:                muxer,
@@ -41,6 +42,7 @@ func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux
 		userAgent:            props.UserAgent,
 		noRootTraceSpans:     props.NoRootTraceSpans,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
+		tracer:               tracer,
 	}
 }
 

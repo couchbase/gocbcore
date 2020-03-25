@@ -373,6 +373,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		httpCli,
 		c.httpMux,
 		auth,
+		c.tracer,
 	)
 	c.pollerController = newPollerController(
 		newCCCPConfigController(
