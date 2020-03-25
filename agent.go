@@ -352,11 +352,16 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.tracer,
 		dialer,
 	)
-	c.cidMgr = newCollectionIDManager(collectionIDProps{
-		Bucket:           config.BucketName,
-		MaxQueueSize:     config.MaxQueueSize,
-		NoRootTraceSpans: config.NoRootTraceSpans,
-	}, c.kvMux, c.tracer)
+	c.cidMgr = newCollectionIDManager(
+		collectionIDProps{
+			Bucket:               config.BucketName,
+			MaxQueueSize:         config.MaxQueueSize,
+			NoRootTraceSpans:     config.NoRootTraceSpans,
+			DefaultRetryStrategy: c.defaultRetryStrategy,
+		},
+		c.kvMux,
+		c.tracer,
+	)
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
 	c.httpComponent = newHTTPComponent(
 		httpComponentProps{

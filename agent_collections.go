@@ -105,10 +105,6 @@ type GetCollectionManifestOptions struct {
 // GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
 // id cache.
 func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
 	return agent.cidMgr.GetCollectionManifest(opts, cb)
 }
 
@@ -125,9 +121,5 @@ type GetCollectionIDOptions struct {
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
 // and collection name. This function will also prime the client's collection id cache.
 func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = agent.defaultRetryStrategy
-	}
-
 	return agent.cidMgr.GetCollectionID(scopeName, collectionName, opts, cb)
 }

@@ -12,29 +12,32 @@ func (cidMgr *collectionIDManager) createKey(scopeName, collectionName string) s
 }
 
 type collectionIDManager struct {
-	idMap            map[string]*collectionIDCache
-	mapLock          sync.Mutex
-	mux              *kvMux
-	maxQueueSize     int
-	tracer           RequestTracer
-	noRootTraceSpans bool
-	bucket           string
+	idMap                map[string]*collectionIDCache
+	mapLock              sync.Mutex
+	mux                  *kvMux
+	maxQueueSize         int
+	tracer               RequestTracer
+	noRootTraceSpans     bool
+	bucket               string
+	defaultRetryStrategy RetryStrategy
 }
 
 type collectionIDProps struct {
-	MaxQueueSize     int
-	NoRootTraceSpans bool
-	Bucket           string
+	MaxQueueSize         int
+	NoRootTraceSpans     bool
+	Bucket               string
+	DefaultRetryStrategy RetryStrategy
 }
 
 func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracer RequestTracer) *collectionIDManager {
 	cidMgr := &collectionIDManager{
-		mux:              mux,
-		idMap:            make(map[string]*collectionIDCache),
-		maxQueueSize:     props.MaxQueueSize,
-		tracer:           tracer,
-		noRootTraceSpans: props.NoRootTraceSpans,
-		bucket:           props.Bucket,
+		mux:                  mux,
+		idMap:                make(map[string]*collectionIDCache),
+		maxQueueSize:         props.MaxQueueSize,
+		tracer:               tracer,
+		noRootTraceSpans:     props.NoRootTraceSpans,
+		bucket:               props.Bucket,
+		defaultRetryStrategy: props.DefaultRetryStrategy,
 	}
 
 	mux.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
@@ -112,6 +115,10 @@ func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManif
 		RetryStrategy: opts.RetryStrategy,
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = cidMgr.defaultRetryStrategy
+	}
+
 	return cidMgr.mux.DispatchDirect(req)
 }
 
@@ -145,6 +152,10 @@ func (cidMgr *collectionIDManager) GetCollectionID(scopeName string, collectionN
 
 		tracer.Finish()
 		cb(manifestID, collectionID, nil)
+	}
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = cidMgr.defaultRetryStrategy
 	}
 
 	keyScopeName := scopeName
