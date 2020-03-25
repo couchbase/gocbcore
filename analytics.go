@@ -198,7 +198,7 @@ ExecuteLoop:
 			ireq.Body = newPayload
 		}
 
-		resp, err := aqc.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

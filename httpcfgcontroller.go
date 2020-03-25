@@ -154,7 +154,7 @@ Looper:
 			}
 
 			var err error
-			resp, err = hcc.httpComponent.ExecHTTPRequest(req)
+			resp, err = hcc.httpComponent.DoInternalHTTPRequest(req)
 			if err != nil {
 				logDebugf("Failed to connect to host. %v", err)
 				return 0

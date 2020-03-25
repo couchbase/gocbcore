@@ -112,37 +112,5 @@ func wrapHTTPError(req *httpRequest, err error) HTTPError {
 // DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
 func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
-	tracer := agent.createOpTrace("http", req.TraceContext)
-	defer tracer.Finish()
-
-	retryStrategy := agent.defaultRetryStrategy
-	if req.RetryStrategy != nil {
-		retryStrategy = req.RetryStrategy
-	}
-
-	deadline := time.Now().Add(req.Timeout)
-
-	ireq := &httpRequest{
-		Service:          req.Service,
-		Endpoint:         req.Endpoint,
-		Method:           req.Method,
-		Path:             req.Path,
-		Headers:          req.Headers,
-		ContentType:      req.ContentType,
-		Username:         req.Username,
-		Password:         req.Password,
-		Body:             req.Body,
-		IsIdempotent:     req.IsIdempotent,
-		UniqueID:         req.UniqueID,
-		Deadline:         deadline,
-		RetryStrategy:    retryStrategy,
-		RootTraceContext: tracer.RootContext(),
-	}
-
-	resp, err := agent.httpComponent.ExecHTTPRequest(ireq)
-	if err != nil {
-		return nil, wrapHTTPError(ireq, err)
-	}
-
-	return resp, nil
+	return agent.httpComponent.DoHTTPRequest(req)
 }

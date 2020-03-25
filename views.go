@@ -147,7 +147,7 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowRe
 	view := opts.ViewName
 
 	for {
-		resp, err := vqc.httpComponent.ExecHTTPRequest(ireq)
+		resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

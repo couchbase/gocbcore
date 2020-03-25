@@ -358,7 +358,17 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		NoRootTraceSpans: config.NoRootTraceSpans,
 	}, c.kvMux, c.tracer)
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
-	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, auth, userAgent)
+	c.httpComponent = newHTTPComponent(
+		httpComponentProps{
+			Bucket:               c.bucketName,
+			UserAgent:            userAgent,
+			DefaultRetryStrategy: c.defaultRetryStrategy,
+			NoRootTraceSpans:     c.noRootTraceSpans,
+		},
+		httpCli,
+		c.httpMux,
+		auth,
+	)
 	c.pollerController = newPollerController(
 		newCCCPConfigController(
 			cccpPollerProperties{

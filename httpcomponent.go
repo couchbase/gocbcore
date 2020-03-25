@@ -15,18 +15,32 @@ import (
 )
 
 type httpComponent struct {
-	cli       *http.Client
-	muxer     *httpMux
-	auth      AuthProvider
-	userAgent string
+	cli                  *http.Client
+	muxer                *httpMux
+	auth                 AuthProvider
+	userAgent            string
+	bucket               string
+	tracer               RequestTracer
+	noRootTraceSpans     bool
+	defaultRetryStrategy RetryStrategy
 }
 
-func newHTTPComponent(cli *http.Client, muxer *httpMux, auth AuthProvider, userAgent string) *httpComponent {
+type httpComponentProps struct {
+	NoRootTraceSpans     bool
+	UserAgent            string
+	Bucket               string
+	DefaultRetryStrategy RetryStrategy
+}
+
+func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux, auth AuthProvider) *httpComponent {
 	return &httpComponent{
-		cli:       cli,
-		muxer:     muxer,
-		auth:      auth,
-		userAgent: userAgent,
+		cli:                  cli,
+		muxer:                muxer,
+		auth:                 auth,
+		bucket:               props.Bucket,
+		userAgent:            props.UserAgent,
+		noRootTraceSpans:     props.NoRootTraceSpans,
+		defaultRetryStrategy: props.DefaultRetryStrategy,
 	}
 }
 
@@ -38,7 +52,43 @@ func (hc *httpComponent) Close() {
 	}
 }
 
-func (hc *httpComponent) ExecHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
+func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
+	tracer := hc.createOpTrace("http", req.TraceContext)
+	defer tracer.Finish()
+
+	retryStrategy := hc.defaultRetryStrategy
+	if req.RetryStrategy != nil {
+		retryStrategy = req.RetryStrategy
+	}
+
+	deadline := time.Now().Add(req.Timeout)
+
+	ireq := &httpRequest{
+		Service:          req.Service,
+		Endpoint:         req.Endpoint,
+		Method:           req.Method,
+		Path:             req.Path,
+		Headers:          req.Headers,
+		ContentType:      req.ContentType,
+		Username:         req.Username,
+		Password:         req.Password,
+		Body:             req.Body,
+		IsIdempotent:     req.IsIdempotent,
+		UniqueID:         req.UniqueID,
+		Deadline:         deadline,
+		RetryStrategy:    retryStrategy,
+		RootTraceContext: tracer.RootContext(),
+	}
+
+	resp, err := hc.DoInternalHTTPRequest(ireq)
+	if err != nil {
+		return nil, wrapHTTPError(ireq, err)
+	}
+
+	return resp, nil
+}
+
+func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
 	if req.Service == MemdService {
 		return nil, errInvalidService
 	}
@@ -216,6 +266,25 @@ func (hc *httpComponent) ExecHTTPRequest(req *httpRequest) (*HTTPResponse, error
 		querySuccess = true
 
 		return &respOut, nil
+	}
+}
+
+func (hc *httpComponent) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
+	if hc.noRootTraceSpans {
+		return &opTracer{
+			parentContext: parentContext,
+			opSpan:        nil,
+		}
+	}
+
+	opSpan := hc.tracer.StartSpan(operationName, parentContext).
+		SetTag("component", "couchbase-go-sdk").
+		SetTag("db.instance", hc.bucket).
+		SetTag("span.kind", "client")
+
+	return &opTracer{
+		parentContext: parentContext,
+		opSpan:        opSpan,
 	}
 }
 
