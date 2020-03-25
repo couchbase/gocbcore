@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -36,7 +37,6 @@ type memdClient struct {
 	closeNotify           chan bool
 	connID                string
 	closed                bool
-	parent                *Agent
 	conn                  memdConn
 	opList                memdOpMap
 	features              []HelloFeature
@@ -46,6 +46,10 @@ type memdClient struct {
 	postErrHandler        postCompleteErrorHandler
 	tracer                RequestTracer
 	zombieLogger          *zombieLoggerComponent
+
+	compressionMinSize   int
+	compressionMinRatio  float64
+	disableDecompression bool
 }
 
 type dcpBuffer struct {
@@ -54,16 +58,27 @@ type dcpBuffer struct {
 	isInternal bool
 }
 
-func newMemdClient(parent *Agent, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
+type memdClientProps struct {
+	ClientID string
+
+	CompressionMinSize   int
+	CompressionMinRatio  float64
+	DisableDecompression bool
+}
+
+func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
 	tracer RequestTracer, zombieLogger *zombieLoggerComponent) *memdClient {
 	client := memdClient{
-		parent:         parent,
 		conn:           conn,
 		closeNotify:    make(chan bool),
-		connID:         parent.clientID + "/" + formatCbUID(randomCbUID()),
+		connID:         props.ClientID + "/" + formatCbUID(randomCbUID()),
 		postErrHandler: postErrHandler,
 		tracer:         tracer,
 		zombieLogger:   zombieLogger,
+
+		compressionMinRatio:  props.CompressionMinRatio,
+		compressionMinSize:   props.CompressionMinSize,
+		disableDecompression: props.DisableDecompression,
 	}
 
 	if breakerCfg.Enabled {
@@ -187,9 +202,9 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 	if client.SupportsFeature(FeatureSnappy) {
 		isCompressed := (packet.Datatype & uint8(DatatypeFlagCompressed)) != 0
 		packetSize := len(packet.Value)
-		if !isCompressed && packetSize > client.parent.compressionMinSize && isCompressibleOp(packet.Opcode) {
+		if !isCompressed && packetSize > client.compressionMinSize && isCompressibleOp(packet.Opcode) {
 			compressedValue := snappy.Encode(nil, packet.Value)
-			if float64(len(compressedValue))/float64(packetSize) <= client.parent.compressionMinRatio {
+			if float64(len(compressedValue))/float64(packetSize) <= client.compressionMinRatio {
 				newPacket := *packet
 				newPacket.Value = compressedValue
 				newPacket.Datatype = newPacket.Datatype | uint8(DatatypeFlagCompressed)
@@ -242,7 +257,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
-	if isCompressed && !client.parent.disableDecompression {
+	if isCompressed && !client.disableDecompression {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
 			req.processingLock.Unlock()
@@ -266,15 +281,13 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		client.breaker.MarkFailure()
 	}
 
-	if client.parent == nil {
-		req.processingLock.Unlock()
-	} else {
-		if !req.Persistent {
-			stopCmdTrace(req)
-		}
+	if !req.Persistent {
+		stopCmdTrace(req)
+	}
 
-		req.processingLock.Unlock()
+	req.processingLock.Unlock()
 
+	if err != nil {
 		shortCircuited, routeErr := client.postErrHandler(resp, req, err)
 		if shortCircuited {
 			logSchedf("Routing callback intercepted response")
@@ -491,4 +504,291 @@ func (client *memdClient) sendCanary() {
 			client.breaker.MarkFailure()
 		}
 	}
+}
+
+func (client *memdClient) helloFeatures(props helloProps) []HelloFeature {
+	var features []HelloFeature
+
+	// Send the TLS flag, which has unknown effects.
+	features = append(features, FeatureTLS)
+
+	// Indicate that we understand XATTRs
+	features = append(features, FeatureXattr)
+
+	// Indicates that we understand select buckets.
+	features = append(features, FeatureSelectBucket)
+
+	// If the user wants to use KV Error maps, lets enable them
+	features = append(features, FeatureXerror)
+
+	// If the user wants to use mutation tokens, lets enable them
+	if props.MutationTokensEnabled {
+		features = append(features, FeatureSeqNo)
+	}
+
+	// If the user wants on-the-wire compression, lets try to enable it
+	if props.CompressionEnabled {
+		features = append(features, FeatureSnappy)
+	}
+
+	if props.DurationsEnabled {
+		features = append(features, FeatureDurations)
+	}
+
+	if props.CollectionsEnabled {
+		features = append(features, FeatureCollections)
+	}
+
+	// These flags are informational so don't actually enable anything
+	// but the enhanced durability flag tells us if the server supports
+	// the feature
+	features = append(features, FeatureAltRequests)
+	features = append(features, FeatureEnhancedDurability)
+
+	return features
+}
+
+type helloProps struct {
+	MutationTokensEnabled bool
+	CollectionsEnabled    bool
+	CompressionEnabled    bool
+	DurationsEnabled      bool
+}
+
+type bootstrapProps struct {
+	Bucket         string
+	UserAgent      string
+	AuthMechanisms []AuthMechanism
+	AuthHandler    authFuncHandler
+	ErrMapManager  *errMapManager
+	helloProps     helloProps
+}
+
+type memdInitFunc func(*syncClient, time.Time) error
+
+func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
+	sclient := syncClient{
+		client: client,
+	}
+
+	logDebugf("Fetching cluster client data")
+
+	bucket := settings.Bucket
+	features := client.helloFeatures(settings.helloProps)
+	clientInfoStr := clientInfoString(client.connID, settings.UserAgent)
+	authMechanisms := settings.AuthMechanisms
+
+	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
+	if err != nil {
+		logDebugf("Failed to execute HELLO (%v)", err)
+		return err
+	}
+
+	errMapCh, err := sclient.ExecGetErrorMap(1, deadline)
+	if err != nil {
+		// GetErrorMap isn't integral to bootstrap succeeding
+		logDebugf("Failed to execute Get error map (%v)", err)
+	}
+
+	var listMechsCh chan SaslListMechsCompleted
+	firstAuthMethod := settings.AuthHandler(&sclient, deadline, authMechanisms[0])
+	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
+	if firstAuthMethod != nil {
+		listMechsCh = make(chan SaslListMechsCompleted)
+		err = sclient.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
+			if err != nil {
+				logDebugf("Failed to fetch list auth mechs (%v)", err)
+			}
+			listMechsCh <- SaslListMechsCompleted{
+				Err:   err,
+				Mechs: mechs,
+			}
+		})
+		if err != nil {
+			logDebugf("Failed to execute list auth mechs (%v)", err)
+		}
+	}
+
+	var completedAuthCh chan BytesAndError
+	var continueAuthCh chan bool
+	if firstAuthMethod != nil {
+		completedAuthCh, continueAuthCh, err = firstAuthMethod()
+		if err != nil {
+			logDebugf("Failed to execute auth (%v)", err)
+			return err
+		}
+	}
+
+	var selectCh chan BytesAndError
+	if continueAuthCh == nil {
+		if bucket != "" {
+			selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+			if err != nil {
+				logDebugf("Failed to execute select bucket (%v)", err)
+				return err
+			}
+		}
+	} else {
+		selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+	}
+
+	helloResp := <-helloCh
+	if helloResp.Err != nil {
+		logDebugf("Failed to hello with server (%v)", helloResp.Err)
+		return helloResp.Err
+	}
+
+	errMapResp := <-errMapCh
+	if errMapResp.Err == nil {
+		settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
+	} else {
+		logDebugf("Failed to fetch kv error map (%s)", errMapResp.Err)
+	}
+
+	var serverAuthMechanisms []AuthMechanism
+	if listMechsCh != nil {
+		listMechsResp := <-listMechsCh
+		if listMechsResp.Err == nil {
+			serverAuthMechanisms = listMechsResp.Mechs
+			logDebugf("Server supported auth mechanisms: %v", serverAuthMechanisms)
+		} else {
+			logDebugf("Failed to fetch auth mechs from server (%v)", listMechsResp.Err)
+		}
+	}
+
+	// If completedAuthCh isn't nil then we have attempted to do auth so we need to wait on the result of that.
+	if completedAuthCh != nil {
+		authResp := <-completedAuthCh
+		if authResp.Err != nil {
+			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+			// If there's an auth failure or there was only 1 mechanism to use then fail.
+			if len(authMechanisms) == 1 || errors.Is(authResp.Err, ErrAuthenticationFailure) {
+				return authResp.Err
+			}
+
+			for {
+				var found bool
+				var mech AuthMechanism
+				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
+				if !found {
+					logDebugf("Failed to authenticate, all options exhausted")
+					return authResp.Err
+				}
+
+				nextAuthFunc := settings.AuthHandler(&sclient, deadline, mech)
+				if nextAuthFunc == nil {
+					// This can't really happen but just in case it somehow does.
+					logDebugf("Failed to authenticate, no available credentials")
+					return authResp.Err
+				}
+				completedAuthCh, continueAuthCh, err = nextAuthFunc()
+				if err != nil {
+					logDebugf("Failed to execute auth (%v)", err)
+					return err
+				}
+				if continueAuthCh == nil {
+					if bucket != "" {
+						selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+						if err != nil {
+							logDebugf("Failed to execute select bucket (%v)", err)
+							return err
+						}
+					}
+				} else {
+					selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+				}
+				authResp = <-completedAuthCh
+				if authResp.Err == nil {
+					break
+				}
+
+				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+				if errors.Is(authResp.Err, ErrAuthenticationFailure) {
+					return authResp.Err
+				}
+			}
+		}
+		logDebugf("Authenticated successfully")
+	}
+
+	if selectCh != nil {
+		selectResp := <-selectCh
+		if selectResp.Err != nil {
+			logDebugf("Failed to perform select bucket against server (%v)", selectResp.Err)
+			return selectResp.Err
+		}
+	}
+
+	client.features = helloResp.SrvFeatures
+
+	logDebugf("Client Features: %+v", features)
+	logDebugf("Server Features: %+v", client.features)
+
+	collectionsSupported := client.SupportsFeature(FeatureCollections)
+	if collectionsSupported {
+		client.conn.EnableCollections(true)
+	}
+
+	if client.SupportsFeature(FeatureDurations) {
+		client.conn.EnableFramingExtras(true)
+	}
+
+	err = cb(&sclient, deadline)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
+	for _, srvFeature := range srvFeatures {
+		if srvFeature == feature {
+			return true
+		}
+	}
+	return false
+}
+
+func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh chan bool, deadline time.Time) chan BytesAndError {
+	if bucketName == "" {
+		return nil
+	}
+
+	selectCh := make(chan BytesAndError, 1)
+	go func() {
+		success := <-continueAuthCh
+		if !success {
+			selectCh <- BytesAndError{}
+			return
+		}
+		execCh, err := sclient.ExecSelectBucket([]byte(bucketName), deadline)
+		if err != nil {
+			logDebugf("Failed to execute select bucket (%v)", err)
+			selectCh <- BytesAndError{Err: err}
+			return
+		}
+
+		execResp := <-execCh
+		selectCh <- execResp
+	}()
+
+	return selectCh
+}
+
+func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
+	for {
+		if len(authMechanisms) <= 1 {
+			break
+		}
+		authMechanisms = authMechanisms[1:]
+		mech := authMechanisms[0]
+		for _, serverMech := range serverAuthMechanisms {
+			if mech == serverMech {
+				return true, mech, authMechanisms
+			}
+		}
+	}
+
+	return false, "", authMechanisms
 }

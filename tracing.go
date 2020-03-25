@@ -75,7 +75,7 @@ func (agent *Agent) createOpTrace(operationName string, parentContext RequestSpa
 
 	opSpan := agent.tracer.StartSpan(operationName, parentContext).
 		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", agent.bucket()).
+		SetTag("db.instance", agent.bucketName).
 		SetTag("span.kind", "client")
 
 	return &opTracer{

@@ -8,58 +8,27 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
 )
 
-type agentConfig struct {
-	useMutationTokens    bool
-	useCompression       bool
-	useDurations         bool
-	disableDecompression bool
-	useCollections       bool
-
-	compressionMinSize  int
-	compressionMinRatio float64
-
-	noRootTraceSpans bool
-}
-
 // Agent represents the base client handling connections to a Couchbase Server.
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
-	clientID       string
-	userAgent      string
-	auth           AuthProvider
-	authHandler    authFuncHandler
-	authMechanisms []AuthMechanism
-	bucketName     string
-	bucketLock     sync.Mutex
-	tlsConfig      *tls.Config
-	initFn         memdInitFunc
+	clientID   string
+	bucketName string
+	tlsConfig  *tls.Config
+	initFn     memdInitFunc
 
-	tracer RequestTracer
+	tracer           RequestTracer
+	noRootTraceSpans bool
 
-	serverFailuresLock sync.Mutex
-	serverFailures     map[string]time.Time
-
-	httpComponent *httpComponent
-
-	kvConnectTimeout  time.Duration
-	serverWaitTimeout time.Duration
-
-	dcpPriority  DcpAgentPriority
-	useDcpExpiry bool
-
-	cidMgr *collectionIDManager
-
+	httpComponent        *httpComponent
+	cidMgr               *collectionIDManager
 	defaultRetryStrategy RetryStrategy
-
-	circuitBreakerConfig CircuitBreakerConfig
 
 	cfgManager       *configManager
 	pollerController *pollerController
@@ -74,19 +43,18 @@ type Agent struct {
 	viewCmpt         *viewQueryComponent
 	waitCmpt         *waitUntilConfigComponent
 	zombieLoggerCmpt *zombieLoggerComponent
-
-	agentConfig
 }
 
+// !!!!UNSURE WHY THESE EXIST!!!!
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
-func (agent *Agent) ServerConnectTimeout() time.Duration {
-	return agent.kvConnectTimeout
-}
-
-// SetServerConnectTimeout sets the timeout for each server connection.
-func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
-	agent.kvConnectTimeout = timeout
-}
+// func (agent *Agent) ServerConnectTimeout() time.Duration {
+// 	return agent.kvConnectTimeout
+// }
+//
+// // SetServerConnectTimeout sets the timeout for each server connection.
+// func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
+// 	agent.kvConnectTimeout = timeout
+// }
 
 // HTTPClient returns a pre-configured HTTP Client for communicating with
 // Couchbase Server.  You must still specify authentication information
@@ -109,7 +77,7 @@ type authFuncHandler func(client AuthClient, deadline time.Time, mechanism AuthM
 
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := func(client *syncClient, deadline time.Time, agent *Agent) error {
+	initFn := func(client *syncClient, deadline time.Time) error {
 		return nil
 	}
 
@@ -120,7 +88,7 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	initFn := func(client *syncClient, deadline time.Time, agent *Agent) error {
+	initFn := func(client *syncClient, deadline time.Time) error {
 		if err := client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
 			return err
 		}
@@ -128,7 +96,7 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 			return err
 		}
 		var priority string
-		switch agent.dcpPriority {
+		switch config.DcpAgentPriority {
 		case DcpAgentPriorityLow:
 			priority = "low"
 		case DcpAgentPriorityMed:
@@ -140,7 +108,7 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 			return err
 		}
 
-		if agent.useDcpExpiry {
+		if config.UseDCPExpiry {
 			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
 				return err
 			}
@@ -227,38 +195,35 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	c := &Agent{
-		clientID:   formatCbUID(randomCbUID()),
-		userAgent:  config.UserAgent,
-		bucketName: config.BucketName,
-		auth:       config.Auth,
-		tlsConfig:  tlsConfig,
-		initFn:     initFn,
-		tracer:     tracer,
+		clientID:         formatCbUID(randomCbUID()),
+		bucketName:       config.BucketName,
+		tlsConfig:        tlsConfig,
+		initFn:           initFn,
+		tracer:           tracer,
+		noRootTraceSpans: config.NoRootTraceSpans,
 
-		serverFailures:       make(map[string]time.Time),
-		kvConnectTimeout:     7000 * time.Millisecond,
-		serverWaitTimeout:    5 * time.Second,
-		dcpPriority:          config.DcpAgentPriority,
-		useDcpExpiry:         config.UseDCPExpiry,
 		defaultRetryStrategy: config.DefaultRetryStrategy,
-		circuitBreakerConfig: config.CircuitBreakerConfig,
-		errMapManager:        newErrMapManager(config.BucketName),
 
-		agentConfig: agentConfig{
-			useMutationTokens:    config.UseMutationTokens,
-			disableDecompression: config.DisableDecompression,
-			useCompression:       config.UseCompression,
-			useCollections:       config.UseCollections,
-			compressionMinSize:   32,
-			compressionMinRatio:  0.83,
-			useDurations:         config.UseDurations,
-			noRootTraceSpans:     config.NoRootTraceSpans,
-		},
+		errMapManager: newErrMapManager(config.BucketName),
 	}
 
+	circuitBreakerConfig := config.CircuitBreakerConfig
+	auth := config.Auth
+	userAgent := config.UserAgent
+	useMutationTokens := config.UseMutationTokens
+	disableDecompression := config.DisableDecompression
+	useCompression := config.UseCompression
+	useCollections := config.UseCollections
+	compressionMinSize := 32
+	compressionMinRatio := 0.83
+	useDurations := config.UseDurations
+
+	kvConnectTimeout := 7000 * time.Millisecond
 	if config.KVConnectTimeout > 0 {
-		c.kvConnectTimeout = config.KVConnectTimeout
+		kvConnectTimeout = config.KVConnectTimeout
 	}
+
+	serverWaitTimeout := 5 * time.Second
 
 	kvPoolSize := 1
 	if config.KvPoolSize > 0 {
@@ -291,17 +256,28 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	if config.CompressionMinSize > 0 {
-		c.compressionMinSize = config.CompressionMinSize
+		compressionMinSize = config.CompressionMinSize
 	}
 	if config.CompressionMinRatio > 0 {
-		c.compressionMinRatio = config.CompressionMinRatio
-		if c.compressionMinRatio >= 1.0 {
-			c.compressionMinRatio = 1.0
+		compressionMinRatio = config.CompressionMinRatio
+		if compressionMinRatio >= 1.0 {
+			compressionMinRatio = 1.0
 		}
 	}
 	if c.defaultRetryStrategy == nil {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
+	authMechanisms := []AuthMechanism{
+		ScramSha512AuthMechanism,
+		ScramSha256AuthMechanism,
+		ScramSha1AuthMechanism}
+
+	// PLAIN authentication is only supported over TLS
+	if config.UseTLS {
+		authMechanisms = append(authMechanisms, PlainAuthMechanism)
+	}
+
+	authHandler := c.buildAuthHandler(auth)
 
 	var httpEpList []string
 	for _, hostPort := range config.HTTPAddrs {
@@ -310,6 +286,20 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		} else {
 			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
 		}
+	}
+
+	if config.UseZombieLogger {
+		zombieLoggerInterval := 10 * time.Second
+		zombieLoggerSampleSize := 10
+		if config.ZombieLoggerInterval > 0 {
+			zombieLoggerInterval = config.ZombieLoggerInterval
+		}
+		if config.ZombieLoggerSampleSize > 0 {
+			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
+		}
+
+		c.zombieLoggerCmpt = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
+		go c.zombieLoggerCmpt.Start()
 	}
 
 	c.cfgManager = newConfigManager(
@@ -322,24 +312,52 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.onInvalidConfig,
 	)
 
+	dialer := newMemdClientCreatorComponent(
+		memdClientDialerProps{
+			ServerWaitTimeout:    serverWaitTimeout,
+			KVConnectTimeout:     kvConnectTimeout,
+			ClientID:             c.clientID,
+			TLSConfig:            c.tlsConfig,
+			CompressionMinSize:   compressionMinSize,
+			CompressionMinRatio:  compressionMinRatio,
+			DisableDecompression: disableDecompression,
+		},
+		bootstrapProps{
+			helloProps: helloProps{
+				CollectionsEnabled:    useCollections,
+				MutationTokensEnabled: useMutationTokens,
+				CompressionEnabled:    useCompression,
+				DurationsEnabled:      useDurations,
+			},
+			Bucket:         c.bucketName,
+			UserAgent:      userAgent,
+			AuthMechanisms: authMechanisms,
+			AuthHandler:    authHandler,
+			ErrMapManager:  c.errMapManager,
+		},
+		circuitBreakerConfig,
+		c.zombieLoggerCmpt,
+		c.tracer,
+		initFn,
+	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
-			queueSize:          maxQueueSize,
-			poolSize:           kvPoolSize,
-			collectionsEnabled: c.useCollections,
+			QueueSize:          maxQueueSize,
+			PoolSize:           kvPoolSize,
+			CollectionsEnabled: useCollections,
 		},
 		c.cfgManager,
 		c.errMapManager,
 		c.tracer,
-		c.slowDialMemdClient,
+		dialer,
 	)
 	c.cidMgr = newCollectionIDManager(collectionIDProps{
 		Bucket:           config.BucketName,
 		MaxQueueSize:     config.MaxQueueSize,
 		NoRootTraceSpans: config.NoRootTraceSpans,
 	}, c.kvMux, c.tracer)
-	c.httpMux = newHTTPMux(c.circuitBreakerConfig, c.cfgManager)
-	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, c.auth, c.userAgent)
+	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
+	c.httpComponent = newHTTPComponent(httpCli, c.httpMux, auth, userAgent)
 	c.pollerController = newPollerController(
 		newCCCPConfigController(
 			cccpPollerProperties{
@@ -350,7 +368,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		),
 		newHTTPConfigController(
-			c.bucket(),
+			c.bucketName,
 			httpPollerProperties{
 				httpComponent:        c.httpComponent,
 				confHTTPRetryDelay:   confHTTPRetryDelay,
@@ -371,34 +389,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.viewCmpt = newViewQueryComponent(c.httpComponent)
 	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
-	c.authMechanisms = []AuthMechanism{
-		ScramSha512AuthMechanism,
-		ScramSha256AuthMechanism,
-		ScramSha1AuthMechanism}
-
-	// PLAIN authentication is only supported over TLS
-	if config.UseTLS {
-		c.authMechanisms = append(c.authMechanisms, PlainAuthMechanism)
-	}
-
-	if c.authHandler == nil {
-		c.authHandler = c.buildAuthHandler()
-	}
-
-	if config.UseZombieLogger {
-		zombieLoggerInterval := 10 * time.Second
-		zombieLoggerSampleSize := 10
-		if config.ZombieLoggerInterval > 0 {
-			zombieLoggerInterval = config.ZombieLoggerInterval
-		}
-		if config.ZombieLoggerSampleSize > 0 {
-			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
-		}
-
-		c.zombieLoggerCmpt = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
-		go c.zombieLoggerCmpt.Start()
-	}
-
 	// Kick everything off.
 	cfg := &routeConfig{
 		kvServerList: config.MemdAddrs,
@@ -414,9 +404,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	return c, nil
 }
 
-func (agent *Agent) buildAuthHandler() authFuncHandler {
+func (agent *Agent) buildAuthHandler(auth AuthProvider) authFuncHandler {
 	return func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc {
-		creds, err := getKvAuthCreds(agent.auth, client.Address())
+		creds, err := getKvAuthCreds(auth, client.Address())
 		if err != nil {
 			return nil
 		}
@@ -582,16 +572,4 @@ func (agent *Agent) UsingGCCCP() bool {
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *Agent) WaitUntilReady(cb func()) (PendingOp, error) {
 	return agent.waitCmpt.WaitUntilFirstConfig(cb)
-}
-
-func (agent *Agent) bucket() string {
-	agent.bucketLock.Lock()
-	defer agent.bucketLock.Unlock()
-	return agent.bucketName
-}
-
-func (agent *Agent) setBucket(bucket string) {
-	agent.bucketLock.Lock()
-	defer agent.bucketLock.Unlock()
-	agent.bucketName = bucket
 }

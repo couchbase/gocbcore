@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 )
 
@@ -203,4 +204,25 @@ func getCommandName(command commandCode) string {
 	default:
 		return "CMD_x" + hex.EncodeToString([]byte{byte(command)})
 	}
+}
+
+func clientInfoString(connID, userAgent string) string {
+	agentName := "gocbcore/" + goCbCoreVersionStr
+	if userAgent != "" {
+		agentName += " " + userAgent
+	}
+
+	clientInfo := struct {
+		Agent  string `json:"a"`
+		ConnID string `json:"i"`
+	}{
+		Agent:  agentName,
+		ConnID: connID,
+	}
+	clientInfoBytes, err := json.Marshal(clientInfo)
+	if err != nil {
+		logDebugf("Failed to generate client info string: %s", err)
+	}
+
+	return string(clientInfoBytes)
 }

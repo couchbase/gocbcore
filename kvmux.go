@@ -16,30 +16,31 @@ type kvMux struct {
 	collectionsEnabled bool
 	queueSize          int
 	poolSize           int
-	getClientFn        memdGetClientFunc
 	cfgMgr             *configManager
 	errMapMgr          *errMapManager
 
 	tracer RequestTracer
+	dialer *memdClientDialerComponent
 
 	postCompleteErrHandler postCompleteErrorHandler
 }
 
 type kvMuxProps struct {
-	collectionsEnabled bool
-	queueSize          int
-	poolSize           int
+	CollectionsEnabled bool
+	QueueSize          int
+	PoolSize           int
 }
 
-func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer RequestTracer, getClientFn memdGetClientFunc) *kvMux {
+func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer RequestTracer,
+	dialer *memdClientDialerComponent) *kvMux {
 	mux := &kvMux{
-		queueSize:          props.queueSize,
-		poolSize:           props.poolSize,
-		collectionsEnabled: props.collectionsEnabled,
-		getClientFn:        getClientFn,
+		queueSize:          props.QueueSize,
+		poolSize:           props.PoolSize,
+		collectionsEnabled: props.CollectionsEnabled,
 		cfgMgr:             cfgMgr,
 		errMapMgr:          errMapMgr,
 		tracer:             tracer,
+		dialer:             dialer,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -593,7 +594,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 		hostPort := hostPort
 
 		getCurClientFn := func() (*memdClient, error) {
-			return mux.getClientFn(hostPort)
+			return mux.dialer.SlowDialMemdClient(hostPort, mux.handleOpRoutingResp)
 		}
 		pipeline := newPipeline(hostPort, poolSize, mux.queueSize, getCurClientFn)
 
