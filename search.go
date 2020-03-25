@@ -114,8 +114,8 @@ func newSearchQueryComponent(httpComponent *httpComponent) *searchQueryComponent
 
 // SearchQuery executes a Search query
 func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
-	// tracer := agent.createOpTrace("SearchQuery", opts.TraceContext)
-	// defer tracer.Finish()
+	tracer := sqc.httpComponent.CreateOpTrace("SearchQuery", opts.TraceContext)
+	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -140,14 +140,14 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRo
 
 	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
 	ireq := &httpRequest{
-		Service:       FtsService,
-		Method:        "POST",
-		Path:          reqURI,
-		Body:          opts.Payload,
-		IsIdempotent:  true,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
-		// RootTraceContext: tracer.RootContext(),
+		Service:          FtsService,
+		Method:           "POST",
+		Path:             reqURI,
+		Body:             opts.Payload,
+		IsIdempotent:     true,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:

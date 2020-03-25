@@ -127,20 +127,20 @@ func newViewQueryComponent(httpComponent *httpComponent) *viewQueryComponent {
 
 // ViewQuery executes a view query
 func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
-	// tracer := agent.createOpTrace("ViewQuery", opts.TraceContext)
-	// defer tracer.Finish()
+	tracer := vqc.httpComponent.CreateOpTrace("ViewQuery", opts.TraceContext)
+	defer tracer.Finish()
 
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",
 		opts.DesignDocumentName, opts.ViewType, opts.ViewName, opts.Options.Encode())
 
 	ireq := &httpRequest{
-		Service:       CapiService,
-		Method:        "GET",
-		Path:          reqURI,
-		IsIdempotent:  true,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
-		// RootTraceContext: tracer.RootContext(),
+		Service:          CapiService,
+		Method:           "GET",
+		Path:             reqURI,
+		IsIdempotent:     true,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 	ddoc := opts.DesignDocumentName

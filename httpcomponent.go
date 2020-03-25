@@ -53,7 +53,7 @@ func (hc *httpComponent) Close() {
 }
 
 func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
-	tracer := hc.createOpTrace("http", req.TraceContext)
+	tracer := hc.CreateOpTrace("http", req.TraceContext)
 	defer tracer.Finish()
 
 	retryStrategy := hc.defaultRetryStrategy
@@ -269,7 +269,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 	}
 }
 
-func (hc *httpComponent) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
+func (hc *httpComponent) CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
 	if hc.noRootTraceSpans {
 		return &opTracer{
 			parentContext: parentContext,

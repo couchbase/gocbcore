@@ -157,8 +157,8 @@ func newAnalyticsQueryComponent(httpComponent *httpComponent) *analyticsQueryCom
 
 // AnalyticsQuery executes an analytics query
 func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
-	// tracer := agent.createOpTrace("AnalyticsQuery", opts.TraceContext)
-	// defer tracer.Finish()
+	tracer := aqc.httpComponent.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
+	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -177,12 +177,12 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (
 		Headers: map[string]string{
 			"Analytics-Priority": fmt.Sprintf("%d", opts.Priority),
 		},
-		Body:          opts.Payload,
-		IsIdempotent:  readOnly,
-		UniqueID:      clientContextID,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
-		// RootTraceContext: tracer.RootContext(),
+		Body:             opts.Payload,
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:

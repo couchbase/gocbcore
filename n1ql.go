@@ -171,8 +171,8 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 
 // N1QLQuery executes a N1QL query
 func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	// tracer := agent.createOpTrace("N1QLQuery", opts.TraceContext)
-	// defer tracer.Finish()
+	tracer := nqc.httpComponent.CreateOpTrace("N1QLQuery", opts.TraceContext)
+	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
@@ -185,15 +185,15 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
 	ireq := &httpRequest{
-		Service:       N1qlService,
-		Method:        "POST",
-		Path:          "/query/service",
-		Body:          opts.Payload,
-		IsIdempotent:  readOnly,
-		UniqueID:      clientContextID,
-		Deadline:      opts.Deadline,
-		RetryStrategy: opts.RetryStrategy,
-		// RootTraceContext: tracer.RootContext(),
+		Service:          N1qlService,
+		Method:           "POST",
+		Path:             "/query/service",
+		Body:             opts.Payload,
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: tracer.RootContext(),
 	}
 
 ExecuteLoop:
