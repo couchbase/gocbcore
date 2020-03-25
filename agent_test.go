@@ -2398,54 +2398,44 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		}
 	}
 
-	log.Printf("Log Messages Emitted:")
-	for i := 0; i < int(LogMaxVerbosity); i++ {
-		log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
-	}
+	if logger != nil {
+		log.Printf("Log Messages Emitted:")
+		var preLogTotal uint64
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			preLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
+		}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
+		abnormalLogCount := atomic.LoadUint64(&logger.LogCount[LogError]) + atomic.LoadUint64(&logger.LogCount[LogWarn])
+		if abnormalLogCount > 0 {
+			log.Printf("Detected unexpected logging, failing")
+			result = 1
+		}
 
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for collection to become available expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
+		time.Sleep(1 * time.Second)
 
-			return &manifest.Manifest, nil
+		log.Printf("Post sleep log Messages Emitted:")
+		var postLogTotal uint64
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			postLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
+		}
+
+		if preLogTotal != postLogTotal {
+			log.Printf("Detected unexpected logging after agent closed, failing")
+			result = 1
 		}
 	}
-}
-
-func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
-	if scopeName == "" {
-		scopeName = "_default"
-	}
-	if name == "" {
-		name = "_default"
-	}
-
-	data := url.Values{}
-	data.Set("name", name)
-
-	req := &HTTPRequest{
-		Service:  MgmtService,
-		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
-		Method:   "DELETE",
-		Headers:  make(map[string]string),
-		Deadline: time.Now().Add(10 * time.Second),
-	}
-
-	resCh := make(chan *HTTPResponse)
-	errCh := make(chan error)
-	_, err := agent.DoHTTPRequest(req, func(response *HTTPResponse, err error) {
-		if err != nil {
-			errCh <- err
-			return
+	// Loop for at most a second checking for goroutines leaks, this gives any HTTP goroutines time to shutdown
+	start := time.Now()
+	var finalGoroutineCount int
+	for time.Now().Sub(start) <= 1*time.Second {
+		runtime.Gosched()
+		finalGoroutineCount = runtime.NumGoroutine()
+		if finalGoroutineCount == initialGoroutineCount {
+			break
 		}
 		resCh <- response
 	})

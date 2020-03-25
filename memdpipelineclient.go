@@ -260,5 +260,7 @@ func (pipecli *memdPipelineClient) Close() error {
 
 	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 
+	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
+
 	return nil
 }
