@@ -77,7 +77,7 @@ type authFuncHandler func(client AuthClient, deadline time.Time, mechanism AuthM
 
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := func(client *syncClient, deadline time.Time) error {
+	initFn := func(client *memdClient, deadline time.Time) error {
 		return nil
 	}
 
@@ -88,11 +88,12 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	initFn := func(client *syncClient, deadline time.Time) error {
-		if err := client.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
+	initFn := func(client *memdClient, deadline time.Time) error {
+		sclient := &syncClient{client: client}
+		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
 			return err
 		}
-		if err := client.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
+		if err := sclient.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
 			return err
 		}
 		var priority string
@@ -104,26 +105,26 @@ func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpen
 		case DcpAgentPriorityHigh:
 			priority = "high"
 		}
-		if err := client.ExecDcpControl("set_priority", priority, deadline); err != nil {
+		if err := sclient.ExecDcpControl("set_priority", priority, deadline); err != nil {
 			return err
 		}
 
 		if config.UseDCPExpiry {
-			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
 				return err
 			}
 		}
 
 		if config.UseDCPStreamID {
-			if err := client.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
+			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
 		}
 
-		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
+		if err := sclient.ExecEnableDcpClientEnd(deadline); err != nil {
 			return err
 		}
-		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
+		return sclient.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 
 	return createAgent(config, initFn)
@@ -323,7 +324,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			DisableDecompression: disableDecompression,
 		},
 		bootstrapProps{
-			helloProps: helloProps{
+			HelloProps: helloProps{
 				CollectionsEnabled:    useCollections,
 				MutationTokensEnabled: useMutationTokens,
 				CompressionEnabled:    useCompression,

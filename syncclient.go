@@ -3,7 +3,6 @@ package gocbcore
 import (
 	"encoding/binary"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -77,134 +76,13 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 	return resp.Value, err
 }
 
-// BytesAndError contains the raw bytes of the result of an operation, and/or the error that occurred.
-type BytesAndError struct {
-	Err   error
-	Bytes []byte
-}
-
-func (client *syncClient) doAsyncRequest(req *memdPacket, deadline time.Time, cb func(b []byte, err error)) error {
-	signal := make(chan BytesAndError)
-	qreq := memdQRequest{
-		memdPacket: *req,
-		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
-			signalResp := BytesAndError{}
-			if resp != nil {
-				signalResp.Bytes = resp.memdPacket.Value
-			}
-			signalResp.Err = err
-			signal <- signalResp
-		},
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
-
-	err := client.client.SendRequest(&qreq)
-	if err != nil {
-		return err
-	}
-
-	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
-	go func() {
-		select {
-		case resp := <-signal:
-			ReleaseTimer(timeoutTmr, false)
-			cb(resp.Bytes, resp.Err)
-			return
-		case <-timeoutTmr.C:
-			ReleaseTimer(timeoutTmr, true)
-			qreq.Cancel(errAmbiguousTimeout)
-			<-signal
-			return
-		}
-	}()
-
-	return nil
-}
-
-func (client *syncClient) doAsyncOp(cmd commandCode, k, v, e []byte, deadline time.Time, cb func(b []byte, err error)) error {
-	return client.doAsyncRequest(&memdPacket{
-		Magic:  reqMagic,
-		Opcode: cmd,
-		Key:    k,
-		Value:  v,
-		Extras: e,
-	}, deadline, cb)
-}
-
 func (client *syncClient) ExecDcpControl(key string, value string, deadline time.Time) error {
 	_, err := client.doBasicOp(cmdDcpControl, []byte(key), []byte(value), nil, deadline)
 	return err
 }
 
-// ExecHelloResponse contains the features and/or error from an ExecHello operation.
-type ExecHelloResponse struct {
-	SrvFeatures []HelloFeature
-	Err         error
-}
-
-func (client *syncClient) ExecHello(clientID string, features []HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
-	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
-		bytes = append(bytes, 0, 0)
-		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
-		return bytes
-	}
-
-	var featureBytes []byte
-	for _, feature := range features {
-		featureBytes = appendFeatureCode(featureBytes, feature)
-	}
-
-	completedCh := make(chan ExecHelloResponse)
-	err := client.doAsyncOp(cmdHello, []byte(clientID), featureBytes, nil, deadline, func(b []byte, err error) {
-		if err != nil {
-			completedCh <- ExecHelloResponse{
-				Err: err,
-			}
-			return
-		}
-
-		var srvFeatures []HelloFeature
-		for i := 0; i < len(b); i += 2 {
-			feature := binary.BigEndian.Uint16(b[i:])
-			srvFeatures = append(srvFeatures, HelloFeature(feature))
-		}
-
-		completedCh <- ExecHelloResponse{
-			SrvFeatures: srvFeatures,
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return completedCh, nil
-}
-
 func (client *syncClient) ExecGetClusterConfig(deadline time.Time) ([]byte, error) {
 	return client.doBasicOp(cmdGetClusterConfig, nil, nil, nil, deadline)
-}
-
-func (client *syncClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan BytesAndError, error) {
-	completedCh := make(chan BytesAndError, 1)
-	valueBuf := make([]byte, 2)
-	binary.BigEndian.PutUint16(valueBuf, version)
-	err := client.doAsyncOp(cmdGetErrorMap, nil, valueBuf, nil, deadline, func(b []byte, err error) {
-		if err != nil {
-			completedCh <- BytesAndError{
-				Err: err,
-			}
-			return
-		}
-
-		completedCh <- BytesAndError{
-			Bytes: b,
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return completedCh, nil
 }
 
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
@@ -271,72 +149,4 @@ func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.T
 	}
 
 	return nil
-}
-
-func (client *syncClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
-	err := client.doAsyncOp(cmdSASLListMechs, nil, nil, nil, deadline, func(b []byte, err error) {
-		if err != nil {
-			cb(nil, err)
-			return
-		}
-
-		mechs := strings.Split(string(b), " ")
-		var authMechs []AuthMechanism
-		for _, mech := range mechs {
-			authMechs = append(authMechs, AuthMechanism(mech))
-		}
-
-		cb(authMechs, nil)
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (client *syncClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
-	err := client.doAsyncOp(cmdSASLAuth, k, v, nil, deadline, cb)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (client *syncClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
-	err := client.doAsyncOp(cmdSASLStep, k, v, nil, deadline, func(b []byte, err error) {
-		if err != nil {
-			cb(err)
-			return
-		}
-
-		cb(nil)
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (client *syncClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
-	completedCh := make(chan BytesAndError, 1)
-	err := client.doAsyncOp(cmdSelectBucket, b, nil, nil, deadline, func(b []byte, err error) {
-		if err != nil {
-			completedCh <- BytesAndError{
-				Err: err,
-			}
-			return
-		}
-
-		completedCh <- BytesAndError{
-			Bytes: b,
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return completedCh, nil
 }

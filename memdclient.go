@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -561,41 +562,37 @@ type bootstrapProps struct {
 	AuthMechanisms []AuthMechanism
 	AuthHandler    authFuncHandler
 	ErrMapManager  *errMapManager
-	helloProps     helloProps
+	HelloProps     helloProps
 }
 
-type memdInitFunc func(*syncClient, time.Time) error
+type memdInitFunc func(*memdClient, time.Time) error
 
 func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
-	sclient := syncClient{
-		client: client,
-	}
-
 	logDebugf("Fetching cluster client data")
 
 	bucket := settings.Bucket
-	features := client.helloFeatures(settings.helloProps)
+	features := client.helloFeatures(settings.HelloProps)
 	clientInfoStr := clientInfoString(client.connID, settings.UserAgent)
 	authMechanisms := settings.AuthMechanisms
 
-	helloCh, err := sclient.ExecHello(clientInfoStr, features, deadline)
+	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
 		logDebugf("Failed to execute HELLO (%v)", err)
 		return err
 	}
 
-	errMapCh, err := sclient.ExecGetErrorMap(1, deadline)
+	errMapCh, err := client.ExecGetErrorMap(1, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
 		logDebugf("Failed to execute Get error map (%v)", err)
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
-	firstAuthMethod := settings.AuthHandler(&sclient, deadline, authMechanisms[0])
+	firstAuthMethod := settings.AuthHandler(client, deadline, authMechanisms[0])
 	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 	if firstAuthMethod != nil {
 		listMechsCh = make(chan SaslListMechsCompleted)
-		err = sclient.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
+		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
 				logDebugf("Failed to fetch list auth mechs (%v)", err)
 			}
@@ -622,14 +619,14 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 	var selectCh chan BytesAndError
 	if continueAuthCh == nil {
 		if bucket != "" {
-			selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
 				logDebugf("Failed to execute select bucket (%v)", err)
 				return err
 			}
 		}
 	} else {
-		selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+		selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 	}
 
 	helloResp := <-helloCh
@@ -675,7 +672,7 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 					return authResp.Err
 				}
 
-				nextAuthFunc := settings.AuthHandler(&sclient, deadline, mech)
+				nextAuthFunc := settings.AuthHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
 					logDebugf("Failed to authenticate, no available credentials")
@@ -688,14 +685,14 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 				}
 				if continueAuthCh == nil {
 					if bucket != "" {
-						selectCh, err = sclient.ExecSelectBucket([]byte(bucket), deadline)
+						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
 							logDebugf("Failed to execute select bucket (%v)", err)
 							return err
 						}
 					}
 				} else {
-					selectCh = continueAfterAuth(&sclient, bucket, continueAuthCh, deadline)
+					selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 				}
 				authResp = <-completedAuthCh
 				if authResp.Err == nil {
@@ -733,7 +730,7 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 		client.conn.EnableFramingExtras(true)
 	}
 
-	err = cb(&sclient, deadline)
+	err = cb(client, deadline)
 	if err != nil {
 		return err
 	}
@@ -741,16 +738,236 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 	return nil
 }
 
-func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
-	for _, srvFeature := range srvFeatures {
-		if srvFeature == feature {
-			return true
-		}
-	}
-	return false
+// BytesAndError contains the raw bytes of the result of an operation, and/or the error that occurred.
+type BytesAndError struct {
+	Err   error
+	Bytes []byte
 }
 
-func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh chan bool, deadline time.Time) chan BytesAndError {
+func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
+	err := client.doBootstrapRequest(
+		&memdPacket{
+			Magic:  reqMagic,
+			Opcode: cmdSASLAuth,
+			Key:    k,
+			Value:  v,
+		},
+		deadline,
+		cb,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
+	err := client.doBootstrapRequest(
+		&memdPacket{
+			Magic:  reqMagic,
+			Opcode: cmdSASLStep,
+			Key:    k,
+			Value:  v,
+		},
+		deadline,
+		func(b []byte, err error) {
+			if err != nil {
+				cb(err)
+				return
+			}
+
+			cb(nil)
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
+	completedCh := make(chan BytesAndError, 1)
+	err := client.doBootstrapRequest(
+		&memdPacket{
+			Magic:  reqMagic,
+			Opcode: cmdSelectBucket,
+			Key:    b,
+		},
+		deadline,
+		func(b []byte, err error) {
+			if err != nil {
+				completedCh <- BytesAndError{
+					Err: err,
+				}
+				return
+			}
+
+			completedCh <- BytesAndError{
+				Bytes: b,
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan BytesAndError, error) {
+	completedCh := make(chan BytesAndError, 1)
+	valueBuf := make([]byte, 2)
+	binary.BigEndian.PutUint16(valueBuf, version)
+
+	err := client.doBootstrapRequest(&memdPacket{
+		Magic:  reqMagic,
+		Opcode: cmdGetErrorMap,
+		Value:  valueBuf,
+	},
+		deadline,
+		func(b []byte, err error) {
+			if err != nil {
+				completedCh <- BytesAndError{
+					Err: err,
+				}
+				return
+			}
+
+			completedCh <- BytesAndError{
+				Bytes: b,
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+func (client *memdClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
+	err := client.doBootstrapRequest(
+		&memdPacket{
+			Magic:  reqMagic,
+			Opcode: cmdSASLListMechs,
+		},
+		deadline,
+		func(b []byte, err error) {
+			if err != nil {
+				cb(nil, err)
+				return
+			}
+
+			mechs := strings.Split(string(b), " ")
+			var authMechs []AuthMechanism
+			for _, mech := range mechs {
+				authMechs = append(authMechs, AuthMechanism(mech))
+			}
+
+			cb(authMechs, nil)
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ExecHelloResponse contains the features and/or error from an ExecHello operation.
+type ExecHelloResponse struct {
+	SrvFeatures []HelloFeature
+	Err         error
+}
+
+func (client *memdClient) ExecHello(clientID string, features []HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
+	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
+		bytes = append(bytes, 0, 0)
+		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
+		return bytes
+	}
+
+	var featureBytes []byte
+	for _, feature := range features {
+		featureBytes = appendFeatureCode(featureBytes, feature)
+	}
+
+	completedCh := make(chan ExecHelloResponse)
+	err := client.doBootstrapRequest(
+		&memdPacket{
+			Magic:  reqMagic,
+			Opcode: cmdHello,
+			Key:    []byte(clientID),
+			Value:  featureBytes,
+		},
+		deadline,
+		func(b []byte, err error) {
+			if err != nil {
+				completedCh <- ExecHelloResponse{
+					Err: err,
+				}
+				return
+			}
+
+			var srvFeatures []HelloFeature
+			for i := 0; i < len(b); i += 2 {
+				feature := binary.BigEndian.Uint16(b[i:])
+				srvFeatures = append(srvFeatures, HelloFeature(feature))
+			}
+
+			completedCh <- ExecHelloResponse{
+				SrvFeatures: srvFeatures,
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+func (client *memdClient) doBootstrapRequest(req *memdPacket, deadline time.Time, cb func(b []byte, err error)) error {
+	signal := make(chan BytesAndError)
+	qreq := memdQRequest{
+		memdPacket: *req,
+		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+			signalResp := BytesAndError{}
+			if resp != nil {
+				signalResp.Bytes = resp.memdPacket.Value
+			}
+			signalResp.Err = err
+			signal <- signalResp
+		},
+		RetryStrategy: newFailFastRetryStrategy(),
+	}
+
+	err := client.SendRequest(&qreq)
+	if err != nil {
+		return err
+	}
+
+	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
+	go func() {
+		select {
+		case resp := <-signal:
+			ReleaseTimer(timeoutTmr, false)
+			cb(resp.Bytes, resp.Err)
+			return
+		case <-timeoutTmr.C:
+			ReleaseTimer(timeoutTmr, true)
+			qreq.Cancel(errAmbiguousTimeout)
+			<-signal
+			return
+		}
+	}()
+
+	return nil
+}
+
+func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh chan bool, deadline time.Time) chan BytesAndError {
 	if bucketName == "" {
 		return nil
 	}
@@ -762,7 +979,7 @@ func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh ch
 			selectCh <- BytesAndError{}
 			return
 		}
-		execCh, err := sclient.ExecSelectBucket([]byte(bucketName), deadline)
+		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
 		if err != nil {
 			logDebugf("Failed to execute select bucket (%v)", err)
 			selectCh <- BytesAndError{Err: err}
@@ -774,6 +991,15 @@ func continueAfterAuth(sclient *syncClient, bucketName string, continueAuthCh ch
 	}()
 
 	return selectCh
+}
+
+func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
+	for _, srvFeature := range srvFeatures {
+		if srvFeature == feature {
+			return true
+		}
+	}
+	return false
 }
 
 func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
