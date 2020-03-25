@@ -147,13 +147,31 @@ func TestMain(m *testing.M) {
 
 	if logger != nil {
 		log.Printf("Log Messages Emitted:")
+		var preLogTotal uint64
 		for i := 0; i < int(LogMaxVerbosity); i++ {
-			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			preLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
 		}
 
-		abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
+		abnormalLogCount := atomic.LoadUint64(&logger.LogCount[LogError]) + atomic.LoadUint64(&logger.LogCount[LogWarn])
 		if abnormalLogCount > 0 {
 			log.Printf("Detected unexpected logging, failing")
+			result = 1
+		}
+
+		time.Sleep(1 * time.Second)
+
+		log.Printf("Post sleep log Messages Emitted:")
+		var postLogTotal uint64
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			postLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
+		}
+
+		if preLogTotal != postLogTotal {
+			log.Printf("Detected unexpected logging after agent closed, failing")
 			result = 1
 		}
 	}
@@ -178,6 +196,9 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(result)
+}
+
+func testLogCounts(logger *testLogger, level string) {
 }
 
 func testEnsureSupportsFeature(t *testing.T, feature TestFeatureCode) {
