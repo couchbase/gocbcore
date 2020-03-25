@@ -1341,17 +1341,36 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	log.Printf("Log Messages Emitted:")
-	for i := 0; i < int(LogMaxVerbosity); i++ {
-		log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), logger.LogCount[i])
-	}
+	if logger != nil {
+		log.Printf("Log Messages Emitted:")
+		var preLogTotal uint64
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			preLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
+		}
 
-	abnormalLogCount := logger.LogCount[LogError] + logger.LogCount[LogWarn]
-	if abnormalLogCount > 0 {
-		log.Printf("Detected unexpected logging, failing")
-		result = 1
-	}
+		abnormalLogCount := atomic.LoadUint64(&logger.LogCount[LogError]) + atomic.LoadUint64(&logger.LogCount[LogWarn])
+		if abnormalLogCount > 0 {
+			log.Printf("Detected unexpected logging, failing")
+			result = 1
+		}
 
+		time.Sleep(1 * time.Second)
+
+		log.Printf("Post sleep log Messages Emitted:")
+		var postLogTotal uint64
+		for i := 0; i < int(LogMaxVerbosity); i++ {
+			count := atomic.LoadUint64(&logger.LogCount[i])
+			postLogTotal += count
+			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
+		}
+
+		if preLogTotal != postLogTotal {
+			log.Printf("Detected unexpected logging after agent closed, failing")
+			result = 1
+		}
+	}
 	// Loop for at most a second checking for goroutines leaks, this gives any HTTP goroutines time to shutdown
 	start := time.Now()
 	var finalGoroutineCount int

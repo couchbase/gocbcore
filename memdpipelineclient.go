@@ -197,8 +197,6 @@ func (pipecli *memdPipelineClient) Run() {
 
 	// Lets notify anyone who is watching that we are now shut down
 	close(pipecli.closedSig)
-
-	logDebugf("Pipeline Client `%s/%p` is now exiting", pipecli.address, pipecli)
 }
 
 // Close will close this pipeline client.  Note that this method will not wait for
@@ -226,6 +224,8 @@ func (pipecli *memdPipelineClient) Close() error {
 
 	// Lets wait till the ioLoop has shut everything down before returning.
 	<-pipecli.closedSig
+
+	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 
 	return nil
 }
