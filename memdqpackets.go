@@ -68,6 +68,9 @@ type memdQRequest struct {
 	// This is the set of reasons why this request has been retried.
 	retryReasons []RetryReason
 
+	// This is the timer which is used for cancellation of the request when deadlines are used.
+	Timer *time.Timer
+
 	lastDispatchedTo   string
 	lastDispatchedFrom string
 	lastConnectionID   string
@@ -159,6 +162,12 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		// Someone already completed this request
 		req.processingLock.Unlock()
 		return false
+	}
+
+	if req.Timer != nil {
+		// This timer might have already fired and that's how we got here, however we might have also got here
+		// via other means so we should always try to stop it.
+		req.Timer.Stop()
 	}
 
 	queuedWith := (*memdOpQueue)(atomic.LoadPointer(&req.queuedWith))

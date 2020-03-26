@@ -1,6 +1,9 @@
 package gocbcore
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"time"
+)
 
 func (crud *crudComponent) GetIn(opts GetInOptions, cb GetInExCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace("GetInEx", nil)
@@ -45,6 +48,12 @@ func (crud *crudComponent) GetIn(opts GetInOptions, cb GetInExCallback) (Pending
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -92,6 +101,12 @@ func (crud *crudComponent) ExistsIn(opts ExistsInOptions, cb ExistsInExCallback)
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -169,6 +184,12 @@ func (crud *crudComponent) storeIn(opName string, opcode commandCode, opts Store
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -277,6 +298,12 @@ func (crud *crudComponent) CounterIn(opts CounterInOptions, cb CounterInExCallba
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -348,6 +375,12 @@ func (crud *crudComponent) DeleteIn(opts DeleteInOptions, cb DeleteInExCallback)
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -464,6 +497,12 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInExCallback)
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -616,6 +655,12 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInExCallback)
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)

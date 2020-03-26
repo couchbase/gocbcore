@@ -1,6 +1,9 @@
 package gocbcore
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"time"
+)
 
 type crudComponent struct {
 	cidMgr               *collectionIDManager
@@ -41,7 +44,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, er
 		res.Cas = Cas(resp.Cas)
 		res.Datatype = resp.Datatype
 
-		// tracer.Finish()
+		tracer.Finish()
 		cb(&res, nil)
 	}
 
@@ -65,6 +68,12 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, er
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -122,6 +131,12 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchEx
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -175,6 +190,12 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockExCal
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -232,6 +253,12 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -287,6 +314,12 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchExCallback) (Pending
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -334,6 +367,12 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockExCallback) (Pend
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -396,6 +435,12 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteExCallback) (Pend
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -463,6 +508,12 @@ func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOp
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -481,6 +532,7 @@ func (crud *crudComponent) Set(opts SetOptions, cb StoreExCallback) (PendingOp, 
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionID:           opts.CollectionID,
+		Deadline:               opts.Deadline,
 	}, cb)
 }
 
@@ -499,6 +551,7 @@ func (crud *crudComponent) Add(opts AddOptions, cb StoreExCallback) (PendingOp, 
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionID:           opts.CollectionID,
+		Deadline:               opts.Deadline,
 	}, cb)
 }
 
@@ -517,6 +570,7 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreExCallback) (Pen
 		DurabilityLevel:        opts.DurabilityLevel,
 		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
 		CollectionID:           opts.CollectionID,
+		Deadline:               opts.Deadline,
 	}, cb)
 }
 
@@ -577,6 +631,12 @@ func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts Adjoin
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -672,6 +732,12 @@ func (crud *crudComponent) counter(opName string, opcode commandCode, opts Count
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -728,6 +794,12 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomExCallba
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -792,6 +864,12 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaExCallback) (P
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -850,6 +928,12 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaExCallback) (P
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
+	}
+
 	return crud.cidMgr.Dispatch(req)
 }
 
@@ -906,6 +990,12 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaExCal
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errAmbiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)

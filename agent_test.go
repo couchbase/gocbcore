@@ -1486,12 +1486,12 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 	data.Set("name", name)
 
 	req := &HTTPRequest{
-		Service: MgmtService,
-		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/", bucketName, scopeName),
-		Method:  "POST",
-		Body:    []byte(data.Encode()),
-		Headers: make(map[string]string),
-		Timeout: 10 * time.Second,
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s/", bucketName, scopeName),
+		Method:   "POST",
+		Body:     []byte(data.Encode()),
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(10 * time.Second),
 	}
 
 	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -1560,11 +1560,11 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 	data.Set("name", name)
 
 	req := &HTTPRequest{
-		Service: MgmtService,
-		Path:    fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
-		Method:  "DELETE",
-		Headers: make(map[string]string),
-		Timeout: 10 * time.Second,
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
+		Method:   "DELETE",
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(10 * time.Second),
 	}
 
 	resp, err := agent.DoHTTPRequest(req)

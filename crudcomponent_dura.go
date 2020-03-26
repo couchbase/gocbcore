@@ -1,6 +1,9 @@
 package gocbcore
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"time"
+)
 
 func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace("ObserveEx", opts.TraceContext)
@@ -69,6 +72,12 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveExCallback) (P
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
@@ -172,6 +181,12 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbExCallba
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
 		RetryStrategy:    opts.RetryStrategy,
+	}
+
+	if !opts.Deadline.IsZero() {
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+			req.Cancel(errUnambiguousTimeout)
+		})
 	}
 
 	return crud.cidMgr.Dispatch(req)

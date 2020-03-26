@@ -1,6 +1,9 @@
 package gocbcore
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type statsComponent struct {
 	kvMux                *kvMux
@@ -136,6 +139,12 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsExCallback) (PendingO
 			RetryStrategy:    opts.RetryStrategy,
 		}
 
+		if !opts.Deadline.IsZero() {
+			req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
+				req.Cancel(errAmbiguousTimeout)
+			})
+		}
+
 		curOp, err := sc.kvMux.DispatchDirectToAddress(req, serverAddress)
 		if err != nil {
 			statsLock.Lock()
@@ -153,3 +162,39 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsExCallback) (PendingO
 
 	return op, nil
 }
+
+// SingleServerStats represents the stats returned from a single server.
+type SingleServerStats struct {
+	Stats map[string]string
+	Error error
+}
+
+// StatsTarget is used for providing a specific target to the StatsEx operation.
+type StatsTarget interface {
+}
+
+// VBucketIDStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
+type VBucketIDStatsTarget struct {
+	VbID uint16
+}
+
+// StatsOptions encapsulates the parameters for a StatsEx operation.
+type StatsOptions struct {
+	Key string
+	// Target indicates that something specific should be targeted by the operation. If left nil
+	// then the stats command will be sent to all servers.
+	Target        StatsTarget
+	RetryStrategy RetryStrategy
+	Deadline      time.Time
+
+	// Volatile: Tracer API is subject to change.
+	TraceContext RequestSpanContext
+}
+
+// StatsResult encapsulates the result of a StatsEx operation.
+type StatsResult struct {
+	Servers map[string]SingleServerStats
+}
+
+// StatsExCallback is invoked upon completion of a StatsEx operation.
+type StatsExCallback func(*StatsResult, error)

@@ -1,17 +1,5 @@
 package gocbcore
 
-// GetOptions encapsulates the parameters for a GetEx operation.
-type GetOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // GetResult encapsulates the result of a GetEx operation.
 type GetResult struct {
 	Value    []byte
@@ -26,19 +14,6 @@ type GetExCallback func(*GetResult, error)
 // GetEx retrieves a document.
 func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Get(opts, cb)
-}
-
-// GetAndTouchOptions encapsulates the parameters for a GetAndTouchEx operation.
-type GetAndTouchOptions struct {
-	Key            []byte
-	Expiry         uint32
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
@@ -57,19 +32,6 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 	return agent.crudCmpt.GetAndTouch(opts, cb)
 }
 
-// GetAndLockOptions encapsulates the parameters for a GetAndLockEx operation.
-type GetAndLockOptions struct {
-	Key            []byte
-	LockTime       uint32
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // GetAndLockResult encapsulates the result of a GetAndLockEx operation.
 type GetAndLockResult struct {
 	Value    []byte
@@ -84,31 +46,6 @@ type GetAndLockExCallback func(*GetAndLockResult, error)
 // GetAndLockEx retrieves a document and locks it.
 func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
 	return agent.crudCmpt.GetAndLock(opts, cb)
-}
-
-// GetAnyReplicaOptions encapsulates the parameters for a GetAnyReplicaEx operation.
-type GetAnyReplicaOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
-// GetOneReplicaOptions encapsulates the parameters for a GetOneReplicaEx operation.
-type GetOneReplicaOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-	ReplicaIdx     int
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // GetReplicaResult encapsulates the result of a GetReplica operation.
@@ -127,19 +64,6 @@ func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCa
 	return agent.crudCmpt.GetOneReplica(opts, cb)
 }
 
-// TouchOptions encapsulates the parameters for a TouchEx operation.
-type TouchOptions struct {
-	Key            []byte
-	Expiry         uint32
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // TouchResult encapsulates the result of a TouchEx operation.
 type TouchResult struct {
 	Cas           Cas
@@ -154,19 +78,6 @@ func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, e
 	return agent.crudCmpt.Touch(opts, cb)
 }
 
-// UnlockOptions encapsulates the parameters for a UnlockEx operation.
-type UnlockOptions struct {
-	Key            []byte
-	Cas            Cas
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // UnlockResult encapsulates the result of a UnlockEx operation.
 type UnlockResult struct {
 	Cas           Cas
@@ -179,21 +90,6 @@ type UnlockExCallback func(*UnlockResult, error)
 // UnlockEx unlocks a locked document.
 func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Unlock(opts, cb)
-}
-
-// DeleteOptions encapsulates the parameters for a DeleteEx operation.
-type DeleteOptions struct {
-	Key                    []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // DeleteResult encapsulates the result of a DeleteEx operation.
@@ -216,66 +112,12 @@ type StoreResult struct {
 	MutationToken MutationToken
 }
 
-type storeOptions struct {
-	Key                    []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Value                  []byte
-	Flags                  uint32
-	Datatype               uint8
-	Cas                    Cas
-	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // StoreExCallback is invoked upon completion of a AddEx, SetEx or ReplaceEx operation.
 type StoreExCallback func(*StoreResult, error)
-
-// AddOptions encapsulates the parameters for a AddEx operation.
-type AddOptions struct {
-	Key                    []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Value                  []byte
-	Flags                  uint32
-	Datatype               uint8
-	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
 
 // AddEx stores a document as long as it does not already exist.
 func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Add(opts, cb)
-}
-
-// SetOptions encapsulates the parameters for a SetEx operation.
-type SetOptions struct {
-	Key                    []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Value                  []byte
-	Flags                  uint32
-	Datatype               uint8
-	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // SetEx stores a document.
@@ -283,44 +125,9 @@ func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error
 	return agent.crudCmpt.Set(opts, cb)
 }
 
-// ReplaceOptions encapsulates the parameters for a ReplaceEx operation.
-type ReplaceOptions struct {
-	Key                    []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Value                  []byte
-	Flags                  uint32
-	Datatype               uint8
-	Cas                    Cas
-	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // ReplaceEx replaces the value of a Couchbase document with another value.
 func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Replace(opts, cb)
-}
-
-// AdjoinOptions encapsulates the parameters for a AppendEx or PrependEx operation.
-type AdjoinOptions struct {
-	Key                    []byte
-	Value                  []byte
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
@@ -340,24 +147,6 @@ func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp
 // PrependEx prepends some bytes to a document.
 func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Prepend(opts, cb)
-}
-
-// CounterOptions encapsulates the parameters for a IncrementEx or DecrementEx operation.
-type CounterOptions struct {
-	Key                    []byte
-	Delta                  uint64
-	Initial                uint64
-	Expiry                 uint32
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
@@ -380,14 +169,6 @@ func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (Pend
 	return agent.crudCmpt.Decrement(opts, cb)
 }
 
-// GetRandomOptions encapsulates the parameters for a GetRandomEx operation.
-type GetRandomOptions struct {
-	RetryStrategy RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // GetRandomResult encapsulates the result of a GetRandomEx operation.
 type GetRandomResult struct {
 	Key      []byte
@@ -403,18 +184,6 @@ type GetRandomExCallback func(*GetRandomResult, error)
 // GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
 func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
 	return agent.crudCmpt.GetRandom(opts, cb)
-}
-
-// GetMetaOptions encapsulates the parameters for a GetMetaEx operation.
-type GetMetaOptions struct {
-	Key            []byte
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // GetMetaResult encapsulates the result of a GetMetaEx operation.
@@ -436,26 +205,6 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 	return agent.crudCmpt.GetMeta(opts, cb)
 }
 
-// SetMetaOptions encapsulates the parameters for a SetMetaEx operation.
-type SetMetaOptions struct {
-	Key            []byte
-	Value          []byte
-	Extra          []byte
-	Datatype       uint8
-	Options        uint32
-	Flags          uint32
-	Expiry         uint32
-	Cas            Cas
-	RevNo          uint64
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // SetMetaResult encapsulates the result of a SetMetaEx operation.
 type SetMetaResult struct {
 	Cas           Cas
@@ -468,26 +217,6 @@ type SetMetaExCallback func(*SetMetaResult, error)
 // SetMetaEx stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
 	return agent.crudCmpt.SetMeta(opts, cb)
-}
-
-// DeleteMetaOptions encapsulates the parameters for a DeleteMetaEx operation.
-type DeleteMetaOptions struct {
-	Key            []byte
-	Value          []byte
-	Extra          []byte
-	Datatype       uint8
-	Options        uint32
-	Flags          uint32
-	Expiry         uint32
-	Cas            Cas
-	RevNo          uint64
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
@@ -503,41 +232,6 @@ type DeleteMetaExCallback func(*DeleteMetaResult, error)
 func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
 	return agent.crudCmpt.DeleteMeta(opts, cb)
 }
-
-// SingleServerStats represents the stats returned from a single server.
-type SingleServerStats struct {
-	Stats map[string]string
-	Error error
-}
-
-// StatsTarget is used for providing a specific target to the StatsEx operation.
-type StatsTarget interface {
-}
-
-// VBucketIDStatsTarget indicates that a specific vbucket should be targeted by the StatsEx operation.
-type VBucketIDStatsTarget struct {
-	VbID uint16
-}
-
-// StatsOptions encapsulates the parameters for a StatsEx operation.
-type StatsOptions struct {
-	Key string
-	// Target indicates that something specific should be targeted by the operation. If left nil
-	// then the stats command will be sent to all servers.
-	Target        StatsTarget
-	RetryStrategy RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
-// StatsResult encapsulates the result of a StatsEx operation.
-type StatsResult struct {
-	Servers map[string]SingleServerStats
-}
-
-// StatsExCallback is invoked upon completion of a StatsEx operation.
-type StatsExCallback func(*StatsResult, error)
 
 // StatsEx retrieves statistics information from the server.  Note that as this
 // function is an aggregator across numerous servers, there are no guarantees

@@ -6,20 +6,6 @@ type SubDocResult struct {
 	Value []byte
 }
 
-// GetInOptions encapsulates the parameters for a GetInEx operation.
-type GetInOptions struct {
-	Key            []byte
-	Path           string
-	Flags          SubdocFlag
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // GetInResult encapsulates the result of a GetInEx operation.
 type GetInResult struct {
 	Value []byte
@@ -34,20 +20,6 @@ func (agent *Agent) GetInEx(opts GetInOptions, cb GetInExCallback) (PendingOp, e
 	return agent.crudCmpt.GetIn(opts, cb)
 }
 
-// ExistsInOptions encapsulates the parameters for a ExistsInEx operation.
-type ExistsInOptions struct {
-	Key            []byte
-	Path           string
-	Flags          SubdocFlag
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
 // ExistsInResult encapsulates the result of a ExistsInEx operation.
 type ExistsInResult struct {
 	Cas Cas
@@ -59,26 +31,6 @@ type ExistsInExCallback func(*ExistsInResult, error)
 // ExistsInEx returns whether a particular path exists within a document.
 func (agent *Agent) ExistsInEx(opts ExistsInOptions, cb ExistsInExCallback) (PendingOp, error) {
 	return agent.crudCmpt.ExistsIn(opts, cb)
-}
-
-// StoreInOptions encapsulates the parameters for a SetInEx, AddInEx, ReplaceInEx,
-// PushFrontInEx, PushBackInEx, ArrayInsertInEx or AddUniqueInEx operation.
-type StoreInOptions struct {
-	Key                    []byte
-	Path                   string
-	Value                  []byte
-	Flags                  SubdocFlag
-	Cas                    Cas
-	Expiry                 uint32
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // StoreInResult encapsulates the result of a SetInEx, AddInEx, ReplaceInEx,
@@ -132,9 +84,6 @@ func (agent *Agent) AddUniqueInEx(opts StoreInOptions, cb StoreInExCallback) (Pe
 	return agent.crudCmpt.AddUniqueIn(opts, cb)
 }
 
-// CounterInOptions encapsulates the parameters for a CounterInEx operation.
-type CounterInOptions StoreInOptions
-
 // CounterInResult encapsulates the result of a CounterInEx operation.
 type CounterInResult struct {
 	Value         []byte
@@ -148,24 +97,6 @@ type CounterInExCallback func(*CounterInResult, error)
 // CounterInEx performs an arithmetic add or subtract on a value at a path in the document.
 func (agent *Agent) CounterInEx(opts CounterInOptions, cb CounterInExCallback) (PendingOp, error) {
 	return agent.crudCmpt.CounterIn(opts, cb)
-}
-
-// DeleteInOptions encapsulates the parameters for a DeleteInEx operation.
-type DeleteInOptions struct {
-	Key                    []byte
-	Path                   string
-	Cas                    Cas
-	Expiry                 uint32
-	Flags                  SubdocFlag
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // DeleteInResult encapsulates the result of a DeleteInEx operation.
@@ -189,20 +120,6 @@ type SubDocOp struct {
 	Flags SubdocFlag
 	Path  string
 	Value []byte
-}
-
-// LookupInOptions encapsulates the parameters for a LookupInEx operation.
-type LookupInOptions struct {
-	Key            []byte
-	Flags          SubdocDocFlag
-	Ops            []SubDocOp
-	CollectionName string
-	ScopeName      string
-	CollectionID   uint32
-	RetryStrategy  RetryStrategy
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // LookupInResult encapsulates the result of a LookupInEx operation.
@@ -232,24 +149,6 @@ func (sol *subdocOpList) Append(op SubDocOp, index int) {
 // LookupInEx performs a multiple-lookup sub-document operation on a document.
 func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
 	return agent.crudCmpt.LookupIn(opts, cb)
-}
-
-// MutateInOptions encapsulates the parameters for a MutateInEx operation.
-type MutateInOptions struct {
-	Key                    []byte
-	Flags                  SubdocDocFlag
-	Cas                    Cas
-	Expiry                 uint32
-	Ops                    []SubDocOp
-	CollectionName         string
-	ScopeName              string
-	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
-	CollectionID           uint32
-
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
 }
 
 // MutateInResult encapsulates the result of a MutateInEx operation.

@@ -76,7 +76,7 @@ type HTTPRequest struct {
 	ContentType   string
 	IsIdempotent  bool
 	UniqueID      string
-	Timeout       time.Duration
+	Deadline      time.Time
 	RetryStrategy RetryStrategy
 
 	// Volatile: Tracer API is subject to change.

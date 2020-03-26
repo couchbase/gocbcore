@@ -57,8 +57,6 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) 
 		retryStrategy = req.RetryStrategy
 	}
 
-	deadline := time.Now().Add(req.Timeout)
-
 	ireq := &httpRequest{
 		Service:          req.Service,
 		Endpoint:         req.Endpoint,
@@ -71,7 +69,7 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) 
 		Body:             req.Body,
 		IsIdempotent:     req.IsIdempotent,
 		UniqueID:         req.UniqueID,
-		Deadline:         deadline,
+		Deadline:         req.Deadline,
 		RetryStrategy:    retryStrategy,
 		RootTraceContext: tracer.RootContext(),
 	}
