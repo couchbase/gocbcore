@@ -3,7 +3,7 @@ package gocbcore
 import "encoding/binary"
 
 func (crud *crudComponent) GetIn(opts GetInOptions, cb GetInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetInEx", nil)
+	tracer := crud.tracer.CreateOpTrace("GetInEx", nil)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -51,7 +51,7 @@ func (crud *crudComponent) GetIn(opts GetInOptions, cb GetInExCallback) (Pending
 }
 
 func (crud *crudComponent) ExistsIn(opts ExistsInOptions, cb ExistsInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("ExistsInEx", nil)
+	tracer := crud.tracer.CreateOpTrace("ExistsInEx", nil)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -98,7 +98,7 @@ func (crud *crudComponent) ExistsIn(opts ExistsInOptions, cb ExistsInExCallback)
 }
 
 func (crud *crudComponent) storeIn(opName string, opcode commandCode, opts StoreInOptions, cb StoreInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace(opName, nil)
+	tracer := crud.tracer.CreateOpTrace(opName, nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -203,7 +203,7 @@ func (crud *crudComponent) AddUniqueIn(opts StoreInOptions, cb StoreInExCallback
 }
 
 func (crud *crudComponent) CounterIn(opts CounterInOptions, cb CounterInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("CounterInEx", nil)
+	tracer := crud.tracer.CreateOpTrace("CounterInEx", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -281,7 +281,7 @@ func (crud *crudComponent) CounterIn(opts CounterInOptions, cb CounterInExCallba
 }
 
 func (crud *crudComponent) DeleteIn(opts DeleteInOptions, cb DeleteInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("DeleteInEx", nil)
+	tracer := crud.tracer.CreateOpTrace("DeleteInEx", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -354,7 +354,7 @@ func (crud *crudComponent) DeleteIn(opts DeleteInOptions, cb DeleteInExCallback)
 }
 
 func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("LookupInEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("LookupInEx", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
 	var subdocs subdocOpList
@@ -470,7 +470,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInExCallback)
 }
 
 func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("MutateInEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("MutateInEx", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
 	var subdocs subdocOpList

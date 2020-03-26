@@ -3,7 +3,7 @@ package gocbcore
 import "encoding/binary"
 
 func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("ObserveEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("ObserveEx", opts.TraceContext)
 
 	if crud.cidMgr.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
@@ -75,7 +75,7 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveExCallback) (P
 }
 
 func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("ObserveVbEx", nil)
+	tracer := crud.tracer.CreateOpTrace("ObserveVbEx", nil)
 
 	if crud.cidMgr.BucketType() != bktTypeCouchbase {
 		tracer.Finish()

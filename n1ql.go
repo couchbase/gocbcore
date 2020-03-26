@@ -149,6 +149,7 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 type n1qlQueryComponent struct {
 	httpComponent *httpComponent
 	cfgMgr        *configManager
+	tracer        *tracerComponent
 
 	queryCache map[string]*n1qlQueryCacheEntry
 	cacheLock  sync.RWMutex
@@ -167,11 +168,12 @@ type n1qlJSONPrepData struct {
 	Name        string `json:"name"`
 }
 
-func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager) *n1qlQueryComponent {
+func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager, tracer *tracerComponent) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,
 		queryCache:    make(map[string]*n1qlQueryCacheEntry),
+		tracer:        tracer,
 	}
 	cfgMgr.AddConfigWatcher(nqc)
 
@@ -191,7 +193,7 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 
 // N1QLQuery executes a N1QL query
 func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	tracer := nqc.httpComponent.CreateOpTrace("N1QLQuery", opts.TraceContext)
+	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}
@@ -220,7 +222,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 
 // PreparedN1QLQuery executes a prepared N1QL query
 func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	tracer := nqc.httpComponent.CreateOpTrace("N1QLQuery", opts.TraceContext)
+	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1 {

@@ -45,7 +45,7 @@ type memdClient struct {
 	streamEndNotSupported bool
 	breaker               circuitBreaker
 	postErrHandler        postCompleteErrorHandler
-	tracer                RequestTracer
+	tracer                *tracerComponent
 	zombieLogger          *zombieLoggerComponent
 
 	compressionMinSize   int
@@ -68,7 +68,7 @@ type memdClientProps struct {
 }
 
 func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
-	tracer RequestTracer, zombieLogger *zombieLoggerComponent) *memdClient {
+	tracer *tracerComponent, zombieLogger *zombieLoggerComponent) *memdClient {
 	client := memdClient{
 		conn:           conn,
 		closeNotify:    make(chan bool),
@@ -216,7 +216,7 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
 
-	startNetTrace(req, client.tracer)
+	client.tracer.StartNetTrace(req)
 
 	err := client.conn.WritePacket(packet)
 	if err != nil {

@@ -19,28 +19,22 @@ type httpComponent struct {
 	muxer                *httpMux
 	auth                 AuthProvider
 	userAgent            string
-	bucket               string
-	tracer               RequestTracer
-	noRootTraceSpans     bool
+	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
 }
 
 type httpComponentProps struct {
-	NoRootTraceSpans     bool
 	UserAgent            string
-	Bucket               string
 	DefaultRetryStrategy RetryStrategy
 }
 
 func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux, auth AuthProvider,
-	tracer RequestTracer) *httpComponent {
+	tracer *tracerComponent) *httpComponent {
 	return &httpComponent{
 		cli:                  cli,
 		muxer:                muxer,
 		auth:                 auth,
-		bucket:               props.Bucket,
 		userAgent:            props.UserAgent,
-		noRootTraceSpans:     props.NoRootTraceSpans,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		tracer:               tracer,
 	}
@@ -55,7 +49,7 @@ func (hc *httpComponent) Close() {
 }
 
 func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
-	tracer := hc.CreateOpTrace("http", req.TraceContext)
+	tracer := hc.tracer.CreateOpTrace("http", req.TraceContext)
 	defer tracer.Finish()
 
 	retryStrategy := hc.defaultRetryStrategy
@@ -268,25 +262,6 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		querySuccess = true
 
 		return &respOut, nil
-	}
-}
-
-func (hc *httpComponent) CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
-	if hc.noRootTraceSpans {
-		return &opTracer{
-			parentContext: parentContext,
-			opSpan:        nil,
-		}
-	}
-
-	opSpan := hc.tracer.StartSpan(operationName, parentContext).
-		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", hc.bucket).
-		SetTag("span.kind", "client")
-
-	return &opTracer{
-		parentContext: parentContext,
-		opSpan:        opSpan,
 	}
 }
 

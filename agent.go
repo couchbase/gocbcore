@@ -23,9 +23,7 @@ type Agent struct {
 	tlsConfig  *tls.Config
 	initFn     memdInitFunc
 
-	tracer           RequestTracer
-	noRootTraceSpans bool
-
+	tracer               *tracerComponent
 	httpComponent        *httpComponent
 	cidMgr               *collectionIDManager
 	defaultRetryStrategy RetryStrategy
@@ -194,14 +192,14 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if tracer == nil {
 		tracer = noopTracer{}
 	}
+	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.NoRootTraceSpans)
 
 	c := &Agent{
-		clientID:         formatCbUID(randomCbUID()),
-		bucketName:       config.BucketName,
-		tlsConfig:        tlsConfig,
-		initFn:           initFn,
-		tracer:           tracer,
-		noRootTraceSpans: config.NoRootTraceSpans,
+		clientID:   formatCbUID(randomCbUID()),
+		bucketName: config.BucketName,
+		tlsConfig:  tlsConfig,
+		initFn:     initFn,
+		tracer:     tracerCmpt,
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 
@@ -354,9 +352,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	)
 	c.cidMgr = newCollectionIDManager(
 		collectionIDProps{
-			Bucket:               config.BucketName,
 			MaxQueueSize:         config.MaxQueueSize,
-			NoRootTraceSpans:     config.NoRootTraceSpans,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
 		},
 		c.kvMux,
@@ -365,10 +361,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
 	c.httpComponent = newHTTPComponent(
 		httpComponentProps{
-			Bucket:               c.bucketName,
 			UserAgent:            userAgent,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
-			NoRootTraceSpans:     c.noRootTraceSpans,
 		},
 		httpCli,
 		c.httpMux,
@@ -395,15 +389,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		),
 	)
-	c.crudCmpt = newCRUDComponent(c.cidMgr, c.defaultRetryStrategy, crudTracerConfig{
-		Bucket:           config.BucketName,
-		NoRootTraceSpans: config.NoRootTraceSpans,
-		Tracer:           c.tracer,
-	}, c.errMapManager)
-	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager)
-	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent)
-	c.searchCmpt = newSearchQueryComponent(c.httpComponent)
-	c.viewCmpt = newViewQueryComponent(c.httpComponent)
+	c.crudCmpt = newCRUDComponent(c.cidMgr, c.defaultRetryStrategy, c.tracer, c.errMapManager)
+	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager, c.tracer)
+	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent, c.tracer)
+	c.searchCmpt = newSearchQueryComponent(c.httpComponent, c.tracer)
+	c.viewCmpt = newViewQueryComponent(c.httpComponent, c.tracer)
 	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
 
 	// Kick everything off.

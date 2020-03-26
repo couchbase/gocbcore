@@ -5,51 +5,22 @@ import "encoding/binary"
 type crudComponent struct {
 	cidMgr               *collectionIDManager
 	defaultRetryStrategy RetryStrategy
-	tracer               RequestTracer
-	noRootTraceSpans     bool
-	bucket               string
+	tracer               *tracerComponent
 	errMapManager        *errMapManager
 }
 
-type crudTracerConfig struct {
-	Tracer           RequestTracer
-	NoRootTraceSpans bool
-	Bucket           string
-}
-
-func newCRUDComponent(cidMgr *collectionIDManager, defaultRetryStrategy RetryStrategy, tracerCfg crudTracerConfig,
+func newCRUDComponent(cidMgr *collectionIDManager, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
 	errMapManager *errMapManager) *crudComponent {
 	return &crudComponent{
 		cidMgr:               cidMgr,
 		defaultRetryStrategy: defaultRetryStrategy,
-		tracer:               tracerCfg.Tracer,
-		noRootTraceSpans:     tracerCfg.NoRootTraceSpans,
-		bucket:               tracerCfg.Bucket,
+		tracer:               tracerCmpt,
 		errMapManager:        errMapManager,
 	}
 }
 
-func (crud *crudComponent) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
-	if crud.noRootTraceSpans {
-		return &opTracer{
-			parentContext: parentContext,
-			opSpan:        nil,
-		}
-	}
-
-	opSpan := crud.tracer.StartSpan(operationName, parentContext).
-		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", crud.bucket).
-		SetTag("span.kind", "client")
-
-	return &opTracer{
-		parentContext: parentContext,
-		opSpan:        opSpan,
-	}
-}
-
 func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("GetEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -100,7 +71,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, er
 }
 
 func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetAndTouchEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("GetAndTouchEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -155,7 +126,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchEx
 }
 
 func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetAndLockEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("GetAndLockEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -210,7 +181,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockExCal
 }
 
 func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetOneReplicaEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("GetOneReplicaEx", opts.TraceContext)
 
 	if opts.ReplicaIdx <= 0 {
 		tracer.Finish()
@@ -265,7 +236,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 }
 
 func (crud *crudComponent) Touch(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("TouchEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("TouchEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -320,7 +291,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchExCallback) (Pending
 }
 
 func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("UnlockEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("UnlockEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -369,7 +340,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockExCallback) (Pend
 }
 
 func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("DeleteEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("DeleteEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -431,7 +402,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteExCallback) (Pend
 }
 
 func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOptions, cb StoreExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -550,7 +521,7 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreExCallback) (Pen
 }
 
 func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -620,7 +591,7 @@ func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinExCallback) (Pen
 }
 
 func (crud *crudComponent) counter(opName string, opcode commandCode, opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -713,7 +684,7 @@ func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterExCallback) 
 }
 
 func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetRandomEx", opts.TraceContext)
+	tracer := crud.tracer.CreateOpTrace("GetRandomEx", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -763,7 +734,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomExCallba
 }
 
 func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetMetaEx", nil)
+	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -825,7 +796,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaExCallback) (P
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetMetaEx", nil)
+	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -883,7 +854,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaExCallback) (P
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
-	tracer := crud.createOpTrace("GetMetaEx", nil)
+	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {

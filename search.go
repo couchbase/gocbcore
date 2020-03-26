@@ -104,17 +104,19 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 
 type searchQueryComponent struct {
 	httpComponent *httpComponent
+	tracer        *tracerComponent
 }
 
-func newSearchQueryComponent(httpComponent *httpComponent) *searchQueryComponent {
+func newSearchQueryComponent(httpComponent *httpComponent, tracer *tracerComponent) *searchQueryComponent {
 	return &searchQueryComponent{
 		httpComponent: httpComponent,
+		tracer:        tracer,
 	}
 }
 
 // SearchQuery executes a Search query
 func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
-	tracer := sqc.httpComponent.CreateOpTrace("SearchQuery", opts.TraceContext)
+	tracer := sqc.tracer.CreateOpTrace("SearchQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}

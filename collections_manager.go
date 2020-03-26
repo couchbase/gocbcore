@@ -16,52 +16,27 @@ type collectionIDManager struct {
 	mapLock              sync.Mutex
 	mux                  *kvMux
 	maxQueueSize         int
-	tracer               RequestTracer
-	noRootTraceSpans     bool
-	bucket               string
+	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
 }
 
 type collectionIDProps struct {
 	MaxQueueSize         int
-	NoRootTraceSpans     bool
-	Bucket               string
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracer RequestTracer) *collectionIDManager {
+func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent) *collectionIDManager {
 	cidMgr := &collectionIDManager{
 		mux:                  mux,
 		idMap:                make(map[string]*collectionIDCache),
 		maxQueueSize:         props.MaxQueueSize,
-		tracer:               tracer,
-		noRootTraceSpans:     props.NoRootTraceSpans,
-		bucket:               props.Bucket,
+		tracer:               tracerCmpt,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 	}
 
 	mux.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
 
 	return cidMgr
-}
-
-func (cidMgr *collectionIDManager) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
-	if cidMgr.noRootTraceSpans {
-		return &opTracer{
-			parentContext: parentContext,
-			opSpan:        nil,
-		}
-	}
-
-	opSpan := cidMgr.tracer.StartSpan(operationName, parentContext).
-		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", cidMgr.bucket).
-		SetTag("span.kind", "client")
-
-	return &opTracer{
-		parentContext: parentContext,
-		opSpan:        opSpan,
-	}
 }
 
 func (cidMgr *collectionIDManager) handleCollectionUnknown(req *memdQRequest) bool {
@@ -92,13 +67,21 @@ func (cidMgr *collectionIDManager) handleOpRoutingResp(resp *memdQResponse, req 
 }
 
 func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionManifest", opts.TraceContext)
+
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
+			tracer.Finish()
 			return
 		}
 
+		tracer.Finish()
 		cb(resp.Value, nil)
+	}
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = cidMgr.defaultRetryStrategy
 	}
 
 	req := &memdQRequest{
@@ -111,19 +94,16 @@ func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManif
 			Key:      nil,
 			Value:    nil,
 		},
-		Callback:      handler,
-		RetryStrategy: opts.RetryStrategy,
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = cidMgr.defaultRetryStrategy
+		Callback:         handler,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: opts.TraceContext,
 	}
 
 	return cidMgr.mux.DispatchDirect(req)
 }
 
 func (cidMgr *collectionIDManager) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
-	tracer := cidMgr.createOpTrace("GetCollectionID", opts.TraceContext)
+	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		cidCache, ok := cidMgr.get(scopeName, collectionName)

@@ -20,7 +20,7 @@ type memdClientDialerComponent struct {
 	serverFailuresLock sync.Mutex
 	serverFailures     map[string]time.Time
 
-	tracer       RequestTracer
+	tracer       *tracerComponent
 	zombieLogger *zombieLoggerComponent
 
 	bootstrapProps bootstrapProps
@@ -38,7 +38,7 @@ type memdClientDialerProps struct {
 }
 
 func newMemdClientCreatorComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer RequestTracer, bootstrapCB memdInitFunc) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapCB memdInitFunc) *memdClientDialerComponent {
 	return &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,

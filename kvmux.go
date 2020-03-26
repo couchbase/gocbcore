@@ -19,7 +19,7 @@ type kvMux struct {
 	cfgMgr             *configManager
 	errMapMgr          *errMapManager
 
-	tracer RequestTracer
+	tracer *tracerComponent
 	dialer *memdClientDialerComponent
 
 	postCompleteErrHandler postCompleteErrorHandler
@@ -31,7 +31,7 @@ type kvMuxProps struct {
 	PoolSize           int
 }
 
-func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer RequestTracer,
+func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer *tracerComponent,
 	dialer *memdClientDialerComponent) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,
@@ -334,7 +334,7 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 }
 
 func (mux *kvMux) DispatchDirect(req *memdQRequest) (PendingOp, error) {
-	startCmdTrace(req, mux.tracer)
+	mux.tracer.StartCmdTrace(req)
 	req.dispatchTime = time.Now()
 
 	for {
@@ -366,7 +366,7 @@ func (mux *kvMux) DispatchDirect(req *memdQRequest) (PendingOp, error) {
 }
 
 func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
-	startCmdTrace(req, mux.tracer)
+	mux.tracer.StartCmdTrace(req)
 
 	handleError := func(err error) {
 		// We only want to log an error on retries if the error isn't cancelled.
@@ -399,7 +399,7 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 }
 
 func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error) {
-	startCmdTrace(req, mux.tracer)
+	mux.tracer.StartCmdTrace(req)
 	req.dispatchTime = time.Now()
 
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched

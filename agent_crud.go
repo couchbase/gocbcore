@@ -549,7 +549,7 @@ type StatsExCallback func(*StatsResult, error)
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
 func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
-	tracer := agent.createOpTrace("StatsEx", opts.TraceContext)
+	tracer := agent.tracer.CreateOpTrace("StatsEx", opts.TraceContext)
 
 	muxer := agent.kvMux.GetState()
 	if muxer == nil {

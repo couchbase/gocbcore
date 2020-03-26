@@ -147,17 +147,19 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 
 type analyticsQueryComponent struct {
 	httpComponent *httpComponent
+	tracer        *tracerComponent
 }
 
-func newAnalyticsQueryComponent(httpComponent *httpComponent) *analyticsQueryComponent {
+func newAnalyticsQueryComponent(httpComponent *httpComponent, tracer *tracerComponent) *analyticsQueryComponent {
 	return &analyticsQueryComponent{
 		httpComponent: httpComponent,
+		tracer:        tracer,
 	}
 }
 
 // AnalyticsQuery executes an analytics query
 func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
-	tracer := aqc.httpComponent.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
+	tracer := aqc.tracer.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	var payloadMap map[string]interface{}

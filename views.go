@@ -117,17 +117,19 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 
 type viewQueryComponent struct {
 	httpComponent *httpComponent
+	tracer        *tracerComponent
 }
 
-func newViewQueryComponent(httpComponent *httpComponent) *viewQueryComponent {
+func newViewQueryComponent(httpComponent *httpComponent, tracer *tracerComponent) *viewQueryComponent {
 	return &viewQueryComponent{
 		httpComponent: httpComponent,
+		tracer:        tracer,
 	}
 }
 
 // ViewQuery executes a view query
 func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
-	tracer := vqc.httpComponent.CreateOpTrace("ViewQuery", opts.TraceContext)
+	tracer := vqc.tracer.CreateOpTrace("ViewQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",

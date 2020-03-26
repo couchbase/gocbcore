@@ -65,17 +65,31 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 	return tracer.parentContext
 }
 
-func (agent *Agent) createOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
-	if agent.noRootTraceSpans {
+type tracerComponent struct {
+	tracer           RequestTracer
+	bucket           string
+	noRootTraceSpans bool
+}
+
+func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool) *tracerComponent {
+	return &tracerComponent{
+		tracer:           tracer,
+		bucket:           bucket,
+		noRootTraceSpans: noRootTraceSpans,
+	}
+}
+
+func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
+	if tc.noRootTraceSpans {
 		return &opTracer{
 			parentContext: parentContext,
 			opSpan:        nil,
 		}
 	}
 
-	opSpan := agent.tracer.StartSpan(operationName, parentContext).
+	opSpan := tc.tracer.StartSpan(operationName, parentContext).
 		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", agent.bucketName).
+		SetTag("db.instance", tc.bucket).
 		SetTag("span.kind", "client")
 
 	return &opTracer{
@@ -84,7 +98,7 @@ func (agent *Agent) createOpTrace(operationName string, parentContext RequestSpa
 	}
 }
 
-func startCmdTrace(req *memdQRequest, tracer RequestTracer) {
+func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	if req.cmdTraceSpan != nil {
 		logWarnf("Attempted to start tracing on traced request")
 		return
@@ -95,9 +109,25 @@ func startCmdTrace(req *memdQRequest, tracer RequestTracer) {
 	}
 
 	req.processingLock.Lock()
-	req.cmdTraceSpan = tracer.StartSpan(getCommandName(req.memdPacket.Opcode), req.RootTraceContext).
+	req.cmdTraceSpan = tc.tracer.StartSpan(getCommandName(req.memdPacket.Opcode), req.RootTraceContext).
 		SetTag("retry", req.RetryAttempts())
 
+	req.processingLock.Unlock()
+}
+
+func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
+	if req.cmdTraceSpan == nil {
+		return
+	}
+
+	if req.netTraceSpan != nil {
+		logWarnf("Attempted to start net tracing on traced request")
+		return
+	}
+
+	req.processingLock.Lock()
+	req.netTraceSpan = tc.tracer.StartSpan("rpc", req.cmdTraceSpan.Context()).
+		SetTag("span.kind", "client")
 	req.processingLock.Unlock()
 }
 
@@ -123,22 +153,6 @@ func cancelReqTrace(req *memdQRequest) {
 
 		req.cmdTraceSpan.Finish()
 	}
-}
-
-func startNetTrace(req *memdQRequest, tracer RequestTracer) {
-	if req.cmdTraceSpan == nil {
-		return
-	}
-
-	if req.netTraceSpan != nil {
-		logWarnf("Attempted to start net tracing on traced request")
-		return
-	}
-
-	req.processingLock.Lock()
-	req.netTraceSpan = tracer.StartSpan("rpc", req.cmdTraceSpan.Context()).
-		SetTag("span.kind", "client")
-	req.processingLock.Unlock()
 }
 
 func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress string) {
