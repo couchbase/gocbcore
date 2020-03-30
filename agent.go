@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/net/http2"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.
@@ -163,10 +161,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		MaxIdleConns:        config.HTTPMaxIdleConns,
 		MaxIdleConnsPerHost: config.HTTPMaxIdleConnsPerHost,
 		IdleConnTimeout:     config.HTTPIdleConnectionTimeout,
-	}
-	err := http2.ConfigureTransport(httpTransport)
-	if err != nil {
-		logDebugf("failed to configure http2: %s", err)
 	}
 
 	httpCli := &http.Client{
