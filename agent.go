@@ -16,31 +16,30 @@ import (
 // This is used internally by the higher level classes for communicating with the cluster,
 // it can also be used to perform more advanced operations with a cluster.
 type Agent struct {
-	clientID   string
-	bucketName string
-	tlsConfig  *tls.Config
-	initFn     memdInitFunc
-
-	tracer               *tracerComponent
-	httpComponent        *httpComponent
-	cidMgr               *collectionIDManager
+	clientID             string
+	bucketName           string
+	tlsConfig            *tls.Config
+	initFn               memdInitFunc
 	defaultRetryStrategy RetryStrategy
 
-	cfgManager       *configManager
 	pollerController *pollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
-	errMapManager    *errMapManager
 
-	diagnosticsCmpt  *diagnosticsComponent
-	crudCmpt         *crudComponent
-	statsCmpt        *statsComponent
-	n1qlCmpt         *n1qlQueryComponent
-	analyticsCmpt    *analyticsQueryComponent
-	searchCmpt       *searchQueryComponent
-	viewCmpt         *viewQueryComponent
-	waitCmpt         *waitUntilConfigComponent
-	zombieLoggerCmpt *zombieLoggerComponent
+	cfgManager   *configManagementComponent
+	errMap       *errMapComponent
+	collections  *collectionsComponent
+	tracer       *tracerComponent
+	http         *httpComponent
+	diagnostics  *diagnosticsComponent
+	crud         *crudComponent
+	stats        *statsComponent
+	n1ql         *n1qlQueryComponent
+	analytics    *analyticsQueryComponent
+	search       *searchQueryComponent
+	views        *viewQueryComponent
+	waitUntil    *waitUntilConfigComponent
+	zombieLogger *zombieLoggerComponent
 }
 
 // !!!!UNSURE WHY THESE EXIST!!!!
@@ -58,7 +57,7 @@ type Agent struct {
 // Couchbase Server.  You must still specify authentication information
 // for any dispatched requests.
 func (agent *Agent) HTTPClient() *http.Client {
-	return agent.httpComponent.cli
+	return agent.http.cli
 }
 
 // AuthFunc is invoked by the agent to authenticate a client. This function returns two channels to allow for for multi-stage
@@ -199,7 +198,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 
-		errMapManager: newErrMapManager(config.BucketName),
+		errMap: newErrMapManager(config.BucketName),
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
@@ -293,8 +292,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
 		}
 
-		c.zombieLoggerCmpt = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
-		go c.zombieLoggerCmpt.Start()
+		c.zombieLogger = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
+		go c.zombieLogger.Start()
 	}
 
 	c.cfgManager = newConfigManager(
@@ -328,10 +327,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			UserAgent:      userAgent,
 			AuthMechanisms: authMechanisms,
 			AuthHandler:    authHandler,
-			ErrMapManager:  c.errMapManager,
+			ErrMapManager:  c.errMap,
 		},
 		circuitBreakerConfig,
-		c.zombieLoggerCmpt,
+		c.zombieLogger,
 		c.tracer,
 		initFn,
 	)
@@ -342,11 +341,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			CollectionsEnabled: useCollections,
 		},
 		c.cfgManager,
-		c.errMapManager,
+		c.errMap,
 		c.tracer,
 		dialer,
 	)
-	c.cidMgr = newCollectionIDManager(
+	c.collections = newCollectionIDManager(
 		collectionIDProps{
 			MaxQueueSize:         config.MaxQueueSize,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
@@ -355,7 +354,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.tracer,
 	)
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
-	c.httpComponent = newHTTPComponent(
+	c.http = newHTTPComponent(
 		httpComponentProps{
 			UserAgent:            userAgent,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
@@ -377,7 +376,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		newHTTPConfigController(
 			c.bucketName,
 			httpPollerProperties{
-				httpComponent:        c.httpComponent,
+				httpComponent:        c.http,
 				confHTTPRetryDelay:   confHTTPRetryDelay,
 				confHTTPRedialPeriod: confHTTPRedialPeriod,
 			},
@@ -385,14 +384,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		),
 	)
-	c.crudCmpt = newCRUDComponent(c.cidMgr, c.defaultRetryStrategy, c.tracer, c.errMapManager)
-	c.statsCmpt = newStatsComponent(c.kvMux, c.defaultRetryStrategy, c.tracer)
-	c.n1qlCmpt = newN1QLQueryComponent(c.httpComponent, c.cfgManager, c.tracer)
-	c.analyticsCmpt = newAnalyticsQueryComponent(c.httpComponent, c.tracer)
-	c.searchCmpt = newSearchQueryComponent(c.httpComponent, c.tracer)
-	c.viewCmpt = newViewQueryComponent(c.httpComponent, c.tracer)
-	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
-	c.diagnosticsCmpt = newDianosticsComponent(c.kvMux, c.bucketName)
+
+	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap)
+	c.stats = newStatsComponent(c.kvMux, c.defaultRetryStrategy, c.tracer)
+	c.n1ql = newN1QLQueryComponent(c.http, c.cfgManager, c.tracer)
+	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)
+	c.search = newSearchQueryComponent(c.http, c.tracer)
+	c.views = newViewQueryComponent(c.http, c.tracer)
+	c.waitUntil = newWaitUntilConfigComponent(c.cfgManager)
+	c.diagnostics = newDianosticsComponent(c.kvMux, c.bucketName)
 
 	// Kick everything off.
 	cfg := &routeConfig{
@@ -467,8 +467,8 @@ func (agent *Agent) Close() error {
 	routeCloseErr := agent.kvMux.Close()
 	agent.pollerController.Stop()
 
-	if agent.zombieLoggerCmpt != nil {
-		agent.zombieLoggerCmpt.Stop()
+	if agent.zombieLogger != nil {
+		agent.zombieLogger.Stop()
 	}
 
 	// Wait for our external looper goroutines to finish, note that if the
@@ -477,7 +477,7 @@ func (agent *Agent) Close() error {
 	<-agent.pollerController.Done()
 
 	// Close the transports so that they don't hold open goroutines.
-	agent.httpComponent.Close()
+	agent.http.Close()
 
 	return routeCloseErr
 }
@@ -576,5 +576,5 @@ func (agent *Agent) UsingGCCCP() bool {
 
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *Agent) WaitUntilReady(cb func()) (PendingOp, error) {
-	return agent.waitCmpt.WaitUntilFirstConfig(cb)
+	return agent.waitUntil.WaitUntilFirstConfig(cb)
 }

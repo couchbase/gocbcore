@@ -6,14 +6,14 @@ import (
 )
 
 type crudComponent struct {
-	cidMgr               *collectionIDManager
+	cidMgr               *collectionsComponent
 	defaultRetryStrategy RetryStrategy
 	tracer               *tracerComponent
-	errMapManager        *errMapManager
+	errMapManager        *errMapComponent
 }
 
-func newCRUDComponent(cidMgr *collectionIDManager, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
-	errMapManager *errMapManager) *crudComponent {
+func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
+	errMapManager *errMapComponent) *crudComponent {
 	return &crudComponent{
 		cidMgr:               cidMgr,
 		defaultRetryStrategy: defaultRetryStrategy,

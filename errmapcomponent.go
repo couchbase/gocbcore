@@ -2,18 +2,18 @@ package gocbcore
 
 import "encoding/json"
 
-type errMapManager struct {
+type errMapComponent struct {
 	kvErrorMap kvErrorMapPtr
 	bucketName string
 }
 
-func newErrMapManager(bucketName string) *errMapManager {
-	return &errMapManager{
+func newErrMapManager(bucketName string) *errMapComponent {
+	return &errMapComponent{
 		bucketName: bucketName,
 	}
 }
 
-func (errMgr *errMapManager) getKvErrMapData(code StatusCode) *kvErrorMapError {
+func (errMgr *errMapComponent) getKvErrMapData(code StatusCode) *kvErrorMapError {
 	errMap := errMgr.kvErrorMap.Get()
 	if errMap != nil {
 		if errData, ok := errMap.Errors[uint16(code)]; ok {
@@ -23,7 +23,7 @@ func (errMgr *errMapManager) getKvErrMapData(code StatusCode) *kvErrorMapError {
 	return nil
 }
 
-func (errMgr *errMapManager) StoreErrorMap(mapBytes []byte) {
+func (errMgr *errMapComponent) StoreErrorMap(mapBytes []byte) {
 	errMap, err := parseKvErrorMap(mapBytes)
 	if err != nil {
 		logDebugf("Failed to parse kv error map (%s)", err)
@@ -46,7 +46,7 @@ func (errMgr *errMapManager) StoreErrorMap(mapBytes []byte) {
 	}
 }
 
-func (errMgr *errMapManager) ShouldRetry(status StatusCode) bool {
+func (errMgr *errMapComponent) ShouldRetry(status StatusCode) bool {
 	kvErrData := errMgr.getKvErrMapData(status)
 	if kvErrData != nil {
 		for _, attr := range kvErrData.Attributes {
@@ -59,7 +59,7 @@ func (errMgr *errMapManager) ShouldRetry(status StatusCode) bool {
 	return false
 }
 
-func (errMgr *errMapManager) EnhanceKvError(err error, resp *memdQResponse, req *memdQRequest) error {
+func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, req *memdQRequest) error {
 	enhErr := &KeyValueError{
 		InnerError: err,
 	}
@@ -104,7 +104,7 @@ func (errMgr *errMapManager) EnhanceKvError(err error, resp *memdQResponse, req 
 	return enhErr
 }
 
-func (errMgr *errMapManager) MakeSubDocError(index int, code StatusCode, req *memdQRequest, resp *memdQResponse) error {
+func (errMgr *errMapComponent) MakeSubDocError(index int, code StatusCode, req *memdQRequest, resp *memdQResponse) error {
 	err := getKvStatusCodeError(code)
 	err = translateMemdError(err, req)
 	err = errMgr.EnhanceKvError(err, resp, req)

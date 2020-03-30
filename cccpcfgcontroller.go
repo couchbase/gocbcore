@@ -8,7 +8,7 @@ import (
 
 type cccpConfigController struct {
 	muxer              *kvMux
-	cfgMgr             *configManager
+	cfgMgr             *configManagementComponent
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
 
@@ -20,7 +20,7 @@ type cccpConfigController struct {
 	looperDoneSig chan struct{}
 }
 
-func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *configManager) *cccpConfigController {
+func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *configManagementComponent) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,

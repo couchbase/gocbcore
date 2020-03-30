@@ -148,7 +148,7 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 
 type n1qlQueryComponent struct {
 	httpComponent *httpComponent
-	cfgMgr        *configManager
+	cfgMgr        *configManagementComponent
 	tracer        *tracerComponent
 
 	queryCache map[string]*n1qlQueryCacheEntry
@@ -168,7 +168,7 @@ type n1qlJSONPrepData struct {
 	Name        string `json:"name"`
 }
 
-func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManager, tracer *tracerComponent) *n1qlQueryComponent {
+func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManagementComponent, tracer *tracerComponent) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,

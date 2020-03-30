@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-type configManager struct {
+type configManagementComponent struct {
 	useSSL      bool
 	networkType string
 
@@ -33,8 +33,8 @@ type routeConfigWatcher interface {
 	OnNewRouteConfig(cfg *routeConfig)
 }
 
-func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *configManager {
-	return &configManager{
+func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *configManagementComponent {
+	return &configManagementComponent{
 		useSSL:         props.UseSSL,
 		networkType:    props.NetworkType,
 		srcServers:     append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
@@ -45,7 +45,7 @@ func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *
 	}
 }
 
-func (cm *configManager) OnNewConfig(cfg *cfgBucket) {
+func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	if cm.seenConfig {
 		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false)
@@ -80,13 +80,13 @@ func (cm *configManager) OnNewConfig(cfg *cfgBucket) {
 	}
 }
 
-func (cm *configManager) AddConfigWatcher(watcher routeConfigWatcher) {
+func (cm *configManagementComponent) AddConfigWatcher(watcher routeConfigWatcher) {
 	cm.watchersLock.Lock()
 	cm.cfgChangeWatchers = append(cm.cfgChangeWatchers, watcher)
 	cm.watchersLock.Unlock()
 }
 
-func (cm *configManager) RemoveConfigWatcher(watcher routeConfigWatcher) {
+func (cm *configManagementComponent) RemoveConfigWatcher(watcher routeConfigWatcher) {
 	var idx int
 	cm.watchersLock.Lock()
 	for i, w := range cm.cfgChangeWatchers {
@@ -105,7 +105,7 @@ func (cm *configManager) RemoveConfigWatcher(watcher routeConfigWatcher) {
 
 // We should never be receiving concurrent updates and nothing should be accessing
 // our internal route config so we shouldn't need to lock here.
-func (cm *configManager) updateRouteConfig(cfg *routeConfig) bool {
+func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 	oldCfg := cm.currentConfig
 
 	// Check some basic things to ensure consistency!
@@ -141,7 +141,7 @@ func (cm *configManager) updateRouteConfig(cfg *routeConfig) bool {
 	return true
 }
 
-func (cm *configManager) buildFirstRouteConfig(config *cfgBucket) *routeConfig {
+func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket) *routeConfig {
 	if cm.networkType != "" && cm.networkType != "auto" {
 		return config.BuildRouteConfig(cm.useSSL, cm.networkType, true)
 	}
@@ -180,6 +180,6 @@ func (cm *configManager) buildFirstRouteConfig(config *cfgBucket) *routeConfig {
 	return defaultRouteConfig
 }
 
-func (cm *configManager) NetworkType() string {
+func (cm *configManagementComponent) NetworkType() string {
 	return cm.networkType
 }

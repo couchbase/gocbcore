@@ -16,8 +16,8 @@ type kvMux struct {
 	collectionsEnabled bool
 	queueSize          int
 	poolSize           int
-	cfgMgr             *configManager
-	errMapMgr          *errMapManager
+	cfgMgr             *configManagementComponent
+	errMapMgr          *errMapComponent
 
 	tracer *tracerComponent
 	dialer *memdClientDialerComponent
@@ -31,7 +31,7 @@ type kvMuxProps struct {
 	PoolSize           int
 }
 
-func newKVMux(props kvMuxProps, cfgMgr *configManager, errMapMgr *errMapManager, tracer *tracerComponent,
+func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *errMapComponent, tracer *tracerComponent,
 	dialer *memdClientDialerComponent) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,

@@ -8,10 +8,10 @@ import (
 type httpMux struct {
 	muxPtr     unsafe.Pointer
 	breakerCfg CircuitBreakerConfig
-	cfgMgr     *configManager
+	cfgMgr     *configManagementComponent
 }
 
-func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr *configManager) *httpMux {
+func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr *configManagementComponent) *httpMux {
 	mux := &httpMux{
 		breakerCfg: breakerCfg,
 		cfgMgr:     cfgMgr,

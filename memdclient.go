@@ -565,7 +565,7 @@ type bootstrapProps struct {
 	UserAgent      string
 	AuthMechanisms []AuthMechanism
 	AuthHandler    authFuncHandler
-	ErrMapManager  *errMapManager
+	ErrMapManager  *errMapComponent
 	HelloProps     helloProps
 }
 

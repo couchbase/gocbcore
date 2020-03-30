@@ -35,7 +35,7 @@ func hostnameFromURI(uri string) string {
 
 type httpConfigController struct {
 	muxer                *httpMux
-	cfgMgr               *configManager
+	cfgMgr               *configManagementComponent
 	confHTTPRetryDelay   time.Duration
 	confHTTPRedialPeriod time.Duration
 	httpComponent        *httpComponent
@@ -52,7 +52,7 @@ type httpPollerProperties struct {
 }
 
 func newHTTPConfigController(bucketName string, props httpPollerProperties, muxer *httpMux,
-	cfgMgr *configManager) *httpConfigController {
+	cfgMgr *configManagementComponent) *httpConfigController {
 	return &httpConfigController{
 		muxer:                muxer,
 		cfgMgr:               cfgMgr,

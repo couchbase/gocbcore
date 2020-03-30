@@ -2,7 +2,7 @@ package gocbcore
 
 type waitUntilConfigComponent struct {
 	configSeenCh chan struct{}
-	cfgMgr       *configManager
+	cfgMgr       *configManagementComponent
 }
 
 type waitOp struct {
@@ -13,7 +13,7 @@ func (op *waitOp) Cancel(err error) {
 	op.cancelCh <- struct{}{}
 }
 
-func newWaitUntilConfigComponent(cfgMgr *configManager) *waitUntilConfigComponent {
+func newWaitUntilConfigComponent(cfgMgr *configManagementComponent) *waitUntilConfigComponent {
 	w := &waitUntilConfigComponent{
 		cfgMgr:       cfgMgr,
 		configSeenCh: make(chan struct{}),

@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-func (cidMgr *collectionIDManager) createKey(scopeName, collectionName string) string {
+func (cidMgr *collectionsComponent) createKey(scopeName, collectionName string) string {
 	return fmt.Sprintf("%s.%s", scopeName, collectionName)
 }
 
-type collectionIDManager struct {
+type collectionsComponent struct {
 	idMap                map[string]*collectionIDCache
 	mapLock              sync.Mutex
 	mux                  *kvMux
@@ -25,8 +25,8 @@ type collectionIDProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent) *collectionIDManager {
-	cidMgr := &collectionIDManager{
+func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent) *collectionsComponent {
+	cidMgr := &collectionsComponent{
 		mux:                  mux,
 		idMap:                make(map[string]*collectionIDCache),
 		maxQueueSize:         props.MaxQueueSize,
@@ -39,7 +39,7 @@ func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tra
 	return cidMgr
 }
 
-func (cidMgr *collectionIDManager) handleCollectionUnknown(req *memdQRequest) bool {
+func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
 	// We cannot retry requests with no collection information
 	if req.CollectionName == "" && req.ScopeName == "" {
 		return false
@@ -56,7 +56,7 @@ func (cidMgr *collectionIDManager) handleCollectionUnknown(req *memdQRequest) bo
 	return false
 }
 
-func (cidMgr *collectionIDManager) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
+func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
 	if resp != nil && resp.Status == StatusCollectionUnknown {
 		if cidMgr.handleCollectionUnknown(req) {
 			return true, nil
@@ -66,7 +66,7 @@ func (cidMgr *collectionIDManager) handleOpRoutingResp(resp *memdQResponse, req 
 	return false, err
 }
 
-func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionManifest", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -102,7 +102,7 @@ func (cidMgr *collectionIDManager) GetCollectionManifest(opts GetCollectionManif
 	return cidMgr.mux.DispatchDirect(req)
 }
 
-func (cidMgr *collectionIDManager) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
+func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -168,14 +168,14 @@ func (cidMgr *collectionIDManager) GetCollectionID(scopeName string, collectionN
 	return cidMgr.mux.DispatchDirect(req)
 }
 
-func (cidMgr *collectionIDManager) add(id *collectionIDCache, scopeName, collectionName string) {
+func (cidMgr *collectionsComponent) add(id *collectionIDCache, scopeName, collectionName string) {
 	key := cidMgr.createKey(scopeName, collectionName)
 	cidMgr.mapLock.Lock()
 	cidMgr.idMap[key] = id
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionIDManager) get(scopeName, collectionName string) (*collectionIDCache, bool) {
+func (cidMgr *collectionsComponent) get(scopeName, collectionName string) (*collectionIDCache, bool) {
 	cidMgr.mapLock.Lock()
 	id, ok := cidMgr.idMap[cidMgr.createKey(scopeName, collectionName)]
 	cidMgr.mapLock.Unlock()
@@ -186,13 +186,13 @@ func (cidMgr *collectionIDManager) get(scopeName, collectionName string) (*colle
 	return id, true
 }
 
-func (cidMgr *collectionIDManager) remove(scopeName, collectionName string) {
+func (cidMgr *collectionsComponent) remove(scopeName, collectionName string) {
 	cidMgr.mapLock.Lock()
 	delete(cidMgr.idMap, cidMgr.createKey(scopeName, collectionName))
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionIDManager) newCollectionIDCache() *collectionIDCache {
+func (cidMgr *collectionsComponent) newCollectionIDCache() *collectionIDCache {
 	return &collectionIDCache{
 		mux:          cidMgr.mux,
 		maxQueueSize: cidMgr.maxQueueSize,
@@ -205,7 +205,7 @@ type collectionIDCache struct {
 	id             uint32
 	collectionName string
 	scopeName      string
-	parent         *collectionIDManager
+	parent         *collectionsComponent
 	mux            *kvMux
 	lock           sync.Mutex
 	err            error
@@ -285,7 +285,7 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	}
 }
 
-func (cidMgr *collectionIDManager) Dispatch(req *memdQRequest) (PendingOp, error) {
+func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, error) {
 	noCollection := req.CollectionName == "" && req.ScopeName == ""
 	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
 	collectionIDPresent := req.CollectionID > 0
@@ -320,7 +320,7 @@ func (cidMgr *collectionIDManager) Dispatch(req *memdQRequest) (PendingOp, error
 	return req, nil
 }
 
-func (cidMgr *collectionIDManager) requeue(req *memdQRequest) {
+func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)
 	if !ok {
 		cidCache = cidMgr.newCollectionIDCache()
@@ -339,14 +339,14 @@ func (cidMgr *collectionIDManager) requeue(req *memdQRequest) {
 	}
 }
 
-func (cidMgr *collectionIDManager) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
+func (cidMgr *collectionsComponent) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
 	return cidMgr.mux.HasDurabilityLevelStatus(status)
 }
 
-func (cidMgr *collectionIDManager) BucketType() bucketType {
+func (cidMgr *collectionsComponent) BucketType() bucketType {
 	return cidMgr.mux.BucketType()
 }
 
-func (cidMgr *collectionIDManager) KeyToVbucket(key []byte) uint16 {
+func (cidMgr *collectionsComponent) KeyToVbucket(key []byte) uint16 {
 	return cidMgr.mux.KeyToVbucket(key)
 }

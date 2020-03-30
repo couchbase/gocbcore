@@ -270,7 +270,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags DcpStreamAddFlag, vbUUID VbUUI
 		ReplicaIdx: 0,
 		Persistent: true,
 	}
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
 
 // CloseStreamWithID shuts down an open stream for the specified VBucket for the specified stream.
@@ -301,7 +301,7 @@ func (agent *Agent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStre
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
 
 // CloseStream shuts down an open stream for the specified VBucket.
@@ -326,7 +326,7 @@ func (agent *Agent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp,
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
 
 // GetFailoverLog retrieves the fail-over log for a particular VBucket.  This is used
@@ -365,7 +365,7 @@ func (agent *Agent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (Pend
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
 
 // GetVbucketSeqnosWithCollectionID returns the last checkpoint for a particular VBucket for a particular collection. This is useful
@@ -411,7 +411,7 @@ func (agent *Agent) GetVbucketSeqnosWithCollectionID(serverIdx int, state Vbucke
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
 
 // GetVbucketSeqnos returns the last checkpoint for a particular VBucket.  This is useful
@@ -456,5 +456,5 @@ func (agent *Agent) GetVbucketSeqnos(serverIdx int, state VbucketState, cb GetVB
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	return agent.cidMgr.Dispatch(req)
+	return agent.collections.Dispatch(req)
 }
