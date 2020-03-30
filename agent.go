@@ -32,6 +32,7 @@ type Agent struct {
 	httpMux          *httpMux
 	errMapManager    *errMapManager
 
+	diagnosticsCmpt  *diagnosticsComponent
 	crudCmpt         *crudComponent
 	statsCmpt        *statsComponent
 	n1qlCmpt         *n1qlQueryComponent
@@ -391,6 +392,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.searchCmpt = newSearchQueryComponent(c.httpComponent, c.tracer)
 	c.viewCmpt = newViewQueryComponent(c.httpComponent, c.tracer)
 	c.waitCmpt = newWaitUntilConfigComponent(c.cfgManager)
+	c.diagnosticsCmpt = newDianosticsComponent(c.kvMux, c.bucketName)
 
 	// Kick everything off.
 	cfg := &routeConfig{

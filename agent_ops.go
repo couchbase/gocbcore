@@ -246,3 +246,19 @@ type CollectionIDCallback func(manifestID uint64, collectionID uint32, err error
 func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
 	return agent.cidMgr.GetCollectionID(scopeName, collectionName, opts, cb)
 }
+
+// PingKvExCallback is invoked upon completion of a PingKvEx operation.
+type PingKvExCallback func(*PingKvResult, error)
+
+// PingKvEx pings all of the servers we are connected to and returns
+// a report regarding the pings that were performed.
+func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
+	return agent.diagnosticsCmpt.PingKvEx(opts, cb)
+}
+
+// Diagnostics returns diagnostics information about the client.
+// Mainly containing a list of open connections and their current
+// states.
+func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
+	return agent.diagnosticsCmpt.Diagnostics()
+}

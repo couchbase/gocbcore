@@ -2,69 +2,24 @@ package gocbcore
 
 import (
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// PingResult contains the results of a ping to a single server.
-type PingResult struct {
-	Endpoint string
-	Error    error
-	Latency  time.Duration
-	ID       string
-	Scope    string
+type diagnosticsComponent struct {
+	kvMux  *kvMux
+	bucket string
 }
 
-type pingSubOp struct {
-	op       PendingOp
-	endpoint string
-}
-
-type pingOp struct {
-	lock      sync.Mutex
-	subops    []pingSubOp
-	remaining int32
-	results   []PingResult
-	callback  PingKvExCallback
-	configRev int64
-}
-
-func (pop *pingOp) Cancel(err error) {
-	for _, subop := range pop.subops {
-		subop.op.Cancel(err)
+func newDianosticsComponent(kvMux *kvMux, bucket string) *diagnosticsComponent {
+	return &diagnosticsComponent{
+		kvMux:  kvMux,
+		bucket: bucket,
 	}
 }
 
-func (pop *pingOp) handledOneLocked() {
-	remaining := atomic.AddInt32(&pop.remaining, -1)
-	if remaining == 0 {
-		pop.callback(&PingKvResult{
-			ConfigRev: pop.configRev,
-			Services:  pop.results,
-		}, nil)
-	}
-}
-
-// PingKvOptions encapsulates the parameters for a PingKvEx operation.
-type PingKvOptions struct {
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
-}
-
-// PingKvResult encapsulates the result of a PingKvEx operation.
-type PingKvResult struct {
-	ConfigRev int64
-	Services  []PingResult
-}
-
-// PingKvExCallback is invoked upon completion of a PingKvEx operation.
-type PingKvExCallback func(*PingKvResult, error)
-
-// PingKvEx pings all of the servers we are connected to and returns
-// a report regarding the pings that were performed.
-func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
-	clientMux := agent.kvMux.GetState()
+func (dc *diagnosticsComponent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
+	clientMux := dc.kvMux.GetState()
 	if clientMux == nil {
 		return nil, errShutdown
 	}
@@ -78,8 +33,8 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 	pingStartTime := time.Now()
 
 	bucketName := ""
-	if agent.bucketName != "" {
-		bucketName = redactMetaData(agent.bucketName)
+	if dc.bucket != "" {
+		bucketName = redactMetaData(dc.bucket)
 	}
 
 	addrToID := make(map[string]string)
@@ -121,7 +76,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 			RetryStrategy: retryStrat,
 		}
 
-		curOp, err := agent.kvMux.DispatchDirectToAddress(req, serverAddress)
+		curOp, err := dc.kvMux.DispatchDirectToAddress(req, serverAddress)
 		if err != nil {
 			op.lock.Lock()
 			op.results = append(op.results, PingResult{
@@ -154,29 +109,12 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 	return op, nil
 }
 
-// MemdConnInfo represents information we know about a particular
-// memcached connection reported in a diagnostics report.
-type MemdConnInfo struct {
-	LocalAddr    string
-	RemoteAddr   string
-	LastActivity time.Time
-	Scope        string
-	ID           string
-}
-
-// DiagnosticInfo is returned by the Diagnostics method and includes
-// information about the overall health of the clients connections.
-type DiagnosticInfo struct {
-	ConfigRev int64
-	MemdConns []MemdConnInfo
-}
-
 // Diagnostics returns diagnostics information about the client.
 // Mainly containing a list of open connections and their current
 // states.
-func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
+func (dc *diagnosticsComponent) Diagnostics() (*DiagnosticInfo, error) {
 	for {
-		clientMux := agent.kvMux.GetState()
+		clientMux := dc.kvMux.GetState()
 		if clientMux == nil {
 			return nil, errShutdown
 		}
@@ -207,15 +145,15 @@ func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
 					LastActivity: lastActivity,
 					ID:           fmt.Sprintf("%p", pipecli),
 				}
-				if agent.bucketName != "" {
-					conn.Scope = redactMetaData(agent.bucketName)
+				if dc.bucket != "" {
+					conn.Scope = redactMetaData(dc.bucket)
 				}
 				conns = append(conns, conn)
 			}
 			pipeline.clientsLock.Unlock()
 		}
 
-		endMux := agent.kvMux.GetState()
+		endMux := dc.kvMux.GetState()
 		if endMux == clientMux {
 			return &DiagnosticInfo{
 				ConfigRev: clientMux.revID,
