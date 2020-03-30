@@ -92,9 +92,6 @@ func (item *Manifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ManifestCallback is invoked upon completion of a GetCollectionManifest operation.
-type ManifestCallback func(manifest []byte, err error)
-
 // GetCollectionManifestOptions are the options available to the GetCollectionManifest command.
 type GetCollectionManifestOptions struct {
 	// Volatile: Tracer API is subject to change.
@@ -102,24 +99,9 @@ type GetCollectionManifestOptions struct {
 	RetryStrategy RetryStrategy
 }
 
-// GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
-// id cache.
-func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
-	return agent.cidMgr.GetCollectionManifest(opts, cb)
-}
-
-// CollectionIDCallback is invoked upon completion of a GetCollectionID operation.
-type CollectionIDCallback func(manifestID uint64, collectionID uint32, err error)
-
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
 	RetryStrategy RetryStrategy
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
-}
-
-// GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
-// and collection name. This function will also prime the client's collection id cache.
-func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
-	return agent.cidMgr.GetCollectionID(scopeName, collectionName, opts, cb)
 }

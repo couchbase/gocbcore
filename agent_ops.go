@@ -1,27 +1,11 @@
 package gocbcore
 
-// GetResult encapsulates the result of a GetEx operation.
-type GetResult struct {
-	Value    []byte
-	Flags    uint32
-	Datatype uint8
-	Cas      Cas
-}
-
 // GetExCallback is invoked upon completion of a GetEx operation.
 type GetExCallback func(*GetResult, error)
 
 // GetEx retrieves a document.
 func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Get(opts, cb)
-}
-
-// GetAndTouchResult encapsulates the result of a GetAndTouchEx operation.
-type GetAndTouchResult struct {
-	Value    []byte
-	Flags    uint32
-	Datatype uint8
-	Cas      Cas
 }
 
 // GetAndTouchExCallback is invoked upon completion of a GetAndTouchEx operation.
@@ -32,28 +16,12 @@ func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallb
 	return agent.crudCmpt.GetAndTouch(opts, cb)
 }
 
-// GetAndLockResult encapsulates the result of a GetAndLockEx operation.
-type GetAndLockResult struct {
-	Value    []byte
-	Flags    uint32
-	Datatype uint8
-	Cas      Cas
-}
-
 // GetAndLockExCallback is invoked upon completion of a GetAndLockEx operation.
 type GetAndLockExCallback func(*GetAndLockResult, error)
 
 // GetAndLockEx retrieves a document and locks it.
 func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
 	return agent.crudCmpt.GetAndLock(opts, cb)
-}
-
-// GetReplicaResult encapsulates the result of a GetReplica operation.
-type GetReplicaResult struct {
-	Value    []byte
-	Flags    uint32
-	Datatype uint8
-	Cas      Cas
 }
 
 // GetReplicaExCallback is invoked upon completion of a GetReplica operation.
@@ -64,24 +32,12 @@ func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCa
 	return agent.crudCmpt.GetOneReplica(opts, cb)
 }
 
-// TouchResult encapsulates the result of a TouchEx operation.
-type TouchResult struct {
-	Cas           Cas
-	MutationToken MutationToken
-}
-
 // TouchExCallback is invoked upon completion of a TouchEx operation.
 type TouchExCallback func(*TouchResult, error)
 
 // TouchEx updates the expiry for a document.
 func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Touch(opts, cb)
-}
-
-// UnlockResult encapsulates the result of a UnlockEx operation.
-type UnlockResult struct {
-	Cas           Cas
-	MutationToken MutationToken
 }
 
 // UnlockExCallback is invoked upon completion of a UnlockEx operation.
@@ -92,24 +48,12 @@ func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp
 	return agent.crudCmpt.Unlock(opts, cb)
 }
 
-// DeleteResult encapsulates the result of a DeleteEx operation.
-type DeleteResult struct {
-	Cas           Cas
-	MutationToken MutationToken
-}
-
 // DeleteExCallback is invoked upon completion of a DeleteEx operation.
 type DeleteExCallback func(*DeleteResult, error)
 
 // DeleteEx removes a document.
 func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Delete(opts, cb)
-}
-
-// StoreResult encapsulates the result of a AddEx, SetEx or ReplaceEx operation.
-type StoreResult struct {
-	Cas           Cas
-	MutationToken MutationToken
 }
 
 // StoreExCallback is invoked upon completion of a AddEx, SetEx or ReplaceEx operation.
@@ -130,12 +74,6 @@ func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingO
 	return agent.crudCmpt.Replace(opts, cb)
 }
 
-// AdjoinResult encapsulates the result of a AppendEx or PrependEx operation.
-type AdjoinResult struct {
-	Cas           Cas
-	MutationToken MutationToken
-}
-
 // AdjoinExCallback is invoked upon completion of a AppendEx or PrependEx operation.
 type AdjoinExCallback func(*AdjoinResult, error)
 
@@ -147,13 +85,6 @@ func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp
 // PrependEx prepends some bytes to a document.
 func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
 	return agent.crudCmpt.Prepend(opts, cb)
-}
-
-// CounterResult encapsulates the result of a IncrementEx or DecrementEx operation.
-type CounterResult struct {
-	Value         uint64
-	Cas           Cas
-	MutationToken MutationToken
 }
 
 // CounterExCallback is invoked upon completion of a IncrementEx or DecrementEx operation.
@@ -169,32 +100,12 @@ func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (Pend
 	return agent.crudCmpt.Decrement(opts, cb)
 }
 
-// GetRandomResult encapsulates the result of a GetRandomEx operation.
-type GetRandomResult struct {
-	Key      []byte
-	Value    []byte
-	Flags    uint32
-	Datatype uint8
-	Cas      Cas
-}
-
 // GetRandomExCallback is invoked upon completion of a GetRandomEx operation.
 type GetRandomExCallback func(*GetRandomResult, error)
 
 // GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
 func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
 	return agent.crudCmpt.GetRandom(opts, cb)
-}
-
-// GetMetaResult encapsulates the result of a GetMetaEx operation.
-type GetMetaResult struct {
-	Value    []byte
-	Flags    uint32
-	Cas      Cas
-	Expiry   uint32
-	SeqNo    SeqNo
-	Datatype uint8
-	Deleted  uint32
 }
 
 // GetMetaExCallback is invoked upon completion of a GetMetaEx operation.
@@ -205,24 +116,12 @@ func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (Pendin
 	return agent.crudCmpt.GetMeta(opts, cb)
 }
 
-// SetMetaResult encapsulates the result of a SetMetaEx operation.
-type SetMetaResult struct {
-	Cas           Cas
-	MutationToken MutationToken
-}
-
 // SetMetaExCallback is invoked upon completion of a SetMetaEx operation.
 type SetMetaExCallback func(*SetMetaResult, error)
 
 // SetMetaEx stores a document along with setting some internal Couchbase meta-data.
 func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
 	return agent.crudCmpt.SetMeta(opts, cb)
-}
-
-// DeleteMetaResult encapsulates the result of a DeleteMetaEx operation.
-type DeleteMetaResult struct {
-	Cas           Cas
-	MutationToken MutationToken
 }
 
 // DeleteMetaExCallback is invoked upon completion of a DeleteMetaEx operation.
@@ -240,4 +139,110 @@ func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback
 // multiple nodes (a vbucket active on two separate nodes at once).
 func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
 	return agent.statsCmpt.Stats(opts, cb)
+}
+
+// ObserveExCallback is invoked upon completion of a ObserveEx operation.
+type ObserveExCallback func(*ObserveResult, error)
+
+// ObserveEx retrieves the current CAS and persistence state for a document.
+func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
+	return agent.crudCmpt.Observe(opts, cb)
+}
+
+// ObserveVbExCallback is invoked upon completion of a ObserveVbEx operation.
+type ObserveVbExCallback func(*ObserveVbResult, error)
+
+// ObserveVbEx retrieves the persistence state sequence numbers for a particular VBucket
+// and includes additional details not included by the basic version.
+func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
+	return agent.crudCmpt.ObserveVb(opts, cb)
+}
+
+// SubDocOp defines a per-operation structure to be passed to MutateIn
+// or LookupIn for performing many sub-document operations.
+type SubDocOp struct {
+	Op    SubDocOpType
+	Flags SubdocFlag
+	Path  string
+	Value []byte
+}
+
+// LookupInExCallback is invoked upon completion of a LookupInEx operation.
+type LookupInExCallback func(*LookupInResult, error)
+
+type subdocOpList struct {
+	ops     []SubDocOp
+	indexes []int
+}
+
+func (sol *subdocOpList) Prepend(op SubDocOp, index int) {
+	sol.ops = append([]SubDocOp{op}, sol.ops...)
+	sol.indexes = append([]int{index}, sol.indexes...)
+}
+
+func (sol *subdocOpList) Append(op SubDocOp, index int) {
+	sol.ops = append(sol.ops, op)
+	sol.indexes = append(sol.indexes, index)
+}
+
+// LookupInEx performs a multiple-lookup sub-document operation on a document.
+func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
+	return agent.crudCmpt.LookupIn(opts, cb)
+}
+
+// MutateInExCallback is invoked upon completion of a MutateInEx operation.
+type MutateInExCallback func(*MutateInResult, error)
+
+// MutateInEx performs a multiple-mutation sub-document operation on a document.
+func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (PendingOp, error) {
+	return agent.crudCmpt.MutateIn(opts, cb)
+}
+
+// N1QLQuery executes a N1QL query
+func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	return agent.n1qlCmpt.N1QLQuery(opts)
+}
+
+// PreparedN1QLQuery executes a prepared N1QL query
+func (agent *Agent) PreparedN1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	return agent.n1qlCmpt.PreparedN1QLQuery(opts)
+}
+
+// AnalyticsQuery executes an analytics query
+func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
+	return agent.analyticsCmpt.AnalyticsQuery(opts)
+}
+
+// SearchQuery executes a Search query
+func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
+	return agent.searchCmpt.SearchQuery(opts)
+}
+
+// ViewQuery executes a view query
+func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
+	return agent.viewCmpt.ViewQuery(opts)
+}
+
+// DoHTTPRequest will perform an HTTP request against one of the HTTP
+// services which are available within the SDK.
+func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
+	return agent.httpComponent.DoHTTPRequest(req)
+}
+
+// ManifestCallback is invoked upon completion of a GetCollectionManifest operation.
+type ManifestCallback func(manifest []byte, err error)
+
+// GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
+// id cache.
+func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+	return agent.cidMgr.GetCollectionManifest(opts, cb)
+}
+
+// CollectionIDCallback is invoked upon completion of a GetCollectionID operation.
+type CollectionIDCallback func(manifestID uint64, collectionID uint32, err error)
+
+// GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
+// and collection name. This function will also prime the client's collection id cache.
+func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
+	return agent.cidMgr.GetCollectionID(scopeName, collectionName, opts, cb)
 }

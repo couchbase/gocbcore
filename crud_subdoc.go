@@ -108,3 +108,22 @@ type MutateInOptions struct {
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
+
+// SubDocResult encapsulates the results from a single sub-document operation.
+type SubDocResult struct {
+	Err   error
+	Value []byte
+}
+
+// LookupInResult encapsulates the result of a LookupInEx operation.
+type LookupInResult struct {
+	Cas Cas
+	Ops []SubDocResult
+}
+
+// MutateInResult encapsulates the result of a MutateInEx operation.
+type MutateInResult struct {
+	Cas           Cas
+	MutationToken MutationToken
+	Ops           []SubDocResult
+}

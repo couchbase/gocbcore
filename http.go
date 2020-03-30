@@ -108,9 +108,3 @@ func wrapHTTPError(req *httpRequest, err error) HTTPError {
 
 	return ierr
 }
-
-// DoHTTPRequest will perform an HTTP request against one of the HTTP
-// services which are available within the SDK.
-func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
-	return agent.httpComponent.DoHTTPRequest(req)
-}
