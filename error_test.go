@@ -12,7 +12,7 @@ func TestEnhancedErrors(t *testing.T) {
 
 	var err1, err2 error
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key: []byte("keyThatWontExist"),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
@@ -21,7 +21,7 @@ func TestEnhancedErrors(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key: []byte("keyThatWontExist"),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
@@ -48,7 +48,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 		"bucket":  h.BucketName,
 	}))
 
-	h.PushOp(agent.GetAndLockEx(GetAndLockOptions{
+	h.PushOp(agent.GetAndLock(GetAndLockOptions{
 		Key:      []byte("testEnhancedErrs"),
 		LockTime: 10,
 	}, func(res *GetAndLockResult, err error) {

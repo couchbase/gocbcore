@@ -186,10 +186,17 @@ func (req *memdQRequest) internalCancel(err error) bool {
 	return true
 }
 
-func (req *memdQRequest) Cancel(err error) {
+func (req *memdQRequest) cancelWithCallback(err error) {
 	// Try to perform the cancellation, if it succeeds, we call the
 	// callback immediately on the users behalf.
 	if req.internalCancel(err) {
 		req.Callback(nil, req, err)
 	}
+}
+
+func (req *memdQRequest) Cancel() {
+	// Try to perform the cancellation, if it succeeds, we call the
+	// callback immediately on the users behalf.
+	err := errRequestCanceled
+	req.cancelWithCallback(err)
 }

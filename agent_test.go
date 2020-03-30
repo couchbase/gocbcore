@@ -54,7 +54,7 @@ func TestCidRetries(t *testing.T) {
 
 	// Set should succeed as we detect cid unknown, fetch the cid and then retry again. This should happen
 	// even if we don't set a retry strategy.
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
 		CollectionName: collectionName,
@@ -72,7 +72,7 @@ func TestCidRetries(t *testing.T) {
 	s.Wait(0)
 
 	// Get
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("test"),
 		CollectionName: collectionName,
 		ScopeName:      scopeName,
@@ -94,7 +94,7 @@ func TestBasicOps(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
 	// Set
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
 		CollectionName: s.CollectionName,
@@ -112,7 +112,7 @@ func TestBasicOps(t *testing.T) {
 	s.Wait(0)
 
 	// Get
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("test"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -134,7 +134,7 @@ func TestCasMismatch(t *testing.T) {
 
 	// Set
 	var cas Cas
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{}"),
 		CollectionName: s.CollectionName,
@@ -153,7 +153,7 @@ func TestCasMismatch(t *testing.T) {
 	s.Wait(0)
 
 	// Replace to change cas on the server
-	s.PushOp(agent.ReplaceEx(ReplaceOptions{
+	s.PushOp(agent.Replace(ReplaceOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{\"key\":\"value\"}"),
 		CollectionName: s.CollectionName,
@@ -171,7 +171,7 @@ func TestCasMismatch(t *testing.T) {
 	s.Wait(0)
 
 	// Replace which should fail with a cas mismatch
-	s.PushOp(agent.ReplaceEx(ReplaceOptions{
+	s.PushOp(agent.Replace(ReplaceOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{\"key\":\"value2\"}"),
 		CollectionName: s.CollectionName,
@@ -196,7 +196,7 @@ func TestGetReplica(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
 	// Set
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testReplica"),
 		Value:          []byte("{}"),
 		CollectionName: s.CollectionName,
@@ -216,7 +216,7 @@ func TestGetReplica(t *testing.T) {
 	retries := 0
 	keyExists := false
 	for {
-		s.PushOp(agent.GetOneReplicaEx(GetOneReplicaOptions{
+		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
 			Key:            []byte("testReplica"),
 			ReplicaIdx:     1,
 			CollectionName: s.CollectionName,
@@ -251,7 +251,7 @@ func TestBasicReplace(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
 	oldCas := Cas(0)
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testx"),
 		Value:          []byte("{}"),
 		CollectionName: s.CollectionName,
@@ -262,7 +262,7 @@ func TestBasicReplace(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.ReplaceEx(ReplaceOptions{
+	s.PushOp(agent.Replace(ReplaceOptions{
 		Key:            []byte("testx"),
 		Value:          []byte("[]"),
 		Cas:            oldCas,
@@ -284,7 +284,7 @@ func TestBasicReplace(t *testing.T) {
 func TestBasicRemove(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testy"),
 		Value:          []byte("{}"),
 		CollectionName: s.CollectionName,
@@ -294,7 +294,7 @@ func TestBasicRemove(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.DeleteEx(DeleteOptions{
+	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testy"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -311,7 +311,7 @@ func TestBasicRemove(t *testing.T) {
 func TestBasicInsert(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.DeleteEx(DeleteOptions{
+	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testz"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -320,7 +320,7 @@ func TestBasicInsert(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.AddEx(AddOptions{
+	s.PushOp(agent.Add(AddOptions{
 		Key:            []byte("testz"),
 		Value:          []byte("[]"),
 		CollectionName: s.CollectionName,
@@ -342,7 +342,7 @@ func TestBasicCounters(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
 	// Counters
-	s.PushOp(agent.DeleteEx(DeleteOptions{
+	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testCounters"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -351,7 +351,7 @@ func TestBasicCounters(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.IncrementEx(CounterOptions{
+	s.PushOp(agent.Increment(CounterOptions{
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        11,
@@ -372,7 +372,7 @@ func TestBasicCounters(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.IncrementEx(CounterOptions{
+	s.PushOp(agent.Increment(CounterOptions{
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        22,
@@ -393,7 +393,7 @@ func TestBasicCounters(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.DecrementEx(CounterOptions{
+	s.PushOp(agent.Decrement(CounterOptions{
 		Key:            []byte("testCounters"),
 		Delta:          3,
 		Initial:        65,
@@ -420,7 +420,7 @@ func TestBasicAdjoins(t *testing.T) {
 
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("there"),
 		CollectionName: s.CollectionName,
@@ -430,7 +430,7 @@ func TestBasicAdjoins(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.AppendEx(AdjoinOptions{
+	s.PushOp(agent.Append(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte(" Frank!"),
 		CollectionName: s.CollectionName,
@@ -447,7 +447,7 @@ func TestBasicAdjoins(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.PrependEx(AdjoinOptions{
+	s.PushOp(agent.Prepend(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("Hello "),
 		CollectionName: s.CollectionName,
@@ -464,7 +464,7 @@ func TestBasicAdjoins(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testAdjoins"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -488,7 +488,7 @@ func TestBasicAdjoins(t *testing.T) {
 func TestExpiry(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testExpiry"),
 		Value:          []byte("{}"),
 		Expiry:         1,
@@ -505,7 +505,7 @@ func TestExpiry(t *testing.T) {
 
 	s.TimeTravel(2000 * time.Millisecond)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testExpiry"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -523,7 +523,7 @@ func TestExpiry(t *testing.T) {
 func TestTouch(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
@@ -538,7 +538,7 @@ func TestTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.TouchEx(TouchOptions{
+	s.PushOp(agent.Touch(TouchOptions{
 		Key:            []byte("testTouch"),
 		Expiry:         3,
 		CollectionName: s.CollectionName,
@@ -554,7 +554,7 @@ func TestTouch(t *testing.T) {
 
 	s.TimeTravel(1500 * time.Millisecond)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testTouch"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -569,7 +569,7 @@ func TestTouch(t *testing.T) {
 
 	s.TimeTravel(2500 * time.Millisecond)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testTouch"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -586,7 +586,7 @@ func TestTouch(t *testing.T) {
 func TestGetAndTouch(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testGetAndTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
@@ -601,7 +601,7 @@ func TestGetAndTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetAndTouchEx(GetAndTouchOptions{
+	s.PushOp(agent.GetAndTouch(GetAndTouchOptions{
 		Key:            []byte("testGetAndTouch"),
 		Expiry:         3,
 		CollectionName: s.CollectionName,
@@ -617,7 +617,7 @@ func TestGetAndTouch(t *testing.T) {
 
 	s.TimeTravel(1500 * time.Millisecond)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testGetAndTouch"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -632,7 +632,7 @@ func TestGetAndTouch(t *testing.T) {
 
 	s.TimeTravel(2500 * time.Millisecond)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testGetAndTouch"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -651,7 +651,7 @@ func TestGetAndTouch(t *testing.T) {
 func TestRetrySet(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
@@ -666,7 +666,7 @@ func TestRetrySet(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetAndLockEx(GetAndLockOptions{
+	s.PushOp(agent.GetAndLock(GetAndLockOptions{
 		Key:            []byte("testRetrySet"),
 		LockTime:       1,
 		CollectionName: s.CollectionName,
@@ -680,7 +680,7 @@ func TestRetrySet(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
@@ -702,7 +702,7 @@ func TestObserve(t *testing.T) {
 
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
 		CollectionName: s.CollectionName,
@@ -712,7 +712,7 @@ func TestObserve(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.ObserveEx(ObserveOptions{
+	s.PushOp(agent.Observe(ObserveOptions{
 		Key:            []byte("testObserve"),
 		ReplicaIdx:     1,
 		CollectionName: s.CollectionName,
@@ -733,7 +733,7 @@ func TestObserveSeqNo(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
 	origMt := MutationToken{}
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
 		CollectionName: s.CollectionName,
@@ -756,7 +756,7 @@ func TestObserveSeqNo(t *testing.T) {
 
 	origCurSeqNo := SeqNo(0)
 	vbID := agent.KeyToVbucket([]byte("testObserve"))
-	s.PushOp(agent.ObserveVbEx(ObserveVbOptions{
+	s.PushOp(agent.ObserveVb(ObserveVbOptions{
 		VbID:       vbID,
 		VbUUID:     origMt.VbUUID,
 		ReplicaIdx: 1,
@@ -772,7 +772,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.Wait(0)
 
 	newMt := MutationToken{}
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
 		CollectionName: s.CollectionName,
@@ -789,7 +789,7 @@ func TestObserveSeqNo(t *testing.T) {
 	s.Wait(0)
 
 	vbID = agent.KeyToVbucket([]byte("testObserve"))
-	s.PushOp(agent.ObserveVbEx(ObserveVbOptions{
+	s.PushOp(agent.ObserveVb(ObserveVbOptions{
 		VbID:       vbID,
 		VbUUID:     newMt.VbUUID,
 		ReplicaIdx: 1,
@@ -811,7 +811,7 @@ func TestRandomGet(t *testing.T) {
 
 	distkeys := s.MakeDistKeys(agent)
 	for _, k := range distkeys {
-		s.PushOp(agent.SetEx(SetOptions{
+		s.PushOp(agent.Set(SetOptions{
 			Key:            []byte(k),
 			Value:          []byte("Hello World!"),
 			CollectionName: s.CollectionName,
@@ -826,7 +826,7 @@ func TestRandomGet(t *testing.T) {
 		s.Wait(0)
 	}
 
-	s.PushOp(agent.GetRandomEx(GetRandomOptions{}, func(res *GetRandomResult, err error) {
+	s.PushOp(agent.GetRandom(GetRandomOptions{}, func(res *GetRandomResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed: %v", err)
@@ -848,7 +848,7 @@ func TestRandomGet(t *testing.T) {
 func TestSubdocXattrs(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testXattr"),
 		Value:          []byte("{\"x\":\"xattrs\"}"),
 		CollectionName: s.CollectionName,
@@ -882,7 +882,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Value: []byte("\"x value\""),
 		},
 	}
-	s.PushOp(agent.MutateInEx(MutateInOptions{
+	s.PushOp(agent.MutateIn(MutateInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            mutateOps,
 		CollectionName: s.CollectionName,
@@ -911,7 +911,7 @@ func TestSubdocXattrs(t *testing.T) {
 			Path:  "x",
 		},
 	}
-	s.PushOp(agent.LookupInEx(LookupInOptions{
+	s.PushOp(agent.LookupIn(LookupInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            lookupOps,
 		CollectionName: s.CollectionName,
@@ -948,7 +948,7 @@ func TestSubdocXattrs(t *testing.T) {
 func TestSubdocXattrsReorder(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testXattrReorder"),
 		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\"}"),
 		CollectionName: s.CollectionName,
@@ -983,7 +983,7 @@ func TestSubdocXattrsReorder(t *testing.T) {
 			Value: []byte("\"test value2\""),
 		},
 	}
-	s.PushOp(agent.MutateInEx(MutateInOptions{
+	s.PushOp(agent.MutateIn(MutateInOptions{
 		Key:            []byte("testXattrReorder"),
 		Ops:            mutateOps,
 		CollectionName: s.CollectionName,
@@ -1029,7 +1029,7 @@ func TestSubdocXattrsReorder(t *testing.T) {
 			Path:  "xatest.ytest",
 		},
 	}
-	s.PushOp(agent.LookupInEx(LookupInOptions{
+	s.PushOp(agent.LookupIn(LookupInOptions{
 		Key:            []byte("testXattrReorder"),
 		Ops:            lookupOps,
 		CollectionName: s.CollectionName,
@@ -1068,7 +1068,7 @@ func TestStats(t *testing.T) {
 
 	numServers := agent.NumServers()
 
-	s.PushOp(agent.StatsEx(StatsOptions{
+	s.PushOp(agent.Stats(StatsOptions{
 		Key: "",
 	}, func(res *StatsResult, err error) {
 		s.Wrap(func() {
@@ -1115,7 +1115,7 @@ func TestMemcachedBucket(t *testing.T) {
 	s := testGetHarness(t)
 	agent := s.MemdAgent()
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:   []byte("key"),
 		Value: []byte("value"),
 	}, func(res *StoreResult, err error) {
@@ -1127,7 +1127,7 @@ func TestMemcachedBucket(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key: []byte("key"),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
@@ -1142,7 +1142,7 @@ func TestMemcachedBucket(t *testing.T) {
 	s.Wait(0)
 
 	// Try to perform Observe: should fail since this isn't supported on Memcached buckets
-	_, err := agent.ObserveEx(ObserveOptions{
+	_, err := agent.Observe(ObserveOptions{
 		Key: []byte("key"),
 	}, func(res *ObserveResult, err error) {
 		s.Wrap(func() {
@@ -1159,7 +1159,7 @@ func TestFlagsRoundTrip(t *testing.T) {
 	// Ensure flags are round-tripped with the server correctly.
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("flagskey"),
 		Value:          []byte(""),
 		Flags:          0x99889988,
@@ -1174,7 +1174,7 @@ func TestFlagsRoundTrip(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.GetEx(GetOptions{
+	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("flagskey"),
 		CollectionName: s.CollectionName,
 		ScopeName:      s.ScopeName,
@@ -1200,7 +1200,7 @@ func TestMetaOps(t *testing.T) {
 
 	// Set
 
-	s.PushOp(agent.SetEx(SetOptions{
+	s.PushOp(agent.Set(SetOptions{
 		Key:   []byte("test"),
 		Value: []byte("{}"),
 	}, func(res *StoreResult, err error) {
@@ -1218,7 +1218,7 @@ func TestMetaOps(t *testing.T) {
 	s.Wait(0)
 
 	// GetMeta
-	s.PushOp(agent.GetMetaEx(GetMetaOptions{
+	s.PushOp(agent.GetMeta(GetMetaOptions{
 		Key: []byte("test"),
 	}, func(res *GetMetaResult, err error) {
 		s.Wrap(func() {
@@ -1242,7 +1242,7 @@ func TestMetaOps(t *testing.T) {
 func TestPing(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.PingKvEx(PingKvOptions{}, func(res *PingKvResult, err error) {
+	s.PushOp(agent.PingKv(PingKvOptions{}, func(res *PingKvResult, err error) {
 		s.Wrap(func() {
 			if len(res.Services) == 0 {
 				s.Fatalf("Ping report contained no results")

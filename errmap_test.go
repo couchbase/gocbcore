@@ -106,7 +106,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	}))
 
 	strategy := &errMapTestRetryStrategy{}
-	h.PushOp(agent.GetEx(GetOptions{
+	h.PushOp(agent.Get(GetOptions{
 		Key:           []byte(testKey),
 		RetryStrategy: strategy,
 	}, func(res *GetResult, err error) {

@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -154,7 +153,7 @@ func (h *TestHarness) initDefaultAgent() error {
 
 	select {
 	case <-time.After(5 * time.Second):
-		op.Cancel(ErrTimeout)
+		op.Cancel()
 		return ErrTimeout
 	case <-ch:
 	}
@@ -190,7 +189,7 @@ func (h *TestHarness) initMemdAgent() error {
 
 	select {
 	case <-time.After(5 * time.Second):
-		op.Cancel(ErrTimeout)
+		op.Cancel()
 		return ErrTimeout
 	case <-ch:
 	}
@@ -369,7 +368,7 @@ func (h *TestSubHarness) Wait(waitSecs int) {
 			h.sigT.SkipNow()
 		}
 	case <-time.After(time.Duration(waitSecs) * time.Second):
-		h.sigOp.Cancel(errors.New("test timed out"))
+		h.sigOp.Cancel()
 		<-h.sigCh
 		h.sigT.FailNow()
 	}

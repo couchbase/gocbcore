@@ -9,7 +9,7 @@ type waitOp struct {
 	cancelCh chan struct{}
 }
 
-func (op *waitOp) Cancel(err error) {
+func (op *waitOp) Cancel() {
 	op.cancelCh <- struct{}{}
 }
 

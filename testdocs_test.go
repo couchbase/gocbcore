@@ -35,7 +35,7 @@ func (td *testDocs) upsert() {
 			return
 		}
 
-		td.agent.SetEx(SetOptions{
+		td.agent.Set(SetOptions{
 			Key:   []byte(testDocName),
 			Value: bytes,
 		}, func(res *StoreResult, err error) {
@@ -58,7 +58,7 @@ func (td *testDocs) Remove() {
 	for i := 1; i <= td.numDocs; i++ {
 		testDocName := fmt.Sprintf("%s-%d", td.testName, i)
 
-		td.agent.DeleteEx(DeleteOptions{
+		td.agent.Delete(DeleteOptions{
 			Key: []byte(testDocName),
 		}, func(res *DeleteResult, err error) {
 			waitCh <- err

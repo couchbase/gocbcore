@@ -25,13 +25,13 @@ type pingOp struct {
 	subops    []pingSubOp
 	remaining int32
 	results   []PingResult
-	callback  PingKvExCallback
+	callback  PingKvCallback
 	configRev int64
 }
 
-func (pop *pingOp) Cancel(err error) {
+func (pop *pingOp) Cancel() {
 	for _, subop := range pop.subops {
-		subop.op.Cancel(err)
+		subop.op.Cancel()
 	}
 }
 

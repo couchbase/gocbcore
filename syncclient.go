@@ -51,7 +51,7 @@ func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOu
 		return
 	case <-timeoutTmr.C:
 		ReleaseTimer(timeoutTmr, true)
-		qreq.Cancel(errAmbiguousTimeout)
+		qreq.cancelWithCallback(errAmbiguousTimeout)
 		<-signal
 		return
 	}

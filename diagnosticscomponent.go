@@ -18,7 +18,7 @@ func newDianosticsComponent(kvMux *kvMux, bucket string) *diagnosticsComponent {
 	}
 }
 
-func (dc *diagnosticsComponent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
+func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (PendingOp, error) {
 	clientMux := dc.kvMux.GetState()
 	if clientMux == nil {
 		return nil, errShutdown

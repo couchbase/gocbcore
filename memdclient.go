@@ -185,7 +185,7 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 	if !client.breaker.AllowsRequest() {
 		logSchedf("Circuit breaker interrupting request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
 
-		req.Cancel(errCircuitBreakerOpen)
+		req.cancelWithCallback(errCircuitBreakerOpen)
 
 		return nil
 	}
@@ -962,7 +962,7 @@ func (client *memdClient) doBootstrapRequest(req *memdPacket, deadline time.Time
 			return
 		case <-timeoutTmr.C:
 			ReleaseTimer(timeoutTmr, true)
-			qreq.Cancel(errAmbiguousTimeout)
+			qreq.cancelWithCallback(errAmbiguousTimeout)
 			<-signal
 			return
 		}

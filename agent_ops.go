@@ -1,160 +1,163 @@
 package gocbcore
 
-// GetExCallback is invoked upon completion of a GetEx operation.
-type GetExCallback func(*GetResult, error)
+// GetCallback is invoked upon completion of a Get operation.
+type GetCallback func(*GetResult, error)
 
-// GetEx retrieves a document.
-func (agent *Agent) GetEx(opts GetOptions, cb GetExCallback) (PendingOp, error) {
+// Get retrieves a document.
+func (agent *Agent) Get(opts GetOptions, cb GetCallback) (PendingOp, error) {
 	return agent.crud.Get(opts, cb)
 }
 
-// GetAndTouchExCallback is invoked upon completion of a GetAndTouchEx operation.
-type GetAndTouchExCallback func(*GetAndTouchResult, error)
+// GetAndTouchCallback is invoked upon completion of a GetAndTouch operation.
+type GetAndTouchCallback func(*GetAndTouchResult, error)
 
-// GetAndTouchEx retrieves a document and updates its expiry.
-func (agent *Agent) GetAndTouchEx(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
+// GetAndTouch retrieves a document and updates its expiry.
+func (agent *Agent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
 	return agent.crud.GetAndTouch(opts, cb)
 }
 
-// GetAndLockExCallback is invoked upon completion of a GetAndLockEx operation.
-type GetAndLockExCallback func(*GetAndLockResult, error)
+// GetAndLockCallback is invoked upon completion of a GetAndLock operation.
+type GetAndLockCallback func(*GetAndLockResult, error)
 
-// GetAndLockEx retrieves a document and locks it.
-func (agent *Agent) GetAndLockEx(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
+// GetAndLock retrieves a document and locks it.
+func (agent *Agent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
 	return agent.crud.GetAndLock(opts, cb)
 }
 
-// GetReplicaExCallback is invoked upon completion of a GetReplica operation.
-type GetReplicaExCallback func(*GetReplicaResult, error)
+// GetReplicaCallback is invoked upon completion of a GetReplica operation.
+type GetReplicaCallback func(*GetReplicaResult, error)
 
-// GetOneReplicaEx retrieves a document from a replica server.
-func (agent *Agent) GetOneReplicaEx(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
+// GetOneReplica retrieves a document from a replica server.
+func (agent *Agent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
 	return agent.crud.GetOneReplica(opts, cb)
 }
 
-// TouchExCallback is invoked upon completion of a TouchEx operation.
-type TouchExCallback func(*TouchResult, error)
+// TouchCallback is invoked upon completion of a Touch operation.
+type TouchCallback func(*TouchResult, error)
 
-// TouchEx updates the expiry for a document.
-func (agent *Agent) TouchEx(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
+// Touch updates the expiry for a document.
+func (agent *Agent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp, error) {
 	return agent.crud.Touch(opts, cb)
 }
 
-// UnlockExCallback is invoked upon completion of a UnlockEx operation.
-type UnlockExCallback func(*UnlockResult, error)
+// UnlockCallback is invoked upon completion of a Unlock operation.
+type UnlockCallback func(*UnlockResult, error)
 
-// UnlockEx unlocks a locked document.
-func (agent *Agent) UnlockEx(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
+// Unlock unlocks a locked document.
+func (agent *Agent) Unlock(opts UnlockOptions, cb UnlockCallback) (PendingOp, error) {
 	return agent.crud.Unlock(opts, cb)
 }
 
-// DeleteExCallback is invoked upon completion of a DeleteEx operation.
-type DeleteExCallback func(*DeleteResult, error)
+// DeleteCallback is invoked upon completion of a Delete operation.
+type DeleteCallback func(*DeleteResult, error)
 
-// DeleteEx removes a document.
-func (agent *Agent) DeleteEx(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
+// Delete removes a document.
+func (agent *Agent) Delete(opts DeleteOptions, cb DeleteCallback) (PendingOp, error) {
 	return agent.crud.Delete(opts, cb)
 }
 
-// StoreExCallback is invoked upon completion of a AddEx, SetEx or ReplaceEx operation.
-type StoreExCallback func(*StoreResult, error)
+// StoreCallback is invoked upon completion of a Add, Set or Replace operation.
+type StoreCallback func(*StoreResult, error)
 
-// AddEx stores a document as long as it does not already exist.
-func (agent *Agent) AddEx(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
+// Add stores a document as long as it does not already exist.
+func (agent *Agent) Add(opts AddOptions, cb StoreCallback) (PendingOp, error) {
 	return agent.crud.Add(opts, cb)
 }
 
-// SetEx stores a document.
-func (agent *Agent) SetEx(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
+// Set stores a document.
+func (agent *Agent) Set(opts SetOptions, cb StoreCallback) (PendingOp, error) {
 	return agent.crud.Set(opts, cb)
 }
 
-// ReplaceEx replaces the value of a Couchbase document with another value.
-func (agent *Agent) ReplaceEx(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
+// Replace replaces the value of a Couchbase document with another value.
+func (agent *Agent) Replace(opts ReplaceOptions, cb StoreCallback) (PendingOp, error) {
 	return agent.crud.Replace(opts, cb)
 }
 
-// AdjoinExCallback is invoked upon completion of a AppendEx or PrependEx operation.
-type AdjoinExCallback func(*AdjoinResult, error)
+// AdjoinCallback is invoked upon completion of a Append or Prepend operation.
+type AdjoinCallback func(*AdjoinResult, error)
 
-// AppendEx appends some bytes to a document.
-func (agent *Agent) AppendEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+// Append appends some bytes to a document.
+func (agent *Agent) Append(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
 	return agent.crud.Append(opts, cb)
 }
 
-// PrependEx prepends some bytes to a document.
-func (agent *Agent) PrependEx(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+// Prepend prepends some bytes to a document.
+func (agent *Agent) Prepend(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
 	return agent.crud.Prepend(opts, cb)
 }
 
-// CounterExCallback is invoked upon completion of a IncrementEx or DecrementEx operation.
-type CounterExCallback func(*CounterResult, error)
+// CounterCallback is invoked upon completion of a Increment or Decrement operation.
+type CounterCallback func(*CounterResult, error)
 
-// IncrementEx increments the unsigned integer value in a document.
-func (agent *Agent) IncrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+// Increment increments the unsigned integer value in a document.
+func (agent *Agent) Increment(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
 	return agent.crud.Increment(opts, cb)
 }
 
-// DecrementEx decrements the unsigned integer value in a document.
-func (agent *Agent) DecrementEx(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+// Decrement decrements the unsigned integer value in a document.
+func (agent *Agent) Decrement(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
 	return agent.crud.Decrement(opts, cb)
 }
 
-// GetRandomExCallback is invoked upon completion of a GetRandomEx operation.
-type GetRandomExCallback func(*GetRandomResult, error)
+// GetRandomCallback is invoked upon completion of a GetRandom operation.
+type GetRandomCallback func(*GetRandomResult, error)
 
-// GetRandomEx retrieves the key and value of a random document stored within Couchbase Server.
-func (agent *Agent) GetRandomEx(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
+// GetRandom retrieves the key and value of a random document stored within Couchbase Server.
+func (agent *Agent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
 	return agent.crud.GetRandom(opts, cb)
 }
 
-// GetMetaExCallback is invoked upon completion of a GetMetaEx operation.
-type GetMetaExCallback func(*GetMetaResult, error)
+// GetMetaCallback is invoked upon completion of a GetMeta operation.
+type GetMetaCallback func(*GetMetaResult, error)
 
-// GetMetaEx retrieves a document along with some internal Couchbase meta-data.
-func (agent *Agent) GetMetaEx(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
+// GetMeta retrieves a document along with some internal Couchbase meta-data.
+func (agent *Agent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
 	return agent.crud.GetMeta(opts, cb)
 }
 
-// SetMetaExCallback is invoked upon completion of a SetMetaEx operation.
-type SetMetaExCallback func(*SetMetaResult, error)
+// SetMetaCallback is invoked upon completion of a SetMeta operation.
+type SetMetaCallback func(*SetMetaResult, error)
 
-// SetMetaEx stores a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) SetMetaEx(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
+// SetMeta stores a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
 	return agent.crud.SetMeta(opts, cb)
 }
 
-// DeleteMetaExCallback is invoked upon completion of a DeleteMetaEx operation.
-type DeleteMetaExCallback func(*DeleteMetaResult, error)
+// DeleteMetaCallback is invoked upon completion of a DeleteMeta operation.
+type DeleteMetaCallback func(*DeleteMetaResult, error)
 
-// DeleteMetaEx deletes a document along with setting some internal Couchbase meta-data.
-func (agent *Agent) DeleteMetaEx(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
+// DeleteMeta deletes a document along with setting some internal Couchbase meta-data.
+func (agent *Agent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
 	return agent.crud.DeleteMeta(opts, cb)
 }
 
-// StatsEx retrieves statistics information from the server.  Note that as this
+// StatsCallback is invoked upon completion of a Stats operation.
+type StatsCallback func(*StatsResult, error)
+
+// Stats retrieves statistics information from the server.  Note that as this
 // function is an aggregator across numerous servers, there are no guarantees
 // about the consistency of the results.  Occasionally, some nodes may not be
 // represented in the results, or there may be conflicting information between
 // multiple nodes (a vbucket active on two separate nodes at once).
-func (agent *Agent) StatsEx(opts StatsOptions, cb StatsExCallback) (PendingOp, error) {
+func (agent *Agent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp, error) {
 	return agent.stats.Stats(opts, cb)
 }
 
-// ObserveExCallback is invoked upon completion of a ObserveEx operation.
-type ObserveExCallback func(*ObserveResult, error)
+// ObserveCallback is invoked upon completion of a Observe operation.
+type ObserveCallback func(*ObserveResult, error)
 
-// ObserveEx retrieves the current CAS and persistence state for a document.
-func (agent *Agent) ObserveEx(opts ObserveOptions, cb ObserveExCallback) (PendingOp, error) {
+// Observe retrieves the current CAS and persistence state for a document.
+func (agent *Agent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
 	return agent.crud.Observe(opts, cb)
 }
 
-// ObserveVbExCallback is invoked upon completion of a ObserveVbEx operation.
-type ObserveVbExCallback func(*ObserveVbResult, error)
+// ObserveVbCallback is invoked upon completion of a ObserveVb operation.
+type ObserveVbCallback func(*ObserveVbResult, error)
 
-// ObserveVbEx retrieves the persistence state sequence numbers for a particular VBucket
+// ObserveVb retrieves the persistence state sequence numbers for a particular VBucket
 // and includes additional details not included by the basic version.
-func (agent *Agent) ObserveVbEx(opts ObserveVbOptions, cb ObserveVbExCallback) (PendingOp, error) {
+func (agent *Agent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
 	return agent.crud.ObserveVb(opts, cb)
 }
 
@@ -167,34 +170,19 @@ type SubDocOp struct {
 	Value []byte
 }
 
-// LookupInExCallback is invoked upon completion of a LookupInEx operation.
-type LookupInExCallback func(*LookupInResult, error)
+// LookupInCallback is invoked upon completion of a LookupIn operation.
+type LookupInCallback func(*LookupInResult, error)
 
-type subdocOpList struct {
-	ops     []SubDocOp
-	indexes []int
-}
-
-func (sol *subdocOpList) Prepend(op SubDocOp, index int) {
-	sol.ops = append([]SubDocOp{op}, sol.ops...)
-	sol.indexes = append([]int{index}, sol.indexes...)
-}
-
-func (sol *subdocOpList) Append(op SubDocOp, index int) {
-	sol.ops = append(sol.ops, op)
-	sol.indexes = append(sol.indexes, index)
-}
-
-// LookupInEx performs a multiple-lookup sub-document operation on a document.
-func (agent *Agent) LookupInEx(opts LookupInOptions, cb LookupInExCallback) (PendingOp, error) {
+// LookupIn performs a multiple-lookup sub-document operation on a document.
+func (agent *Agent) LookupIn(opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
 	return agent.crud.LookupIn(opts, cb)
 }
 
-// MutateInExCallback is invoked upon completion of a MutateInEx operation.
-type MutateInExCallback func(*MutateInResult, error)
+// MutateInCallback is invoked upon completion of a MutateIn operation.
+type MutateInCallback func(*MutateInResult, error)
 
-// MutateInEx performs a multiple-mutation sub-document operation on a document.
-func (agent *Agent) MutateInEx(opts MutateInOptions, cb MutateInExCallback) (PendingOp, error) {
+// MutateIn performs a multiple-mutation sub-document operation on a document.
+func (agent *Agent) MutateIn(opts MutateInOptions, cb MutateInCallback) (PendingOp, error) {
 	return agent.crud.MutateIn(opts, cb)
 }
 
@@ -247,13 +235,13 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 	return agent.collections.GetCollectionID(scopeName, collectionName, opts, cb)
 }
 
-// PingKvExCallback is invoked upon completion of a PingKvEx operation.
-type PingKvExCallback func(*PingKvResult, error)
+// PingKvCallback is invoked upon completion of a PingKv operation.
+type PingKvCallback func(*PingKvResult, error)
 
-// PingKvEx pings all of the servers we are connected to and returns
+// PingKv pings all of the servers we are connected to and returns
 // a report regarding the pings that were performed.
-func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp, error) {
-	return agent.diagnostics.PingKvEx(opts, cb)
+func (agent *Agent) PingKv(opts PingKvOptions, cb PingKvCallback) (PendingOp, error) {
+	return agent.diagnostics.PingKv(opts, cb)
 }
 
 // Diagnostics returns diagnostics information about the client.

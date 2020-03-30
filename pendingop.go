@@ -7,7 +7,7 @@ import "sync/atomic"
 // This can also be used to Get information about the operation once
 // it has completed (cancelled or successful).
 type PendingOp interface {
-	Cancel(err error)
+	Cancel()
 }
 
 type multiPendingOp struct {
@@ -16,9 +16,9 @@ type multiPendingOp struct {
 	isIdempotent bool
 }
 
-func (mp *multiPendingOp) Cancel(err error) {
+func (mp *multiPendingOp) Cancel() {
 	for _, op := range mp.ops {
-		op.Cancel(err)
+		op.Cancel()
 	}
 }
 

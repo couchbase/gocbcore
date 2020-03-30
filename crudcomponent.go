@@ -22,8 +22,8 @@ func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetrySt
 	}
 }
 
-func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetEx", opts.TraceContext)
+func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("Get", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -72,15 +72,15 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetExCallback) (PendingOp, er
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errUnambiguousTimeout)
+			req.cancelWithCallback(errUnambiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetAndTouchEx", opts.TraceContext)
+func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetAndTouch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -133,15 +133,15 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchEx
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetAndLockEx", opts.TraceContext)
+func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetAndLock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -194,15 +194,15 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockExCal
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetOneReplicaEx", opts.TraceContext)
+func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetOneReplica", opts.TraceContext)
 
 	if opts.ReplicaIdx <= 0 {
 		tracer.Finish()
@@ -255,15 +255,15 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errUnambiguousTimeout)
+			req.cancelWithCallback(errUnambiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Touch(opts TouchOptions, cb TouchExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("TouchEx", opts.TraceContext)
+func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("Touch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -316,15 +316,15 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchExCallback) (Pending
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("UnlockEx", opts.TraceContext)
+func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("Unlock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -371,15 +371,15 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockExCallback) (Pend
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("DeleteEx", opts.TraceContext)
+func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("Delete", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -439,14 +439,14 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteExCallback) (Pend
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOptions, cb StoreExCallback) (PendingOp, error) {
+func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -510,15 +510,15 @@ func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOp
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Set(opts SetOptions, cb StoreExCallback) (PendingOp, error) {
-	return crud.store("SetEx", cmdSet, storeOptions{
+func (crud *crudComponent) Set(opts SetOptions, cb StoreCallback) (PendingOp, error) {
+	return crud.store("Set", cmdSet, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -536,8 +536,8 @@ func (crud *crudComponent) Set(opts SetOptions, cb StoreExCallback) (PendingOp, 
 	}, cb)
 }
 
-func (crud *crudComponent) Add(opts AddOptions, cb StoreExCallback) (PendingOp, error) {
-	return crud.store("AddEx", cmdAdd, storeOptions{
+func (crud *crudComponent) Add(opts AddOptions, cb StoreCallback) (PendingOp, error) {
+	return crud.store("Add", cmdAdd, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -555,8 +555,8 @@ func (crud *crudComponent) Add(opts AddOptions, cb StoreExCallback) (PendingOp, 
 	}, cb)
 }
 
-func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreExCallback) (PendingOp, error) {
-	return crud.store("ReplaceEx", cmdReplace, storeOptions{
+func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (PendingOp, error) {
+	return crud.store("Replace", cmdReplace, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -574,7 +574,7 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreExCallback) (Pen
 	}, cb)
 }
 
-func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
+func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -635,22 +635,22 @@ func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts Adjoin
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Append(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	return crud.adjoin("AppendEx", cmdAppend, opts, cb)
+func (crud *crudComponent) Append(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
+	return crud.adjoin("Append", cmdAppend, opts, cb)
 }
 
-func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinExCallback) (PendingOp, error) {
-	return crud.adjoin("PrependEx", cmdPrepend, opts, cb)
+func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
+	return crud.adjoin("Prepend", cmdPrepend, opts, cb)
 }
 
-func (crud *crudComponent) counter(opName string, opcode commandCode, opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
+func (crud *crudComponent) counter(opName string, opcode commandCode, opts CounterOptions, cb CounterCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -734,23 +734,23 @@ func (crud *crudComponent) counter(opName string, opcode commandCode, opts Count
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) Increment(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	return crud.counter("IncrementEx", cmdIncrement, opts, cb)
+func (crud *crudComponent) Increment(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
+	return crud.counter("Increment", cmdIncrement, opts, cb)
 }
 
-func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterExCallback) (PendingOp, error) {
-	return crud.counter("DecrementEx", cmdDecrement, opts, cb)
+func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
+	return crud.counter("Decrement", cmdDecrement, opts, cb)
 }
 
-func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetRandomEx", opts.TraceContext)
+func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetRandom", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -798,15 +798,15 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomExCallba
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errUnambiguousTimeout)
+			req.cancelWithCallback(errUnambiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
+func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -866,15 +866,15 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaExCallback) (P
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errUnambiguousTimeout)
+			req.cancelWithCallback(errUnambiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
+func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -930,15 +930,15 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaExCallback) (P
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaExCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMetaEx", nil)
+func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
+	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -994,7 +994,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaExCal
 
 	if !opts.Deadline.IsZero() {
 		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.Cancel(errAmbiguousTimeout)
+			req.cancelWithCallback(errAmbiguousTimeout)
 		})
 	}
 

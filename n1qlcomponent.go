@@ -184,10 +184,10 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 0 &&
 		cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
 		// Once supported this can't be unsupported
-		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 		nqc.cacheLock.Lock()
 		nqc.queryCache = make(map[string]*n1qlQueryCacheEntry)
 		nqc.cacheLock.Unlock()
+		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 	}
 }
 
@@ -217,7 +217,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 		RootTraceContext: tracer.RootContext(),
 	}
 
-	return nqc.execute(statement, ireq, payloadMap)
+	return nqc.execute(ireq, payloadMap, statement)
 }
 
 // PreparedN1QLQuery executes a prepared N1QL query
@@ -264,7 +264,7 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 			RootTraceContext: tracer.RootContext(),
 		}
 
-		results, err := nqc.execute("", ireq, payloadMap)
+		results, err := nqc.execute(ireq, payloadMap, statement)
 		if err == nil {
 			return results, nil
 		}
@@ -286,7 +286,7 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 		RootTraceContext: tracer.RootContext(),
 	}
 
-	results, err := nqc.execute("", ireq, payloadMap)
+	results, err := nqc.execute(ireq, payloadMap, statement)
 	if err != nil {
 		return nil, err
 	}
@@ -340,10 +340,11 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 			RootTraceContext: tracer.RootContext(),
 		}
 
-		results, err := nqc.execute("", ireq, payloadMap)
+		results, err := nqc.execute(ireq, payloadMap, statement)
 		if err == nil {
 			return results, nil
 		}
+
 		// if we fail to send the prepared statement name then retry a PREPARE.
 	}
 
@@ -364,7 +365,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 		RootTraceContext: tracer.RootContext(),
 	}
 
-	cacheRes, err := nqc.execute(prepStatement, ireq, payloadMap)
+	cacheRes, err := nqc.execute(ireq, payloadMap, statement)
 	if err != nil {
 		return nil, err
 	}
@@ -393,10 +394,10 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 	payloadMap["prepared"] = cachedStmt.name
 	payloadMap["encoded_plan"] = cachedStmt.encodedPlan
 
-	return nqc.execute(cachedStmt.encodedPlan, ireq, payloadMap)
+	return nqc.execute(ireq, payloadMap, statement)
 }
 
-func (nqc *n1qlQueryComponent) execute(statement string, ireq *httpRequest, payloadMap map[string]interface{}) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string) (*N1QLRowReader, error) {
 ExecuteLoop:
 	for {
 		{ // Produce an updated payload with the appropriate timeout
@@ -414,11 +415,11 @@ ExecuteLoop:
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
-			return nil, wrapN1QLError(ireq, statement, err)
+			return nil, wrapN1QLError(ireq, statementForErr, err)
 		}
 
 		if resp.StatusCode != 200 {
-			n1qlErr := parseN1QLError(ireq, statement, resp)
+			n1qlErr := parseN1QLError(ireq, statementForErr, resp)
 
 			var retryReason RetryReason
 			if len(n1qlErr.Errors) >= 1 {
@@ -450,13 +451,13 @@ ExecuteLoop:
 			case <-time.After(retryTime.Sub(time.Now())):
 				continue ExecuteLoop
 			case <-time.After(ireq.Deadline.Sub(time.Now())):
-				return nil, wrapN1QLError(ireq, statement, errUnambiguousTimeout)
+				return nil, wrapN1QLError(ireq, statementForErr, errUnambiguousTimeout)
 			}
 		}
 
 		streamer, err := newQueryStreamer(resp.Body, "results")
 		if err != nil {
-			return nil, wrapN1QLError(ireq, statement, err)
+			return nil, wrapN1QLError(ireq, statementForErr, err)
 		}
 
 		return &N1QLRowReader{
