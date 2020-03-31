@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/couchbase/gocbcore/v8/memd"
+
 	"github.com/couchbaselabs/gojcbmock"
 )
 
@@ -70,7 +72,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 				h.Fatalf("error should have a description")
 			}
 
-			if typedErr.StatusCode != StatusKeyNotFound {
+			if typedErr.StatusCode != memd.StatusKeyNotFound {
 				h.Fatalf("status code should have been StatusKeyNotFound")
 			}
 

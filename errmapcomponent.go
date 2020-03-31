@@ -1,6 +1,10 @@
 package gocbcore
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/couchbase/gocbcore/v8/memd"
+)
 
 type errMapComponent struct {
 	kvErrorMap kvErrorMapPtr
@@ -13,7 +17,7 @@ func newErrMapManager(bucketName string) *errMapComponent {
 	}
 }
 
-func (errMgr *errMapComponent) getKvErrMapData(code StatusCode) *kvErrorMapError {
+func (errMgr *errMapComponent) getKvErrMapData(code memd.StatusCode) *kvErrorMapError {
 	errMap := errMgr.kvErrorMap.Get()
 	if errMap != nil {
 		if errData, ok := errMap.Errors[uint16(code)]; ok {
@@ -46,7 +50,7 @@ func (errMgr *errMapComponent) StoreErrorMap(mapBytes []byte) {
 	}
 }
 
-func (errMgr *errMapComponent) ShouldRetry(status StatusCode) bool {
+func (errMgr *errMapComponent) ShouldRetry(status memd.StatusCode) bool {
 	kvErrData := errMgr.getKvErrMapData(status)
 	if kvErrData != nil {
 		for _, attr := range kvErrData.Attributes {
@@ -87,7 +91,7 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 			enhErr.ErrorDescription = errMapData.Description
 		}
 
-		if DatatypeFlag(resp.Datatype)&DatatypeFlagJSON != 0 {
+		if memd.DatatypeFlag(resp.Datatype)&memd.DatatypeFlagJSON != 0 {
 			var enhancedData struct {
 				Error struct {
 					Context string `json:"context"`
@@ -104,7 +108,7 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 	return enhErr
 }
 
-func (errMgr *errMapComponent) MakeSubDocError(index int, code StatusCode, req *memdQRequest, resp *memdQResponse) error {
+func (errMgr *errMapComponent) MakeSubDocError(index int, code memd.StatusCode, req *memdQRequest, resp *memdQResponse) error {
 	err := getKvStatusCodeError(code)
 	err = translateMemdError(err, req)
 	err = errMgr.EnhanceKvError(err, resp, req)
@@ -130,7 +134,7 @@ func translateMemdError(err error, req *memdQRequest) error {
 	case ErrMemdBusy:
 		return errTemporaryFailure
 	case ErrMemdKeyExists:
-		if req.Opcode == cmdReplace || (req.Opcode == cmdDelete && req.Cas != 0) {
+		if req.Command == memd.CmdReplace || (req.Command == memd.CmdDelete && req.Cas != 0) {
 			return errCasMismatch
 		}
 		return errDocumentExists
@@ -146,7 +150,7 @@ func translateMemdError(err error, req *memdQRequest) error {
 	case ErrMemdLocked:
 		// BUGFIX(brett19): This resolves a bug in the server processing of the LOCKED
 		// operation where the server will respond with LOCKED rather than a CAS mismatch.
-		if req.Opcode == cmdUnlockKey {
+		if req.Command == memd.CmdUnlockKey {
 			return errCasMismatch
 		}
 		return errDocumentLocked

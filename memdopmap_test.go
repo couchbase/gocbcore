@@ -1,19 +1,23 @@
 package gocbcore
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/couchbase/gocbcore/v8/memd"
+)
 
 func TestOpMap(t *testing.T) {
 	var rd memdOpMap
 
 	testOp1 := &memdQRequest{
-		memdPacket: memdPacket{},
+		Packet: memd.Packet{},
 	}
 	testOp2 := &memdQRequest{
-		memdPacket: memdPacket{},
+		Packet: memd.Packet{},
 	}
 
 	testOp3 := &memdQRequest{
-		memdPacket: memdPacket{},
+		Packet:     memd.Packet{},
 		Persistent: true,
 	}
 

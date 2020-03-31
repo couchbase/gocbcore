@@ -10,20 +10,22 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/couchbase/gocbcore/v8/memd"
+
 	"github.com/golang/snappy"
 )
 
-func isCompressibleOp(command commandCode) bool {
+func isCompressibleOp(command memd.CmdCode) bool {
 	switch command {
-	case cmdSet:
+	case memd.CmdSet:
 		fallthrough
-	case cmdAdd:
+	case memd.CmdAdd:
 		fallthrough
-	case cmdReplace:
+	case memd.CmdReplace:
 		fallthrough
-	case cmdAppend:
+	case memd.CmdAppend:
 		fallthrough
-	case cmdPrepend:
+	case memd.CmdPrepend:
 		return true
 	}
 	return false
@@ -40,7 +42,7 @@ type memdClient struct {
 	closed                bool
 	conn                  memdConn
 	opList                memdOpMap
-	features              []HelloFeature
+	features              []memd.HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
 	breaker               circuitBreaker
@@ -70,12 +72,12 @@ type memdClientProps struct {
 func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
 	tracer *tracerComponent, zombieLogger *zombieLoggerComponent) *memdClient {
 	client := memdClient{
-		conn:           conn,
 		closeNotify:    make(chan bool),
 		connID:         props.ClientID + "/" + formatCbUID(randomCbUID()),
 		postErrHandler: postErrHandler,
 		tracer:         tracer,
 		zombieLogger:   zombieLogger,
+		conn:           conn,
 
 		compressionMinRatio:  props.CompressionMinRatio,
 		compressionMinSize:   props.CompressionMinSize,
@@ -92,7 +94,7 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 	return &client
 }
 
-func (client *memdClient) SupportsFeature(feature HelloFeature) bool {
+func (client *memdClient) SupportsFeature(feature memd.HelloFeature) bool {
 	return checkSupportsFeature(client.features, feature)
 }
 
@@ -111,10 +113,10 @@ func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 	extrasBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extrasBuf, uint32(ackAmt))
 
-	err := client.conn.WritePacket(&memdPacket{
-		Magic:  reqMagic,
-		Opcode: cmdDcpBufferAck,
-		Extras: extrasBuf,
+	err := client.conn.WritePacket(&memd.Packet{
+		Magic:   memd.CmdMagicReq,
+		Command: memd.CmdDcpBufferAck,
+		Extras:  extrasBuf,
 	})
 	if err != nil {
 		logWarnf("Failed to dispatch DCP buffer ack: %s", err)
@@ -151,7 +153,7 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
 	}
 
 	req.lastDispatchedTo = client.Address()
-	req.lastDispatchedFrom = client.LocalAddress()
+	req.lastDispatchedFrom = client.conn.LocalAddr()
 	req.lastConnectionID = client.connID
 
 	client.opList.Add(req)
@@ -183,7 +185,7 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 
 func (client *memdClient) SendRequest(req *memdQRequest) error {
 	if !client.breaker.AllowsRequest() {
-		logSchedf("Circuit breaker interrupting request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
+		logSchedf("Circuit breaker interrupting request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Command, req.Opaque)
 
 		req.cancelWithCallback(errCircuitBreakerOpen)
 
@@ -199,22 +201,22 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 		return errRequestCanceled
 	}
 
-	packet := &req.memdPacket
-	if client.SupportsFeature(FeatureSnappy) {
-		isCompressed := (packet.Datatype & uint8(DatatypeFlagCompressed)) != 0
+	packet := &req.Packet
+	if client.SupportsFeature(memd.FeatureSnappy) {
+		isCompressed := (packet.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
 		packetSize := len(packet.Value)
-		if !isCompressed && packetSize > client.compressionMinSize && isCompressibleOp(packet.Opcode) {
+		if !isCompressed && packetSize > client.compressionMinSize && isCompressibleOp(packet.Command) {
 			compressedValue := snappy.Encode(nil, packet.Value)
 			if float64(len(compressedValue))/float64(packetSize) <= client.compressionMinRatio {
 				newPacket := *packet
 				newPacket.Value = compressedValue
-				newPacket.Datatype = newPacket.Datatype | uint8(DatatypeFlagCompressed)
+				newPacket.Datatype = newPacket.Datatype | uint8(memd.DatatypeFlagCompressed)
 				packet = &newPacket
 			}
 		}
 	}
 
-	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Opcode, req.Opaque)
+	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Command, req.Opaque)
 
 	client.tracer.StartNetTrace(req)
 
@@ -231,12 +233,12 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	opIndex := resp.Opaque
 
-	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Opcode, resp.Opaque, resp.Status)
+	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Command, resp.Opaque, resp.Status)
 
 	client.lock.Lock()
 	// Find the request that goes with this response, don't check if the client is
 	// closed so that we can handle orphaned responses.
-	req := client.opList.FindAndMaybeRemove(opIndex, resp.Status != StatusSuccess)
+	req := client.opList.FindAndMaybeRemove(opIndex, resp.Status != memd.StatusSuccess)
 	client.lock.Unlock()
 
 	if req == nil {
@@ -261,7 +263,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
 	}
 
-	isCompressed := (resp.Datatype & uint8(DatatypeFlagCompressed)) != 0
+	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
 	if isCompressed && !client.disableDecompression {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
@@ -271,12 +273,12 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 
 		resp.Value = newValue
-		resp.Datatype = resp.Datatype & ^uint8(DatatypeFlagCompressed)
+		resp.Datatype = resp.Datatype & ^uint8(memd.DatatypeFlagCompressed)
 	}
 
 	// Give the agent an opportunity to intercept the response first
 	var err error
-	if resp.Magic == resMagic && resp.Status != StatusSuccess {
+	if resp.Magic == memd.CmdMagicRes && resp.Status != memd.StatusSuccess {
 		err = getKvStatusCodeError(resp.Status)
 	}
 
@@ -302,7 +304,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	// Call the requests callback handler...
-	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
+	logSchedf("Dispatching response callback. OP=0x%x. Opaque=%d", resp.Command, resp.Opaque)
 	req.tryCallback(resp, err)
 }
 
@@ -319,7 +321,7 @@ func (client *memdClient) run() {
 					return
 				}
 
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Opcode, q.resp.Opaque)
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
 				client.resolveRequest(q.resp)
 
 				// See below for information on why this is here.
@@ -336,12 +338,7 @@ func (client *memdClient) run() {
 
 	go func() {
 		for {
-			resp := &memdQResponse{
-				sourceAddr:   client.conn.RemoteAddr(),
-				sourceConnID: client.connID,
-			}
-
-			n, err := client.conn.ReadPacket(&resp.memdPacket)
+			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
 				if !client.closed {
 					logErrorf("memdClient read failure: %v", err)
@@ -349,14 +346,20 @@ func (client *memdClient) run() {
 				break
 			}
 
+			resp := &memdQResponse{
+				sourceAddr:   client.conn.RemoteAddr(),
+				sourceConnID: client.connID,
+				Packet:       *packet,
+			}
+
 			atomic.StoreInt64(&client.lastActivity, time.Now().UnixNano())
 
 			// We handle DCP no-op's directly here so we can reply immediately.
-			if resp.memdPacket.Opcode == cmdDcpNoop {
-				err := client.conn.WritePacket(&memdPacket{
-					Magic:  resMagic,
-					Opcode: cmdDcpNoop,
-					Opaque: resp.Opaque,
+			if resp.Packet.Command == memd.CmdDcpNoop {
+				err := client.conn.WritePacket(&memd.Packet{
+					Magic:   memd.CmdMagicRes,
+					Command: memd.CmdDcpNoop,
+					Opaque:  resp.Opaque,
 				})
 				if err != nil {
 					logWarnf("Failed to dispatch DCP noop reply: %s", err)
@@ -368,18 +371,18 @@ func (client *memdClient) run() {
 			// bug causes the server to fail to send a stream-end notification.  The server
 			// does however synchronously stop the stream, and thus we can assume no more
 			// packets will be received following the close response.
-			if resp.Magic == resMagic && resp.Opcode == cmdDcpCloseStream && client.streamEndNotSupported {
+			if resp.Magic == memd.CmdMagicRes && resp.Command == memd.CmdDcpCloseStream && client.streamEndNotSupported {
 				closeReq := client.opList.Find(resp.Opaque)
 				if closeReq != nil {
 					vbID := closeReq.Vbucket
 					streamReq := client.opList.FindOpenStream(vbID)
 					if streamReq != nil {
 						endExtras := make([]byte, 4)
-						binary.BigEndian.PutUint32(endExtras, uint32(streamEndClosed))
+						binary.BigEndian.PutUint32(endExtras, uint32(memd.StreamEndClosed))
 						endResp := &memdQResponse{
-							memdPacket: memdPacket{
-								Magic:   reqMagic,
-								Opcode:  cmdDcpStreamEnd,
+							Packet: memd.Packet{
+								Magic:   memd.CmdMagicReq,
+								Command: memd.CmdDcpStreamEnd,
 								Vbucket: vbID,
 								Opaque:  streamReq.Opaque,
 								Extras:  endExtras,
@@ -394,25 +397,25 @@ func (client *memdClient) run() {
 				}
 			}
 
-			switch resp.memdPacket.Opcode {
-			case cmdDcpDeletion:
+			switch resp.Packet.Command {
+			case memd.CmdDcpDeletion:
 				fallthrough
-			case cmdDcpExpiration:
+			case memd.CmdDcpExpiration:
 				fallthrough
-			case cmdDcpMutation:
+			case memd.CmdDcpMutation:
 				fallthrough
-			case cmdDcpSnapshotMarker:
+			case memd.CmdDcpSnapshotMarker:
 				fallthrough
-			case cmdDcpEvent:
+			case memd.CmdDcpEvent:
 				fallthrough
-			case cmdDcpStreamEnd:
+			case memd.CmdDcpStreamEnd:
 				dcpBufferQ <- &dcpBuffer{
 					resp:      resp,
 					packetLen: int(n),
 				}
 				continue
 			default:
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Opcode, resp.Opaque)
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Command, resp.Opaque)
 				client.resolveRequest(resp)
 			}
 		}
@@ -470,9 +473,9 @@ func (client *memdClient) sendCanary() {
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdNoop,
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdNoop,
 			Datatype: 0,
 			Cas:      0,
 			Key:      nil,
@@ -511,44 +514,44 @@ func (client *memdClient) sendCanary() {
 	}
 }
 
-func (client *memdClient) helloFeatures(props helloProps) []HelloFeature {
-	var features []HelloFeature
+func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
+	var features []memd.HelloFeature
 
 	// Send the TLS flag, which has unknown effects.
-	features = append(features, FeatureTLS)
+	features = append(features, memd.FeatureTLS)
 
 	// Indicate that we understand XATTRs
-	features = append(features, FeatureXattr)
+	features = append(features, memd.FeatureXattr)
 
 	// Indicates that we understand select buckets.
-	features = append(features, FeatureSelectBucket)
+	features = append(features, memd.FeatureSelectBucket)
 
 	// If the user wants to use KV Error maps, lets enable them
-	features = append(features, FeatureXerror)
+	features = append(features, memd.FeatureXerror)
 
 	// If the user wants to use mutation tokens, lets enable them
 	if props.MutationTokensEnabled {
-		features = append(features, FeatureSeqNo)
+		features = append(features, memd.FeatureSeqNo)
 	}
 
 	// If the user wants on-the-wire compression, lets try to enable it
 	if props.CompressionEnabled {
-		features = append(features, FeatureSnappy)
+		features = append(features, memd.FeatureSnappy)
 	}
 
 	if props.DurationsEnabled {
-		features = append(features, FeatureDurations)
+		features = append(features, memd.FeatureDurations)
 	}
 
 	if props.CollectionsEnabled {
-		features = append(features, FeatureCollections)
+		features = append(features, memd.FeatureCollections)
 	}
 
 	// These flags are informational so don't actually enable anything
 	// but the enhanced durability flag tells us if the server supports
 	// the feature
-	features = append(features, FeatureAltRequests)
-	features = append(features, FeatureEnhancedDurability)
+	features = append(features, memd.FeatureAltRequests)
+	features = append(features, memd.FeatureSyncReplication)
 
 	return features
 }
@@ -725,13 +728,8 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 	logDebugf("Client Features: %+v", features)
 	logDebugf("Server Features: %+v", client.features)
 
-	collectionsSupported := client.SupportsFeature(FeatureCollections)
-	if collectionsSupported {
-		client.conn.EnableCollections(true)
-	}
-
-	if client.SupportsFeature(FeatureDurations) {
-		client.conn.EnableFramingExtras(true)
+	for _, feature := range client.features {
+		client.conn.EnableFeature(feature)
 	}
 
 	err = cb(client, deadline)
@@ -750,11 +748,11 @@ type BytesAndError struct {
 
 func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
 	err := client.doBootstrapRequest(
-		&memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdSASLAuth,
-			Key:    k,
-			Value:  v,
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdSASLAuth,
+			Key:     k,
+			Value:   v,
 		},
 		deadline,
 		cb,
@@ -768,11 +766,11 @@ func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []
 
 func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
 	err := client.doBootstrapRequest(
-		&memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdSASLStep,
-			Key:    k,
-			Value:  v,
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdSASLStep,
+			Key:     k,
+			Value:   v,
 		},
 		deadline,
 		func(b []byte, err error) {
@@ -794,10 +792,10 @@ func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err 
 func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
 	completedCh := make(chan BytesAndError, 1)
 	err := client.doBootstrapRequest(
-		&memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdSelectBucket,
-			Key:    b,
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdSelectBucket,
+			Key:     b,
 		},
 		deadline,
 		func(b []byte, err error) {
@@ -825,11 +823,12 @@ func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 	valueBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(valueBuf, version)
 
-	err := client.doBootstrapRequest(&memdPacket{
-		Magic:  reqMagic,
-		Opcode: cmdGetErrorMap,
-		Value:  valueBuf,
-	},
+	err := client.doBootstrapRequest(
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdGetErrorMap,
+			Value:   valueBuf,
+		},
 		deadline,
 		func(b []byte, err error) {
 			if err != nil {
@@ -853,9 +852,9 @@ func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 
 func (client *memdClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
 	err := client.doBootstrapRequest(
-		&memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdSASLListMechs,
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdSASLListMechs,
 		},
 		deadline,
 		func(b []byte, err error) {
@@ -882,12 +881,12 @@ func (client *memdClient) SaslListMechs(deadline time.Time, cb func(mechs []Auth
 
 // ExecHelloResponse contains the features and/or error from an ExecHello operation.
 type ExecHelloResponse struct {
-	SrvFeatures []HelloFeature
+	SrvFeatures []memd.HelloFeature
 	Err         error
 }
 
-func (client *memdClient) ExecHello(clientID string, features []HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
-	appendFeatureCode := func(bytes []byte, feature HelloFeature) []byte {
+func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
+	appendFeatureCode := func(bytes []byte, feature memd.HelloFeature) []byte {
 		bytes = append(bytes, 0, 0)
 		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
 		return bytes
@@ -900,11 +899,11 @@ func (client *memdClient) ExecHello(clientID string, features []HelloFeature, de
 
 	completedCh := make(chan ExecHelloResponse)
 	err := client.doBootstrapRequest(
-		&memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdHello,
-			Key:    []byte(clientID),
-			Value:  featureBytes,
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdHello,
+			Key:     []byte(clientID),
+			Value:   featureBytes,
 		},
 		deadline,
 		func(b []byte, err error) {
@@ -915,10 +914,10 @@ func (client *memdClient) ExecHello(clientID string, features []HelloFeature, de
 				return
 			}
 
-			var srvFeatures []HelloFeature
+			var srvFeatures []memd.HelloFeature
 			for i := 0; i < len(b); i += 2 {
 				feature := binary.BigEndian.Uint16(b[i:])
-				srvFeatures = append(srvFeatures, HelloFeature(feature))
+				srvFeatures = append(srvFeatures, memd.HelloFeature(feature))
 			}
 
 			completedCh <- ExecHelloResponse{
@@ -933,14 +932,14 @@ func (client *memdClient) ExecHello(clientID string, features []HelloFeature, de
 	return completedCh, nil
 }
 
-func (client *memdClient) doBootstrapRequest(req *memdPacket, deadline time.Time, cb func(b []byte, err error)) error {
+func (client *memdClient) doBootstrapRequest(req *memd.Packet, deadline time.Time, cb func(b []byte, err error)) error {
 	signal := make(chan BytesAndError)
 	qreq := memdQRequest{
-		memdPacket: *req,
+		Packet: *req,
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			signalResp := BytesAndError{}
 			if resp != nil {
-				signalResp.Bytes = resp.memdPacket.Value
+				signalResp.Bytes = resp.Packet.Value
 			}
 			signalResp.Err = err
 			signal <- signalResp
@@ -997,7 +996,7 @@ func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh ch
 	return selectCh
 }
 
-func checkSupportsFeature(srvFeatures []HelloFeature, feature HelloFeature) bool {
+func checkSupportsFeature(srvFeatures []memd.HelloFeature, feature memd.HelloFeature) bool {
 	for _, srvFeature := range srvFeatures {
 		if srvFeature == feature {
 			return true

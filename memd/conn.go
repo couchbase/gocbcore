@@ -273,7 +273,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 }
 
 // ReadPacket reads a packet from the network.
-func (c *Conn) ReadPacket() (*Packet, error) {
+func (c *Conn) ReadPacket() (*Packet, int32, error) {
 	var pkt Packet
 
 	// We use a single byte blob to read all headers to avoid allocating a bunch
@@ -283,7 +283,7 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 	// Read the entire 24-byte header first
 	_, err := io.ReadFull(c.stream, headerBuf)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Grab the length of the full body
@@ -293,7 +293,7 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 	bodyBuf := make([]byte, bodyLen)
 	_, err = io.ReadFull(c.stream, bodyBuf)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	pktMagic := CmdMagic(headerBuf[0])
@@ -315,7 +315,7 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 	} else if pktMagic == CmdMagicRes || pktMagic == cmdMagicResExt {
 		pkt.Status = StatusCode(binary.BigEndian.Uint16(headerBuf[6:]))
 	} else {
-		return nil, errors.New("cannot decode status/vbucket for unknown packet magic")
+		return nil, 0, errors.New("cannot decode status/vbucket for unknown packet magic")
 	}
 
 	extLen := int(headerBuf[4])
@@ -401,7 +401,7 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 					})
 				}
 			} else {
-				return nil, errors.New("got unexpected magic when decoding frames")
+				return nil, 0, errors.New("got unexpected magic when decoding frames")
 			}
 		}
 
@@ -418,13 +418,13 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 			// While it's possible that the Observe operation is in fact supported with collections
 			// enabled, we don't currently implement that operation for simplicity, as the key is
 			// actually hidden away in the value data instead of the usual key data.
-			return nil, errors.New("the observe operation is not supported with collections enabled")
+			return nil, 0, errors.New("the observe operation is not supported with collections enabled")
 		}
 
 		if IsCommandCollectionEncoded(pkt.Command) {
 			collectionID, idLen, err := DecodeULEB128_32(keyVal)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 
 			keyVal = keyVal[idLen:]
@@ -435,5 +435,5 @@ func (c *Conn) ReadPacket() (*Packet, error) {
 
 	pkt.Value = bodyBuf[bodyPos:]
 
-	return &pkt, nil
+	return &pkt, 24 + int32(bodyLen), nil
 }

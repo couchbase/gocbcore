@@ -109,7 +109,7 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	}
 
 	req.processingLock.Lock()
-	req.cmdTraceSpan = tc.tracer.StartSpan(getCommandName(req.memdPacket.Opcode), req.RootTraceContext).
+	req.cmdTraceSpan = tc.tracer.StartSpan(req.Packet.Command.Name(), req.RootTraceContext).
 		SetTag("retry", req.RetryAttempts())
 
 	req.processingLock.Unlock()
@@ -172,8 +172,8 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 	}
 	req.netTraceSpan.SetTag("local.address", localAddress)
 	req.netTraceSpan.SetTag("peer.address", remoteAddress)
-	if resp.FrameExtras != nil && resp.FrameExtras.HasSrvDuration {
-		req.netTraceSpan.SetTag("server_duration", resp.FrameExtras.SrvDuration)
+	if resp.Packet.ServerDurationFrame != nil {
+		req.netTraceSpan.SetTag("server_duration", resp.Packet.ServerDurationFrame.ServerDuration)
 	}
 
 	req.netTraceSpan.Finish()

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type diagnosticsComponent struct {
@@ -64,9 +66,9 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 		serverAddress := pipeline.Address()
 
 		req := &memdQRequest{
-			memdPacket: memdPacket{
-				Magic:    reqMagic,
-				Opcode:   cmdNoop,
+			Packet: memd.Packet{
+				Magic:    memd.CmdMagicReq,
+				Command:  memd.CmdNoop,
 				Datatype: 0,
 				Cas:      0,
 				Key:      nil,

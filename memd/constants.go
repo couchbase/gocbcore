@@ -1,5 +1,7 @@
 package memd
 
+import "fmt"
+
 // CmdMagic represents the magic number that begins the header
 // of every packet and informs the rest of the header format.
 type CmdMagic uint8
@@ -28,76 +30,6 @@ const (
 	frameTypeReqStreamID       = frameType(2)
 	frameTypeReqOpenTracing    = frameType(3)
 	frameTypeResSrvDuration    = frameType(0)
-)
-
-// CmdCode represents the specific command the packet is performing.
-type CmdCode uint8
-
-// These constants provide predefined values for all the operations
-// which are supported by this library.
-const (
-	CmdGet                    = CmdCode(0x00)
-	CmdSet                    = CmdCode(0x01)
-	CmdAdd                    = CmdCode(0x02)
-	CmdReplace                = CmdCode(0x03)
-	CmdDelete                 = CmdCode(0x04)
-	CmdIncrement              = CmdCode(0x05)
-	CmdDecrement              = CmdCode(0x06)
-	CmdNoop                   = CmdCode(0x0a)
-	CmdAppend                 = CmdCode(0x0e)
-	CmdPrepend                = CmdCode(0x0f)
-	CmdStat                   = CmdCode(0x10)
-	CmdTouch                  = CmdCode(0x1c)
-	CmdGAT                    = CmdCode(0x1d)
-	CmdHello                  = CmdCode(0x1f)
-	CmdSASLListMechs          = CmdCode(0x20)
-	CmdSASLAuth               = CmdCode(0x21)
-	CmdSASLStep               = CmdCode(0x22)
-	CmdGetAllVBSeqnos         = CmdCode(0x48)
-	CmdDcpOpenConnection      = CmdCode(0x50)
-	CmdDcpAddStream           = CmdCode(0x51)
-	CmdDcpCloseStream         = CmdCode(0x52)
-	CmdDcpStreamReq           = CmdCode(0x53)
-	CmdDcpGetFailoverLog      = CmdCode(0x54)
-	CmdDcpStreamEnd           = CmdCode(0x55)
-	CmdDcpSnapshotMarker      = CmdCode(0x56)
-	CmdDcpMutation            = CmdCode(0x57)
-	CmdDcpDeletion            = CmdCode(0x58)
-	CmdDcpExpiration          = CmdCode(0x59)
-	CmdDcpFlush               = CmdCode(0x5a)
-	CmdDcpSetVbucketState     = CmdCode(0x5b)
-	CmdDcpNoop                = CmdCode(0x5c)
-	CmdDcpBufferAck           = CmdCode(0x5d)
-	CmdDcpControl             = CmdCode(0x5e)
-	CmdDcpEvent               = CmdCode(0x5f)
-	CmdGetReplica             = CmdCode(0x83)
-	CmdSelectBucket           = CmdCode(0x89)
-	CmdObserveSeqNo           = CmdCode(0x91)
-	CmdObserve                = CmdCode(0x92)
-	CmdGetLocked              = CmdCode(0x94)
-	CmdUnlockKey              = CmdCode(0x95)
-	CmdGetMeta                = CmdCode(0xa0)
-	CmdSetMeta                = CmdCode(0xa2)
-	CmdDelMeta                = CmdCode(0xa8)
-	CmdGetClusterConfig       = CmdCode(0xb5)
-	CmdGetRandom              = CmdCode(0xb6)
-	CmdCollectionsGetManifest = CmdCode(0xba)
-	CmdCollectionsGetID       = CmdCode(0xbb)
-	CmdSubDocGet              = CmdCode(0xc5)
-	CmdSubDocExists           = CmdCode(0xc6)
-	CmdSubDocDictAdd          = CmdCode(0xc7)
-	CmdSubDocDictSet          = CmdCode(0xc8)
-	CmdSubDocDelete           = CmdCode(0xc9)
-	CmdSubDocReplace          = CmdCode(0xca)
-	CmdSubDocArrayPushLast    = CmdCode(0xcb)
-	CmdSubDocArrayPushFirst   = CmdCode(0xcc)
-	CmdSubDocArrayInsert      = CmdCode(0xcd)
-	CmdSubDocArrayAddUnique   = CmdCode(0xce)
-	CmdSubDocCounter          = CmdCode(0xcf)
-	CmdSubDocMultiLookup      = CmdCode(0xd0)
-	CmdSubDocMultiMutation    = CmdCode(0xd1)
-	CmdSubDocGetCount         = CmdCode(0xd2)
-	CmdGetErrorMap            = CmdCode(0xfe)
 )
 
 // HelloFeature represents a feature code included in a memcached
@@ -162,200 +94,39 @@ const (
 	FeatureOpenTracing = HelloFeature(0x13)
 )
 
-// StatusCode represents a memcached response status.
-type StatusCode uint16
-
-const (
-	// StatusSuccess indicates the operation completed successfully.
-	StatusSuccess = StatusCode(0x00)
-
-	// StatusKeyNotFound occurs when an operation is performed on a key that does not exist.
-	StatusKeyNotFound = StatusCode(0x01)
-
-	// StatusKeyExists occurs when an operation is performed on a key that could not be found.
-	StatusKeyExists = StatusCode(0x02)
-
-	// StatusTooBig occurs when an operation attempts to store more data in a single document
-	// than the server is capable of storing (by default, this is a 20MB limit).
-	StatusTooBig = StatusCode(0x03)
-
-	// StatusInvalidArgs occurs when the server receives invalid arguments for an operation.
-	StatusInvalidArgs = StatusCode(0x04)
-
-	// StatusNotStored occurs when the server fails to store a key.
-	StatusNotStored = StatusCode(0x05)
-
-	// StatusBadDelta occurs when an invalid delta value is specified to a counter operation.
-	StatusBadDelta = StatusCode(0x06)
-
-	// StatusNotMyVBucket occurs when an operation is dispatched to a server which is
-	// non-authoritative for a specific vbucket.
-	StatusNotMyVBucket = StatusCode(0x07)
-
-	// StatusNoBucket occurs when no bucket was selected on a connection.
-	StatusNoBucket = StatusCode(0x08)
-
-	// StatusLocked occurs when an operation fails due to the document being locked.
-	StatusLocked = StatusCode(0x09)
-
-	// StatusAuthStale occurs when authentication credentials have become invalidated.
-	StatusAuthStale = StatusCode(0x1f)
-
-	// StatusAuthError occurs when the authentication information provided was not valid.
-	StatusAuthError = StatusCode(0x20)
-
-	// StatusAuthContinue occurs in multi-step authentication when more authentication
-	// work needs to be performed in order to complete the authentication process.
-	StatusAuthContinue = StatusCode(0x21)
-
-	// StatusRangeError occurs when the range specified to the server is not valid.
-	StatusRangeError = StatusCode(0x22)
-
-	// StatusRollback occurs when a DCP stream fails to open due to a rollback having
-	// previously occurred since the last time the stream was opened.
-	StatusRollback = StatusCode(0x23)
-
-	// StatusAccessError occurs when an access error occurs.
-	StatusAccessError = StatusCode(0x24)
-
-	// StatusNotInitialized is sent by servers which are still initializing, and are not
-	// yet ready to accept operations on behalf of a particular bucket.
-	StatusNotInitialized = StatusCode(0x25)
-
-	// StatusUnknownCommand occurs when an unknown operation is sent to a server.
-	StatusUnknownCommand = StatusCode(0x81)
-
-	// StatusOutOfMemory occurs when the server cannot service a request due to memory
-	// limitations.
-	StatusOutOfMemory = StatusCode(0x82)
-
-	// StatusNotSupported occurs when an operation is understood by the server, but that
-	// operation is not supported on this server (occurs for a variety of reasons).
-	StatusNotSupported = StatusCode(0x83)
-
-	// StatusInternalError occurs when internal errors prevent the server from processing
-	// your request.
-	StatusInternalError = StatusCode(0x84)
-
-	// StatusBusy occurs when the server is too busy to process your request right away.
-	// Attempting the operation at a later time will likely succeed.
-	StatusBusy = StatusCode(0x85)
-
-	// StatusTmpFail occurs when a temporary failure is preventing the server from
-	// processing your request.
-	StatusTmpFail = StatusCode(0x86)
-
-	// StatusCollectionUnknown occurs when a Collection cannot be found.
-	StatusCollectionUnknown = StatusCode(0x88)
-
-	// StatusScopeUnknown occurs when a Scope cannot be found.
-	StatusScopeUnknown = StatusCode(0x8c)
-
-	// StatusDurabilityInvalidLevel occurs when an invalid durability level was requested.
-	StatusDurabilityInvalidLevel = StatusCode(0xa0)
-
-	// StatusDurabilityImpossible occurs when a request is performed with impossible
-	// durability level requirements.
-	StatusDurabilityImpossible = StatusCode(0xa1)
-
-	// StatusSyncWriteInProgress occurs when an attempt is made to write to a key that has
-	// a SyncWrite pending.
-	StatusSyncWriteInProgress = StatusCode(0xa2)
-
-	// StatusSyncWriteAmbiguous occurs when an SyncWrite does not complete in the specified
-	// time and the result is ambiguous.
-	StatusSyncWriteAmbiguous = StatusCode(0xa3)
-
-	// StatusSyncWriteReCommitInProgress occurs when an SyncWrite is being recommitted.
-	StatusSyncWriteReCommitInProgress = StatusCode(0xa4)
-
-	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
-	// which does not exist in the specifie document.
-	StatusSubDocPathNotFound = StatusCode(0xc0)
-
-	// StatusSubDocPathMismatch occurs when a sub-document operation specifies a path
-	// which does not match the document structure (field access on an array).
-	StatusSubDocPathMismatch = StatusCode(0xc1)
-
-	// StatusSubDocPathInvalid occurs when a sub-document path could not be parsed.
-	StatusSubDocPathInvalid = StatusCode(0xc2)
-
-	// StatusSubDocPathTooBig occurs when a sub-document path is too big.
-	StatusSubDocPathTooBig = StatusCode(0xc3)
-
-	// StatusSubDocDocTooDeep occurs when an operation would cause a document to be
-	// nested beyond the depth limits allowed by the sub-document specification.
-	StatusSubDocDocTooDeep = StatusCode(0xc4)
-
-	// StatusSubDocCantInsert occurs when a sub-document operation could not insert.
-	StatusSubDocCantInsert = StatusCode(0xc5)
-
-	// StatusSubDocNotJSON occurs when a sub-document operation is performed on a
-	// document which is not JSON.
-	StatusSubDocNotJSON = StatusCode(0xc6)
-
-	// StatusSubDocBadRange occurs when a sub-document operation is performed with
-	// a bad range.
-	StatusSubDocBadRange = StatusCode(0xc7)
-
-	// StatusSubDocBadDelta occurs when a sub-document counter operation is performed
-	// and the specified delta is not valid.
-	StatusSubDocBadDelta = StatusCode(0xc8)
-
-	// StatusSubDocPathExists occurs when a sub-document operation expects a path not
-	// to exists, but the path was found in the document.
-	StatusSubDocPathExists = StatusCode(0xc9)
-
-	// StatusSubDocValueTooDeep occurs when a sub-document operation specifies a value
-	// which is deeper than the depth limits of the sub-document specification.
-	StatusSubDocValueTooDeep = StatusCode(0xca)
-
-	// StatusSubDocBadCombo occurs when a multi-operation sub-document operation is
-	// performed and operations within the package of ops conflict with each other.
-	StatusSubDocBadCombo = StatusCode(0xcb)
-
-	// StatusSubDocBadMulti occurs when a multi-operation sub-document operation is
-	// performed and operations within the package of ops conflict with each other.
-	StatusSubDocBadMulti = StatusCode(0xcc)
-
-	// StatusSubDocSuccessDeleted occurs when a multi-operation sub-document operation
-	// is performed on a soft-deleted document.
-	StatusSubDocSuccessDeleted = StatusCode(0xcd)
-
-	// StatusSubDocXattrInvalidFlagCombo occurs when an invalid set of
-	// extended-attribute flags is passed to a sub-document operation.
-	StatusSubDocXattrInvalidFlagCombo = StatusCode(0xce)
-
-	// StatusSubDocXattrInvalidKeyCombo occurs when an invalid set of key operations
-	// are specified for a extended-attribute sub-document operation.
-	StatusSubDocXattrInvalidKeyCombo = StatusCode(0xcf)
-
-	// StatusSubDocXattrUnknownMacro occurs when an invalid macro value is specified.
-	StatusSubDocXattrUnknownMacro = StatusCode(0xd0)
-
-	// StatusSubDocXattrUnknownVAttr occurs when an invalid virtual attribute is specified.
-	StatusSubDocXattrUnknownVAttr = StatusCode(0xd1)
-
-	// StatusSubDocXattrCannotModifyVAttr occurs when a mutation is attempted upon
-	// a virtual attribute (which are immutable by definition).
-	StatusSubDocXattrCannotModifyVAttr = StatusCode(0xd2)
-
-	// StatusSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
-	// a soft-deleted document.
-	StatusSubDocMultiPathFailureDeleted = StatusCode(0xd3)
-)
-
 // StreamEndStatus represents the reason for a DCP stream ending
 type StreamEndStatus uint32
 
 const (
-	streamEndOK           = StreamEndStatus(0x00)
-	streamEndClosed       = StreamEndStatus(0x01)
-	streamEndStateChanged = StreamEndStatus(0x02)
-	streamEndDisconnected = StreamEndStatus(0x03)
-	streamEndTooSlow      = StreamEndStatus(0x04)
-	streamEndFilterEmpty  = StreamEndStatus(0x07)
+	StreamEndOK             = StreamEndStatus(0x00)
+	StreamEndClosed         = StreamEndStatus(0x01)
+	StreamEndStateChanged   = StreamEndStatus(0x02)
+	StreamEndDisconnected   = StreamEndStatus(0x03)
+	StreamEndTooSlow        = StreamEndStatus(0x04)
+	StreamEndBackfillFailed = StreamEndStatus(0x05)
+	StreamEndFilterEmpty    = StreamEndStatus(0x07)
 )
+
+func (code StreamEndStatus) KVText() string {
+	switch code {
+	case StreamEndOK:
+		return "success"
+	case StreamEndClosed:
+		return "stream closed"
+	case StreamEndStateChanged:
+		return "state changed"
+	case StreamEndDisconnected:
+		return "disconnected"
+	case StreamEndTooSlow:
+		return "too slow"
+	case StreamEndFilterEmpty:
+		return "filter empty"
+	case StreamEndBackfillFailed:
+		return "backfill failed"
+	default:
+		return fmt.Sprintf("unknown stream close reason (%d)", code)
+	}
+}
 
 // StreamEventCode is the code for a DCP Stream event
 type StreamEventCode uint32

@@ -118,11 +118,11 @@ func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, conn
 		operationID:  fmt.Sprintf("0x%x", resp.Opaque),
 		endpoint:     address,
 		duration:     0,
-		serviceType:  fmt.Sprintf("kv:%s", getCommandName(resp.Opcode)),
+		serviceType:  fmt.Sprintf("kv:%s", resp.Command.Name()),
 	}
 
-	if resp.FrameExtras != nil && resp.FrameExtras.HasSrvDuration {
-		entry.duration = resp.FrameExtras.SrvDuration
+	if resp.Packet.ServerDurationFrame != nil {
+		entry.duration = resp.Packet.ServerDurationFrame.ServerDuration
 	}
 
 	zlc.zombieLock.RLock()

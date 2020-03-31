@@ -1,6 +1,10 @@
 package gocbcore
 
-import "time"
+import (
+	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
+)
 
 // GetOptions encapsulates the parameters for a GetEx operation.
 type GetOptions struct {
@@ -105,8 +109,8 @@ type DeleteOptions struct {
 	ScopeName              string
 	RetryStrategy          RetryStrategy
 	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -124,8 +128,8 @@ type AddOptions struct {
 	Flags                  uint32
 	Datatype               uint8
 	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -143,8 +147,8 @@ type storeOptions struct {
 	Datatype               uint8
 	Cas                    Cas
 	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -162,8 +166,8 @@ type SetOptions struct {
 	Flags                  uint32
 	Datatype               uint8
 	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -182,8 +186,8 @@ type ReplaceOptions struct {
 	Datatype               uint8
 	Cas                    Cas
 	Expiry                 uint32
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -199,8 +203,8 @@ type AdjoinOptions struct {
 	ScopeName              string
 	RetryStrategy          RetryStrategy
 	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 
@@ -218,8 +222,8 @@ type CounterOptions struct {
 	ScopeName              string
 	RetryStrategy          RetryStrategy
 	Cas                    Cas
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 

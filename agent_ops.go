@@ -1,5 +1,7 @@
 package gocbcore
 
+import "github.com/couchbase/gocbcore/v8/memd"
+
 // GetCallback is invoked upon completion of a Get operation.
 type GetCallback func(*GetResult, error)
 
@@ -164,8 +166,8 @@ func (agent *Agent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (Pend
 // SubDocOp defines a per-operation structure to be passed to MutateIn
 // or LookupIn for performing many sub-document operations.
 type SubDocOp struct {
-	Op    SubDocOpType
-	Flags SubdocFlag
+	Op    memd.SubDocOpType
+	Flags memd.SubdocFlag
 	Path  string
 	Value []byte
 }

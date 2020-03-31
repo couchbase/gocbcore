@@ -3,6 +3,8 @@ package gocbcore
 import (
 	"encoding/binary"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type crudComponent struct {
@@ -53,9 +55,9 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGet,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGet,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       nil,
@@ -114,9 +116,9 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGAT,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGAT,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       extraBuf,
@@ -175,9 +177,9 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.LockTime)
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGetLocked,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGetLocked,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       extraBuf,
@@ -235,9 +237,9 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGetReplica,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGetReplica,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       nil,
@@ -286,8 +288,6 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
 	extraBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Expiry)
 
@@ -296,15 +296,14 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdTouch,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdTouch,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       extraBuf,
 			Key:          opts.Key,
 			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
 			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
@@ -352,9 +351,9 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdUnlockKey,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdUnlockKey,
 			Datatype:     0,
 			Cas:          uint64(opts.Cas),
 			Extras:       nil,
@@ -402,16 +401,18 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
+	var duraLevelFrame *memd.DurabilityLevelFrame
+	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
 		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
+		duraLevelFrame = &memd.DurabilityLevelFrame{
+			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+		}
+		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
+			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
 	}
 
 	if opts.RetryStrategy == nil {
@@ -419,16 +420,17 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdDelete,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
+		Packet: memd.Packet{
+			Magic:                  memd.CmdMagicReq,
+			Command:                memd.CmdDelete,
+			Datatype:               0,
+			Cas:                    uint64(opts.Cas),
+			Extras:                 nil,
+			Key:                    opts.Key,
+			Value:                  nil,
+			DurabilityLevelFrame:   duraLevelFrame,
+			DurabilityTimeoutFrame: duraTimeoutFrame,
+			CollectionID:           opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -446,7 +448,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	return crud.cidMgr.Dispatch(req)
 }
 
-func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
+func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -470,16 +472,18 @@ func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOp
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
+	var duraLevelFrame *memd.DurabilityLevelFrame
+	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
 		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
+		duraLevelFrame = &memd.DurabilityLevelFrame{
+			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+		}
+		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
+			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
 	}
 
 	if opts.RetryStrategy == nil {
@@ -490,16 +494,17 @@ func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOp
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     opts.Datatype,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        opts.Value,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
+		Packet: memd.Packet{
+			Magic:                  memd.CmdMagicReq,
+			Command:                opcode,
+			Datatype:               opts.Datatype,
+			Cas:                    uint64(opts.Cas),
+			Extras:                 extraBuf,
+			Key:                    opts.Key,
+			Value:                  opts.Value,
+			DurabilityLevelFrame:   duraLevelFrame,
+			DurabilityTimeoutFrame: duraTimeoutFrame,
+			CollectionID:           opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -518,7 +523,7 @@ func (crud *crudComponent) store(opName string, opcode commandCode, opts storeOp
 }
 
 func (crud *crudComponent) Set(opts SetOptions, cb StoreCallback) (PendingOp, error) {
-	return crud.store("Set", cmdSet, storeOptions{
+	return crud.store("Set", memd.CmdSet, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -537,7 +542,7 @@ func (crud *crudComponent) Set(opts SetOptions, cb StoreCallback) (PendingOp, er
 }
 
 func (crud *crudComponent) Add(opts AddOptions, cb StoreCallback) (PendingOp, error) {
-	return crud.store("Add", cmdAdd, storeOptions{
+	return crud.store("Add", memd.CmdAdd, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -556,7 +561,7 @@ func (crud *crudComponent) Add(opts AddOptions, cb StoreCallback) (PendingOp, er
 }
 
 func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (PendingOp, error) {
-	return crud.store("Replace", cmdReplace, storeOptions{
+	return crud.store("Replace", memd.CmdReplace, storeOptions{
 		Key:                    opts.Key,
 		CollectionName:         opts.CollectionName,
 		ScopeName:              opts.ScopeName,
@@ -574,7 +579,7 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (Pendi
 	}, cb)
 }
 
-func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
+func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -598,16 +603,18 @@ func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts Adjoin
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
+	var duraLevelFrame *memd.DurabilityLevelFrame
+	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
 		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
+		duraLevelFrame = &memd.DurabilityLevelFrame{
+			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+		}
+		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
+			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
 	}
 
 	if opts.RetryStrategy == nil {
@@ -615,16 +622,17 @@ func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts Adjoin
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       nil,
-			Key:          opts.Key,
-			Value:        opts.Value,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
+		Packet: memd.Packet{
+			Magic:                  memd.CmdMagicReq,
+			Command:                opcode,
+			Datatype:               0,
+			Cas:                    uint64(opts.Cas),
+			Extras:                 nil,
+			Key:                    opts.Key,
+			Value:                  opts.Value,
+			DurabilityLevelFrame:   duraLevelFrame,
+			DurabilityTimeoutFrame: duraTimeoutFrame,
+			CollectionID:           opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -643,14 +651,14 @@ func (crud *crudComponent) adjoin(opName string, opcode commandCode, opts Adjoin
 }
 
 func (crud *crudComponent) Append(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
-	return crud.adjoin("Append", cmdAppend, opts, cb)
+	return crud.adjoin("Append", memd.CmdAppend, opts, cb)
 }
 
 func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
-	return crud.adjoin("Prepend", cmdPrepend, opts, cb)
+	return crud.adjoin("Prepend", memd.CmdPrepend, opts, cb)
 }
 
-func (crud *crudComponent) counter(opName string, opcode commandCode, opts CounterOptions, cb CounterCallback) (PendingOp, error) {
+func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts CounterOptions, cb CounterCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -687,16 +695,18 @@ func (crud *crudComponent) counter(opName string, opcode commandCode, opts Count
 		return nil, errInvalidArgument
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
+	var duraLevelFrame *memd.DurabilityLevelFrame
+	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
 		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
+		duraLevelFrame = &memd.DurabilityLevelFrame{
+			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+		}
+		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
+			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
 	}
 
 	if opts.RetryStrategy == nil {
@@ -714,16 +724,17 @@ func (crud *crudComponent) counter(opName string, opcode commandCode, opts Count
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       opcode,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        nil,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
+		Packet: memd.Packet{
+			Magic:                  memd.CmdMagicReq,
+			Command:                opcode,
+			Datatype:               0,
+			Cas:                    uint64(opts.Cas),
+			Extras:                 extraBuf,
+			Key:                    opts.Key,
+			Value:                  nil,
+			DurabilityLevelFrame:   duraLevelFrame,
+			DurabilityTimeoutFrame: duraTimeoutFrame,
+			CollectionID:           opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -742,11 +753,11 @@ func (crud *crudComponent) counter(opName string, opcode commandCode, opts Count
 }
 
 func (crud *crudComponent) Increment(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
-	return crud.counter("Increment", cmdIncrement, opts, cb)
+	return crud.counter("Increment", memd.CmdIncrement, opts, cb)
 }
 
 func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
-	return crud.counter("Decrement", cmdDecrement, opts, cb)
+	return crud.counter("Decrement", memd.CmdDecrement, opts, cb)
 }
 
 func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
@@ -782,9 +793,9 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdGetRandom,
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdGetRandom,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -847,9 +858,9 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdGetMeta,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGetMeta,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       extraBuf,
@@ -911,9 +922,9 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdSetMeta,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdSetMeta,
 			Datatype:     opts.Datatype,
 			Cas:          0,
 			Extras:       extraBuf,
@@ -975,9 +986,9 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdDelMeta,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdDelMeta,
 			Datatype:     opts.Datatype,
 			Cas:          0,
 			Extras:       extraBuf,

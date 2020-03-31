@@ -3,12 +3,14 @@ package gocbcore
 import (
 	"errors"
 	"log"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
-var streamEndErrorMap = make(map[StreamEndStatus]error)
+var streamEndErrorMap = make(map[memd.StreamEndStatus]error)
 
-func makeStreamEndStatusError(code StreamEndStatus) error {
-	err := errors.New(getKvStreamEndStatusText((code)))
+func makeStreamEndStatusError(code memd.StreamEndStatus) error {
+	err := errors.New(code.KVText())
 	if streamEndErrorMap[code] != nil {
 		log.Fatal("error handling setup failure")
 	}
@@ -16,32 +18,32 @@ func makeStreamEndStatusError(code StreamEndStatus) error {
 	return err
 }
 
-func getStreamEndStatusError(code StreamEndStatus) error {
+func getStreamEndStatusError(code memd.StreamEndStatus) error {
 	if err := streamEndErrorMap[code]; err != nil {
 		return err
 	}
-	return errors.New(getKvStreamEndStatusText((code)))
+	return errors.New(code.KVText())
 }
 
 var (
 	// ErrDCPStreamClosed occurs when a DCP stream is closed gracefully.
-	ErrDCPStreamClosed = makeStreamEndStatusError(streamEndClosed)
+	ErrDCPStreamClosed = makeStreamEndStatusError(memd.StreamEndClosed)
 
 	// ErrDCPStreamStateChanged occurs when a DCP stream is interrupted by failover.
-	ErrDCPStreamStateChanged = makeStreamEndStatusError(streamEndStateChanged)
+	ErrDCPStreamStateChanged = makeStreamEndStatusError(memd.StreamEndStateChanged)
 
 	// ErrDCPStreamDisconnected occurs when a DCP stream is disconnected.
-	ErrDCPStreamDisconnected = makeStreamEndStatusError(streamEndDisconnected)
+	ErrDCPStreamDisconnected = makeStreamEndStatusError(memd.StreamEndDisconnected)
 
 	// ErrDCPStreamTooSlow occurs when a DCP stream is cancelled due to the application
 	// not keeping up with the rate of flow of DCP events sent by the server.
-	ErrDCPStreamTooSlow = makeStreamEndStatusError(streamEndTooSlow)
+	ErrDCPStreamTooSlow = makeStreamEndStatusError(memd.StreamEndTooSlow)
 
 	// ErrDCPBackfillFailed occurs when there was an issue starting the backfill on
 	// the server e.g. the requested start seqno was behind the purge seqno.
-	ErrDCPBackfillFailed = makeStreamEndStatusError(streamEndBackfillFailed)
+	ErrDCPBackfillFailed = makeStreamEndStatusError(memd.StreamEndBackfillFailed)
 
 	// ErrDCPStreamFilterEmpty occurs when all of the collections for a DCP stream are
 	// dropped.
-	ErrDCPStreamFilterEmpty = makeStreamEndStatusError(streamEndFilterEmpty)
+	ErrDCPStreamFilterEmpty = makeStreamEndStatusError(memd.StreamEndFilterEmpty)
 )

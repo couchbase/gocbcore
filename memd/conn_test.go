@@ -26,7 +26,7 @@ func testPktRoundTrip(t *testing.T, pkt *Packet, features []HelloFeature) {
 	}
 
 	// Read the packet back
-	pktOut, err := conn.ReadPacket()
+	pktOut, _, err := conn.ReadPacket()
 	if err != nil {
 		t.Fatalf("packet reading failed: %s", err)
 	}

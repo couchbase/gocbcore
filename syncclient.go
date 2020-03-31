@@ -4,10 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type memdSenderClient interface {
-	SupportsFeature(HelloFeature) bool
+	SupportsFeature(memd.HelloFeature) bool
 	Address() string
 	SendRequest(*memdQRequest) error
 }
@@ -16,7 +18,7 @@ type syncClient struct {
 	client memdSenderClient
 }
 
-func (client *syncClient) SupportsFeature(feature HelloFeature) bool {
+func (client *syncClient) SupportsFeature(feature memd.HelloFeature) bool {
 	return client.client.SupportsFeature(feature)
 }
 
@@ -24,14 +26,14 @@ func (client *syncClient) Address() string {
 	return client.client.Address()
 }
 
-func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOut *memdPacket, errOut error) {
+func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (respOut *memd.Packet, errOut error) {
 	signal := make(chan bool, 1)
 
 	qreq := memdQRequest{
-		memdPacket: *req,
+		Packet: *req,
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {
-				respOut = &resp.memdPacket
+				respOut = &resp.Packet
 			}
 			errOut = err
 			signal <- true
@@ -57,14 +59,17 @@ func (client *syncClient) doRequest(req *memdPacket, deadline time.Time) (respOu
 	}
 }
 
-func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline time.Time) ([]byte, error) {
-	resp, err := client.doRequest(&memdPacket{
-		Magic:  reqMagic,
-		Opcode: cmd,
-		Key:    k,
-		Value:  v,
-		Extras: e,
-	}, deadline)
+func (client *syncClient) doBasicOp(cmd memd.CmdCode, k, v, e []byte, deadline time.Time) ([]byte, error) {
+	resp, err := client.doRequest(
+		&memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: cmd,
+			Key:     k,
+			Value:   v,
+			Extras:  e,
+		},
+		deadline,
+	)
 
 	// We do it this way as the response value could still be useful even if an
 	// error status code is returned.  For instance, StatusAuthContinue still
@@ -77,15 +82,15 @@ func (client *syncClient) doBasicOp(cmd commandCode, k, v, e []byte, deadline ti
 }
 
 func (client *syncClient) ExecDcpControl(key string, value string, deadline time.Time) error {
-	_, err := client.doBasicOp(cmdDcpControl, []byte(key), []byte(value), nil, deadline)
+	_, err := client.doBasicOp(memd.CmdDcpControl, []byte(key), []byte(value), nil, deadline)
 	return err
 }
 
 func (client *syncClient) ExecGetClusterConfig(deadline time.Time) ([]byte, error) {
-	return client.doBasicOp(cmdGetClusterConfig, nil, nil, nil, deadline)
+	return client.doBasicOp(memd.CmdGetClusterConfig, nil, nil, nil, deadline)
 }
 
-func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOpenFlag, deadline time.Time) error {
+func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags memd.DcpOpenFlag, deadline time.Time) error {
 	_, ok := client.client.(*memdClient)
 	if !ok {
 		return errCliInternalError
@@ -93,8 +98,8 @@ func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags DcpOp
 
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], 0)
-	binary.BigEndian.PutUint32(extraBuf[4:], uint32((openFlags & ^DcpOpenFlag(3))|DcpOpenFlagProducer))
-	_, err := client.doBasicOp(cmdDcpOpenConnection, []byte(streamName), nil, extraBuf, deadline)
+	binary.BigEndian.PutUint32(extraBuf[4:], uint32((openFlags & ^memd.DcpOpenFlag(3))|memd.DcpOpenFlagProducer))
+	_, err := client.doBasicOp(memd.CmdDcpOpenConnection, []byte(streamName), nil, extraBuf, deadline)
 	return err
 }
 

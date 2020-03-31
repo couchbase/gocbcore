@@ -7,6 +7,8 @@ import (
 	"hash"
 	"time"
 
+	"github.com/couchbase/gocbcore/v8/memd"
+
 	scram "github.com/couchbase/gocbcore/v8/scram"
 )
 
@@ -31,7 +33,7 @@ const (
 // connected Couchbase K/V client.
 type AuthClient interface {
 	Address() string
-	SupportsFeature(feature HelloFeature) bool
+	SupportsFeature(feature memd.HelloFeature) bool
 
 	SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error
 	SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error
@@ -77,7 +79,7 @@ func saslAuthScram(saslName []byte, newHash func() hash.Hash, username, password
 	// Perform the initial SASL step
 	scramMgr.Step(nil)
 	err := client.SaslAuth(saslName, scramMgr.Out(), deadline, func(b []byte, err error) {
-		if err != nil && !isErrorStatus(err, StatusAuthContinue) {
+		if err != nil && !isErrorStatus(err, memd.StatusAuthContinue) {
 			completedCb(err)
 			return
 		}

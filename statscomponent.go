@@ -3,6 +3,8 @@ package gocbcore
 import (
 	"sync"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type statsComponent struct {
@@ -125,9 +127,9 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 		}
 
 		req := &memdQRequest{
-			memdPacket: memdPacket{
-				Magic:    reqMagic,
-				Opcode:   cmdStat,
+			Packet: memd.Packet{
+				Magic:    memd.CmdMagicReq,
+				Command:  memd.CmdStat,
 				Datatype: 0,
 				Cas:      0,
 				Key:      []byte(opts.Key),

@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type kvMux struct {
@@ -501,7 +503,7 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 	err = translateMemdError(err, req)
 
 	// Handle potentially retrying the operation
-	if resp != nil && resp.Status == StatusNotMyVBucket {
+	if resp != nil && resp.Status == memd.StatusNotMyVBucket {
 		if mux.handleNotMyVbucket(resp, req) {
 			return true, nil
 		}
@@ -527,7 +529,7 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 		}
 	}
 
-	if resp != nil && resp.Magic == resMagic {
+	if resp != nil && resp.Magic == memd.CmdMagicRes {
 		shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
 		if shouldRetry {
 			if mux.waitAndRetryOperation(req, KVErrMapRetryReason) {

@@ -3,6 +3,8 @@ package gocbcore
 import (
 	"encoding/binary"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type subdocOpList struct {
@@ -28,9 +30,9 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
-			!isErrorStatus(err, StatusSubDocMultiPathFailureDeleted) &&
-			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!isErrorStatus(err, StatusSubDocBadMulti) {
+			!isErrorStatus(err, memd.StatusSubDocMultiPathFailureDeleted) &&
+			!isErrorStatus(err, memd.StatusSubDocSuccessDeleted) &&
+			!isErrorStatus(err, memd.StatusSubDocBadMulti) {
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -44,7 +46,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 				return
 			}
 
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
+			resError := memd.StatusCode(binary.BigEndian.Uint16(resp.Value[respIter+0:]))
 			resValueLen := int(binary.BigEndian.Uint32(resp.Value[respIter+2:]))
 
 			if respIter+6+resValueLen > len(resp.Value) {
@@ -53,7 +55,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 				return
 			}
 
-			if resError != StatusSuccess {
+			if resError != memd.StatusSuccess {
 				results[subdocs.indexes[i]].Err = crud.errMapManager.MakeSubDocError(i, resError, req, resp)
 			}
 
@@ -69,7 +71,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	}
 
 	for i, op := range opts.Ops {
-		if op.Flags&SubdocFlagXattrPath != 0 {
+		if op.Flags&memd.SubdocFlagXattrPath != 0 {
 			subdocs.Prepend(op, i)
 		} else {
 			subdocs.Append(op, i)
@@ -88,8 +90,8 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 
 	valueIter := 0
 	for i, op := range subdocs.ops {
-		if op.Op != SubDocOpGet && op.Op != SubDocOpExists &&
-			op.Op != SubDocOpGetDoc && op.Op != SubDocOpGetCount {
+		if op.Op != memd.SubDocOpGet && op.Op != memd.SubDocOpExists &&
+			op.Op != memd.SubDocOpGetDoc && op.Op != memd.SubDocOpGetCount {
 			return nil, errInvalidArgument
 		}
 		if op.Value != nil {
@@ -116,9 +118,9 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdSubDocMultiLookup,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdSubDocMultiLookup,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       extraBuf,
@@ -150,14 +152,14 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil &&
-			!isErrorStatus(err, StatusSubDocSuccessDeleted) &&
-			!isErrorStatus(err, StatusSubDocBadMulti) {
+			!isErrorStatus(err, memd.StatusSubDocSuccessDeleted) &&
+			!isErrorStatus(err, memd.StatusSubDocBadMulti) {
 			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
-		if isErrorStatus(err, StatusSubDocBadMulti) {
+		if isErrorStatus(err, memd.StatusSubDocBadMulti) {
 			if len(resp.Value) != 3 {
 				tracer.Finish()
 				cb(nil, errProtocol)
@@ -165,7 +167,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			}
 
 			opIndex := int(resp.Value[0])
-			resError := StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
+			resError := memd.StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
 			err := crud.errMapManager.MakeSubDocError(opIndex, resError, req, resp)
 			tracer.Finish()
@@ -175,12 +177,12 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 
 		for readPos := uint32(0); readPos < uint32(len(resp.Value)); {
 			opIndex := int(resp.Value[readPos+0])
-			opStatus := StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
+			opStatus := memd.StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 
 			results[subdocs.indexes[opIndex]].Err = crud.errMapManager.MakeSubDocError(opIndex, opStatus, req, resp)
 			readPos += 3
 
-			if opStatus == StatusSuccess {
+			if opStatus == memd.StatusSuccess {
 				valLength := binary.BigEndian.Uint32(resp.Value[readPos:])
 				results[subdocs.indexes[opIndex]].Value = resp.Value[readPos+4 : readPos+4+valLength]
 				readPos += 4 + valLength
@@ -202,20 +204,22 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}, nil)
 	}
 
-	magic := reqMagic
-	var flexibleFrameExtras *memdFrameExtras
+	var duraLevelFrame *memd.DurabilityLevelFrame
+	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
 		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
-		flexibleFrameExtras = &memdFrameExtras{}
-		flexibleFrameExtras.DurabilityLevel = opts.DurabilityLevel
-		flexibleFrameExtras.DurabilityLevelTimeout = opts.DurabilityLevelTimeout
-		magic = altReqMagic
+		duraLevelFrame = &memd.DurabilityLevelFrame{
+			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+		}
+		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
+			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
 	}
 
 	for i, op := range opts.Ops {
-		if op.Flags&SubdocFlagXattrPath != 0 {
+		if op.Flags&memd.SubdocFlagXattrPath != 0 {
 			subdocs.Prepend(op, i)
 		} else {
 			subdocs.Append(op, i)
@@ -236,12 +240,12 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 
 	valueIter := 0
 	for i, op := range subdocs.ops {
-		if op.Op != SubDocOpDictAdd && op.Op != SubDocOpDictSet &&
-			op.Op != SubDocOpDelete && op.Op != SubDocOpReplace &&
-			op.Op != SubDocOpArrayPushLast && op.Op != SubDocOpArrayPushFirst &&
-			op.Op != SubDocOpArrayInsert && op.Op != SubDocOpArrayAddUnique &&
-			op.Op != SubDocOpCounter && op.Op != SubDocOpSetDoc &&
-			op.Op != SubDocOpAddDoc && op.Op != SubDocOpDeleteDoc {
+		if op.Op != memd.SubDocOpDictAdd && op.Op != memd.SubDocOpDictSet &&
+			op.Op != memd.SubDocOpDelete && op.Op != memd.SubDocOpReplace &&
+			op.Op != memd.SubDocOpArrayPushLast && op.Op != memd.SubDocOpArrayPushFirst &&
+			op.Op != memd.SubDocOpArrayInsert && op.Op != memd.SubDocOpArrayAddUnique &&
+			op.Op != memd.SubDocOpCounter && op.Op != memd.SubDocOpSetDoc &&
+			op.Op != memd.SubDocOpAddDoc && op.Op != memd.SubDocOpDeleteDoc {
 			return nil, errInvalidArgument
 		}
 
@@ -273,16 +277,17 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        magic,
-			Opcode:       cmdSubDocMultiMutation,
-			Datatype:     0,
-			Cas:          uint64(opts.Cas),
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			FrameExtras:  flexibleFrameExtras,
-			CollectionID: opts.CollectionID,
+		Packet: memd.Packet{
+			Magic:                  memd.CmdMagicReq,
+			Command:                memd.CmdSubDocMultiMutation,
+			Datatype:               0,
+			Cas:                    uint64(opts.Cas),
+			Extras:                 extraBuf,
+			Key:                    opts.Key,
+			Value:                  valueBuf,
+			DurabilityLevelFrame:   duraLevelFrame,
+			DurabilityTimeoutFrame: duraTimeoutFrame,
+			CollectionID:           opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

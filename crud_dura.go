@@ -1,6 +1,10 @@
 package gocbcore
 
-import "time"
+import (
+	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
+)
 
 // ObserveOptions encapsulates the parameters for a ObserveEx operation.
 type ObserveOptions struct {
@@ -30,7 +34,7 @@ type ObserveVbOptions struct {
 
 // ObserveResult encapsulates the result of a ObserveEx operation.
 type ObserveResult struct {
-	KeyState KeyState
+	KeyState memd.KeyState
 	Cas      Cas
 }
 

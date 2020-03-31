@@ -6,13 +6,15 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 // The data for a response from a server.  This includes the
 // packets data along with some useful meta-data related to
 // the response.
 type memdQResponse struct {
-	memdPacket
+	memd.Packet
 
 	sourceAddr   string
 	sourceConnID string
@@ -24,7 +26,7 @@ type callback func(*memdQResponse, *memdQRequest, error)
 // and can potentially be rerouted to multiple servers due to
 // configuration changes.
 type memdQRequest struct {
-	memdPacket
+	memd.Packet
 
 	// Static routing properties
 	ReplicaIdx int
@@ -100,7 +102,7 @@ func (req *memdQRequest) Identifier() string {
 }
 
 func (req *memdQRequest) Idempotent() bool {
-	_, ok := idempotentOps[req.Opcode]
+	_, ok := idempotentOps[req.Command]
 	return ok
 }
 

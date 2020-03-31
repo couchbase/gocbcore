@@ -3,6 +3,8 @@ package gocbcore
 import (
 	"encoding/binary"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
@@ -32,7 +34,7 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 			cb(nil, errProtocol)
 			return
 		}
-		keyState := KeyState(resp.Value[2+2+keyLen])
+		keyState := memd.KeyState(resp.Value[2+2+keyLen])
 		cas := binary.BigEndian.Uint64(resp.Value[2+2+keyLen+1:])
 
 		tracer.Finish()
@@ -55,9 +57,9 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:        reqMagic,
-			Opcode:       cmdObserve,
+		Packet: memd.Packet{
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdObserve,
 			Datatype:     0,
 			Cas:          0,
 			Extras:       nil,
@@ -167,9 +169,9 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdObserveSeqNo,
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdObserveSeqNo,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,

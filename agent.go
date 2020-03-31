@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.
@@ -82,7 +84,7 @@ func CreateAgent(config *AgentConfig) (*Agent, error) {
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
-func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags DcpOpenFlag) (*Agent, error) {
+func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags memd.DcpOpenFlag) (*Agent, error) {
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
 	initFn := func(client *memdClient, deadline time.Time) error {

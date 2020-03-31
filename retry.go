@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"math"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 // RetryRequest is a request that can possibly be retried.
@@ -276,19 +278,19 @@ func ControlledBackoff(retryAttempts uint32) time.Duration {
 	}
 }
 
-var idempotentOps = map[commandCode]bool{
-	cmdGet:                    true,
-	cmdGetReplica:             true,
-	cmdGetMeta:                true,
-	cmdSubDocGet:              true,
-	cmdSubDocExists:           true,
-	cmdSubDocGetCount:         true,
-	cmdNoop:                   true,
-	cmdStat:                   true,
-	cmdGetRandom:              true,
-	cmdCollectionsGetID:       true,
-	cmdCollectionsGetManifest: true,
-	cmdGetClusterConfig:       true,
-	cmdObserve:                true,
-	cmdObserveSeqNo:           true,
+var idempotentOps = map[memd.CmdCode]bool{
+	memd.CmdGet:                    true,
+	memd.CmdGetReplica:             true,
+	memd.CmdGetMeta:                true,
+	memd.CmdSubDocGet:              true,
+	memd.CmdSubDocExists:           true,
+	memd.CmdSubDocGetCount:         true,
+	memd.CmdNoop:                   true,
+	memd.CmdStat:                   true,
+	memd.CmdGetRandom:              true,
+	memd.CmdCollectionsGetID:       true,
+	memd.CmdCollectionsGetManifest: true,
+	memd.CmdGetClusterConfig:       true,
+	memd.CmdObserve:                true,
+	memd.CmdObserveSeqNo:           true,
 }

@@ -1,5 +1,7 @@
 package gocbcore
 
+import "github.com/couchbase/gocbcore/v8/memd"
+
 type memdOpMapItem struct {
 	value *memdQRequest
 	next  *memdOpMapItem
@@ -75,8 +77,8 @@ func (q *memdOpMap) Remove(req *memdQRequest) bool {
 func (q *memdOpMap) FindOpenStream(vbID uint16) *memdQRequest {
 	cur := q.first
 	for cur != nil {
-		if cur.value.Magic == reqMagic &&
-			cur.value.Opcode == cmdDcpStreamReq &&
+		if cur.value.Magic == memd.CmdMagicReq &&
+			cur.value.Command == memd.CmdDcpStreamReq &&
 			cur.value.Vbucket == vbID {
 			return cur.value
 		}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 func (cidMgr *collectionsComponent) createKey(scopeName, collectionName string) string {
@@ -57,7 +59,7 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 }
 
 func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
-	if resp != nil && resp.Status == StatusCollectionUnknown {
+	if resp != nil && resp.Status == memd.StatusCollectionUnknown {
 		if cidMgr.handleCollectionUnknown(req) {
 			return true, nil
 		}
@@ -85,9 +87,9 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdCollectionsGetManifest,
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdCollectionsGetManifest,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,
@@ -148,9 +150,9 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 	}
 
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:    reqMagic,
-			Opcode:   cmdCollectionsGetID,
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdCollectionsGetID,
 			Datatype: 0,
 			Cas:      0,
 			Extras:   nil,

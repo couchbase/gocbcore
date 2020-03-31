@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 /* BUG(brett19): GOCBC-691: Disabled due to known issue with CID error retries
@@ -864,8 +866,8 @@ func TestSubdocXattrs(t *testing.T) {
 
 	mutateOps := []SubDocOp{
 		{
-			Op:    SubDocOpDictSet,
-			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagMkDirP,
 			Path:  "xatest.test",
 			Value: []byte("\"test value\""),
 		},
@@ -876,8 +878,8 @@ func TestSubdocXattrs(t *testing.T) {
 			Value: []byte("\"${Mutation.CAS}\""),
 		},*/
 		{
-			Op:    SubDocOpDictSet,
-			Flags: SubdocFlagNone,
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
 			Path:  "x",
 			Value: []byte("\"x value\""),
 		},
@@ -901,13 +903,13 @@ func TestSubdocXattrs(t *testing.T) {
 
 	lookupOps := []SubDocOp{
 		{
-			Op:    SubDocOpGet,
-			Flags: SubdocFlagXattrPath,
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagXattrPath,
 			Path:  "xatest",
 		},
 		{
-			Op:    SubDocOpGet,
-			Flags: SubdocFlagNone,
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagNone,
 			Path:  "x",
 		},
 	}
@@ -965,20 +967,20 @@ func TestSubdocXattrsReorder(t *testing.T) {
 	// This should reorder the ops before sending to the server.
 	mutateOps := []SubDocOp{
 		{
-			Op:    SubDocOpDictSet,
-			Flags: SubdocFlagNone,
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
 			Path:  "x",
 			Value: []byte("\"x value\""),
 		},
 		{
-			Op:    SubDocOpDictSet,
-			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagMkDirP,
 			Path:  "xatest.test",
 			Value: []byte("\"test value\""),
 		},
 		{
-			Op:    SubDocOpDictSet,
-			Flags: SubdocFlagXattrPath | SubdocFlagMkDirP,
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagMkDirP,
 			Path:  "xatest.ytest",
 			Value: []byte("\"test value2\""),
 		},
@@ -1014,18 +1016,18 @@ func TestSubdocXattrsReorder(t *testing.T) {
 
 	lookupOps := []SubDocOp{
 		{
-			Op:    SubDocOpGet,
-			Flags: SubdocFlagXattrPath,
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagXattrPath,
 			Path:  "xatest.test",
 		},
 		{
-			Op:    SubDocOpGet,
-			Flags: SubdocFlagNone,
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagNone,
 			Path:  "x",
 		},
 		{
-			Op:    SubDocOpGet,
-			Flags: SubdocFlagXattrPath,
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagXattrPath,
 			Path:  "xatest.ytest",
 		},
 	}

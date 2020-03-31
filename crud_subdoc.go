@@ -1,12 +1,16 @@
 package gocbcore
 
-import "time"
+import (
+	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
+)
 
 // GetInOptions encapsulates the parameters for a GetInEx operation.
 type GetInOptions struct {
 	Key            []byte
 	Path           string
-	Flags          SubdocFlag
+	Flags          memd.SubdocFlag
 	CollectionName string
 	ScopeName      string
 	CollectionID   uint32
@@ -21,7 +25,7 @@ type GetInOptions struct {
 type ExistsInOptions struct {
 	Key            []byte
 	Path           string
-	Flags          SubdocFlag
+	Flags          memd.SubdocFlag
 	CollectionName string
 	ScopeName      string
 	CollectionID   uint32
@@ -38,13 +42,13 @@ type StoreInOptions struct {
 	Key                    []byte
 	Path                   string
 	Value                  []byte
-	Flags                  SubdocFlag
+	Flags                  memd.SubdocFlag
 	Cas                    Cas
 	Expiry                 uint32
 	CollectionName         string
 	ScopeName              string
 	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
+	DurabilityLevel        memd.DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionID           uint32
 	Deadline               time.Time
@@ -62,11 +66,11 @@ type DeleteInOptions struct {
 	Path                   string
 	Cas                    Cas
 	Expiry                 uint32
-	Flags                  SubdocFlag
+	Flags                  memd.SubdocFlag
 	CollectionName         string
 	ScopeName              string
 	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
+	DurabilityLevel        memd.DurabilityLevel
 	DurabilityLevelTimeout uint16
 	CollectionID           uint32
 	Deadline               time.Time
@@ -78,7 +82,7 @@ type DeleteInOptions struct {
 // LookupInOptions encapsulates the parameters for a LookupInEx operation.
 type LookupInOptions struct {
 	Key            []byte
-	Flags          SubdocDocFlag
+	Flags          memd.SubdocDocFlag
 	Ops            []SubDocOp
 	CollectionName string
 	ScopeName      string
@@ -93,15 +97,15 @@ type LookupInOptions struct {
 // MutateInOptions encapsulates the parameters for a MutateInEx operation.
 type MutateInOptions struct {
 	Key                    []byte
-	Flags                  SubdocDocFlag
+	Flags                  memd.SubdocDocFlag
 	Cas                    Cas
 	Expiry                 uint32
 	Ops                    []SubDocOp
 	CollectionName         string
 	ScopeName              string
 	RetryStrategy          RetryStrategy
-	DurabilityLevel        DurabilityLevel
-	DurabilityLevelTimeout uint16
+	DurabilityLevel        memd.DurabilityLevel
+	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
 

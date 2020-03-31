@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math/rand"
 	"time"
+
+	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 type cccpConfigController struct {
@@ -138,13 +140,13 @@ Looper:
 func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOut []byte, errOut error) {
 	signal := make(chan struct{}, 1)
 	req := &memdQRequest{
-		memdPacket: memdPacket{
-			Magic:  reqMagic,
-			Opcode: cmdGetClusterConfig,
+		Packet: memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdGetClusterConfig,
 		},
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {
-				cfgOut = resp.memdPacket.Value
+				cfgOut = resp.Packet.Value
 			}
 			errOut = err
 			signal <- struct{}{}
