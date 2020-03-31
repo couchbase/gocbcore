@@ -57,61 +57,60 @@ func (ccc *cccpConfigController) DoLoop() error {
 	paused := false
 
 	logDebugf("CCCP Looper starting.")
-
 	nodeIdx := -1
 
 Looper:
 	for {
 		if !paused {
-			iter, err := ccc.muxer.PipelineIterator()
+			iter, err := ccc.muxer.PipelineSnapshot()
 			if err != nil {
 				// If we have an error it indicates the client is shut down.
 				break
 			}
 
-			numNodes := iter.Len()
+			numNodes := iter.NumPipelines()
 			if numNodes == 0 {
 				logDebugf("CCCPPOLL: No nodes available to poll")
 				continue
 			}
 
-			if nodeIdx < 0 {
+			if nodeIdx < 0 || nodeIdx > numNodes {
 				nodeIdx = rand.Intn(numNodes)
 			}
 
-			iter.Offset(nodeIdx)
-
 			var foundConfig *cfgBucket
-			// Until this gets a valid config the pipeline addresses will be the ones from the connection string, there is
-			// an assumed contract between the looper and the upstream config manager that this is the case. This allows
-			// the config manager to setup its network type correctly.
-			for iter.Next() {
-				pipeline := iter.Pipeline()
+			var foundErr error
+			iter.Iterate(nodeIdx, func(pipeline *memdPipeline) bool {
+				nodeIdx = (nodeIdx + 1) % numNodes
 				cccpBytes, err := ccc.getClusterConfig(pipeline)
 				if err != nil {
 					logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
 					if errors.Is(err, ErrDocumentNotFound) {
 						// This error is indicative of a memcached bucket which we can't handle so return the error.
 						logDebugf("CCCPPOLL: Document not found error detecting, returning error upstream.")
-						return err
+						foundErr = err
+						return true
 					}
-					continue
+					return false
 				}
 
 				hostName, err := hostFromHostPort(pipeline.Address())
 				if err != nil {
 					logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
-					continue
+					return false
 				}
 
 				bk, err := parseConfig(cccpBytes, hostName)
 				if err != nil {
 					logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-					continue
+					return false
 				}
 
 				foundConfig = bk
-				break
+				return true
+			})
+			if foundErr != nil {
+				return foundErr
 			}
 
 			if foundConfig == nil {

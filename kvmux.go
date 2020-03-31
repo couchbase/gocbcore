@@ -50,7 +50,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 	return mux
 }
 
-func (mux *kvMux) GetState() *kvMuxState {
+func (mux *kvMux) getState() *kvMuxState {
 	return (*kvMuxState)(atomic.LoadPointer(&mux.muxPtr))
 }
 
@@ -79,7 +79,7 @@ func (mux *kvMux) clear() *kvMuxState {
 
 //  This method MUST NEVER BLOCK due to its use from various contention points.
 func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
-	oldClientMux := mux.GetState()
+	oldClientMux := mux.getState()
 	newClientMux := mux.newKVMuxState(cfg)
 
 	// Attempt to atomically update the routing data
@@ -128,9 +128,8 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 
 		sort.Sort(memdQRequestSorter(requestList))
 
-		// TODO: don't forget these
 		for _, req := range requestList {
-			// 	mux.stopCmdTrace(req)
+			stopCmdTrace(req)
 			mux.RequeueDirect(req, false)
 		}
 	}
@@ -141,7 +140,7 @@ func (mux *kvMux) SetPostCompleteErrorHandler(handler postCompleteErrorHandler) 
 }
 
 func (mux *kvMux) ConfigUUID() string {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return ""
 	}
@@ -149,7 +148,7 @@ func (mux *kvMux) ConfigUUID() string {
 }
 
 func (mux *kvMux) KeyToVbucket(key []byte) uint16 {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil || clientMux.vbMap == nil {
 		return 0
 	}
@@ -158,7 +157,7 @@ func (mux *kvMux) KeyToVbucket(key []byte) uint16 {
 }
 
 func (mux *kvMux) KeyToServer(key []byte, replicaIdx uint32) int {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux.vbMap != nil {
 		serverIdx, err := clientMux.vbMap.NodeByKey(key, replicaIdx)
 		if err != nil {
@@ -181,7 +180,7 @@ func (mux *kvMux) KeyToServer(key []byte, replicaIdx uint32) int {
 }
 
 func (mux *kvMux) VbucketToServer(vbID uint16, replicaIdx uint32) int {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil || clientMux.vbMap == nil {
 		return 0
 	}
@@ -199,7 +198,7 @@ func (mux *kvMux) VbucketToServer(vbID uint16, replicaIdx uint32) int {
 }
 
 func (mux *kvMux) NumReplicas() int {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return 0
 	}
@@ -212,7 +211,7 @@ func (mux *kvMux) NumReplicas() int {
 }
 
 func (mux *kvMux) BucketType() bucketType {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return bktTypeInvalid
 	}
@@ -221,7 +220,7 @@ func (mux *kvMux) BucketType() bucketType {
 }
 
 func (mux *kvMux) VbucketsOnServer(index int) []uint16 {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return nil
 	}
@@ -241,7 +240,7 @@ func (mux *kvMux) VbucketsOnServer(index int) []uint16 {
 }
 
 func (mux *kvMux) SupportsGCCCP() bool {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return false
 	}
@@ -250,7 +249,7 @@ func (mux *kvMux) SupportsGCCCP() bool {
 }
 
 func (mux *kvMux) NumVBuckets() int {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return 0
 	}
@@ -259,7 +258,7 @@ func (mux *kvMux) NumVBuckets() int {
 }
 
 func (mux *kvMux) NumPipelines() int {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return 0
 	}
@@ -272,7 +271,7 @@ func (mux *kvMux) SupportsCollections() bool {
 		return false
 	}
 
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return false
 	}
@@ -281,7 +280,7 @@ func (mux *kvMux) SupportsCollections() bool {
 }
 
 func (mux *kvMux) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return false
 	}
@@ -290,7 +289,7 @@ func (mux *kvMux) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
 }
 
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
-	clientMux := mux.GetState()
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return nil, errShutdown
 	}
@@ -649,45 +648,48 @@ func (mux *kvMux) muxTakeover(oldMux, newMux *kvMuxState) {
 	}
 }
 
-type pipelineIterator struct {
-	pipelines []*memdPipeline
+type pipelineSnapshot struct {
+	muxer *kvMuxState
 
-	idx        int
-	iterations int
-	len        int
+	idx int
 }
 
-func (mux *kvMux) PipelineIterator() (*pipelineIterator, error) {
-	clientMux := mux.GetState()
+func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
+	clientMux := mux.getState()
 	if clientMux == nil {
 		return nil, errShutdown
 	}
 
-	p := clientMux.pipelines
-	return &pipelineIterator{
-		pipelines: p,
-		len:       len(p),
+	return &pipelineSnapshot{
+		muxer: clientMux,
 	}, nil
 }
 
-func (pi *pipelineIterator) Len() int {
-	return pi.len
+func (pi *pipelineSnapshot) RevID() int64 {
+	return pi.muxer.revID
 }
 
-func (pi *pipelineIterator) Offset(offset int) {
+func (pi *pipelineSnapshot) NumPipelines() int {
+	return pi.muxer.NumPipelines()
+}
+
+func (pi *pipelineSnapshot) PipelineAt(idx int) *memdPipeline {
+	return pi.muxer.GetPipeline(idx)
+}
+
+func (pi *pipelineSnapshot) Iterate(offset int, cb func(*memdPipeline) bool) {
+	l := pi.muxer.NumPipelines()
 	pi.idx = offset
-}
+	for iters := 0; iters < l; iters++ {
+		pi.idx = (pi.idx + 1) % l
+		p := pi.muxer.GetPipeline(pi.idx)
 
-func (pi *pipelineIterator) Next() bool {
-	if pi.iterations == pi.len {
-		return false
+		if cb(p) {
+			return
+		}
 	}
-
-	return true
 }
 
-func (pi *pipelineIterator) Pipeline() *memdPipeline {
-	pi.iterations++
-	pi.idx = (pi.idx + 1) % pi.len
-	return pi.pipelines[pi.idx]
+func (pi *pipelineSnapshot) NodeByVbucket(vbID uint16, replicaID uint32) (int, error) {
+	return pi.muxer.vbMap.NodeByVbucket(vbID, replicaID)
 }

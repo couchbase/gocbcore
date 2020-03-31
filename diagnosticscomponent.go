@@ -21,15 +21,15 @@ func newDianosticsComponent(kvMux *kvMux, bucket string) *diagnosticsComponent {
 }
 
 func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (PendingOp, error) {
-	clientMux := dc.kvMux.GetState()
-	if clientMux == nil {
-		return nil, errShutdown
+	iter, err := dc.kvMux.PipelineSnapshot()
+	if err != nil {
+		return nil, err
 	}
 
 	op := &pingOp{
 		callback:  cb,
 		remaining: 1,
-		configRev: clientMux.revID,
+		configRev: iter.RevID(),
 	}
 
 	pingStartTime := time.Now()
@@ -61,8 +61,7 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 
 	retryStrat := newFailFastRetryStrategy()
 
-	for serverIdx := 0; serverIdx < clientMux.NumPipelines(); serverIdx++ {
-		pipeline := clientMux.GetPipeline(serverIdx)
+	iter.Iterate(0, func(pipeline *memdPipeline) bool {
 		serverAddress := pipeline.Address()
 
 		req := &memdQRequest{
@@ -88,7 +87,7 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 				Scope:    bucketName,
 			})
 			op.lock.Unlock()
-			continue
+			return false
 		}
 
 		op.lock.Lock()
@@ -99,7 +98,10 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 		atomic.AddInt32(&op.remaining, 1)
 		addrToID[serverAddress] = fmt.Sprintf("%p", pipeline)
 		op.lock.Unlock()
-	}
+
+		// We iterate through all pipelines
+		return false
+	})
 
 	// We initialized remaining to one to ensure that the callback is not
 	// invoked until all of the operations have been dispatched first.  This
@@ -116,14 +118,14 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 // states.
 func (dc *diagnosticsComponent) Diagnostics() (*DiagnosticInfo, error) {
 	for {
-		clientMux := dc.kvMux.GetState()
-		if clientMux == nil {
-			return nil, errShutdown
+		iter, err := dc.kvMux.PipelineSnapshot()
+		if err != nil {
+			return nil, err
 		}
 
 		var conns []MemdConnInfo
 
-		for _, pipeline := range clientMux.pipelines {
+		iter.Iterate(0, func(pipeline *memdPipeline) bool {
 			pipeline.clientsLock.Lock()
 			for _, pipecli := range pipeline.clients {
 				localAddr := ""
@@ -153,12 +155,16 @@ func (dc *diagnosticsComponent) Diagnostics() (*DiagnosticInfo, error) {
 				conns = append(conns, conn)
 			}
 			pipeline.clientsLock.Unlock()
-		}
+			return false
+		})
 
-		endMux := dc.kvMux.GetState()
-		if endMux == clientMux {
+		endIter, err := dc.kvMux.PipelineSnapshot()
+		if err != nil {
+			return nil, err
+		}
+		if iter.RevID() == endIter.RevID() {
 			return &DiagnosticInfo{
-				ConfigRev: clientMux.revID,
+				ConfigRev: iter.RevID(),
 				MemdConns: conns,
 			}, nil
 		}

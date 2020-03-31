@@ -24,10 +24,10 @@ func newStatsComponent(kvMux *kvMux, defaultRetry RetryStrategy, tracer *tracerC
 func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp, error) {
 	tracer := sc.tracer.CreateOpTrace("Stats", opts.TraceContext)
 
-	muxer := sc.kvMux.GetState()
-	if muxer == nil {
+	iter, err := sc.kvMux.PipelineSnapshot()
+	if err != nil {
 		tracer.Finish()
-		return nil, errShutdown
+		return nil, err
 	}
 
 	stats := make(map[string]SingleServerStats)
@@ -41,20 +41,20 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 
 	switch target := opts.Target.(type) {
 	case nil:
-		expected = uint32(muxer.NumPipelines())
-
-		for i := 0; i < muxer.NumPipelines(); i++ {
-			pipelines = append(pipelines, muxer.GetPipeline(i))
-		}
+		iter.Iterate(0, func(pipeline *memdPipeline) bool {
+			pipelines = append(pipelines, pipeline)
+			expected++
+			return false
+		})
 	case VBucketIDStatsTarget:
 		expected = 1
 
-		srvIdx, err := muxer.vbMap.NodeByVbucket(target.VbID, 0)
+		srvIdx, err := iter.NodeByVbucket(target.VbID, 0)
 		if err != nil {
 			return nil, err
 		}
 
-		pipelines = append(pipelines, muxer.GetPipeline(srvIdx))
+		pipelines = append(pipelines, iter.PipelineAt(srvIdx))
 	default:
 		return nil, errInvalidArgument
 	}

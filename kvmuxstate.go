@@ -4,8 +4,6 @@ import (
 	"fmt"
 )
 
-type memdGetClientFunc func(hostPort string) (*memdClient, error)
-
 type kvMuxState struct {
 	pipelines []*memdPipeline
 	deadPipe  *memdPipeline

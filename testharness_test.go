@@ -282,7 +282,7 @@ func (h *TestHarness) TimeTravel(waitDura time.Duration) {
 // of a server
 func (h *TestHarness) MakeDistKeys(agent *Agent) (keys []string) {
 	// Get the routing information
-	clientMux := agent.kvMux.GetState()
+	clientMux := agent.kvMux.getState()
 	keys = make([]string, clientMux.NumPipelines())
 	remaining := len(keys)
 
