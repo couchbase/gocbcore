@@ -400,7 +400,7 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 	}
 }
 
-func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error) {
+func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error) {
 	mux.tracer.StartCmdTrace(req)
 	req.dispatchTime = time.Now()
 
@@ -412,24 +412,7 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (Pe
 	req.ReplicaIdx = -999999999
 
 	for {
-		clientMux := mux.GetState()
-		if clientMux == nil {
-			return nil, errShutdown
-		}
-
-		var foundPipeline *memdPipeline
-		for _, pipeline := range clientMux.pipelines {
-			if pipeline.Address() == address {
-				foundPipeline = pipeline
-				break
-			}
-		}
-
-		if foundPipeline == nil {
-			return nil, errInvalidServer
-		}
-
-		err := foundPipeline.SendRequest(req)
+		err := pipeline.SendRequest(req)
 		if err == errPipelineClosed {
 			continue
 		} else if err != nil {

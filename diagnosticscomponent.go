@@ -78,7 +78,7 @@ func (dc *diagnosticsComponent) PingKv(opts PingKvOptions, cb PingKvCallback) (P
 			RetryStrategy: retryStrat,
 		}
 
-		curOp, err := dc.kvMux.DispatchDirectToAddress(req, serverAddress)
+		curOp, err := dc.kvMux.DispatchDirectToAddress(req, pipeline)
 		if err != nil {
 			op.lock.Lock()
 			op.results = append(op.results, PingResult{
