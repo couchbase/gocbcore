@@ -379,19 +379,19 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.KvSsl)
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("http://%s:%d/%s", hostname, ports.CapiSsl, name)
+			lists.capiEp = fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, name)
 		}
 		if ports.Mgmt > 0 {
-			lists.mgmtEp = fmt.Sprintf("http://%s:%d", hostname, ports.MgmtSsl)
+			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
 		}
 		if ports.N1ql > 0 {
-			lists.n1qlEp = fmt.Sprintf("http://%s:%d", hostname, ports.N1qlSsl)
+			lists.n1qlEp = fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl)
 		}
 		if ports.Fts > 0 {
-			lists.ftsEp = fmt.Sprintf("http://%s:%d", hostname, ports.FtsSsl)
+			lists.ftsEp = fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl)
 		}
 		if ports.Cbas > 0 {
-			lists.cbasEp = fmt.Sprintf("http://%s:%d", hostname, ports.CbasSsl)
+			lists.cbasEp = fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl)
 		}
 	} else {
 		if ports.Kv > 0 {
