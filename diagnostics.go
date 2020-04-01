@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,17 +61,20 @@ type pingOp struct {
 	callback   PingCallback
 	configRev  int64
 	bucketName string
+	httpCancel context.CancelFunc
 }
 
 func (pop *pingOp) Cancel() {
 	for _, subop := range pop.subops {
 		subop.op.Cancel()
 	}
+	pop.httpCancel()
 }
 
 func (pop *pingOp) handledOneLocked() {
 	remaining := atomic.AddInt32(&pop.remaining, -1)
 	if remaining == 0 {
+		pop.httpCancel()
 		pop.callback(&PingResult{
 			ConfigRev: pop.configRev,
 			Services:  pop.results,

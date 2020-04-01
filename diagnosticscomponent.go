@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -27,7 +28,7 @@ func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *http
 	}
 }
 
-func (dc *diagnosticsComponent) pingHTTPService(epList []string, path string, service ServiceType, op *pingOp,
+func (dc *diagnosticsComponent) pingHTTPService(ctx context.Context, epList []string, path string, service ServiceType, op *pingOp,
 	deadline time.Time, retryStrat RetryStrategy) {
 	for _, ep := range epList {
 		atomic.AddInt32(&op.remaining, 1)
@@ -40,6 +41,7 @@ func (dc *diagnosticsComponent) pingHTTPService(epList []string, path string, se
 				RetryStrategy: retryStrat,
 				Endpoint:      ep,
 				IsIdempotent:  true,
+				Context:       ctx,
 			}
 			start := time.Now()
 			_, err := dc.httpComponent.DoInternalHTTPRequest(req)
@@ -161,12 +163,15 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		serviceTypes = []ServiceType{MemdService}
 	}
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
 	op := &pingOp{
 		callback:   cb,
 		remaining:  1,
 		configRev:  iter.RevID(),
 		results:    make(map[ServiceType][]EndpointPingResult),
 		bucketName: bucketName,
+		httpCancel: cancelFunc,
 	}
 
 	retryStrat := newFailFastRetryStrategy()
@@ -177,13 +182,13 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		case MemdService:
 			dc.pingKV(iter, op, opts.Deadline, retryStrat)
 		case CapiService:
-			dc.pingHTTPService(httpMuxClient.cbasEpList, "/", CapiService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/", CapiService, op, opts.Deadline, retryStrat)
 		case N1qlService:
-			dc.pingHTTPService(httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.Deadline, retryStrat)
 		case FtsService:
-			dc.pingHTTPService(httpMuxClient.ftsEpList, "/api/ping", FtsService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.ftsEpList, "/api/ping", FtsService, op, opts.Deadline, retryStrat)
 		case CbasService:
-			dc.pingHTTPService(httpMuxClient.cbasEpList, "/admin/ping", CbasService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/admin/ping", CbasService, op, opts.Deadline, retryStrat)
 		}
 	}
 

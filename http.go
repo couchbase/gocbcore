@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sort"
@@ -23,6 +24,9 @@ type httpRequest struct {
 	Deadline         time.Time
 	RetryStrategy    RetryStrategy
 	RootTraceContext RequestSpanContext
+	// Whilst the http component will handle deadlines itself this context can be use from places like Ping which
+	// need to also be able to cancel the context for other reasons.
+	Context context.Context
 
 	retryCount   uint32
 	retryReasons []RetryReason

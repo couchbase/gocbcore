@@ -121,7 +121,10 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 
 	// This creates a context that has a parent with no cancel function. As such WithCancel will not setup any
 	// extra go routines and we only need to call cancel on (non-timeout) failure.
-	ctx := context.Background()
+	ctx := req.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	// This is easy to do with a bool and a defer than to ensure that we cancel after every error.
@@ -205,12 +208,6 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		hresp, err := hc.cli.Do(hreq)
 		// dSpan.Finish()
 		if err != nil {
-			// Because we have to hijack the context for our own timeout specification
-			// purposes and we manually cancel it, we need to perform some translation here if we hijacked it.
-			if errors.Is(err, context.Canceled) {
-				err = errAmbiguousTimeout
-			}
-
 			if !req.IsIdempotent {
 				return nil, err
 			}
