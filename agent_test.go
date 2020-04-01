@@ -1244,7 +1244,7 @@ func TestMetaOps(t *testing.T) {
 func TestPing(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	s.PushOp(agent.PingKv(PingKvOptions{}, func(res *PingKvResult, err error) {
+	s.PushOp(agent.Ping(PingOptions{}, func(res *PingResult, err error) {
 		s.Wrap(func() {
 			if len(res.Services) == 0 {
 				s.Fatalf("Ping report contained no results")
@@ -1257,7 +1257,7 @@ func TestPing(t *testing.T) {
 func TestDiagnostics(t *testing.T) {
 	agent, _ := testGetAgentAndHarness(t)
 
-	report, err := agent.Diagnostics()
+	report, err := agent.Diagnostics(DiagnosticsOptions{})
 	if err != nil {
 		t.Fatalf("Failed to fetch diagnostics: %s", err)
 	}

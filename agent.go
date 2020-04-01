@@ -394,7 +394,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.search = newSearchQueryComponent(c.http, c.tracer)
 	c.views = newViewQueryComponent(c.http, c.tracer)
 	c.waitUntil = newWaitUntilConfigComponent(c.cfgManager)
-	c.diagnostics = newDianosticsComponent(c.kvMux, c.bucketName)
+	c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName)
 
 	// Kick everything off.
 	cfg := &routeConfig{

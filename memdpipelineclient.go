@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 )
 
 type memdPipelineClient struct {
@@ -13,6 +14,7 @@ type memdPipelineClient struct {
 	consumer  *memdOpConsumer
 	lock      sync.Mutex
 	closedSig chan struct{}
+	state     uint32
 }
 
 func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
@@ -20,7 +22,12 @@ func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
 		parent:    parent,
 		address:   parent.address,
 		closedSig: make(chan struct{}),
+		state:     uint32(EndpointStateDisconnected),
 	}
+}
+
+func (pipecli *memdPipelineClient) State() EndpointState {
+	return EndpointState(atomic.LoadUint32(&pipecli.state))
 }
 
 func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
@@ -167,6 +174,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 		}
 	}
 
+	atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnecting))
 	logDebugf("Pipeline client `%s/%p` waiting for client shutdown", pipecli.address, pipecli)
 
 	// We must wait for the close wait goroutine to die as well before we can continue.
@@ -178,6 +186,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 func (pipecli *memdPipelineClient) Run() {
 	for {
 		logDebugf("Pipeline Client `%s/%p` preparing for new client loop", pipecli.address, pipecli)
+		atomic.StoreUint32(&pipecli.state, uint32(EndpointStateConnecting))
 
 		pipecli.lock.Lock()
 		pipeline := pipecli.parent
@@ -192,8 +201,10 @@ func (pipecli *memdPipelineClient) Run() {
 		logDebugf("Pipeline Client `%s/%p` retrieving new client connection for parent %p", pipecli.address, pipecli, pipeline)
 		client, err := pipeline.getClientFn()
 		if err != nil {
+			atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnected))
 			continue
 		}
+		atomic.StoreUint32(&pipecli.state, uint32(EndpointStateConnected))
 
 		// Runs until the connection has died (for whatever reason)
 		logDebugf("Pipeline Client `%s/%p` starting new client loop for %p", pipecli.address, pipecli, client)
@@ -208,6 +219,7 @@ func (pipecli *memdPipelineClient) Run() {
 // everything to be cleaned up before returning.
 func (pipecli *memdPipelineClient) Close() error {
 	logDebugf("Pipeline Client `%s/%p` received close request", pipecli.address, pipecli)
+	atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnecting))
 
 	// To shut down the client, we remove our reference to the parent. This
 	// causes our ioLoop see that we are being shut down and perform cleanup
@@ -229,6 +241,7 @@ func (pipecli *memdPipelineClient) Close() error {
 
 	// Lets wait till the ioLoop has shut everything down before returning.
 	<-pipecli.closedSig
+	atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnected))
 
 	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 

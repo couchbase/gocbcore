@@ -253,11 +253,11 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
+	req.processingLock.Lock()
+
 	if req.Timer != nil {
 		req.Timer.Stop()
 	}
-
-	req.processingLock.Lock()
 
 	if !req.Persistent {
 		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())

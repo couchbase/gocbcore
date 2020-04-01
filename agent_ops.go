@@ -237,18 +237,18 @@ func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opt
 	return agent.collections.GetCollectionID(scopeName, collectionName, opts, cb)
 }
 
-// PingKvCallback is invoked upon completion of a PingKv operation.
-type PingKvCallback func(*PingKvResult, error)
+// PingCallback is invoked upon completion of a PingKv operation.
+type PingCallback func(*PingResult, error)
 
-// PingKv pings all of the servers we are connected to and returns
+// Ping pings all of the servers we are connected to and returns
 // a report regarding the pings that were performed.
-func (agent *Agent) PingKv(opts PingKvOptions, cb PingKvCallback) (PendingOp, error) {
-	return agent.diagnostics.PingKv(opts, cb)
+func (agent *Agent) Ping(opts PingOptions, cb PingCallback) (PendingOp, error) {
+	return agent.diagnostics.Ping(opts, cb)
 }
 
 // Diagnostics returns diagnostics information about the client.
 // Mainly containing a list of open connections and their current
 // states.
-func (agent *Agent) Diagnostics() (*DiagnosticInfo, error) {
-	return agent.diagnostics.Diagnostics()
+func (agent *Agent) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, error) {
+	return agent.diagnostics.Diagnostics(opts)
 }
