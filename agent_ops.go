@@ -252,3 +252,6 @@ func (agent *Agent) Ping(opts PingOptions, cb PingCallback) (PendingOp, error) {
 func (agent *Agent) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, error) {
 	return agent.diagnostics.Diagnostics(opts)
 }
+
+// WaitUntilReadyCallback is invoked upon completion of a WaitUntilReady operation.
+type WaitUntilReadyCallback func(*WaitUntilReadyResult, error)

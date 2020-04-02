@@ -40,7 +40,6 @@ type Agent struct {
 	analytics    *analyticsQueryComponent
 	search       *searchQueryComponent
 	views        *viewQueryComponent
-	waitUntil    *waitUntilConfigComponent
 	zombieLogger *zombieLoggerComponent
 }
 
@@ -393,7 +392,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)
 	c.search = newSearchQueryComponent(c.http, c.tracer)
 	c.views = newViewQueryComponent(c.http, c.tracer)
-	c.waitUntil = newWaitUntilConfigComponent(c.cfgManager)
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName)
 
 	// Kick everything off.
@@ -577,6 +575,6 @@ func (agent *Agent) UsingGCCCP() bool {
 }
 
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
-func (agent *Agent) WaitUntilReady(cb func()) (PendingOp, error) {
-	return agent.waitUntil.WaitUntilFirstConfig(cb)
+func (agent *Agent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions, cb WaitUntilReadyCallback) (PendingOp, error) {
+	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // PingState is the current state of a endpoint used in a PingResult.
-type PingState uint8
+type PingState uint32
 
 const (
 	// PingStateOK indicates that an endpoint is OK.
@@ -117,4 +117,56 @@ type DiagnosticInfo struct {
 	ConfigRev int64
 	MemdConns []MemdConnInfo
 	State     ClusterState
+}
+
+// ClusterState is used to describe the state of a cluster.
+type ClusterState uint32
+
+const (
+	// ClusterStateOnline specifies that all nodes and their sockets are reachable.
+	ClusterStateOnline = ClusterState(1)
+
+	// ClusterStateDegraded specifies that at least one socket per service is reachable.
+	ClusterStateDegraded = ClusterState(2)
+
+	// ClusterStateOffline is used to specify that not even one socker per service is reachable.
+	ClusterStateOffline = ClusterState(3)
+)
+
+type waitUntilOp struct {
+	lock      sync.Mutex
+	remaining int32
+	callback  WaitUntilReadyCallback
+	stopCh    chan struct{}
+	timer     *time.Timer
+}
+
+func (wuo *waitUntilOp) cancel(err error) {
+	wuo.lock.Lock()
+	wuo.timer.Stop()
+	wuo.lock.Unlock()
+	close(wuo.stopCh)
+	wuo.callback(nil, err)
+}
+
+func (wuo *waitUntilOp) Cancel() {
+	wuo.cancel(errRequestCanceled)
+}
+
+func (wuo *waitUntilOp) handledOneLocked() {
+	remaining := atomic.AddInt32(&wuo.remaining, -1)
+	if remaining == 0 {
+		wuo.timer.Stop()
+		wuo.callback(&WaitUntilReadyResult{}, nil)
+	}
+}
+
+// WaitUntilReadyResult encapsulates the result of a WaitUntilReady operation.
+type WaitUntilReadyResult struct {
+}
+
+// WaitUntilReadyOptions encapsulates the parameters for a WaitUntilReady operation.
+type WaitUntilReadyOptions struct {
+	DesiredState ClusterState  // Defaults to ClusterStateOnline
+	ServiceTypes []ServiceType // Defaults to all services
 }

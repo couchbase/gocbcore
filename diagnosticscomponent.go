@@ -276,3 +276,115 @@ func (dc *diagnosticsComponent) Diagnostics(opts DiagnosticsOptions) (*Diagnosti
 		}
 	}
 }
+
+func (dc *diagnosticsComponent) checkKVReady(interval time.Duration, desiredState ClusterState,
+	op *waitUntilOp) {
+	for {
+		iter, err := dc.kvMux.PipelineSnapshot()
+		if err != nil {
+			logErrorf("failed to get pipeline snapshot")
+
+			select {
+			case <-op.stopCh:
+				return
+			case <-time.After(interval):
+				continue
+			}
+		}
+
+		if iter.RevID() > -1 {
+			expected := 0
+			connected := 0
+			iter.Iterate(0, func(pipeline *memdPipeline) bool {
+				pipeline.clientsLock.Lock()
+				defer pipeline.clientsLock.Unlock()
+				expected += pipeline.maxClients
+				for _, cli := range pipeline.clients {
+					state := cli.State()
+					if state == EndpointStateConnected {
+						connected++
+						if desiredState == ClusterStateDegraded {
+							// If we're after degraded state then we can just bail early as we've already fulfilled that.
+							return true
+						}
+					} else if desiredState == ClusterStateOnline {
+						// If we're after online state then we can just bail early as we've already failed to fulfill that.
+						return true
+					}
+				}
+
+				return false
+			})
+
+			switch desiredState {
+			case ClusterStateDegraded:
+				if connected > 0 {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
+			case ClusterStateOnline:
+				if connected == expected {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
+			default:
+				// How we got here no-one does know
+				// But round and round we must go
+			}
+		}
+
+		select {
+		case <-op.stopCh:
+			return
+		case <-time.After(interval):
+		}
+	}
+}
+
+func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
+	cb WaitUntilReadyCallback) (PendingOp, error) {
+	desiredState := opts.DesiredState
+	if desiredState == ClusterStateOffline {
+		return nil, wrapError(errInvalidArgument, "cannot use offline as a desired state")
+	}
+
+	if desiredState == 0 {
+		desiredState = ClusterStateOnline
+	}
+
+	serviceTypes := opts.ServiceTypes
+	if len(serviceTypes) == 0 {
+		serviceTypes = []ServiceType{MemdService}
+	}
+
+	op := &waitUntilOp{
+		remaining: int32(len(serviceTypes)),
+		stopCh:    make(chan struct{}),
+		callback:  cb,
+	}
+
+	op.lock.Lock()
+	op.timer = time.AfterFunc(deadline.Sub(time.Now()), func() {
+		op.cancel(errUnambiguousTimeout)
+	})
+	op.lock.Unlock()
+
+	interval := 10 * time.Millisecond
+
+	for _, serviceType := range serviceTypes {
+		switch serviceType {
+		case MemdService:
+			go dc.checkKVReady(interval, desiredState, op)
+		default:
+			// Right now we only support the Memdservice
+		}
+	}
+
+	return op, nil
+}

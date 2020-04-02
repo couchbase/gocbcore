@@ -143,19 +143,21 @@ func (h *TestHarness) initDefaultAgent() error {
 		return err
 	}
 
-	ch := make(chan struct{})
-	op, err := agent.WaitUntilReady(func() {
-		ch <- struct{}{}
-	})
+	ch := make(chan error)
+	_, err = agent.WaitUntilReady(
+		time.Now().Add(2*time.Second),
+		WaitUntilReadyOptions{},
+		func(result *WaitUntilReadyResult, err error) {
+			ch <- err
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	select {
-	case <-time.After(5 * time.Second):
-		op.Cancel()
-		return ErrTimeout
-	case <-ch:
+	err = <-ch
+	if err != nil {
+		return err
 	}
 
 	h.defaultAgent = agent
@@ -179,19 +181,21 @@ func (h *TestHarness) initMemdAgent() error {
 		return err
 	}
 
-	ch := make(chan struct{})
-	op, err := agent.WaitUntilReady(func() {
-		ch <- struct{}{}
-	})
+	ch := make(chan error)
+	_, err = agent.WaitUntilReady(
+		time.Now().Add(2*time.Second),
+		WaitUntilReadyOptions{},
+		func(result *WaitUntilReadyResult, err error) {
+			ch <- err
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	select {
-	case <-time.After(5 * time.Second):
-		op.Cancel()
-		return ErrTimeout
-	case <-ch:
+	err = <-ch
+	if err != nil {
+		return err
 	}
 
 	h.memdAgent = agent
