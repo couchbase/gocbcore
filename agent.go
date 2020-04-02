@@ -365,15 +365,23 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		auth,
 		c.tracer,
 	)
-	c.pollerController = newPollerController(
-		newCCCPConfigController(
+
+	// If a user connects on a non default http port then we won't translate the address into memd addresses.
+	// If this happens then we should instruct the poller controller to skip straight to http polling. The cccp poller
+	// will not see no pipelines as a reason to fallback, it will just keep looping until it finds pipelines.
+	var cccpPoller *cccpConfigController
+	if len(config.MemdAddrs) > 0 {
+		cccpPoller = newCCCPConfigController(
 			cccpPollerProperties{
 				confCccpMaxWait:    confCccpMaxWait,
 				confCccpPollPeriod: confCccpPollPeriod,
 			},
 			c.kvMux,
 			c.cfgManager,
-		),
+		)
+	}
+	c.pollerController = newPollerController(
+		cccpPoller,
 		newHTTPConfigController(
 			c.bucketName,
 			httpPollerProperties{

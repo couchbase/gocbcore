@@ -27,11 +27,22 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 }
 
 func (pc *pollerController) Start() {
+	if pc.cccpPoller == nil {
+		pc.controllerLock.Lock()
+		pc.activeController = pc.httpPoller
+		pc.controllerLock.Unlock()
+		pc.httpPoller.DoLoop()
+		return
+	}
 	pc.controllerLock.Lock()
 	pc.activeController = pc.cccpPoller
 	pc.controllerLock.Unlock()
 	err := pc.cccpPoller.DoLoop()
 	if err != nil {
+		if pc.httpPoller == nil {
+			logErrorf("CCCP poller has exited for http fallback but no http poller is configured")
+			return
+		}
 		if errors.Is(err, ErrDocumentNotFound) {
 			pc.controllerLock.Lock()
 			pc.activeController = pc.httpPoller
