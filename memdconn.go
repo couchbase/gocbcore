@@ -13,7 +13,7 @@ type memdConn interface {
 	LocalAddr() string
 	RemoteAddr() string
 	WritePacket(*memd.Packet) error
-	ReadPacket() (*memd.Packet, int32, error)
+	ReadPacket() (*memd.Packet, int, error)
 	Close() error
 
 	EnableFeature(feature memd.HelloFeature)
@@ -39,7 +39,7 @@ func (s *memdConnWrap) WritePacket(pkt *memd.Packet) error {
 	return s.conn.WritePacket(pkt)
 }
 
-func (s *memdConnWrap) ReadPacket() (*memd.Packet, int32, error) {
+func (s *memdConnWrap) ReadPacket() (*memd.Packet, int, error) {
 	return s.conn.ReadPacket()
 }
 

@@ -273,7 +273,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 }
 
 // ReadPacket reads a packet from the network.
-func (c *Conn) ReadPacket() (*Packet, int32, error) {
+func (c *Conn) ReadPacket() (*Packet, int, error) {
 	var pkt Packet
 
 	// We use a single byte blob to read all headers to avoid allocating a bunch
@@ -435,5 +435,5 @@ func (c *Conn) ReadPacket() (*Packet, int32, error) {
 
 	pkt.Value = bodyBuf[bodyPos:]
 
-	return &pkt, 24 + int32(bodyLen), nil
+	return &pkt, 24 + int(bodyLen), nil
 }
