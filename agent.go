@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
-
-	"github.com/couchbase/gocbcore/v8/memd"
 )
 
 // Agent represents the base client handling connections to a Couchbase Server.
@@ -77,52 +75,6 @@ type authFuncHandler func(client AuthClient, deadline time.Time, mechanism AuthM
 func CreateAgent(config *AgentConfig) (*Agent, error) {
 	initFn := func(client *memdClient, deadline time.Time) error {
 		return nil
-	}
-
-	return createAgent(config, initFn)
-}
-
-// CreateDcpAgent creates an agent for performing DCP operations.
-func CreateDcpAgent(config *AgentConfig, dcpStreamName string, openFlags memd.DcpOpenFlag) (*Agent, error) {
-	// We wrap the authorization system to force DCP channel opening
-	//   as part of the "initialization" for any servers.
-	initFn := func(client *memdClient, deadline time.Time) error {
-		sclient := &syncClient{client: client}
-		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
-			return err
-		}
-		if err := sclient.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
-			return err
-		}
-		var priority string
-		switch config.DcpAgentPriority {
-		case DcpAgentPriorityLow:
-			priority = "low"
-		case DcpAgentPriorityMed:
-			priority = "medium"
-		case DcpAgentPriorityHigh:
-			priority = "high"
-		}
-		if err := sclient.ExecDcpControl("set_priority", priority, deadline); err != nil {
-			return err
-		}
-
-		if config.UseDCPExpiry {
-			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
-				return err
-			}
-		}
-
-		if config.UseDCPStreamID {
-			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
-				return err
-			}
-		}
-
-		if err := sclient.ExecEnableDcpClientEnd(deadline); err != nil {
-			return err
-		}
-		return sclient.ExecEnableDcpBufferAck(8*1024*1024, deadline)
 	}
 
 	return createAgent(config, initFn)
@@ -272,7 +224,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		authMechanisms = append(authMechanisms, PlainAuthMechanism)
 	}
 
-	authHandler := c.buildAuthHandler(auth)
+	authHandler := buildAuthHandler(auth)
 
 	var httpEpList []string
 	for _, hostPort := range config.HTTPAddrs {
@@ -417,7 +369,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	return c, nil
 }
 
-func (agent *Agent) buildAuthHandler(auth AuthProvider) authFuncHandler {
+func buildAuthHandler(auth AuthProvider) authFuncHandler {
 	return func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc {
 		creds, err := getKvAuthCreds(auth, client.Address())
 		if err != nil {
@@ -488,11 +440,6 @@ func (agent *Agent) Close() error {
 	agent.http.Close()
 
 	return routeCloseErr
-}
-
-// IsSecure returns whether this client is connected via SSL.
-func (agent *Agent) IsSecure() bool {
-	return agent.tlsConfig != nil
 }
 
 // BucketUUID returns the UUID of the bucket we are connected to.
@@ -575,6 +522,11 @@ func (agent *Agent) CbasEps() []string {
 // HasCollectionsSupport verifies whether or not collections are available on the agent.
 func (agent *Agent) HasCollectionsSupport() bool {
 	return agent.kvMux.SupportsCollections()
+}
+
+// IsSecure returns whether this client is connected via SSL.
+func (agent *Agent) IsSecure() bool {
+	return agent.tlsConfig != nil
 }
 
 // UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.

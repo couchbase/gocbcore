@@ -8,90 +8,17 @@ import (
 	"github.com/couchbase/gocbcore/v8/memd"
 )
 
-const (
-	noManifestUID = uint64(0xFFFFFFFFFFFFFFFF)
-	noScopeID     = uint32(0xFFFFFFFF)
-	noStreamID    = uint16(0xFFFF)
-)
-
-// SnapshotState represents the state of a particular cluster snapshot.
-type SnapshotState uint32
-
-// HasInMemory returns whether this snapshot is available in memory.
-func (s SnapshotState) HasInMemory() bool {
-	return uint32(s)&1 != 0
+type dcpComponent struct {
+	kvMux *kvMux
 }
 
-// HasOnDisk returns whether this snapshot is available on disk.
-func (s SnapshotState) HasOnDisk() bool {
-	return uint32(s)&2 != 0
-}
-
-// FailoverEntry represents a single entry in the server fail-over log.
-type FailoverEntry struct {
-	VbUUID VbUUID
-	SeqNo  SeqNo
-}
-
-// StreamObserver provides an interface to receive events from a running DCP stream.
-type StreamObserver interface {
-	SnapshotMarker(startSeqNo, endSeqNo uint64, vbID uint16, streamID uint16, snapshotType SnapshotState)
-	Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbID uint16, collectionID uint32, streamID uint16, key, value []byte)
-	Deletion(seqNo, revNo, cas uint64, datatype uint8, vbID uint16, collectionID uint32, streamID uint16, key, value []byte)
-	Expiration(seqNo, revNo, cas uint64, vbID uint16, collectionID uint32, streamID uint16, key []byte)
-	End(vbID uint16, streamID uint16, err error)
-	CreateCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, collectionID uint32, ttl uint32, streamID uint16, key []byte)
-	DeleteCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, collectionID uint32, streamID uint16)
-	FlushCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, collectionID uint32)
-	CreateScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, streamID uint16, key []byte)
-	DeleteScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, streamID uint16)
-	ModifyCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, collectionID uint32, ttl uint32, streamID uint16)
-}
-
-// NewStreamFilter returns a new StreamFilter.
-func NewStreamFilter() *StreamFilter {
-	return &StreamFilter{
-		ManifestUID: noManifestUID,
-		Scope:       noScopeID,
-		StreamID:    noStreamID,
+func newDcpComponent(kvMux *kvMux) *dcpComponent {
+	return &dcpComponent{
+		kvMux: kvMux,
 	}
 }
 
-// StreamFilter provides options for filtering a DCP stream.
-type StreamFilter struct {
-	ManifestUID uint64
-	Collections []uint32
-	Scope       uint32
-	StreamID    uint16
-}
-
-type streamFilter struct {
-	ManifestUID string   `json:"uid,omitempty"`
-	Collections []string `json:"collections,omitempty"`
-	Scope       string   `json:"scope,omitempty"`
-	StreamID    uint16   `json:"sid,omitempty"`
-}
-
-// OpenStreamCallback is invoked with the results of `OpenStream` operations.
-type OpenStreamCallback func([]FailoverEntry, error)
-
-// CloseStreamCallback is invoked with the results of `CloseStream` operations.
-type CloseStreamCallback func(error)
-
-// GetFailoverLogCallback is invoked with the results of `GetFailoverLog` operations.
-type GetFailoverLogCallback func([]FailoverEntry, error)
-
-// VbSeqNoEntry represents a single GetVbucketSeqnos sequence number entry.
-type VbSeqNoEntry struct {
-	VbID  uint16
-	SeqNo SeqNo
-}
-
-// GetVBucketSeqnosCallback is invoked with the results of `GetVBucketSeqnos` operations.
-type GetVBucketSeqnosCallback func([]VbSeqNoEntry, error)
-
-// OpenStream opens a DCP stream for a particular VBucket and, optionally, filter.
-func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID VbUUID, startSeqNo,
+func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID VbUUID, startSeqNo,
 	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, filter *StreamFilter, cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -136,7 +63,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 		// This is one of the stream events
 		switch resp.Command {
 		case memd.CmdDcpSnapshotMarker:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			newStartSeqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			newEndSeqNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			snapshotType := binary.BigEndian.Uint32(resp.Extras[16:])
@@ -146,7 +73,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 			}
 			evtHandler.SnapshotMarker(newStartSeqNo, newEndSeqNo, vbID, streamID, SnapshotState(snapshotType))
 		case memd.CmdDcpMutation:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			flags := binary.BigEndian.Uint32(resp.Extras[16:])
@@ -158,7 +85,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 			}
 			evtHandler.Mutation(seqNo, revNo, flags, expiry, lockTime, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
 		case memd.CmdDcpDeletion:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			var streamID uint16
@@ -167,7 +94,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 			}
 			evtHandler.Deletion(seqNo, revNo, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
 		case memd.CmdDcpExpiration:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
 			var streamID uint16
@@ -176,7 +103,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 			}
 			evtHandler.Expiration(seqNo, revNo, resp.Cas, vbID, resp.CollectionID, streamID, resp.Key)
 		case memd.CmdDcpEvent:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			eventCode := memd.StreamEventCode(binary.BigEndian.Uint32(resp.Extras[8:]))
 			version := resp.Extras[12]
@@ -219,7 +146,7 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 				evtHandler.ModifyCollection(seqNo, version, vbID, manifestUID, collectionID, ttl, streamID)
 			}
 		case memd.CmdDcpStreamEnd:
-			vbID := uint16(resp.Vbucket)
+			vbID := resp.Vbucket
 			code := memd.StreamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
 			var streamID uint16
 			if resp.StreamIDFrame != nil {
@@ -227,6 +154,14 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 			}
 			evtHandler.End(vbID, streamID, getStreamEndStatusError(code))
 			req.internalCancel(err)
+		case memd.CmdDcpSeqNoAdvanced:
+			vbID := resp.Vbucket
+			snapshotType := binary.BigEndian.Uint32(resp.Extras[0:])
+			var streamID uint16
+			if resp.StreamIDFrame != nil {
+				streamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.OSOSnapshot(vbID, streamID, snapshotType)
 		}
 	}
 
@@ -277,11 +212,10 @@ func (agent *Agent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID 
 		ReplicaIdx: 0,
 		Persistent: true,
 	}
-	return agent.collections.Dispatch(req)
+	return dcp.kvMux.DispatchDirect(req)
 }
 
-// CloseStreamWithID shuts down an open stream for the specified VBucket for the specified stream.
-func (agent *Agent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStreamCallback) (PendingOp, error) {
+func (dcp *dcpComponent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStreamCallback) (PendingOp, error) {
 	handler := func(_ *memdQResponse, _ *memdQRequest, err error) {
 		cb(err)
 	}
@@ -307,11 +241,11 @@ func (agent *Agent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStre
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.collections.Dispatch(req)
+
+	return dcp.kvMux.DispatchDirect(req)
 }
 
-// CloseStream shuts down an open stream for the specified VBucket.
-func (agent *Agent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp, error) {
+func (dcp *dcpComponent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp, error) {
 	handler := func(_ *memdQResponse, _ *memdQRequest, err error) {
 		cb(err)
 	}
@@ -332,12 +266,10 @@ func (agent *Agent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp,
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.collections.Dispatch(req)
+	return dcp.kvMux.DispatchDirect(req)
 }
 
-// GetFailoverLog retrieves the fail-over log for a particular VBucket.  This is used
-// to resume an interrupted stream after a node fail-over has occurred.
-func (agent *Agent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (PendingOp, error) {
+func (dcp *dcpComponent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -371,12 +303,10 @@ func (agent *Agent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (Pend
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return agent.collections.Dispatch(req)
+	return dcp.kvMux.DispatchDirect(req)
 }
 
-// GetVbucketSeqnosWithCollectionID returns the last checkpoint for a particular VBucket for a particular collection. This is useful
-// for starting a DCP stream from wherever the server currently is.
-func (agent *Agent) GetVbucketSeqnosWithCollectionID(serverIdx int, state memd.VbucketState, collectionID uint32, cb GetVBucketSeqnosCallback) (PendingOp, error) {
+func (dcp *dcpComponent) GetVbucketSeqnosWithCollectionID(serverIdx int, state memd.VbucketState, collectionID uint32, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -417,12 +347,10 @@ func (agent *Agent) GetVbucketSeqnosWithCollectionID(serverIdx int, state memd.V
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	return agent.collections.Dispatch(req)
+	return dcp.kvMux.DispatchDirect(req)
 }
 
-// GetVbucketSeqnos returns the last checkpoint for a particular VBucket.  This is useful
-// for starting a DCP stream from wherever the server currently is.
-func (agent *Agent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, cb GetVBucketSeqnosCallback) (PendingOp, error) {
+func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -462,5 +390,5 @@ func (agent *Agent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, cb 
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	return agent.collections.Dispatch(req)
+	return dcp.kvMux.DispatchDirect(req)
 }

@@ -36,6 +36,8 @@ const (
 	CmdDcpMutation            = CmdCode(0x57)
 	CmdDcpDeletion            = CmdCode(0x58)
 	CmdDcpExpiration          = CmdCode(0x59)
+	CmdDcpSeqNoAdvanced       = CmdCode(0x64)
+	CmdDcpOsoSnapshot         = CmdCode(0x65)
 	CmdDcpFlush               = CmdCode(0x5a)
 	CmdDcpSetVbucketState     = CmdCode(0x5b)
 	CmdDcpNoop                = CmdCode(0x5c)

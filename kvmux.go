@@ -89,7 +89,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	}
 
 	if oldClientMux == nil {
-		if mux.collectionsEnabled && !newClientMux.collectionsSupported {
+		if newClientMux.revID > -1 && mux.collectionsEnabled && !newClientMux.collectionsSupported {
 			logDebugf("Collections disabled as unsupported")
 		}
 		// There is no existing muxer.  We can simply start the new pipelines.
@@ -521,6 +521,10 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 	}
 
 	err = mux.errMapMgr.EnhanceKvError(err, resp, req)
+
+	if mux.postCompleteErrHandler == nil {
+		return false, nil
+	}
 
 	return mux.postCompleteErrHandler(resp, req, err)
 }

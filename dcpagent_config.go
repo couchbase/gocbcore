@@ -11,36 +11,19 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 )
 
-func parseDurationOrInt(valStr string) (time.Duration, error) {
-	dur, err := time.ParseDuration(valStr)
-	if err != nil {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return 0, err
-		}
-
-		dur = time.Duration(val) * time.Millisecond
-	}
-
-	return dur, nil
-}
-
-// AgentConfig specifies the configuration options for creation of an Agent.
-type AgentConfig struct {
-	MemdAddrs   []string
-	HTTPAddrs   []string
-	BucketName  string
+// DCPAgentConfig specifies the configuration options for creation of a DCPAgent.
+type DCPAgentConfig struct {
 	UserAgent   string
+	MemdAddrs   []string
 	UseTLS      bool
+	BucketName  string
 	NetworkType string
 	Auth        AuthProvider
 
 	TLSRootCAs    *x509.CertPool
 	TLSSkipVerify bool
 
-	UseMutationTokens    bool
 	UseCompression       bool
-	UseDurations         bool
 	DisableDecompression bool
 
 	UseCollections bool
@@ -48,43 +31,26 @@ type AgentConfig struct {
 	CompressionMinSize  int
 	CompressionMinRatio float64
 
-	HTTPRedialPeriod time.Duration
-	HTTPRetryDelay   time.Duration
-	CccpMaxWait      time.Duration
-	CccpPollPeriod   time.Duration
+	CccpMaxWait    time.Duration
+	CccpPollPeriod time.Duration
 
 	ConnectTimeout   time.Duration
 	KVConnectTimeout time.Duration
+	KvPoolSize       int
+	MaxQueueSize     int
 
-	KvPoolSize   int
-	MaxQueueSize int
-
-	HTTPMaxIdleConns          int
-	HTTPMaxIdleConnsPerHost   int
-	HTTPIdleConnectionTimeout time.Duration
-
-	// Volatile: Tracer API is subject to change.
-	Tracer           RequestTracer
-	NoRootTraceSpans bool
-
-	DefaultRetryStrategy RetryStrategy
-	CircuitBreakerConfig CircuitBreakerConfig
-
-	UseZombieLogger        bool
-	ZombieLoggerInterval   time.Duration
-	ZombieLoggerSampleSize int
+	DcpAgentPriority  DcpAgentPriority
+	UseDCPExpiry      bool
+	UseDCPStreamID    bool
+	UseDCPOSOBackfill bool
 }
 
-func (config *AgentConfig) redacted() interface{} {
-	newConfig := AgentConfig{}
+func (config *DCPAgentConfig) redacted() interface{} {
+	newConfig := DCPAgentConfig{}
 	newConfig = *config
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.
-		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
-		for i, addr := range newConfig.HTTPAddrs {
-			newConfig.HTTPAddrs[i] = redactSystemData(addr)
-		}
 		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
 		for i, addr := range newConfig.MemdAddrs {
 			newConfig.MemdAddrs[i] = redactSystemData(addr)
@@ -101,7 +67,6 @@ func (config *AgentConfig) redacted() interface{} {
 // FromConnStr populates the AgentConfig with information from a
 // Couchbase Connection String.
 // Supported options are:
-//   bootstrap_on (bool) - Specifies what protocol to bootstrap on (cccp, http).
 //   ca_cert_path (string) - Specifies the path to a CA certificate.
 //   network (string) - The network type to use.
 //   kv_connect_timeout (duration) - Maximum period to attempt to connect to cluster in ms.
@@ -110,23 +75,21 @@ func (config *AgentConfig) redacted() interface{} {
 //   compression (bool) - Whether to enable network-wise compression of documents.
 //   compression_min_size (int) - The minimal size of the document in bytes to consider compression.
 //   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
-//   enable_server_durations (bool) - Whether to enable fetching server operation durations.
-//   max_idle_http_connections (int) - Maximum number of idle http connections in the pool.
-//   max_perhost_idle_http_connections (int) - Maximum number of idle http connections in the pool per host.
-//   idle_http_connection_timeout (duration) - Maximum length of time for an idle connection to stay in the pool in ms.
 //   orphaned_response_logging (bool) - Whether to enable orphaned response logging.
 //   orphaned_response_logging_interval (duration) - How often to print the orphan log records.
 //   orphaned_response_logging_sample_size (int) - The maximum number of orphan log records to track.
 //   dcp_priority (int) - Specifies the priority to request from the Cluster when connecting for DCP.
 //   enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
-//   http_redial_period (duration) - The maximum length of time for the HTTP poller to stay connected before reconnecting.
-//   http_retry_delay (duration) - The length of time to wait between HTTP poller retries if connecting fails.
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
-func (config *AgentConfig) FromConnStr(connStr string) error {
+func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := gocbconnstr.Parse(connStr)
 	if err != nil {
 		return err
+	}
+
+	if baseSpec.Scheme == "http" {
+		return errors.New("http scheme is not supported for dcp agent, use couchbase or couchbases instead")
 	}
 
 	spec, err := gocbconnstr.Resolve(baseSpec)
@@ -142,38 +105,12 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		return optValue[len(optValue)-1], true
 	}
 
-	// Grab the resolved hostnames into a set of string arrays
-	var httpHosts []string
-	for _, specHost := range spec.HttpHosts {
-		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-
 	var memdHosts []string
 	for _, specHost := range spec.MemdHosts {
 		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
 	}
 
-	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
-	switch val, _ := fetchOption("bootstrap_on"); val {
-	case "http":
-		memdHosts = nil
-		if len(httpHosts) == 0 {
-			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
-		}
-	case "cccp":
-		httpHosts = nil
-		if len(memdHosts) == 0 {
-			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
-		}
-	case "both":
-	case "":
-		// Do nothing
-		break
-	default:
-		return errors.New("bootstrap_on={http,cccp,both}")
-	}
 	config.MemdAddrs = memdHosts
-	config.HTTPAddrs = httpHosts
 
 	if spec.UseSsl {
 		var cacertpaths []string
@@ -239,14 +176,6 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.CccpPollPeriod = val
 	}
 
-	if valStr, ok := fetchOption("enable_mutation_tokens"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("enable_mutation_tokens option must be a boolean")
-		}
-		config.UseMutationTokens = val
-	}
-
 	if valStr, ok := fetchOption("compression"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
@@ -271,78 +200,31 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.CompressionMinRatio = val
 	}
 
-	if valStr, ok := fetchOption("enable_server_durations"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("server_duration option must be a boolean")
+	// This option is experimental
+	if valStr, ok := fetchOption("dcp_priority"); ok {
+		var priority DcpAgentPriority
+		switch valStr {
+		case "":
+			priority = DcpAgentPriorityLow
+		case "low":
+			priority = DcpAgentPriorityLow
+		case "medium":
+			priority = DcpAgentPriorityMed
+		case "high":
+			priority = DcpAgentPriorityHigh
+		default:
+			return fmt.Errorf("dcp_priority must be one of low, medium or high")
 		}
-		config.UseDurations = val
-	}
-
-	if valStr, ok := fetchOption("max_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http max idle connections option must be a number")
-		}
-		config.HTTPMaxIdleConns = int(val)
-	}
-
-	if valStr, ok := fetchOption("max_perhost_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max_perhost_idle_http_connections option must be a number")
-		}
-		config.HTTPMaxIdleConnsPerHost = int(val)
-	}
-
-	if valStr, ok := fetchOption("idle_http_connection_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
-		}
-		config.HTTPIdleConnectionTimeout = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging option must be a boolean")
-		}
-		config.UseZombieLogger = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_interval"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_interval option must be a number")
-		}
-		config.ZombieLoggerInterval = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_sample_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_sample_size option must be a number")
-		}
-		config.ZombieLoggerSampleSize = int(val)
+		config.DcpAgentPriority = priority
 	}
 
 	// This option is experimental
-	if valStr, ok := fetchOption("http_redial_period"); ok {
-		val, err := parseDurationOrInt(valStr)
+	if valStr, ok := fetchOption("enable_dcp_expiry"); ok {
+		val, err := strconv.ParseBool(valStr)
 		if err != nil {
-			return fmt.Errorf("http redial period option must be a duration or a number")
+			return fmt.Errorf("enable_dcp_expiry option must be a boolean")
 		}
-		config.HTTPRedialPeriod = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_retry_delay"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http retry delay option must be a duration or a number")
-		}
-		config.HTTPRetryDelay = val
+		config.UseDCPExpiry = val
 	}
 
 	// This option is experimental

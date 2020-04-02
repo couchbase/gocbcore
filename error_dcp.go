@@ -19,6 +19,9 @@ func makeStreamEndStatusError(code memd.StreamEndStatus) error {
 }
 
 func getStreamEndStatusError(code memd.StreamEndStatus) error {
+	if code == memd.StreamEndOK {
+		return nil
+	}
 	if err := streamEndErrorMap[code]; err != nil {
 		return err
 	}
@@ -26,9 +29,6 @@ func getStreamEndStatusError(code memd.StreamEndStatus) error {
 }
 
 var (
-	// ErrDCPStreamClosed occurs when a DCP stream is closed gracefully.
-	ErrDCPStreamClosed = makeStreamEndStatusError(memd.StreamEndClosed)
-
 	// ErrDCPStreamStateChanged occurs when a DCP stream is interrupted by failover.
 	ErrDCPStreamStateChanged = makeStreamEndStatusError(memd.StreamEndStateChanged)
 
