@@ -78,14 +78,23 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
-	logInfof("Creating new agent: %+v", config)
+	logInfof("Creating new dcp agent: %+v", config)
 
 	var tlsConfig *tls.Config
 	if config.UseTLS {
 		tlsConfig = &tls.Config{
 			RootCAs: config.TLSRootCAs,
 			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				return config.Auth.Certificate(AuthCertRequest{})
+				cert, err := config.Auth.Certificate(AuthCertRequest{})
+				if err != nil {
+					return nil, err
+				}
+
+				if cert == nil {
+					return &tls.Certificate{}, nil
+				}
+
+				return cert, nil
 			},
 			InsecureSkipVerify: config.TLSSkipVerify,
 		}
