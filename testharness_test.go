@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/gojcbmock"
+	"github.com/couchbase/gocbcore/v9/gojcbmock"
 )
 
 var (
