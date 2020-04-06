@@ -421,7 +421,7 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 			return nil, 0, errors.New("the observe operation is not supported with collections enabled")
 		}
 
-		if IsCommandCollectionEncoded(pkt.Command) {
+		if IsCommandCollectionEncoded(pkt.Command) && keyLen > 0 {
 			collectionID, idLen, err := DecodeULEB128_32(keyVal)
 			if err != nil {
 				return nil, 0, err

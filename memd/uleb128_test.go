@@ -83,3 +83,10 @@ func TestULEB128_32_0xCAFEF00D(t *testing.T) {
 func TestULEB128_32_0xffffffff(t *testing.T) {
 	testULEB128_32(t, 0xffffffff, []byte{0xFF, 0xFF, 0xFF, 0xFF, 0x0F})
 }
+
+func TestULEB128_32_nil(t *testing.T) {
+	_, _, err := DecodeULEB128_32([]byte{})
+	if err == nil {
+		t.Fatal("decoding should have failed but did not")
+	}
+}

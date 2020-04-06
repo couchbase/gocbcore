@@ -22,6 +22,9 @@ func AppendULEB128_32(b []byte, v uint32) []byte {
 
 // DecodeULEB128_32 decodes a ULEB128 encoded number into a uint32
 func DecodeULEB128_32(b []byte) (uint32, int, error) {
+	if len(b) == 0 {
+		return 0, 0, errors.New("no data provided")
+	}
 	var u uint64
 	var n int
 	for i := 0; ; i++ {
