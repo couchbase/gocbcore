@@ -196,7 +196,16 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		tlsConfig = &tls.Config{
 			RootCAs: config.TLSRootCAs,
 			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				return config.Auth.Certificate(AuthCertRequest{})
+				cert, err := config.Auth.Certificate(AuthCertRequest{})
+				if err != nil {
+					return nil, err
+				}
+
+				if cert == nil {
+					return &tls.Certificate{}, nil
+				}
+
+				return cert, nil
 			},
 			InsecureSkipVerify: config.TLSSkipVerify,
 		}
