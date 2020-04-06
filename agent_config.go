@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/couchbase/gocbcore/v9/gocbconnstr"
 )
 
 func parseDurationOrInt(valStr string) (time.Duration, error) {

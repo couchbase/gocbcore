@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/couchbase/gocbcore/v9/gocbconnstr"
 )
 
 // DCPAgentConfig specifies the configuration options for creation of a DCPAgent.
