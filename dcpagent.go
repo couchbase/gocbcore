@@ -172,7 +172,7 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		c.onInvalidConfig,
 	)
 
-	dialer := newMemdClientCreatorComponent(
+	dialer := newMemdClientDialerComponent(
 		memdClientDialerProps{
 			ServerWaitTimeout:    serverWaitTimeout,
 			KVConnectTimeout:     kvConnectTimeout,

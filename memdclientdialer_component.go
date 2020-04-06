@@ -37,7 +37,7 @@ type memdClientDialerProps struct {
 	DisableDecompression bool
 }
 
-func newMemdClientCreatorComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
+func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
 	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapCB memdInitFunc) *memdClientDialerComponent {
 	return &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
@@ -98,6 +98,19 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCom
 
 func (mcc *memdClientDialerComponent) dialMemdClient(address string, deadline time.Time,
 	postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+	// Copy the tls configuration since we need to provide the hostname for each
+	// server that we connect to so that the certificate can be validated properly.
+	var tlsConfig *tls.Config
+	if mcc.tlsConfig != nil {
+		host, err := hostFromHostPort(address)
+		if err != nil {
+			logErrorf("Failed to parse address for TLS config (%s)", err)
+		}
+
+		tlsConfig = cloneTLSConfig(mcc.tlsConfig)
+		tlsConfig.ServerName = host
+	}
+
 	conn, err := dialMemdConn(address, mcc.tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
