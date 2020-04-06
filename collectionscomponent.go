@@ -68,7 +68,7 @@ func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req
 	return false, err
 }
 
-func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionManifestOptions, cb GetCollectionManifestCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionManifest", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -78,8 +78,12 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 			return
 		}
 
+		res := GetCollectionManifestResult{
+			Manifest: resp.Value,
+		}
+
 		tracer.Finish()
-		cb(resp.Value, nil)
+		cb(&res, nil)
 	}
 
 	if opts.RetryStrategy == nil {
@@ -104,7 +108,7 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 	return cidMgr.mux.DispatchDirect(req)
 }
 
-func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
+func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb GetCollectionIDCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -121,7 +125,7 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 			cidCache.lock.Unlock()
 
 			tracer.Finish()
-			cb(0, 0, err)
+			cb(nil, err)
 			return
 		}
 
@@ -132,8 +136,13 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 		cidCache.id = collectionID
 		cidCache.lock.Unlock()
 
+		res := GetCollectionIDResult{
+			ManifestID:   manifestID,
+			CollectionID: collectionID,
+		}
+
 		tracer.Finish()
-		cb(manifestID, collectionID, nil)
+		cb(&res, nil)
 	}
 
 	if opts.RetryStrategy == nil {
@@ -241,7 +250,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 	}
 
 	_, err = cid.parent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
-		func(manifestID uint64, collectionID uint32, err error) {
+		func(result *GetCollectionIDResult, err error) {
 			// GetCollectionID will handle updating the id cache so we don't need to do it here
 			if err != nil {
 				cid.opQueue.Close()
@@ -254,7 +263,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 
 			cid.opQueue.Close()
 			cid.opQueue.Drain(func(request *memdQRequest) {
-				request.CollectionID = collectionID
+				request.CollectionID = result.CollectionID
 				cid.mux.RequeueDirect(request, false)
 			})
 		},

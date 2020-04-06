@@ -219,21 +219,21 @@ func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
 	return agent.http.DoHTTPRequest(req)
 }
 
-// ManifestCallback is invoked upon completion of a GetCollectionManifest operation.
-type ManifestCallback func(manifest []byte, err error)
+// GetCollectionManifestCallback is invoked upon completion of a GetCollectionManifest operation.
+type GetCollectionManifestCallback func(*GetCollectionManifestResult, error)
 
 // GetCollectionManifest fetches the current server manifest. This function will not update the client's collection
 // id cache.
-func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb ManifestCallback) (PendingOp, error) {
+func (agent *Agent) GetCollectionManifest(opts GetCollectionManifestOptions, cb GetCollectionManifestCallback) (PendingOp, error) {
 	return agent.collections.GetCollectionManifest(opts, cb)
 }
 
-// CollectionIDCallback is invoked upon completion of a GetCollectionID operation.
-type CollectionIDCallback func(manifestID uint64, collectionID uint32, err error)
+// GetCollectionIDCallback is invoked upon completion of a GetCollectionID operation.
+type GetCollectionIDCallback func(*GetCollectionIDResult, error)
 
 // GetCollectionID fetches the collection id and manifest id that the collection belongs to, given a scope name
 // and collection name. This function will also prime the client's collection id cache.
-func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb CollectionIDCallback) (PendingOp, error) {
+func (agent *Agent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb GetCollectionIDCallback) (PendingOp, error) {
 	return agent.collections.GetCollectionID(scopeName, collectionName, opts, cb)
 }
 

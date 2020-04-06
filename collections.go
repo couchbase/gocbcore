@@ -105,3 +105,14 @@ type GetCollectionIDOptions struct {
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
+
+// GetCollectionIDResult encapsulates the result of a GetCollectionID operation.
+type GetCollectionIDResult struct {
+	ManifestID   uint64
+	CollectionID uint32
+}
+
+// GetCollectionManifestResult encapsulates the result of a GetCollectionManifest operation.
+type GetCollectionManifestResult struct {
+	Manifest []byte
+}

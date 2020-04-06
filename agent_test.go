@@ -1626,7 +1626,7 @@ func waitForManifest(agent *Agent, manifestID uint64, manifestCh chan testManife
 	var manifest Manifest
 	for manifest.UID != manifestID {
 		setCh := make(chan struct{})
-		agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(bytes []byte, err error) {
+		agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(result *GetCollectionManifestResult, err error) {
 			if err != nil {
 				log.Println(err.Error())
 				close(setCh)
@@ -1634,7 +1634,7 @@ func waitForManifest(agent *Agent, manifestID uint64, manifestCh chan testManife
 				return
 			}
 
-			err = json.Unmarshal(bytes, &manifest)
+			err = json.Unmarshal(result.Manifest, &manifest)
 			if err != nil {
 				log.Println(err.Error())
 				close(setCh)
