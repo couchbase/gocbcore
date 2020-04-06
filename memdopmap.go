@@ -1,6 +1,6 @@
 package gocbcore
 
-import "github.com/couchbase/gocbcore/v8/memd"
+import "github.com/couchbase/gocbcore/v9/memd"
 
 type memdOpMapItem struct {
 	value *memdQRequest

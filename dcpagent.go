@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 // DCPAgent represents the base client handling DCP connections to a Couchbase Server.

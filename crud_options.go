@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 // GetOptions encapsulates the parameters for a GetEx operation.

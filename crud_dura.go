@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 // ObserveOptions encapsulates the parameters for a ObserveEx operation.

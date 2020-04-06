@@ -1,6 +1,6 @@
 package gocbcore
 
-import "github.com/couchbase/gocbcore/v8/memd"
+import "github.com/couchbase/gocbcore/v9/memd"
 
 // GetCallback is invoked upon completion of a Get operation.
 type GetCallback func(*GetResult, error)

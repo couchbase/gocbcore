@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 type statsComponent struct {

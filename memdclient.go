@@ -10,7 +10,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 
 	"github.com/golang/snappy"
 )

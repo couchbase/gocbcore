@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {

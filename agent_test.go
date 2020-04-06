@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 /* BUG(brett19): GOCBC-691: Disabled due to known issue with CID error retries

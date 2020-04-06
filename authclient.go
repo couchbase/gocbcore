@@ -7,9 +7,9 @@ import (
 	"hash"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 
-	scram "github.com/couchbase/gocbcore/v8/scram"
+	scram "github.com/couchbase/gocbcore/v9/scram"
 )
 
 // AuthMechanism represents a type of auth that can be performed.

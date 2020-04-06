@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 var streamEndErrorMap = make(map[memd.StreamEndStatus]error)

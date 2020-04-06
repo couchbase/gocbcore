@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/couchbase/gocbcore/v8/memd"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 type cccpConfigController struct {

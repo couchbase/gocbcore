@@ -1,4 +1,4 @@
-module github.com/couchbase/gocbcore/v8
+module github.com/couchbase/gocbcore/v9
 
 require (
 	github.com/couchbaselabs/gocbconnstr v1.0.5
