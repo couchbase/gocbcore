@@ -1,4 +1,4 @@
-package gojcbmock
+package jcbmock
 
 import (
 	"errors"

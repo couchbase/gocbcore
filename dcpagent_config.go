@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/gocbconnstr"
+	"github.com/couchbase/gocbcore/v9/connstr"
 )
 
 // DCPAgentConfig specifies the configuration options for creation of a DCPAgent.
@@ -83,7 +83,7 @@ func (config *DCPAgentConfig) redacted() interface{} {
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
 func (config *DCPAgentConfig) FromConnStr(connStr string) error {
-	baseSpec, err := gocbconnstr.Parse(connStr)
+	baseSpec, err := connstr.Parse(connStr)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 		return errors.New("http scheme is not supported for dcp agent, use couchbase or couchbases instead")
 	}
 
-	spec, err := gocbconnstr.Resolve(baseSpec)
+	spec, err := connstr.Resolve(baseSpec)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package gocbconnstr
+package connstr
 
 import (
 	"errors"

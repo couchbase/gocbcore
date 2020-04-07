@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/gojcbmock"
+	"github.com/couchbase/gocbcore/v9/jcbmock"
 )
 
 var (
@@ -53,7 +53,7 @@ type TestHarness struct {
 	ClusterVersion NodeVersion
 	FeatureFlags   []TestFeatureFlag
 
-	mockInst     *gojcbmock.Mock
+	mockInst     *jcbmock.Mock
 	defaultAgent *Agent
 	memdAgent    *Agent
 	dcpAgent     *Agent
@@ -61,22 +61,22 @@ type TestHarness struct {
 
 func (h *TestHarness) init() error {
 	if h.ConnStr == "" {
-		mpath, err := gojcbmock.GetMockPath()
+		mpath, err := jcbmock.GetMockPath()
 		if err != nil {
 			panic(err.Error())
 		}
 
-		mock, err := gojcbmock.NewMock(mpath, 4, 1, 64, []gojcbmock.BucketSpec{
-			{Name: "default", Type: gojcbmock.BCouchbase},
-			{Name: "memd", Type: gojcbmock.BMemcached},
+		mock, err := jcbmock.NewMock(mpath, 4, 1, 64, []jcbmock.BucketSpec{
+			{Name: "default", Type: jcbmock.BCouchbase},
+			{Name: "memd", Type: jcbmock.BMemcached},
 		}...)
 		if err != nil {
 			return err
 		}
 
-		mock.Control(gojcbmock.NewCommand(gojcbmock.CSetCCCP,
+		mock.Control(jcbmock.NewCommand(jcbmock.CSetCCCP,
 			map[string]interface{}{"enabled": "true"}))
-		mock.Control(gojcbmock.NewCommand(gojcbmock.CSetSASLMechanisms,
+		mock.Control(jcbmock.NewCommand(jcbmock.CSetSASLMechanisms,
 			map[string]interface{}{"mechs": []string{"SCRAM-SHA512"}}))
 
 		h.mockInst = mock
@@ -273,7 +273,7 @@ func (h *TestHarness) SupportsFeature(feature TestFeatureCode) bool {
 func (h *TestHarness) TimeTravel(waitDura time.Duration) {
 	if h.IsMockServer() {
 		waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
-		h.mockInst.Control(gojcbmock.NewCommand(gojcbmock.CTimeTravel, map[string]interface{}{
+		h.mockInst.Control(jcbmock.NewCommand(jcbmock.CTimeTravel, map[string]interface{}{
 			"Offset": waitSecs,
 		}))
 	} else {

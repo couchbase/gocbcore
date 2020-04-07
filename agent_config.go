@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/gocbconnstr"
+	"github.com/couchbase/gocbcore/v9/connstr"
 )
 
 func parseDurationOrInt(valStr string) (time.Duration, error) {
@@ -124,12 +124,12 @@ func (config *AgentConfig) redacted() interface{} {
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
 func (config *AgentConfig) FromConnStr(connStr string) error {
-	baseSpec, err := gocbconnstr.Parse(connStr)
+	baseSpec, err := connstr.Parse(connStr)
 	if err != nil {
 		return err
 	}
 
-	spec, err := gocbconnstr.Resolve(baseSpec)
+	spec, err := connstr.Resolve(baseSpec)
 	if err != nil {
 		return err
 	}
