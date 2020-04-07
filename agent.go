@@ -447,27 +447,6 @@ func (agent *Agent) BucketUUID() string {
 	return agent.kvMux.ConfigUUID()
 }
 
-// KeyToVbucket translates a particular key to its assigned vbucket.
-func (agent *Agent) KeyToVbucket(key []byte) uint16 {
-	return agent.kvMux.KeyToVbucket(key)
-}
-
-// KeyToServer translates a particular key to its assigned server index.
-func (agent *Agent) KeyToServer(key []byte, replicaIdx uint32) int {
-	return agent.kvMux.KeyToServer(key, replicaIdx)
-}
-
-// VbucketToServer returns the server index for a particular vbucket.
-func (agent *Agent) VbucketToServer(vbID uint16, replicaIdx uint32) int {
-	return agent.kvMux.VbucketToServer(vbID, replicaIdx)
-}
-
-// NumVbuckets returns the number of VBuckets configured on the
-// connected cluster.
-func (agent *Agent) NumVbuckets() int {
-	return agent.kvMux.NumVBuckets()
-}
-
 // NumReplicas returns the number of replicas configured on the
 // connected cluster.
 func (agent *Agent) NumReplicas() int {
@@ -477,11 +456,6 @@ func (agent *Agent) NumReplicas() int {
 // NumServers returns the number of servers accessible for K/V.
 func (agent *Agent) NumServers() int {
 	return agent.kvMux.NumPipelines()
-}
-
-// VbucketsOnServer returns the list of VBuckets for a server.
-func (agent *Agent) VbucketsOnServer(index int) []uint16 {
-	return agent.kvMux.VbucketsOnServer(index)
 }
 
 // ClientID returns the unique id for this agent

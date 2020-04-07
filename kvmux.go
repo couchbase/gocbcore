@@ -156,47 +156,6 @@ func (mux *kvMux) KeyToVbucket(key []byte) uint16 {
 	return clientMux.vbMap.VbucketByKey(key)
 }
 
-func (mux *kvMux) KeyToServer(key []byte, replicaIdx uint32) int {
-	clientMux := mux.getState()
-	if clientMux.vbMap != nil {
-		serverIdx, err := clientMux.vbMap.NodeByKey(key, replicaIdx)
-		if err != nil {
-			return -1
-		}
-
-		return serverIdx
-	}
-
-	if clientMux.ketamaMap != nil {
-		serverIdx, err := clientMux.ketamaMap.NodeByKey(key)
-		if err != nil {
-			return -1
-		}
-
-		return serverIdx
-	}
-
-	return -1
-}
-
-func (mux *kvMux) VbucketToServer(vbID uint16, replicaIdx uint32) int {
-	clientMux := mux.getState()
-	if clientMux == nil || clientMux.vbMap == nil {
-		return 0
-	}
-
-	if clientMux.vbMap == nil {
-		return -1
-	}
-
-	serverIdx, err := clientMux.vbMap.NodeByVbucket(vbID, replicaIdx)
-	if err != nil {
-		return -1
-	}
-
-	return serverIdx
-}
-
 func (mux *kvMux) NumReplicas() int {
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -219,26 +178,6 @@ func (mux *kvMux) BucketType() bucketType {
 	return clientMux.bktType
 }
 
-func (mux *kvMux) VbucketsOnServer(index int) []uint16 {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return nil
-	}
-
-	if clientMux.vbMap == nil {
-		return nil
-	}
-
-	vbList := clientMux.vbMap.VbucketsByServer(0)
-
-	if len(vbList) <= index {
-		// Invalid server index
-		return nil
-	}
-
-	return vbList[index]
-}
-
 func (mux *kvMux) SupportsGCCCP() bool {
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -246,15 +185,6 @@ func (mux *kvMux) SupportsGCCCP() bool {
 	}
 
 	return clientMux.BucketType() == bktTypeNone
-}
-
-func (mux *kvMux) NumVBuckets() int {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return 0
-	}
-
-	return clientMux.vbMap.NumVbuckets()
 }
 
 func (mux *kvMux) NumPipelines() int {
