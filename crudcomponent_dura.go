@@ -44,7 +44,10 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 		}, nil)
 	}
 
-	vbID := crud.cidMgr.KeyToVbucket(opts.Key)
+	vbID, err := crud.cidMgr.KeyToVbucket(opts.Key)
+	if err != nil {
+		return nil, err
+	}
 	keyLen := len(opts.Key)
 
 	valueBuf := make([]byte, 2+2+keyLen)

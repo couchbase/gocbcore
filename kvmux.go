@@ -147,13 +147,13 @@ func (mux *kvMux) ConfigUUID() string {
 	return clientMux.uuid
 }
 
-func (mux *kvMux) KeyToVbucket(key []byte) uint16 {
+func (mux *kvMux) KeyToVbucket(key []byte) (uint16, error) {
 	clientMux := mux.getState()
 	if clientMux == nil || clientMux.vbMap == nil {
-		return 0
+		return 0, errShutdown
 	}
 
-	return clientMux.vbMap.VbucketByKey(key)
+	return clientMux.vbMap.VbucketByKey(key), nil
 }
 
 func (mux *kvMux) NumReplicas() int {

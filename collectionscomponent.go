@@ -358,6 +358,6 @@ func (cidMgr *collectionsComponent) BucketType() bucketType {
 	return cidMgr.mux.BucketType()
 }
 
-func (cidMgr *collectionsComponent) KeyToVbucket(key []byte) uint16 {
+func (cidMgr *collectionsComponent) KeyToVbucket(key []byte) (uint16, error) {
 	return cidMgr.mux.KeyToVbucket(key)
 }

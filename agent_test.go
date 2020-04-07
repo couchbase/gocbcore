@@ -757,7 +757,11 @@ func TestObserveSeqNo(t *testing.T) {
 	s.Wait(0)
 
 	origCurSeqNo := SeqNo(0)
-	vbID := agent.kvMux.KeyToVbucket([]byte("testObserve"))
+	vbID, err := agent.kvMux.KeyToVbucket([]byte("testObserve"))
+	if err != nil {
+		s.Fatalf("KeyToVbucket operation failed: %v", err)
+	}
+
 	s.PushOp(agent.ObserveVb(ObserveVbOptions{
 		VbID:       vbID,
 		VbUUID:     origMt.VbUUID,
@@ -790,7 +794,10 @@ func TestObserveSeqNo(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	vbID = agent.kvMux.KeyToVbucket([]byte("testObserve"))
+	vbID, err = agent.kvMux.KeyToVbucket([]byte("testObserve"))
+	if err != nil {
+		s.Fatalf("KeyToVbucket operation failed: %v", err)
+	}
 	s.PushOp(agent.ObserveVb(ObserveVbOptions{
 		VbID:       vbID,
 		VbUUID:     newMt.VbUUID,
