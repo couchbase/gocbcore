@@ -1498,10 +1498,29 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 
 	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-	resp, err := agent.DoHTTPRequest(req)
+	resCh := make(chan *HTTPResponse)
+	errCh := make(chan error)
+	_, err := agent.DoHTTPRequest(req, func(response *HTTPResponse, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- response
+	})
 	if err != nil {
 		return nil, err
 	}
+
+	var resp *HTTPResponse
+	select {
+	case respErr := <-errCh:
+		if respErr != nil {
+			return nil, respErr
+		}
+	case res := <-resCh:
+		resp = res
+	}
+
 	if resp.StatusCode >= 300 {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -1569,7 +1588,29 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		Deadline: time.Now().Add(10 * time.Second),
 	}
 
-	resp, err := agent.DoHTTPRequest(req)
+	resCh := make(chan *HTTPResponse)
+	errCh := make(chan error)
+	_, err := agent.DoHTTPRequest(req, func(response *HTTPResponse, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- response
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp *HTTPResponse
+	select {
+	case respErr := <-errCh:
+		if respErr != nil {
+			return nil, respErr
+		}
+	case res := <-resCh:
+		resp = res
+	}
+
 	if err != nil {
 		return nil, err
 	}

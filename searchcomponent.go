@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ func newSearchQueryComponent(httpComponent *httpComponent, tracer *tracerCompone
 }
 
 // SearchQuery executes a Search query
-func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
+func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQueryCallback) (PendingOp, error) {
 	tracer := sqc.tracer.CreateOpTrace("SearchQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -140,6 +141,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRo
 	indexName := opts.IndexName
 	query, _ := payloadMap["query"]
 
+	ctx, cancel := context.WithCancel(context.Background())
 	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
 	ireq := &httpRequest{
 		Service:          FtsService,
@@ -150,64 +152,83 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions) (*SearchRo
 		Deadline:         opts.Deadline,
 		RetryStrategy:    opts.RetryStrategy,
 		RootTraceContext: tracer.RootContext(),
+		Context:          ctx,
+		CancelFunc:       cancel,
 	}
 
-ExecuteLoop:
-	for {
-		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := ireq.Deadline.Sub(time.Now())
+	go func() {
+	ExecuteLoop:
+		for {
+			{ // Produce an updated payload with the appropriate timeout
+				timeoutLeft := ireq.Deadline.Sub(time.Now())
 
-			ctlMap["timeout"] = timeoutLeft / time.Millisecond
-			payloadMap["ctl"] = ctlMap
+				ctlMap["timeout"] = timeoutLeft / time.Millisecond
+				payloadMap["ctl"] = ctlMap
 
-			newPayload, err := json.Marshal(payloadMap)
+				newPayload, err := json.Marshal(payloadMap)
+				if err != nil {
+					cancel()
+					cb(nil, wrapSearchError(nil, nil, indexName, query,
+						wrapError(err, "failed to produce payload")))
+					return
+				}
+				ireq.Body = newPayload
+			}
+
+			resp, err := sqc.httpComponent.DoInternalHTTPRequest(ireq)
 			if err != nil {
-				return nil, wrapSearchError(nil, nil, indexName, query, wrapError(err, "failed to produce payload"))
+				cancel()
+				// execHTTPRequest will handle retrying due to in-flight socket close based
+				// on whether or not IsIdempotent is set on the httpRequest
+				cb(nil, wrapSearchError(ireq, nil, indexName, query, err))
+				return
 			}
-			ireq.Body = newPayload
+
+			if resp.StatusCode != 200 {
+				searchErr := parseSearchError(ireq, indexName, query, resp)
+
+				var retryReason RetryReason
+				if searchErr.HTTPResponseCode == 429 {
+					retryReason = SearchTooManyRequestsRetryReason
+				}
+
+				if retryReason == nil {
+					cancel()
+					// searchErr is already wrapped here
+					cb(nil, searchErr)
+					return
+				}
+
+				shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
+				if !shouldRetry {
+					cancel()
+					// searchErr is already wrapped here
+					cb(nil, searchErr)
+					return
+				}
+
+				select {
+				case <-time.After(retryTime.Sub(time.Now())):
+					continue ExecuteLoop
+				case <-time.After(ireq.Deadline.Sub(time.Now())):
+					cancel()
+					cb(nil, wrapSearchError(ireq, nil, indexName, query, errUnambiguousTimeout))
+					return
+				}
+			}
+
+			streamer, err := newQueryStreamer(resp.Body, "hits")
+			if err != nil {
+				cancel()
+				cb(nil, wrapSearchError(ireq, resp, indexName, query, err))
+				return
+			}
+
+			cb(&SearchRowReader{
+				streamer: streamer,
+			}, nil)
 		}
+	}()
 
-		resp, err := sqc.httpComponent.DoInternalHTTPRequest(ireq)
-		if err != nil {
-			// execHTTPRequest will handle retrying due to in-flight socket close based
-			// on whether or not IsIdempotent is set on the httpRequest
-			return nil, wrapSearchError(ireq, nil, indexName, query, err)
-		}
-
-		if resp.StatusCode != 200 {
-			searchErr := parseSearchError(ireq, indexName, query, resp)
-
-			var retryReason RetryReason
-			if searchErr.HTTPResponseCode == 429 {
-				retryReason = SearchTooManyRequestsRetryReason
-			}
-
-			if retryReason == nil {
-				// searchErr is already wrapped here
-				return nil, searchErr
-			}
-
-			shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
-			if !shouldRetry {
-				// searchErr is already wrapped here
-				return nil, searchErr
-			}
-
-			select {
-			case <-time.After(retryTime.Sub(time.Now())):
-				continue ExecuteLoop
-			case <-time.After(ireq.Deadline.Sub(time.Now())):
-				return nil, wrapSearchError(ireq, nil, indexName, query, errUnambiguousTimeout)
-			}
-		}
-
-		streamer, err := newQueryStreamer(resp.Body, "hits")
-		if err != nil {
-			return nil, wrapSearchError(ireq, resp, indexName, query, err)
-		}
-
-		return &SearchRowReader{
-			streamer: streamer,
-		}, nil
-	}
+	return ireq, nil
 }

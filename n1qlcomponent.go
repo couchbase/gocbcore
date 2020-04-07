@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -192,7 +193,7 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 }
 
 // N1QLQuery executes a N1QL query
-func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
 	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -206,6 +207,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	ireq := &httpRequest{
 		Service:          N1qlService,
 		Method:           "POST",
@@ -215,24 +217,37 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader,
 		Deadline:         opts.Deadline,
 		RetryStrategy:    opts.RetryStrategy,
 		RootTraceContext: tracer.RootContext(),
+		Context:          ctx,
+		CancelFunc:       cancel,
 	}
 
-	return nqc.execute(ireq, payloadMap, statement)
+	go func() {
+		resp, err := nqc.execute(ireq, payloadMap, statement)
+		if err != nil {
+			cancel()
+			cb(nil, err)
+			return
+		}
+
+		cb(resp, nil)
+	}()
+
+	return ireq, nil
 }
 
 // PreparedN1QLQuery executes a prepared N1QL query
-func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
 	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1 {
-		return nqc.executeEnhPrepared(opts, tracer)
+		return nqc.executeEnhPrepared(opts, tracer, cb)
 	}
 
-	return nqc.executeOldPrepared(opts, tracer)
+	return nqc.executeOldPrepared(opts, tracer, cb)
 }
 
-func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer *opTracer) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer *opTracer, cb N1QLQueryCallback) (PendingOp, error) {
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
@@ -247,68 +262,86 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 	cachedStmt := nqc.queryCache[statement]
 	nqc.cacheLock.RUnlock()
 
-	if cachedStmt != nil {
-		// Attempt to execute our cached query plan
-		delete(payloadMap, "statement")
-		payloadMap["prepared"] = cachedStmt.name
+	ctx, cancel := context.WithCancel(context.Background())
+	parentReqForCancel := &httpRequest{
+		Context:    ctx,
+		CancelFunc: cancel,
+	}
+
+	go func() {
+		if cachedStmt != nil {
+			// Attempt to execute our cached query plan
+			delete(payloadMap, "statement")
+			payloadMap["prepared"] = cachedStmt.name
+
+			ireq := &httpRequest{
+				Service:      N1qlService,
+				Method:       "POST",
+				Path:         "/query/service",
+				IsIdempotent: readOnly,
+				UniqueID:     clientContextID,
+				Deadline:     opts.Deadline,
+				// We need to not retry this request.
+				RetryStrategy:    newFailFastRetryStrategy(),
+				RootTraceContext: tracer.RootContext(),
+				Context:          ctx,
+				CancelFunc:       cancel,
+			}
+
+			results, err := nqc.execute(ireq, payloadMap, statement)
+			if err == nil {
+				cb(results, nil)
+				return
+			}
+			// if we fail to send the prepared statement name then retry a PREPARE.
+			delete(payloadMap, "prepared")
+		}
+
+		payloadMap["statement"] = "PREPARE " + statement
+		payloadMap["auto_execute"] = true
 
 		ireq := &httpRequest{
-			Service:      N1qlService,
-			Method:       "POST",
-			Path:         "/query/service",
-			IsIdempotent: readOnly,
-			UniqueID:     clientContextID,
-			Deadline:     opts.Deadline,
-			// We need to not retry this request.
-			RetryStrategy:    newFailFastRetryStrategy(),
+			Service:          N1qlService,
+			Method:           "POST",
+			Path:             "/query/service",
+			IsIdempotent:     readOnly,
+			UniqueID:         clientContextID,
+			Deadline:         opts.Deadline,
+			RetryStrategy:    opts.RetryStrategy,
 			RootTraceContext: tracer.RootContext(),
+			Context:          ctx,
+			CancelFunc:       cancel,
 		}
 
 		results, err := nqc.execute(ireq, payloadMap, statement)
-		if err == nil {
-			return results, nil
+		if err != nil {
+			cancel()
+			cb(nil, err)
+			return
 		}
-		// if we fail to send the prepared statement name then retry a PREPARE.
-		delete(payloadMap, "prepared")
-	}
 
-	payloadMap["statement"] = "PREPARE " + statement
-	payloadMap["auto_execute"] = true
+		preparedName, err := results.PreparedName()
+		if err != nil {
+			logWarnf("Failed to read prepared name from result: %s", err)
+			cb(results, nil)
+			return
+		}
 
-	ireq := &httpRequest{
-		Service:          N1qlService,
-		Method:           "POST",
-		Path:             "/query/service",
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
-	}
+		cachedStmt = &n1qlQueryCacheEntry{}
+		cachedStmt.name = preparedName
+		cachedStmt.enhanced = true
 
-	results, err := nqc.execute(ireq, payloadMap, statement)
-	if err != nil {
-		return nil, err
-	}
+		nqc.cacheLock.Lock()
+		nqc.queryCache[statement] = cachedStmt
+		nqc.cacheLock.Unlock()
 
-	preparedName, err := results.PreparedName()
-	if err != nil {
-		logWarnf("Failed to read prepared name from result: %s", err)
-		return results, nil
-	}
+		cb(results, nil)
+	}()
 
-	cachedStmt = &n1qlQueryCacheEntry{}
-	cachedStmt.name = preparedName
-	cachedStmt.enhanced = true
-
-	nqc.cacheLock.Lock()
-	nqc.queryCache[statement] = cachedStmt
-	nqc.cacheLock.Unlock()
-
-	return results, nil
+	return parentReqForCancel, nil
 }
 
-func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer *opTracer) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer *opTracer, cb N1QLQueryCallback) (PendingOp, error) {
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
@@ -323,11 +356,44 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 	cachedStmt := nqc.queryCache[statement]
 	nqc.cacheLock.RUnlock()
 
-	if cachedStmt != nil {
-		// Attempt to execute our cached query plan
-		delete(payloadMap, "statement")
-		payloadMap["prepared"] = cachedStmt.name
-		payloadMap["encoded_plan"] = cachedStmt.encodedPlan
+	ctx, cancel := context.WithCancel(context.Background())
+	parentReqForCancel := &httpRequest{
+		Context:    ctx,
+		CancelFunc: cancel,
+	}
+
+	go func() {
+		if cachedStmt != nil {
+			// Attempt to execute our cached query plan
+			delete(payloadMap, "statement")
+			payloadMap["prepared"] = cachedStmt.name
+			payloadMap["encoded_plan"] = cachedStmt.encodedPlan
+
+			ireq := &httpRequest{
+				Service:          N1qlService,
+				Method:           "POST",
+				Path:             "/query/service",
+				IsIdempotent:     readOnly,
+				UniqueID:         clientContextID,
+				Deadline:         opts.Deadline,
+				RetryStrategy:    opts.RetryStrategy,
+				RootTraceContext: tracer.RootContext(),
+			}
+
+			results, err := nqc.execute(ireq, payloadMap, statement)
+			if err == nil {
+				cb(results, nil)
+				return
+			}
+
+			// if we fail to send the prepared statement name then retry a PREPARE.
+		}
+
+		delete(payloadMap, "prepared")
+		delete(payloadMap, "encoded_plan")
+		delete(payloadMap, "auto_execute")
+		prepStatement := "PREPARE " + statement
+		payloadMap["statement"] = prepStatement
 
 		ireq := &httpRequest{
 			Service:          N1qlService,
@@ -340,61 +406,52 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 			RootTraceContext: tracer.RootContext(),
 		}
 
-		results, err := nqc.execute(ireq, payloadMap, statement)
-		if err == nil {
-			return results, nil
+		cacheRes, err := nqc.execute(ireq, payloadMap, statement)
+		if err != nil {
+			cancel()
+			cb(nil, err)
+			return
 		}
 
-		// if we fail to send the prepared statement name then retry a PREPARE.
-	}
+		b := cacheRes.NextRow()
+		if b == nil {
+			cancel()
+			cb(nil, wrapN1QLError(ireq, statement, errCliInternalError))
+			return
+		}
 
-	delete(payloadMap, "prepared")
-	delete(payloadMap, "encoded_plan")
-	delete(payloadMap, "auto_execute")
-	prepStatement := "PREPARE " + statement
-	payloadMap["statement"] = prepStatement
+		var prepData n1qlJSONPrepData
+		err = json.Unmarshal(b, &prepData)
+		if err != nil {
+			cancel()
+			cb(nil, wrapN1QLError(ireq, statement, err))
+			return
+		}
 
-	ireq := &httpRequest{
-		Service:          N1qlService,
-		Method:           "POST",
-		Path:             "/query/service",
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
-	}
+		cachedStmt = &n1qlQueryCacheEntry{}
+		cachedStmt.name = prepData.Name
+		cachedStmt.encodedPlan = prepData.EncodedPlan
 
-	cacheRes, err := nqc.execute(ireq, payloadMap, statement)
-	if err != nil {
-		return nil, err
-	}
+		nqc.cacheLock.Lock()
+		nqc.queryCache[statement] = cachedStmt
+		nqc.cacheLock.Unlock()
 
-	b := cacheRes.NextRow()
-	if b == nil {
-		return nil, wrapN1QLError(ireq, statement, errCliInternalError)
-	}
+		// Attempt to execute our cached query plan
+		delete(payloadMap, "statement")
+		payloadMap["prepared"] = cachedStmt.name
+		payloadMap["encoded_plan"] = cachedStmt.encodedPlan
 
-	var prepData n1qlJSONPrepData
-	err = json.Unmarshal(b, &prepData)
-	if err != nil {
-		return nil, wrapN1QLError(ireq, statement, err)
-	}
+		resp, err := nqc.execute(ireq, payloadMap, statement)
+		if err != nil {
+			cancel()
+			cb(nil, wrapN1QLError(ireq, statement, err))
+			return
+		}
 
-	cachedStmt = &n1qlQueryCacheEntry{}
-	cachedStmt.name = prepData.Name
-	cachedStmt.encodedPlan = prepData.EncodedPlan
+		cb(resp, nil)
+	}()
 
-	nqc.cacheLock.Lock()
-	nqc.queryCache[statement] = cachedStmt
-	nqc.cacheLock.Unlock()
-
-	// Attempt to execute our cached query plan
-	delete(payloadMap, "statement")
-	payloadMap["prepared"] = cachedStmt.name
-	payloadMap["encoded_plan"] = cachedStmt.encodedPlan
-
-	return nqc.execute(ireq, payloadMap, statement)
+	return parentReqForCancel, nil
 }
 
 func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string) (*N1QLRowReader, error) {

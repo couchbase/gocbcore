@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -158,7 +159,7 @@ func newAnalyticsQueryComponent(httpComponent *httpComponent, tracer *tracerComp
 }
 
 // AnalyticsQuery executes an analytics query
-func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
+func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, cb AnalyticsQueryCallback) (PendingOp, error) {
 	tracer := aqc.tracer.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -172,6 +173,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (
 	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	ireq := &httpRequest{
 		Service: CbasService,
 		Method:  "POST",
@@ -185,70 +187,88 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions) (
 		Deadline:         opts.Deadline,
 		RetryStrategy:    opts.RetryStrategy,
 		RootTraceContext: tracer.RootContext(),
+		Context:          ctx,
+		CancelFunc:       cancel,
 	}
 
-ExecuteLoop:
-	for {
-		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := ireq.Deadline.Sub(time.Now())
-			payloadMap["timeout"] = timeoutLeft.String()
+	go func() {
+	ExecuteLoop:
+		for {
+			{ // Produce an updated payload with the appropriate timeout
+				timeoutLeft := ireq.Deadline.Sub(time.Now())
+				payloadMap["timeout"] = timeoutLeft.String()
 
-			newPayload, err := json.Marshal(payloadMap)
-			if err != nil {
-				return nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload"))
+				newPayload, err := json.Marshal(payloadMap)
+				if err != nil {
+					cancel()
+					cb(nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload")))
+					return
+				}
+				ireq.Body = newPayload
 			}
-			ireq.Body = newPayload
-		}
 
-		resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq)
-		if err != nil {
-			// execHTTPRequest will handle retrying due to in-flight socket close based
-			// on whether or not IsIdempotent is set on the httpRequest
-			return nil, wrapAnalyticsError(ireq, statement, err)
-		}
+			resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq)
+			if err != nil {
+				cancel()
+				// execHTTPRequest will handle retrying due to in-flight socket close based
+				// on whether or not IsIdempotent is set on the httpRequest
+				cb(nil, wrapAnalyticsError(ireq, statement, err))
+				return
+			}
 
-		if resp.StatusCode != 200 {
-			analyticsErr := parseAnalyticsError(ireq, statement, resp)
+			if resp.StatusCode != 200 {
+				analyticsErr := parseAnalyticsError(ireq, statement, resp)
 
-			var retryReason RetryReason
-			if len(analyticsErr.Errors) >= 1 {
-				firstErrDesc := analyticsErr.Errors[0]
+				var retryReason RetryReason
+				if len(analyticsErr.Errors) >= 1 {
+					firstErrDesc := analyticsErr.Errors[0]
 
-				if firstErrDesc.Code == 23000 {
-					retryReason = AnalyticsTemporaryFailureRetryReason
-				} else if firstErrDesc.Code == 23003 {
-					retryReason = AnalyticsTemporaryFailureRetryReason
-				} else if firstErrDesc.Code == 23007 {
-					retryReason = AnalyticsTemporaryFailureRetryReason
+					if firstErrDesc.Code == 23000 {
+						retryReason = AnalyticsTemporaryFailureRetryReason
+					} else if firstErrDesc.Code == 23003 {
+						retryReason = AnalyticsTemporaryFailureRetryReason
+					} else if firstErrDesc.Code == 23007 {
+						retryReason = AnalyticsTemporaryFailureRetryReason
+					}
+				}
+
+				if retryReason == nil {
+					cancel()
+					// analyticsErr is already wrapped here
+					cb(nil, analyticsErr)
+					return
+				}
+
+				shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
+				if !shouldRetry {
+					cancel()
+					// analyticsErr is already wrapped here
+					cb(nil, analyticsErr)
+					return
+				}
+
+				select {
+				case <-time.After(retryTime.Sub(time.Now())):
+					continue ExecuteLoop
+				case <-time.After(ireq.Deadline.Sub(time.Now())):
+					cancel()
+					cb(nil, wrapAnalyticsError(ireq, statement, errUnambiguousTimeout))
+					return
 				}
 			}
 
-			if retryReason == nil {
-				// analyticsErr is already wrapped here
-				return nil, analyticsErr
+			streamer, err := newQueryStreamer(resp.Body, "results")
+			if err != nil {
+				cancel()
+				cb(nil, wrapAnalyticsError(ireq, statement, err))
+				return
 			}
 
-			shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
-			if !shouldRetry {
-				// analyticsErr is already wrapped here
-				return nil, analyticsErr
-			}
-
-			select {
-			case <-time.After(retryTime.Sub(time.Now())):
-				continue ExecuteLoop
-			case <-time.After(ireq.Deadline.Sub(time.Now())):
-				return nil, wrapAnalyticsError(ireq, statement, errUnambiguousTimeout)
-			}
+			cb(&AnalyticsRowReader{
+				streamer: streamer,
+			}, nil)
 		}
+	}()
 
-		streamer, err := newQueryStreamer(resp.Body, "results")
-		if err != nil {
-			return nil, wrapAnalyticsError(ireq, statement, err)
-		}
-
-		return &AnalyticsRowReader{
-			streamer: streamer,
-		}, nil
-	}
+	return ireq, nil
 }

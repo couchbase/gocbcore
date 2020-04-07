@@ -26,7 +26,8 @@ type httpRequest struct {
 	RootTraceContext RequestSpanContext
 	// Whilst the http component will handle deadlines itself this context can be use from places like Ping which
 	// need to also be able to cancel the context for other reasons.
-	Context context.Context
+	Context    context.Context
+	CancelFunc context.CancelFunc
 
 	retryCount   uint32
 	retryReasons []RetryReason
@@ -34,6 +35,12 @@ type httpRequest struct {
 
 func (hr *httpRequest) retryStrategy() RetryStrategy {
 	return hr.RetryStrategy
+}
+
+func (hr *httpRequest) Cancel() {
+	if hr.CancelFunc != nil {
+		hr.CancelFunc()
+	}
 }
 
 func (hr *httpRequest) RetryAttempts() uint32 {

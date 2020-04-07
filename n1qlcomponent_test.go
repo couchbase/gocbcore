@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -16,13 +17,28 @@ type n1qlTestHelper struct {
 func hlpRunQuery(t *testing.T, agent *Agent, opts N1QLQueryOptions) ([][]byte, error) {
 	t.Helper()
 
-	var rowBytes [][]byte
-
-	rows, err := agent.N1QLQuery(opts)
+	resCh := make(chan *N1QLRowReader)
+	errCh := make(chan error)
+	_, err := agent.N1QLQuery(opts, func(reader *N1QLRowReader, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- reader
+	})
 	if err != nil {
-		return rowBytes, err
+		return nil, err
 	}
 
+	var rows *N1QLRowReader
+	select {
+	case err := <-errCh:
+		return nil, err
+	case res := <-resCh:
+		rows = res
+	}
+
+	var rowBytes [][]byte
 	for {
 		row := rows.NextRow()
 		if row == nil {
@@ -79,13 +95,28 @@ func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
 			iterDeadline = deadline
 		}
 
-		rows, err := agent.N1QLQuery(N1QLQueryOptions{
+		resCh := make(chan *N1QLRowReader)
+		errCh := make(chan error)
+		_, err = agent.N1QLQuery(N1QLQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,
+		}, func(reader *N1QLRowReader, err error) {
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resCh <- reader
 		})
 		if err != nil {
 			return nil, err
+		}
+		var rows *N1QLRowReader
+		select {
+		case err := <-errCh:
+			return nil, err
+		case res := <-resCh:
+			rows = res
 		}
 
 		var docs []testDoc
@@ -167,13 +198,29 @@ func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
 			iterDeadline = deadline
 		}
 
-		rows, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+		resCh := make(chan *N1QLRowReader)
+		errCh := make(chan error)
+		_, err = agent.PreparedN1QLQuery(N1QLQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,
+		}, func(reader *N1QLRowReader, err error) {
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resCh <- reader
 		})
 		if err != nil {
 			return nil, err
+		}
+
+		var rows *N1QLRowReader
+		select {
+		case err := <-errCh:
+			return nil, err
+		case res := <-resCh:
+			rows = res
 		}
 
 		var docs []testDoc
@@ -252,6 +299,88 @@ func TestN1QL(t *testing.T) {
 	t.Run("cleanup", helper.testCleanupN1ql)
 }
 
+func TestN1QLCancel(t *testing.T) {
+	testEnsureSupportsFeature(t, TestFeatureN1ql)
+
+	agent, h := testGetAgentAndHarness(t)
+
+	resCh := make(chan *N1QLRowReader)
+	errCh := make(chan error)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	op, err := agent.N1QLQuery(N1QLQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(5 * time.Second),
+	}, func(reader *N1QLRowReader, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- reader
+	})
+	if err != nil {
+		t.Fatalf("Failed to execute query %s", err)
+	}
+	op.Cancel()
+
+	var rows *N1QLRowReader
+	var resErr error
+	select {
+	case err := <-errCh:
+		resErr = err
+	case res := <-resCh:
+		rows = res
+	}
+
+	if rows != nil {
+		t.Fatal("Received rows but should not have")
+	}
+
+	if !errors.Is(resErr, ErrRequestCanceled) {
+		t.Fatalf("Error should have been request canceled but was %s", resErr)
+	}
+}
+
+func TestN1QLTimeout(t *testing.T) {
+	testEnsureSupportsFeature(t, TestFeatureN1ql)
+
+	agent, h := testGetAgentAndHarness(t)
+
+	resCh := make(chan *N1QLRowReader)
+	errCh := make(chan error)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	op, err := agent.N1QLQuery(N1QLQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(100 * time.Microsecond),
+	}, func(reader *N1QLRowReader, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- reader
+	})
+	if err != nil {
+		t.Fatalf("Failed to execute query %s", err)
+	}
+	op.Cancel()
+
+	var rows *N1QLRowReader
+	var resErr error
+	select {
+	case err := <-errCh:
+		resErr = err
+	case res := <-resCh:
+		rows = res
+	}
+
+	if rows != nil {
+		t.Fatal("Received rows but should not have")
+	}
+
+	if !errors.Is(resErr, ErrTimeout) {
+		t.Fatalf("Error should have been request canceled but was %s", resErr)
+	}
+}
+
 func TestN1QLPrepared(t *testing.T) {
 	testEnsureSupportsFeature(t, TestFeatureN1ql)
 
@@ -265,4 +394,86 @@ func TestN1QLPrepared(t *testing.T) {
 	t.Run("Basic", helper.testN1QLPrepared)
 
 	t.Run("cleanup", helper.testCleanupN1ql)
+}
+
+func TestN1QLPreparedCancel(t *testing.T) {
+	testEnsureSupportsFeature(t, TestFeatureN1ql)
+
+	agent, h := testGetAgentAndHarness(t)
+
+	resCh := make(chan *N1QLRowReader)
+	errCh := make(chan error)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	op, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(5 * time.Second),
+	}, func(reader *N1QLRowReader, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- reader
+	})
+	if err != nil {
+		t.Fatalf("Failed to execute query %s", err)
+	}
+	op.Cancel()
+
+	var rows *N1QLRowReader
+	var resErr error
+	select {
+	case err := <-errCh:
+		resErr = err
+	case res := <-resCh:
+		rows = res
+	}
+
+	if rows != nil {
+		t.Fatal("Received rows but should not have")
+	}
+
+	if !errors.Is(resErr, ErrRequestCanceled) {
+		t.Fatalf("Error should have been request canceled but was %s", resErr)
+	}
+}
+
+func TestN1QLPreparedTimeout(t *testing.T) {
+	testEnsureSupportsFeature(t, TestFeatureN1ql)
+
+	agent, h := testGetAgentAndHarness(t)
+
+	resCh := make(chan *N1QLRowReader)
+	errCh := make(chan error)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	op, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(100 * time.Microsecond),
+	}, func(reader *N1QLRowReader, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- reader
+	})
+	if err != nil {
+		t.Fatalf("Failed to execute query %s", err)
+	}
+	op.Cancel()
+
+	var rows *N1QLRowReader
+	var resErr error
+	select {
+	case err := <-errCh:
+		resErr = err
+	case res := <-resCh:
+		rows = res
+	}
+
+	if rows != nil {
+		t.Fatal("Received rows but should not have")
+	}
+
+	if !errors.Is(resErr, ErrTimeout) {
+		t.Fatalf("Error should have been request canceled but was %s", resErr)
+	}
 }

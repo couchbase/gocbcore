@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,7 +49,7 @@ func (hc *httpComponent) Close() {
 	}
 }
 
-func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
+func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallback) (PendingOp, error) {
 	tracer := hc.tracer.CreateOpTrace("http", req.TraceContext)
 	defer tracer.Finish()
 
@@ -56,6 +57,8 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) 
 	if req.RetryStrategy != nil {
 		retryStrategy = req.RetryStrategy
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 
 	ireq := &httpRequest{
 		Service:          req.Service,
@@ -72,14 +75,22 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) 
 		Deadline:         req.Deadline,
 		RetryStrategy:    retryStrategy,
 		RootTraceContext: tracer.RootContext(),
+		Context:          ctx,
+		CancelFunc:       cancel,
 	}
 
-	resp, err := hc.DoInternalHTTPRequest(ireq)
-	if err != nil {
-		return nil, wrapHTTPError(ireq, err)
-	}
+	go func() {
+		resp, err := hc.DoInternalHTTPRequest(ireq)
+		if err != nil {
+			cancel()
+			cb(nil, wrapHTTPError(ireq, err))
+			return
+		}
 
-	return resp, nil
+		cb(resp, nil)
+	}()
+
+	return ireq, nil
 }
 
 func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
@@ -106,8 +117,6 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		if err != nil {
 			return nil, err
 		}
-
-		req.Endpoint = endpoint
 	}
 
 	// Generate a request URI
@@ -137,11 +146,13 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		}
 	}()
 
+	var cancelationIsTimeout uint32
 	// Having no deadline is a legitimate case.
 	if !req.Deadline.IsZero() {
 		go func() {
 			select {
 			case <-time.After(req.Deadline.Sub(time.Now())):
+				atomic.StoreUint32(&cancelationIsTimeout, 1)
 				ctxCancel()
 			case <-doneCh:
 			}
@@ -208,6 +219,21 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		hresp, err := hc.cli.Do(hreq)
 		// dSpan.Finish()
 		if err != nil {
+			// Because we don't use the http request context itself to perform timeouts we need to do some translation
+			// of the error message here for better UX.
+			if errors.Is(err, context.Canceled) {
+				isTimeout := atomic.LoadUint32(&cancelationIsTimeout)
+				if isTimeout == 1 {
+					if req.IsIdempotent {
+						err = errUnambiguousTimeout
+					} else {
+						err = errAmbiguousTimeout
+					}
+				} else {
+					err = errRequestCanceled
+				}
+			}
+
 			if !req.IsIdempotent {
 				return nil, err
 			}
@@ -215,6 +241,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 			isUserError := false
 			isUserError = isUserError || errors.Is(err, context.DeadlineExceeded)
 			isUserError = isUserError || errors.Is(err, context.Canceled)
+			isUserError = isUserError || errors.Is(err, ErrRequestCanceled)
 			isUserError = isUserError || errors.Is(err, ErrTimeout)
 			if isUserError {
 				return nil, err

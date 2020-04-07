@@ -188,35 +188,50 @@ func (agent *Agent) MutateIn(opts MutateInOptions, cb MutateInCallback) (Pending
 	return agent.crud.MutateIn(opts, cb)
 }
 
+// N1QLQueryCallback is invoked upon completion of a N1QLQuery operation.
+type N1QLQueryCallback func(*N1QLRowReader, error)
+
 // N1QLQuery executes a N1QL query
-func (agent *Agent) N1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	return agent.n1ql.N1QLQuery(opts)
+func (agent *Agent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
+	return agent.n1ql.N1QLQuery(opts, cb)
 }
 
 // PreparedN1QLQuery executes a prepared N1QL query
-func (agent *Agent) PreparedN1QLQuery(opts N1QLQueryOptions) (*N1QLRowReader, error) {
-	return agent.n1ql.PreparedN1QLQuery(opts)
+func (agent *Agent) PreparedN1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
+	return agent.n1ql.PreparedN1QLQuery(opts, cb)
 }
+
+// AnalyticsQueryCallback is invoked upon completion of a AnalyticsQuery operation.
+type AnalyticsQueryCallback func(*AnalyticsRowReader, error)
 
 // AnalyticsQuery executes an analytics query
-func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions) (*AnalyticsRowReader, error) {
-	return agent.analytics.AnalyticsQuery(opts)
+func (agent *Agent) AnalyticsQuery(opts AnalyticsQueryOptions, cb AnalyticsQueryCallback) (PendingOp, error) {
+	return agent.analytics.AnalyticsQuery(opts, cb)
 }
+
+// SearchQueryCallback is invoked upon completion of a SearchQuery operation.
+type SearchQueryCallback func(*SearchRowReader, error)
 
 // SearchQuery executes a Search query
-func (agent *Agent) SearchQuery(opts SearchQueryOptions) (*SearchRowReader, error) {
-	return agent.search.SearchQuery(opts)
+func (agent *Agent) SearchQuery(opts SearchQueryOptions, cb SearchQueryCallback) (PendingOp, error) {
+	return agent.search.SearchQuery(opts, cb)
 }
 
+// ViewQueryCallback is invoked upon completion of a ViewQuery operation.
+type ViewQueryCallback func(*ViewQueryRowReader, error)
+
 // ViewQuery executes a view query
-func (agent *Agent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
-	return agent.views.ViewQuery(opts)
+func (agent *Agent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
+	return agent.views.ViewQuery(opts, cb)
 }
+
+// DoHTTPRequestCallback is invoked upon completion of a DoHTTPRequest operation.
+type DoHTTPRequestCallback func(*HTTPResponse, error)
 
 // DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK.
-func (agent *Agent) DoHTTPRequest(req *HTTPRequest) (*HTTPResponse, error) {
-	return agent.http.DoHTTPRequest(req)
+func (agent *Agent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallback) (PendingOp, error) {
+	return agent.http.DoHTTPRequest(req, cb)
 }
 
 // GetCollectionManifestCallback is invoked upon completion of a GetCollectionManifest operation.

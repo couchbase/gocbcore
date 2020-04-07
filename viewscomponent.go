@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -128,13 +129,14 @@ func newViewQueryComponent(httpComponent *httpComponent, tracer *tracerComponent
 }
 
 // ViewQuery executes a view query
-func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowReader, error) {
+func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
 	tracer := vqc.tracer.CreateOpTrace("ViewQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",
 		opts.DesignDocumentName, opts.ViewType, opts.ViewName, opts.Options.Encode())
 
+	ctx, cancel := context.WithCancel(context.Background())
 	ireq := &httpRequest{
 		Service:          CapiService,
 		Method:           "GET",
@@ -143,33 +145,45 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions) (*ViewQueryRowRe
 		Deadline:         opts.Deadline,
 		RetryStrategy:    opts.RetryStrategy,
 		RootTraceContext: tracer.RootContext(),
+		Context:          ctx,
+		CancelFunc:       cancel,
 	}
 
 	ddoc := opts.DesignDocumentName
 	view := opts.ViewName
 
-	for {
-		resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq)
-		if err != nil {
-			// execHTTPRequest will handle retrying due to in-flight socket close based
-			// on whether or not IsIdempotent is set on the httpRequest
-			return nil, wrapViewQueryError(ireq, ddoc, view, err)
+	go func() {
+		for {
+			resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq)
+			if err != nil {
+				cancel()
+				// execHTTPRequest will handle retrying due to in-flight socket close based
+				// on whether or not IsIdempotent is set on the httpRequest
+				cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
+				return
+			}
+
+			if resp.StatusCode != 200 {
+				viewErr := parseViewQueryError(ireq, ddoc, view, resp)
+
+				cancel()
+				// viewErr is already wrapped here
+				cb(nil, viewErr)
+				return
+			}
+
+			streamer, err := newQueryStreamer(resp.Body, "rows")
+			if err != nil {
+				cancel()
+				cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
+				return
+			}
+
+			cb(&ViewQueryRowReader{
+				streamer: streamer,
+			}, nil)
 		}
+	}()
 
-		if resp.StatusCode != 200 {
-			viewErr := parseViewQueryError(ireq, ddoc, view, resp)
-
-			// viewErr is already wrapped here
-			return nil, viewErr
-		}
-
-		streamer, err := newQueryStreamer(resp.Body, "rows")
-		if err != nil {
-			return nil, wrapViewQueryError(ireq, ddoc, view, err)
-		}
-
-		return &ViewQueryRowReader{
-			streamer: streamer,
-		}, nil
-	}
+	return ireq, nil
 }
