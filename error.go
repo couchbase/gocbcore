@@ -71,6 +71,9 @@ var (
 
 	// ErrSocketClosed occurs when a socket closes while an operation is in flight.
 	ErrSocketClosed = io.EOF
+
+	// ErrGCCCPInUse occurs when an operation dis performed whilst the client is connect via GCCCP.
+	ErrGCCCPInUse = errors.New("connected via gcccp, kv operations are not supported, open a bucket first")
 )
 
 // Shared Error Definitions RFC#58@15

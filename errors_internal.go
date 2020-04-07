@@ -272,6 +272,7 @@ var (
 	errScopeNotFound         = ncError{ErrScopeNotFound}
 	errIndexNotFound         = ncError{ErrIndexNotFound}
 	errIndexExists           = ncError{ErrIndexExists}
+	errGCCCPInUse            = ncError{ErrGCCCPInUse}
 
 	errDocumentNotFound                  = ncError{ErrDocumentNotFound}
 	errDocumentUnretrievable             = ncError{ErrDocumentUnretrievable}

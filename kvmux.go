@@ -258,6 +258,9 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 			if err != nil {
 				return nil, err
 			}
+		} else if clientMux.bktType == bktTypeNone {
+			// This means that we're using GCCCP and not connected to a bucket
+			return nil, errGCCCPInUse
 		}
 	}
 
