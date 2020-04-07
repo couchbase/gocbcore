@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/gojcbmock"
+	"github.com/couchbase/gocbcore/v9/jcbmock"
 )
 
 func TestKvErrorConstantRetry(t *testing.T) {
@@ -99,7 +99,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		agent.pollerController.Pause(false)
 	}()
 
-	h.mockInst.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+	h.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
 		"bucket": h.BucketName,
 		"code":   errCode,
 		"count":  3,
@@ -128,7 +128,7 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		}
 	}
 
-	h.mockInst.Control(gojcbmock.NewCommand(gojcbmock.COpFail, map[string]interface{}{
+	h.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
 		"bucket": h.BucketName,
 		"code":   errCode,
 		"count":  0,

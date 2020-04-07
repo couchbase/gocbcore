@@ -74,6 +74,7 @@ const (
 	CmdGetErrorMap            = CmdCode(0xfe)
 )
 
+// Name returns the string representation of the CmdCode.
 func (command CmdCode) Name() string {
 	switch command {
 	case CmdGet:

@@ -23,22 +23,16 @@ func (e mockError) Error() string {
 	return fmt.Sprintf("Mock Error: %s (caused by %s)", e.message, e.cause.Error())
 }
 
-func throwMockError(msg string, cause error) error {
+func throwMockError(msg string, cause error) {
 	if cause == nil {
-		cause = errors.New("No cause")
+		cause = errors.New("no cause")
 	}
 	panic(mockError{message: msg, cause: cause})
 }
 
 const mockInitTimeout = 5 * time.Second
 
-type BucketType int
-
-const (
-	BCouchbase BucketType = 0
-	BMemcached            = iota
-)
-
+// BucketSpec describes the specification of a bucket.
 type BucketSpec struct {
 	// Type of the bucket
 	Type BucketType
@@ -60,6 +54,7 @@ func (s BucketSpec) toString() string {
 	return strings.Join(specArr, ":")
 }
 
+// Mock is used for mocking a Couchbase Server cluster.
 type Mock struct {
 	// Executable object (for termination)
 	cmd *exec.Cmd
@@ -74,26 +69,38 @@ type Mock struct {
 	rw *bufio.ReadWriter
 }
 
-// Closes the mock and kills the underlying process
+// Close closes the mock and kills the underlying process
 func (m *Mock) Close() {
 	log.Printf("Closing mock %p\n", m)
 	if m.cmd != nil && m.cmd.Process != nil {
-		m.cmd.Process.Kill()
-		m.cmd.Process.Wait()
+		if err := m.cmd.Process.Kill(); err != nil {
+			log.Printf("Error killing process: %v", err)
+			return
+		}
+		_, err := m.cmd.Process.Wait()
+		if err != nil {
+			log.Printf("Error waiting for process to end: %v", err)
+			return
+		}
 	}
 	if m.conn != nil {
-		m.conn.Close()
+		if err := m.conn.Close(); err != nil {
+			log.Printf("Error closing connection: %v", err)
+		}
 	}
 	m.EntryPort = 0
 }
 
+// Control sends a control command to the mock.
 func (m *Mock) Control(c Command) (r Response) {
 	reqbytes := c.Encode()
 	reqbytes = append(reqbytes, '\n')
 	if _, err := m.rw.Write(reqbytes); err != nil {
 		throwMockError("Short write while sending command", err)
 	}
-	m.rw.Flush()
+	if err := m.rw.Flush(); err != nil {
+		throwMockError("Short write while flushing command to writer", err)
+	}
 	log.Printf("Sent '%s'", reqbytes[:len(reqbytes)-1])
 
 	resbytes, err := m.rw.ReadBytes('\n')
@@ -109,6 +116,7 @@ func (m *Mock) Control(c Command) (r Response) {
 	return r
 }
 
+// MemcachedPorts returns the list of memcached ports that this mock is listening on.
 func (m *Mock) MemcachedPorts() (out []uint16) {
 	c := NewCommand(CGetMcPorts, nil)
 	r := m.Control(c)
@@ -131,33 +139,36 @@ func (m *Mock) MemcachedPorts() (out []uint16) {
 	return
 }
 
+// Version returns the version of this mock.
 func (m *Mock) Version() string {
 	return defaultMockVersion
 }
 
 func (m *Mock) buildSpecStrings(specs []BucketSpec) string {
-	strSpecs := []string{}
+	var strSpecs []string
 	for _, spec := range specs {
 		strSpecs = append(strSpecs, spec.toString())
 	}
 	return strings.Join(strSpecs, ",")
 }
 
-// Creates and runs a new mock instance
+// NewMock creates and runs a new mock instance
 // The path is the path to the mock jar.
 // nodes is the total number of cluster nodes (and thus the number of mock threads)
 // replicas is the number of replica nodes (subset of the number of nodes) for each couchbase bucket.
 // vbuckets is the number of vbuckets to use for each couchbase bucket
 // specs should be a list of specifications of buckets to use..
 func NewMock(path string, nodes uint, replicas uint, vbuckets uint, specs ...BucketSpec) (m *Mock, err error) {
-	var lsn *net.TCPListener = nil
+	var lsn *net.TCPListener
 	chAccept := make(chan bool)
 	m = &Mock{}
 
 	defer func() {
 		close(chAccept)
 		if lsn != nil {
-			lsn.Close()
+			if err := lsn.Close(); err != nil {
+				log.Printf("Failed to close listener: %v", err)
+			}
 		}
 		exc := recover()
 
@@ -179,7 +190,10 @@ func NewMock(path string, nodes uint, replicas uint, vbuckets uint, specs ...Buc
 	if lsn, err = net.ListenTCP("tcp", &net.TCPAddr{Port: 0}); err != nil {
 		throwMockError("Couldn't set up listening socket", err)
 	}
-	_, ctlPort, _ := net.SplitHostPort(lsn.Addr().String())
+	_, ctlPort, err := net.SplitHostPort(lsn.Addr().String())
+	if err != nil {
+		log.Fatalf("Failed to split host and port: %v", err)
+	}
 	log.Printf("Listening for control connection at %s\n", ctlPort)
 
 	go func() {
@@ -195,7 +209,7 @@ func NewMock(path string, nodes uint, replicas uint, vbuckets uint, specs ...Buc
 	}()
 
 	if len(specs) == 0 {
-		specs = []BucketSpec{BucketSpec{Name: "default", Type: BCouchbase}}
+		specs = []BucketSpec{{Name: "default", Type: BCouchbase}}
 	}
 
 	options := []string{
@@ -241,9 +255,4 @@ func NewMock(path string, nodes uint, replicas uint, vbuckets uint, specs ...Buc
 
 	log.Printf("Mock HTTP port at %d\n", m.EntryPort)
 	return
-}
-
-// Creates a default mock instance of 4 nodes
-func NewMockDefault(path string, specs ...BucketSpec) (*Mock, error) {
-	return NewMock(path, 4, 0, 32, specs...)
 }

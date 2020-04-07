@@ -6,7 +6,7 @@ import (
 
 	"github.com/couchbase/gocbcore/v9/memd"
 
-	"github.com/couchbaselabs/gojcbmock"
+	"github.com/couchbase/gocbcore/v9/jcbmock"
 )
 
 func TestEnhancedErrors(t *testing.T) {
@@ -45,7 +45,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 		t.Skipf("only supported when testing against mock server")
 	}
 
-	h.mockInst.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	h.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": true,
 		"bucket":  h.BucketName,
 	}))
@@ -83,7 +83,7 @@ func TestEnhancedErrorOp(t *testing.T) {
 	}))
 	h.Wait(0)
 
-	h.mockInst.Control(gojcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	h.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": false,
 		"bucket":  h.BucketName,
 	}))

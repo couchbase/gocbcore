@@ -1,7 +1,6 @@
 module github.com/couchbase/gocbcore/v9
 
 require (
-	github.com/couchbaselabs/gojcbmock v1.0.4
 	github.com/golang/snappy v0.0.1
 	github.com/google/uuid v1.1.1
 )

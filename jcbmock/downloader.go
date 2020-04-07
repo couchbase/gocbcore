@@ -18,7 +18,7 @@ const defaultMockVersion = "1.5.23"
 const defaultMockFile = "CouchbaseMock-" + defaultMockVersion + ".jar"
 const defaultMockUrl = "https://packages.couchbase.com/clients/c/mock/" + defaultMockFile
 
-// Ensures that the mock path is available
+// GetMockPath ensures that the mock path is available
 func GetMockPath() (path string, err error) {
 	var url string
 	if path = os.Getenv("GOCB_MOCK_PATH"); path == "" {
@@ -40,14 +40,20 @@ func GetMockPath() (path string, err error) {
 		throwMockError("Couldn't resolve existing path", err)
 	}
 
-	os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		log.Printf("Couldn't remove existing mock: %v", err)
+	}
 	log.Printf("Downloading %s to %s", url, path)
 
 	resp, err := http.Get(defaultMockUrl)
 	if err != nil {
 		throwMockError("Couldn't create HTTP request (or other error)", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != 200 {
 		throwMockError(fmt.Sprintf("Got HTTP %d from URL", resp.StatusCode), errors.New("non-200 response"))
@@ -57,7 +63,9 @@ func GetMockPath() (path string, err error) {
 	if err != nil {
 		throwMockError("Couldn't open output file", err)
 	}
-	defer out.Close()
+	if err := out.Close(); err != nil {
+		log.Printf("Failed to close file: %v", err)
+	}
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {

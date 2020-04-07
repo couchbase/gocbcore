@@ -98,15 +98,29 @@ const (
 type StreamEndStatus uint32
 
 const (
-	StreamEndOK             = StreamEndStatus(0x00)
-	StreamEndClosed         = StreamEndStatus(0x01)
-	StreamEndStateChanged   = StreamEndStatus(0x02)
-	StreamEndDisconnected   = StreamEndStatus(0x03)
-	StreamEndTooSlow        = StreamEndStatus(0x04)
+	// StreamEndOK represents that the stream ended successfully.
+	StreamEndOK = StreamEndStatus(0x00)
+
+	// StreamEndClosed represents that the stream was forcefully closed.
+	StreamEndClosed = StreamEndStatus(0x01)
+
+	// StreamEndStateChanged represents that the stream was closed due to a state change.
+	StreamEndStateChanged = StreamEndStatus(0x02)
+
+	// StreamEndDisconnected represents that the stream was closed due to disconnection.
+	StreamEndDisconnected = StreamEndStatus(0x03)
+
+	// StreamEndTooSlow represents that the stream was closed due to the stream being too slow.
+	StreamEndTooSlow = StreamEndStatus(0x04)
+
+	// StreamEndBackfillFailed represents that the stream was closed due to backfill failing.
 	StreamEndBackfillFailed = StreamEndStatus(0x05)
-	StreamEndFilterEmpty    = StreamEndStatus(0x07)
+
+	// StreamEndFilterEmpty represents that the stream was closed due to the filter being empty.
+	StreamEndFilterEmpty = StreamEndStatus(0x07)
 )
 
+// KVText returns the textual representation of this StreamEndStatus.
 func (code StreamEndStatus) KVText() string {
 	switch code {
 	case StreamEndOK:

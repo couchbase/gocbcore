@@ -5,21 +5,21 @@ devsetup:
 	go get -u "github.com/client9/misspell/cmd/misspell"
 
 test:
-	go test ./
+	go test ./...
 fasttest:
-	go test -short ./
+	go test -short ./...
 
 cover:
-	go test -coverprofile=cover.out ./
+	go test -coverprofile=cover.out ./...
 
 checkerrs:
-	errcheck -blank -asserts -ignoretests ./
+	errcheck -blank -asserts -ignoretests ./...
 
 checkfmt:
 	! gofmt -l -d ./ 2>&1 | read
 
 checkvet:
-	go vet
+	go vet ./...
 
 checkiea:
 	ineffassign ./
@@ -28,9 +28,9 @@ checkspell:
 	find . -type f -name '*.go' | grep -v vendor/ | xargs misspell -error
 
 lint: checkfmt checkerrs checkvet checkiea checkspell
-	golint -set_exit_status -min_confidence 0.81 ./
+	golint -set_exit_status -min_confidence 0.81 ./...
 
 check: lint
-	go test -cover -race ./
+	go test -cover -race ./...
 
 .PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check

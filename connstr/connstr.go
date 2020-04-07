@@ -11,9 +11,16 @@ import (
 )
 
 const (
-	DefaultHttpPort    = 8091
+	// DefaultHttpPort is the default HTTP port to use to connect to Couchbase Server.
+	DefaultHttpPort = 8091
+
+	// DefaultSslHttpPort is the default HTTPS port to use to connect to Couchbase Server.
 	DefaultSslHttpPort = 18091
-	DefaultMemdPort    = 11210
+
+	// DefaultMemdPort is the default memd port to use to connect to Couchbase Server.
+	DefaultMemdPort = 11210
+
+	// DefaultSslMemdPort is the default memd SSL port to use to connect to Couchbase Server.
 	DefaultSslMemdPort = 11207
 )
 
@@ -29,11 +36,13 @@ func hostIsIpAddress(host string) bool {
 	return false
 }
 
+// Address represents a host:port pair.
 type Address struct {
 	Host string
 	Port int
 }
 
+// ConnSpec describes a connection specification.
 type ConnSpec struct {
 	Scheme    string
 	Addresses []Address
@@ -59,6 +68,7 @@ func (spec ConnSpec) srvRecord() (string, string, string, bool) {
 	return spec.Scheme, "tcp", spec.Addresses[0].Host, true
 }
 
+// SrvRecordName returns the record name for the ConnSpec.
 func (spec ConnSpec) SrvRecordName() (recordName string) {
 	scheme, proto, host, isValid := spec.srvRecord()
 	if !isValid {
@@ -68,6 +78,7 @@ func (spec ConnSpec) SrvRecordName() (recordName string) {
 	return fmt.Sprintf("_%s._%s.%s", scheme, proto, host)
 }
 
+// GetOption returns the specified option value for the ConnSpec.
 func (spec ConnSpec) GetOption(name string) []string {
 	if opt, ok := spec.Options[name]; ok {
 		return opt
@@ -75,6 +86,7 @@ func (spec ConnSpec) GetOption(name string) []string {
 	return nil
 }
 
+// GetOptionString returns the specified option value for the ConnSpec.
 func (spec ConnSpec) GetOptionString(name string) string {
 	opts := spec.GetOption(name)
 	if len(opts) > 0 {
@@ -83,6 +95,7 @@ func (spec ConnSpec) GetOptionString(name string) string {
 	return ""
 }
 
+// Parse parses the connection string into a ConnSpec.
 func Parse(connStr string) (out ConnSpec, err error) {
 	partMatcher := regexp.MustCompile(`((.*):\/\/)?(([^\/?:]*)(:([^\/?:@]*))?@)?([^\/?]*)(\/([^\?]*))?(\?(.*))?`)
 	hostMatcher := regexp.MustCompile(`((\[[^\]]+\]+)|([^;\,\:]+))(:([0-9]*))?(;\,)?`)
@@ -169,6 +182,7 @@ func (spec ConnSpec) String() string {
 	return out
 }
 
+// ResolvedConnSpec is the result of resolving a ConnSpec.
 type ResolvedConnSpec struct {
 	UseSsl    bool
 	MemdHosts []Address
@@ -177,6 +191,7 @@ type ResolvedConnSpec struct {
 	Options   map[string][]string
 }
 
+// Resolve parses a ConnSpec into a ResolvedConnSpec.
 func Resolve(connSpec ConnSpec) (out ResolvedConnSpec, err error) {
 	defaultPort := 0
 	hasExplicitScheme := false
@@ -250,7 +265,7 @@ func Resolve(connSpec ConnSpec) (out ResolvedConnSpec, err error) {
 			hasExplicitPort := address.Port > 0
 
 			if !hasExplicitScheme && hasExplicitPort && address.Port != defaultPort {
-				err = errors.New("Ambiguous port without scheme")
+				err = errors.New("ambiguous port without scheme")
 				return
 			}
 
