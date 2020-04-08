@@ -1,10 +1,47 @@
 package gocbcore
 
-const (
-	noManifestUID = uint64(0xFFFFFFFFFFFFFFFF)
-	noScopeID     = uint32(0xFFFFFFFF)
-	noStreamID    = uint16(0xFFFF)
-)
+// OpenStreamFilterOptions are the filtering options available to the OpenStream operation.
+type OpenStreamFilterOptions struct {
+	ScopeID       uint32
+	CollectionIDs []uint32
+}
+
+// OpenStreamStreamOptions are the stream options available to the OpenStream operation.
+type OpenStreamStreamOptions struct {
+	StreamID uint16
+}
+
+// OpenStreamManifestOptions are the manifest options available to the OpenStream operation.
+type OpenStreamManifestOptions struct {
+	ManifestUID uint64
+}
+
+// OpenStreamOptions are the options available to the OpenStream operation.
+type OpenStreamOptions struct {
+	FilterOptions   *OpenStreamFilterOptions
+	StreamOptions   *OpenStreamStreamOptions
+	ManifestOptions *OpenStreamManifestOptions
+}
+
+// GetVbucketSeqnoFilterOptions are the filter options available to the GetVbucketSeqno operation.
+type GetVbucketSeqnoFilterOptions struct {
+	CollectionID uint32
+}
+
+// GetVbucketSeqnoOptions are the options available to the GetVbucketSeqno operation.
+type GetVbucketSeqnoOptions struct {
+	FilterOptions *GetVbucketSeqnoFilterOptions
+}
+
+// CloseStreamStreamOptions are the stream options available to the CloseStream operation.
+type CloseStreamStreamOptions struct {
+	StreamID uint16
+}
+
+// CloseStreamOptions are the options available to the CloseStream operation.
+type CloseStreamOptions struct {
+	StreamOptions *CloseStreamStreamOptions
+}
 
 // SnapshotState represents the state of a particular cluster snapshot.
 type SnapshotState uint32
@@ -29,8 +66,8 @@ type FailoverEntry struct {
 type StreamObserver interface {
 	SnapshotMarker(startSeqNo, endSeqNo uint64, vbID uint16, streamID uint16, snapshotType SnapshotState)
 	Mutation(seqNo, revNo uint64, flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbID uint16, collectionID uint32, streamID uint16, key, value []byte)
-	Deletion(seqNo, revNo, cas uint64, datatype uint8, vbID uint16, collectionID uint32, streamID uint16, key, value []byte)
-	Expiration(seqNo, revNo, cas uint64, vbID uint16, collectionID uint32, streamID uint16, key []byte)
+	Deletion(seqNo, revNo uint64, deleteTime uint32, cas uint64, datatype uint8, vbID uint16, collectionID uint32, streamID uint16, key, value []byte)
+	Expiration(seqNo, revNo uint64, deleteTime uint32, cas uint64, vbID uint16, collectionID uint32, streamID uint16, key []byte)
 	End(vbID uint16, streamID uint16, err error)
 	CreateCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, collectionID uint32, ttl uint32, streamID uint16, key []byte)
 	DeleteCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, collectionID uint32, streamID uint16)
@@ -38,24 +75,8 @@ type StreamObserver interface {
 	CreateScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, streamID uint16, key []byte)
 	DeleteScope(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, scopeID uint32, streamID uint16)
 	ModifyCollection(seqNo uint64, version uint8, vbID uint16, manifestUID uint64, collectionID uint32, ttl uint32, streamID uint16)
-	OSOSnapshot(vbID uint16, streamID uint16, snapshotType uint32)
-}
-
-// NewStreamFilter returns a new StreamFilter.
-func NewStreamFilter() *StreamFilter {
-	return &StreamFilter{
-		ManifestUID: noManifestUID,
-		Scope:       noScopeID,
-		StreamID:    noStreamID,
-	}
-}
-
-// StreamFilter provides options for filtering a DCP stream.
-type StreamFilter struct {
-	ManifestUID uint64
-	Collections []uint32
-	Scope       uint32
-	StreamID    uint16
+	OSOSnapshot(vbID uint16, snapshotType uint32, streamID uint16)
+	SeqNoAdvanced(vbID uint16, bySeqno uint64, streamID uint16)
 }
 
 type streamFilter struct {

@@ -37,7 +37,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			return err
 		}
 		var priority string
-		switch config.DcpAgentPriority {
+		switch config.AgentPriority {
 		case DcpAgentPriorityLow:
 			priority = "low"
 		case DcpAgentPriorityMed:
@@ -49,19 +49,19 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			return err
 		}
 
-		if config.UseDCPExpiry {
+		if config.UseExpiryOpcode {
 			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
 				return err
 			}
 		}
 
-		if config.UseDCPStreamID {
+		if config.UseStreamID {
 			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
 		}
 
-		if config.UseDCPOSOBackfill {
+		if config.UseOSOBackfill {
 			if err := sclient.ExecDcpControl("enable_oso_backfill", "true", deadline); err != nil {
 				return err
 			}
@@ -231,7 +231,7 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	)
 
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName)
-	c.dcp = newDcpComponent(c.kvMux)
+	c.dcp = newDcpComponent(c.kvMux, config.UseStreamID)
 
 	// Kick everything off.
 	cfg := &routeConfig{
@@ -281,20 +281,14 @@ func (agent *DCPAgent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOpt
 
 // OpenStream opens a DCP stream for a particular VBucket and, optionally, filter.
 func (agent *DCPAgent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID VbUUID, startSeqNo,
-	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, filter *StreamFilter,
+	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, opts OpenStreamOptions,
 	cb OpenStreamCallback) (PendingOp, error) {
-	return agent.dcp.OpenStream(vbID, flags, vbUUID, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo, evtHandler, filter, cb)
-}
-
-// CloseStreamWithID shuts down an open stream for the specified VBucket for the specified stream.
-func (agent *DCPAgent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStreamCallback) (PendingOp, error) {
-	return agent.dcp.CloseStreamWithID(vbID, streamID, cb)
+	return agent.dcp.OpenStream(vbID, flags, vbUUID, startSeqNo, endSeqNo, snapStartSeqNo, snapEndSeqNo, evtHandler, opts, cb)
 }
 
 // CloseStream shuts down an open stream for the specified VBucket.
-func (agent *DCPAgent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp, error) {
-	return agent.dcp.CloseStream(vbID, cb)
-
+func (agent *DCPAgent) CloseStream(vbID uint16, opts CloseStreamOptions, cb CloseStreamCallback) (PendingOp, error) {
+	return agent.dcp.CloseStream(vbID, opts, cb)
 }
 
 // GetFailoverLog retrieves the fail-over log for a particular VBucket.  This is used
@@ -303,15 +297,9 @@ func (agent *DCPAgent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (P
 	return agent.dcp.GetFailoverLog(vbID, cb)
 }
 
-// GetVbucketSeqnosWithCollectionID returns the last checkpoint for a particular VBucket for a particular collection. This is useful
-// for starting a DCP stream from wherever the server currently is.
-func (agent *DCPAgent) GetVbucketSeqnosWithCollectionID(serverIdx int, state memd.VbucketState, collectionID uint32,
-	cb GetVBucketSeqnosCallback) (PendingOp, error) {
-	return agent.dcp.GetVbucketSeqnosWithCollectionID(serverIdx, state, collectionID, cb)
-}
-
 // GetVbucketSeqnos returns the last checkpoint for a particular VBucket.  This is useful
 // for starting a DCP stream from wherever the server currently is.
-func (agent *DCPAgent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, cb GetVBucketSeqnosCallback) (PendingOp, error) {
-	return agent.dcp.GetVbucketSeqnos(serverIdx, state, cb)
+func (agent *DCPAgent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, opts GetVbucketSeqnoOptions,
+	cb GetVBucketSeqnosCallback) (PendingOp, error) {
+	return agent.dcp.GetVbucketSeqnos(serverIdx, state, opts, cb)
 }

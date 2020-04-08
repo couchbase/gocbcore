@@ -408,6 +408,10 @@ func (client *memdClient) run() {
 				fallthrough
 			case memd.CmdDcpEvent:
 				fallthrough
+			case memd.CmdDcpOsoSnapshot:
+				fallthrough
+			case memd.CmdDcpSeqNoAdvanced:
+				fallthrough
 			case memd.CmdDcpStreamEnd:
 				dcpBufferQ <- &dcpBuffer{
 					resp:      resp,

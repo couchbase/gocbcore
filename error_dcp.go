@@ -49,4 +49,7 @@ var (
 	// ErrDCPStreamFilterEmpty occurs when all of the collections for a DCP stream are
 	// dropped.
 	ErrDCPStreamFilterEmpty = makeStreamEndStatusError(memd.StreamEndFilterEmpty)
+
+	// ErrStreamIDNotEnabled occurs when dcp operations are performed using a stream ID when stream IDs are not enabled.
+	ErrStreamIDNotEnabled = errors.New("stream IDs have not been enabled on this stream")
 )

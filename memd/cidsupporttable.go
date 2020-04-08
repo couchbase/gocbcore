@@ -32,6 +32,9 @@ var cidSupportedOps = []CmdCode{
 	CmdSubDocMultiLookup,
 	CmdSubDocMultiMutation,
 	CmdSubDocGetCount,
+	CmdDcpMutation,
+	CmdDcpExpiration,
+	CmdDcpDeletion,
 }
 
 func makeCidSupportedTable() []bool {

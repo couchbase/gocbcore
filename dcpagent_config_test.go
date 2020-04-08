@@ -373,8 +373,8 @@ func TestDcpDCPAgentConfig_DCPPriority(t *testing.T) {
 				return
 			}
 
-			if config.DcpAgentPriority != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.DcpAgentPriority)
+			if config.AgentPriority != tt.expected {
+				t.Fatalf("Expected %d but was %d", tt.expected, config.AgentPriority)
 			}
 		})
 	}
@@ -414,8 +414,8 @@ func TestDcpDCPAgentConfig_EnableDCPExpiry(t *testing.T) {
 				return
 			}
 
-			if config.UseDCPExpiry != tt.expected {
-				t.Fatalf("Expected %t but was %t", tt.expected, config.UseDCPExpiry)
+			if config.UseExpiryOpcode != tt.expected {
+				t.Fatalf("Expected %t but was %t", tt.expected, config.UseExpiryOpcode)
 			}
 		})
 	}

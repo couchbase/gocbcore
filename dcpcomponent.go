@@ -9,17 +9,20 @@ import (
 )
 
 type dcpComponent struct {
-	kvMux *kvMux
+	kvMux           *kvMux
+	streamIDEnabled bool
 }
 
-func newDcpComponent(kvMux *kvMux) *dcpComponent {
+func newDcpComponent(kvMux *kvMux, streamIDEnabled bool) *dcpComponent {
 	return &dcpComponent{
-		kvMux: kvMux,
+		kvMux:           kvMux,
+		streamIDEnabled: streamIDEnabled,
 	}
 }
 
 func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vbUUID VbUUID, startSeqNo,
-	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, filter *StreamFilter, cb OpenStreamCallback) (PendingOp, error) {
+	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, opts OpenStreamOptions,
+	cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if resp != nil && resp.Magic == memd.CmdMagicRes {
@@ -47,9 +50,9 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 
 		if err != nil {
 			req.internalCancel(err)
-			streamID := noStreamID
-			if filter != nil {
-				streamID = filter.StreamID
+			var streamID uint16
+			if opts.StreamOptions != nil {
+				streamID = opts.StreamOptions.StreamID
 			}
 			evtHandler.End(vbID, streamID, err)
 			return
@@ -88,20 +91,31 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
+			var deleteTime uint32
+			if len(resp.Extras) == 21 {
+				// Length of 21 indicates a v2 packet
+				deleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
+			}
+
 			var streamID uint16
 			if resp.StreamIDFrame != nil {
 				streamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.Deletion(seqNo, revNo, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
+			evtHandler.Deletion(seqNo, revNo, deleteTime, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
 		case memd.CmdDcpExpiration:
 			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
 			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
+			var deleteTime uint32
+			if len(resp.Extras) > 16 {
+				deleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
+			}
+
 			var streamID uint16
 			if resp.StreamIDFrame != nil {
 				streamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.Expiration(seqNo, revNo, resp.Cas, vbID, resp.CollectionID, streamID, resp.Key)
+			evtHandler.Expiration(seqNo, revNo, deleteTime, resp.Cas, vbID, resp.CollectionID, streamID, resp.Key)
 		case memd.CmdDcpEvent:
 			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
@@ -154,14 +168,22 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			}
 			evtHandler.End(vbID, streamID, getStreamEndStatusError(code))
 			req.internalCancel(err)
-		case memd.CmdDcpSeqNoAdvanced:
+		case memd.CmdDcpOsoSnapshot:
 			vbID := resp.Vbucket
 			snapshotType := binary.BigEndian.Uint32(resp.Extras[0:])
 			var streamID uint16
 			if resp.StreamIDFrame != nil {
 				streamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.OSOSnapshot(vbID, streamID, snapshotType)
+			evtHandler.OSOSnapshot(vbID, snapshotType, streamID)
+		case memd.CmdDcpSeqNoAdvanced:
+			vbID := resp.Vbucket
+			seqno := binary.BigEndian.Uint64(resp.Extras[0:])
+			var streamID uint16
+			if resp.StreamIDFrame != nil {
+				streamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.SeqNoAdvanced(vbID, seqno, streamID)
 		}
 	}
 
@@ -176,20 +198,28 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 
 	var val []byte
 	val = nil
-	if filter != nil {
+	if opts.StreamOptions != nil || opts.FilterOptions != nil || opts.ManifestOptions != nil {
 		convertedFilter := streamFilter{}
-		for _, cid := range filter.Collections {
-			convertedFilter.Collections = append(convertedFilter.Collections, fmt.Sprintf("%x", cid))
+
+		if opts.FilterOptions != nil {
+			// If there are collection IDs then we can assume that scope ID of 0 actually means no scope ID
+			if len(opts.FilterOptions.CollectionIDs) > 0 {
+				for _, cid := range opts.FilterOptions.CollectionIDs {
+					convertedFilter.Collections = append(convertedFilter.Collections, fmt.Sprintf("%x", cid))
+				}
+			} else {
+				// No collection IDs but the filter was set so even if scope ID is 0 then we use it
+				convertedFilter.Scope = fmt.Sprintf("%x", opts.FilterOptions.ScopeID)
+			}
+
 		}
-		if filter.Scope != noScopeID {
-			convertedFilter.Scope = fmt.Sprintf("%x", filter.Scope)
+		if opts.ManifestOptions != nil {
+			convertedFilter.ManifestUID = fmt.Sprintf("%x", opts.ManifestOptions.ManifestUID)
 		}
-		if filter.ManifestUID != noManifestUID {
-			convertedFilter.ManifestUID = fmt.Sprintf("%x", filter.ManifestUID)
+		if opts.StreamOptions != nil {
+			convertedFilter.StreamID = opts.StreamOptions.StreamID
 		}
-		if filter.StreamID != noStreamID {
-			convertedFilter.StreamID = filter.StreamID
-		}
+
 		var err error
 		val, err = json.Marshal(convertedFilter)
 		if err != nil {
@@ -215,13 +245,20 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 	return dcp.kvMux.DispatchDirect(req)
 }
 
-func (dcp *dcpComponent) CloseStreamWithID(vbID uint16, streamID uint16, cb CloseStreamCallback) (PendingOp, error) {
+func (dcp *dcpComponent) CloseStream(vbID uint16, opts CloseStreamOptions, cb CloseStreamCallback) (PendingOp, error) {
 	handler := func(_ *memdQResponse, _ *memdQRequest, err error) {
 		cb(err)
 	}
 
-	streamFrame := &memd.StreamIDFrame{
-		StreamID: streamID,
+	var streamFrame *memd.StreamIDFrame
+	if opts.StreamOptions != nil {
+		if !dcp.streamIDEnabled {
+			return nil, errStreamIDNotEnabled
+		}
+
+		streamFrame = &memd.StreamIDFrame{
+			StreamID: opts.StreamOptions.StreamID,
+		}
 	}
 
 	req := &memdQRequest{
@@ -242,30 +279,6 @@ func (dcp *dcpComponent) CloseStreamWithID(vbID uint16, streamID uint16, cb Clos
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	return dcp.kvMux.DispatchDirect(req)
-}
-
-func (dcp *dcpComponent) CloseStream(vbID uint16, cb CloseStreamCallback) (PendingOp, error) {
-	handler := func(_ *memdQResponse, _ *memdQRequest, err error) {
-		cb(err)
-	}
-
-	req := &memdQRequest{
-		Packet: memd.Packet{
-			Magic:    memd.CmdMagicReq,
-			Command:  memd.CmdDcpCloseStream,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
-			Vbucket:  vbID,
-		},
-		Callback:      handler,
-		ReplicaIdx:    0,
-		Persistent:    false,
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
 	return dcp.kvMux.DispatchDirect(req)
 }
 
@@ -306,7 +319,7 @@ func (dcp *dcpComponent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) 
 	return dcp.kvMux.DispatchDirect(req)
 }
 
-func (dcp *dcpComponent) GetVbucketSeqnosWithCollectionID(serverIdx int, state memd.VbucketState, collectionID uint32, cb GetVBucketSeqnosCallback) (PendingOp, error) {
+func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, opts GetVbucketSeqnoOptions, cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
 			cb(nil, err)
@@ -328,50 +341,14 @@ func (dcp *dcpComponent) GetVbucketSeqnosWithCollectionID(serverIdx int, state m
 
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
-	binary.BigEndian.PutUint32(extraBuf[4:], collectionID)
 
-	req := &memdQRequest{
-		Packet: memd.Packet{
-			Magic:    memd.CmdMagicReq,
-			Command:  memd.CmdGetAllVBSeqnos,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   extraBuf,
-			Key:      nil,
-			Value:    nil,
-			Vbucket:  0,
-		},
-		Callback:      handler,
-		ReplicaIdx:    -serverIdx,
-		Persistent:    false,
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
-
-	return dcp.kvMux.DispatchDirect(req)
-}
-
-func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, cb GetVBucketSeqnosCallback) (PendingOp, error) {
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if err != nil {
-			cb(nil, err)
-			return
+	if opts.FilterOptions != nil {
+		if !dcp.kvMux.SupportsCollections() {
+			return nil, errCollectionsUnsupported
 		}
 
-		var vbs []VbSeqNoEntry
-
-		numVbs := len(resp.Value) / 10
-		for i := 0; i < numVbs; i++ {
-			vbs = append(vbs, VbSeqNoEntry{
-				VbID:  binary.BigEndian.Uint16(resp.Value[i*10:]),
-				SeqNo: SeqNo(binary.BigEndian.Uint64(resp.Value[i*10+2:])),
-			})
-		}
-
-		cb(vbs, nil)
+		binary.BigEndian.PutUint32(extraBuf[4:], opts.FilterOptions.CollectionID)
 	}
-
-	extraBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
 
 	req := &memdQRequest{
 		Packet: memd.Packet{

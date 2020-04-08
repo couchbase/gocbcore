@@ -334,4 +334,5 @@ var (
 	errBucketAlreadySelected  = ncError{ErrBucketAlreadySelected}
 	errShutdown               = ncError{ErrShutdown}
 	errOverload               = ncError{ErrOverload}
+	errStreamIDNotEnabled     = ncError{ErrStreamIDNotEnabled}
 )

@@ -456,7 +456,7 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 	err = mux.errMapMgr.EnhanceKvError(err, resp, req)
 
 	if mux.postCompleteErrHandler == nil {
-		return false, nil
+		return false, err
 	}
 
 	return mux.postCompleteErrHandler(resp, req, err)

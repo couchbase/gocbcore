@@ -39,10 +39,10 @@ type DCPAgentConfig struct {
 	KvPoolSize       int
 	MaxQueueSize     int
 
-	DcpAgentPriority  DcpAgentPriority
-	UseDCPExpiry      bool
-	UseDCPStreamID    bool
-	UseDCPOSOBackfill bool
+	AgentPriority   DcpAgentPriority
+	UseExpiryOpcode bool
+	UseStreamID     bool
+	UseOSOBackfill  bool
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {
@@ -215,7 +215,7 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 		default:
 			return fmt.Errorf("dcp_priority must be one of low, medium or high")
 		}
-		config.DcpAgentPriority = priority
+		config.AgentPriority = priority
 	}
 
 	// This option is experimental
@@ -224,7 +224,7 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 		if err != nil {
 			return fmt.Errorf("enable_dcp_expiry option must be a boolean")
 		}
-		config.UseDCPExpiry = val
+		config.UseExpiryOpcode = val
 	}
 
 	// This option is experimental

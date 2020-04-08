@@ -290,6 +290,9 @@ const (
 
 	// DcpOpenFlagNoValue indicates the client does not wish to receive mutation values.
 	DcpOpenFlagNoValue = DcpOpenFlag(0x08)
+
+	// DcpOpenFlagIncludeDeleteTimes indicates the client wishes to receive delete times.
+	DcpOpenFlagIncludeDeleteTimes = DcpOpenFlag(0x20)
 )
 
 // DcpStreamAddFlag specifies flags for DCP streams configured when the stream is opened.
