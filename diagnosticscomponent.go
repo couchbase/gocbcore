@@ -180,15 +180,15 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 	for _, serviceType := range serviceTypes {
 		switch serviceType {
 		case MemdService:
-			dc.pingKV(iter, op, opts.Deadline, retryStrat)
+			dc.pingKV(iter, op, opts.KVDeadline, retryStrat)
 		case CapiService:
-			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/", CapiService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/", CapiService, op, opts.CapiDeadline, retryStrat)
 		case N1qlService:
-			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.N1QLDeadline, retryStrat)
 		case FtsService:
-			dc.pingHTTPService(ctx, httpMuxClient.ftsEpList, "/api/ping", FtsService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.ftsEpList, "/api/ping", FtsService, op, opts.FtsDeadline, retryStrat)
 		case CbasService:
-			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/admin/ping", CbasService, op, opts.Deadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/admin/ping", CbasService, op, opts.CbasDeadline, retryStrat)
 		}
 	}
 

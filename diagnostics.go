@@ -86,8 +86,12 @@ func (pop *pingOp) handledOneLocked() {
 type PingOptions struct {
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
-	Deadline     time.Time
-	ServiceTypes []ServiceType // Defaults to KV only.
+	KVDeadline   time.Time
+	CbasDeadline time.Time
+	N1QLDeadline time.Time
+	FtsDeadline  time.Time
+	CapiDeadline time.Time
+	ServiceTypes []ServiceType
 }
 
 // PingResult encapsulates the result of a PingKv operation.
