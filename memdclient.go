@@ -102,9 +102,9 @@ func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
 	client.dcpAckSize = bufferAckSize
 }
 
-func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
+func (client *memdClient) maybeSendDcpBufferAck(packetLen int, forceFlush bool) {
 	client.dcpFlowRecv += packetLen
-	if client.dcpFlowRecv < client.dcpAckSize {
+	if (!forceFlush && client.dcpFlowRecv < client.dcpAckSize) || client.dcpFlowRecv == 0 {
 		return
 	}
 
@@ -309,25 +309,43 @@ func (client *memdClient) run() {
 	dcpKillSwitch := make(chan bool)
 	dcpKillNotify := make(chan bool)
 	go func() {
+		procDcpItem := func(q *dcpBuffer, more bool) bool {
+			if !more {
+				dcpKillNotify <- true
+				return false
+			}
+
+			logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
+			client.resolveRequest(q.resp)
+
+			// See below for information on why this is here.
+			if !q.isInternal {
+				client.maybeSendDcpBufferAck(q.packetLen, false)
+			}
+
+			return true
+		}
+
 		for {
 			select {
 			case q, more := <-dcpBufferQ:
-				if !more {
-					dcpKillNotify <- true
+				if !procDcpItem(q, more) {
 					return
-				}
-
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
-				client.resolveRequest(q.resp)
-
-				// See below for information on why this is here.
-				if !q.isInternal {
-					if client.dcpAckSize > 0 {
-						client.maybeSendDcpBufferAck(q.packetLen)
-					}
 				}
 			case <-dcpKillSwitch:
 				close(dcpBufferQ)
+			default:
+				// if there is nothing to do in the queue, lets flush the ack
+				// count before we start waiting again...
+				client.maybeSendDcpBufferAck(0, true)
+				select {
+				case q, more := <-dcpBufferQ:
+					if !procDcpItem(q, more) {
+						return
+					}
+				case <-dcpKillSwitch:
+					close(dcpBufferQ)
+				}
 			}
 		}
 	}()
