@@ -35,12 +35,15 @@ func (td *testDocs) upsert() {
 			return
 		}
 
-		td.agent.Set(SetOptions{
+		_, err = td.agent.Set(SetOptions{
 			Key:   []byte(testDocName),
 			Value: bytes,
 		}, func(res *StoreResult, err error) {
 			waitCh <- err
 		})
+		if err != nil {
+			td.t.Errorf("failed to set test doc: %v", err)
+		}
 	}
 
 	for i := 1; i <= td.numDocs; i++ {

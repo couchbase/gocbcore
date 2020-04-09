@@ -27,6 +27,7 @@ var (
 	TestFeatureSsl         = TestFeatureCode("ssl")
 	TestFeatureViews       = TestFeatureCode("views")
 	TestFeatureN1ql        = TestFeatureCode("n1ql")
+	TestFeatureCbas        = TestFeatureCode("cbas")
 	TestFeatureAdjoin      = TestFeatureCode("adjoin")
 	TestFeatureErrMap      = TestFeatureCode("errmap")
 	TestFeatureCollections = TestFeatureCode("collections")
@@ -250,6 +251,8 @@ func (h *TestHarness) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureReplicas:
 		return true
 	case TestFeatureN1ql:
+		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
+	case TestFeatureCbas:
 		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
 	case TestFeatureAdjoin:
 		return !h.IsMockServer()

@@ -243,7 +243,6 @@ func TestGetReplica(t *testing.T) {
 		retries++
 		if retries >= 5 {
 			t.Fatalf("GetReplica could not locate key")
-			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

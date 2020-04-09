@@ -348,7 +348,7 @@ func TestN1QLTimeout(t *testing.T) {
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.N1QLQuery(N1QLQueryOptions{
+	_, err := agent.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
@@ -361,7 +361,6 @@ func TestN1QLTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to execute query %s", err)
 	}
-	op.Cancel()
 
 	var rows *N1QLRowReader
 	var resErr error
@@ -445,7 +444,7 @@ func TestN1QLPreparedTimeout(t *testing.T) {
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+	_, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
@@ -458,7 +457,6 @@ func TestN1QLPreparedTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to execute query %s", err)
 	}
-	op.Cancel()
 
 	var rows *N1QLRowReader
 	var resErr error

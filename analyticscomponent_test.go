@@ -60,6 +60,11 @@ func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5000 * time.Millisecond),
 	})
+	payloadStr = "{\"statement\":\"CONNECT LINK Local\"}"
+	hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(5000 * time.Millisecond),
+	})
 }
 
 func (nqh *analyticsTestHelper) testSetup(t *testing.T) {
@@ -181,16 +186,16 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 }
 
 func TestAnalytics(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+	testEnsureSupportsFeature(t, TestFeatureCbas)
 
 	helper := &analyticsTestHelper{
-		TestName: "testQuery",
+		TestName: "testAnalyticsQuery",
 		NumDocs:  5,
 	}
 
-	t.Run("setup", helper.testSetup)
-
-	t.Run("Basic", helper.testBasic)
+	if t.Run("setup", helper.testSetup) {
+		t.Run("Basic", helper.testBasic)
+	}
 
 	t.Run("cleanup", helper.testCleanup)
 }
@@ -244,7 +249,7 @@ func TestAnalyticsTimeout(t *testing.T) {
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.AnalyticsQuery(AnalyticsQueryOptions{
+	_, err := agent.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *AnalyticsRowReader, err error) {
@@ -257,7 +262,6 @@ func TestAnalyticsTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to execute query %s", err)
 	}
-	op.Cancel()
 
 	var rows *AnalyticsRowReader
 	var resErr error
@@ -273,6 +277,6 @@ func TestAnalyticsTimeout(t *testing.T) {
 	}
 
 	if !errors.Is(resErr, ErrTimeout) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		t.Fatalf("Error should have been timeout but was %s", resErr)
 	}
 }
