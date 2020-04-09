@@ -182,7 +182,7 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		case MemdService:
 			dc.pingKV(iter, op, opts.KVDeadline, retryStrat)
 		case CapiService:
-			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/", CapiService, op, opts.CapiDeadline, retryStrat)
+			dc.pingHTTPService(ctx, httpMuxClient.capiEpList, "/", CapiService, op, opts.CapiDeadline, retryStrat)
 		case N1qlService:
 			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.N1QLDeadline, retryStrat)
 		case FtsService:
