@@ -138,6 +138,10 @@ func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
 }
 
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
+	if req.Timer != nil {
+		req.Timer.Stop()
+	}
+
 	if req.Persistent {
 		if atomic.LoadUint32(&req.isCompleted) == 0 {
 			req.Callback(resp, req, err)

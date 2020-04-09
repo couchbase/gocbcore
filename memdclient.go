@@ -255,10 +255,6 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	req.processingLock.Lock()
 
-	if req.Timer != nil {
-		req.Timer.Stop()
-	}
-
 	if !req.Persistent {
 		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
 	}
