@@ -12,13 +12,13 @@ type PingState uint32
 
 const (
 	// PingStateOK indicates that an endpoint is OK.
-	PingStateOK PingState = iota
+	PingStateOK PingState = 1
 
 	// PingStateTimeout indicates that the ping request to an endpoint timed out.
-	PingStateTimeout PingState = iota
+	PingStateTimeout PingState = 2
 
 	// PingStateError indicates that the ping request to an endpoint encountered an error.
-	PingStateError PingState = iota
+	PingStateError PingState = 3
 )
 
 // EndpointState is the current connection state of an endpoint.
@@ -26,16 +26,16 @@ type EndpointState uint32
 
 const (
 	// EndpointStateDisconnected indicates that the endpoint is disconnected.
-	EndpointStateDisconnected EndpointState = iota
+	EndpointStateDisconnected EndpointState = 1
 
 	// EndpointStateConnecting indicates that the endpoint is connecting.
-	EndpointStateConnecting EndpointState = iota
+	EndpointStateConnecting EndpointState = 2
 
 	// EndpointStateConnected indicates that the endpoint is connected.
-	EndpointStateConnected EndpointState = iota
+	EndpointStateConnected EndpointState = 3
 
 	// EndpointStateDisconnecting indicates that the endpoint is disconnecting.
-	EndpointStateDisconnecting EndpointState = iota
+	EndpointStateDisconnecting EndpointState = 4
 )
 
 // EndpointPingResult contains the results of a ping to a single server.
