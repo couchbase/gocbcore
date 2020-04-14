@@ -15,6 +15,7 @@ var (
 	srvVer551  = NodeVersion{5, 5, 1, 0, ""}
 	srvVer552  = NodeVersion{5, 5, 2, 0, ""}
 	srvVer553  = NodeVersion{5, 5, 3, 0, ""}
+	srvVer600  = NodeVersion{6, 0, 0, 0, ""}
 	srvVer650  = NodeVersion{6, 5, 0, 0, ""}
 	srvVer700  = NodeVersion{7, 0, 0, 0, ""}
 	mockVer156 = NodeVersion{1, 5, 6, 0, ""}
@@ -253,7 +254,7 @@ func (h *TestHarness) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureN1ql:
 		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
 	case TestFeatureCbas:
-		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
+		return !h.IsMockServer() && h.ClusterVersion.Higher(srvVer600) && !h.ClusterVersion.Equal(srvVer700)
 	case TestFeatureAdjoin:
 		return !h.IsMockServer()
 	case TestFeatureCollections:

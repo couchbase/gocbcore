@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -17,8 +18,8 @@ type n1qlTestHelper struct {
 func hlpRunQuery(t *testing.T, agent *Agent, opts N1QLQueryOptions) ([][]byte, error) {
 	t.Helper()
 
-	resCh := make(chan *N1QLRowReader)
-	errCh := make(chan error)
+	resCh := make(chan *N1QLRowReader, 1)
+	errCh := make(chan error, 1)
 	_, err := agent.N1QLQuery(opts, func(reader *N1QLRowReader, err error) {
 		if err != nil {
 			errCh <- err
@@ -299,15 +300,34 @@ func TestN1QL(t *testing.T) {
 	t.Run("cleanup", helper.testCleanupN1ql)
 }
 
+type roundTripper struct {
+	delay  time.Duration
+	tsport http.RoundTripper
+}
+
+func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	<-time.After(rt.delay)
+	return rt.tsport.RoundTrip(req)
+}
+
 func TestN1QLCancel(t *testing.T) {
 	testEnsureSupportsFeature(t, TestFeatureN1ql)
+	agent, _ := testGetAgentAndHarness(t)
 
-	agent, h := testGetAgentAndHarness(t)
+	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
+	httpCpt := newHTTPComponent(
+		httpComponentProps{},
+		&http.Client{Transport: rt},
+		agent.httpMux,
+		agent.http.auth,
+		agent.tracer,
+	)
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: noopTracer{}})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.N1QLQuery(N1QLQueryOptions{
+	payloadStr := `{"statement":"SELECT * FROM test"}`
+	op, err := n1qlCpt.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
 	}, func(reader *N1QLRowReader, err error) {
@@ -398,12 +418,22 @@ func TestN1QLPrepared(t *testing.T) {
 func TestN1QLPreparedCancel(t *testing.T) {
 	testEnsureSupportsFeature(t, TestFeatureN1ql)
 
-	agent, h := testGetAgentAndHarness(t)
+	agent, _ := testGetAgentAndHarness(t)
+
+	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
+	httpCpt := newHTTPComponent(
+		httpComponentProps{},
+		&http.Client{Transport: rt},
+		agent.httpMux,
+		agent.http.auth,
+		agent.tracer,
+	)
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: noopTracer{}})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+	payloadStr := `{"statement":"SELECT * FROM test"}`
+	op, err := n1qlCpt.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
 	}, func(reader *N1QLRowReader, err error) {

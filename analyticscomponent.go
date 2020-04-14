@@ -267,6 +267,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 			cb(&AnalyticsRowReader{
 				streamer: streamer,
 			}, nil)
+			return
 		}
 	}()
 

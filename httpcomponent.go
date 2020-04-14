@@ -15,6 +15,10 @@ import (
 	"github.com/google/uuid"
 )
 
+type httpComponentInterface interface {
+	DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse, error)
+}
+
 type httpComponent struct {
 	cli                  *http.Client
 	muxer                *httpMux

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -17,8 +18,8 @@ type analyticsTestHelper struct {
 func hlpRunAnalyticsQuery(t *testing.T, agent *Agent, opts AnalyticsQueryOptions) ([][]byte, error) {
 	t.Helper()
 
-	resCh := make(chan *AnalyticsRowReader)
-	errCh := make(chan error)
+	resCh := make(chan *AnalyticsRowReader, 1)
+	errCh := make(chan error, 1)
 	_, err := agent.AnalyticsQuery(opts, func(reader *AnalyticsRowReader, err error) {
 		if err != nil {
 			errCh <- err
@@ -55,16 +56,22 @@ func hlpRunAnalyticsQuery(t *testing.T, agent *Agent, opts AnalyticsQueryOptions
 func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 	t.Helper()
 
-	payloadStr := fmt.Sprintf("{\"statement\":\"CREATE DATASET `%s` ON `%s`\"}", bucketName, bucketName)
-	hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
+	payloadStr := fmt.Sprintf("{\"statement\":\"CREATE DATASET IF NOT EXISTS `%s` ON `%s`\"}", bucketName, bucketName)
+	_, err := hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5000 * time.Millisecond),
 	})
+	if err != nil {
+		t.Logf("Error occurred creating dataset: %s\n", err)
+	}
 	payloadStr = "{\"statement\":\"CONNECT LINK Local\"}"
-	hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
+	_, err = hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5000 * time.Millisecond),
 	})
+	if err != nil {
+		t.Logf("Error occurred connecting link: %s\n", err)
+	}
 }
 
 func (nqh *analyticsTestHelper) testSetup(t *testing.T) {
@@ -85,7 +92,7 @@ func (nqh *analyticsTestHelper) testCleanup(t *testing.T) {
 func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 	agent, h := testGetAgentAndHarness(t)
 
-	deadline := time.Now().Add(15000 * time.Millisecond)
+	deadline := time.Now().Add(60000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
 			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", h.BucketName, nqh.TestName),
@@ -100,13 +107,13 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 			iterDeadline = deadline
 		}
 
-		resCh := make(chan *N1QLRowReader)
+		resCh := make(chan *AnalyticsRowReader)
 		errCh := make(chan error)
-		_, err = agent.N1QLQuery(N1QLQueryOptions{
+		_, err = agent.AnalyticsQuery(AnalyticsQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,
-		}, func(reader *N1QLRowReader, err error) {
+		}, func(reader *AnalyticsRowReader, err error) {
 			if err != nil {
 				errCh <- err
 				return
@@ -116,7 +123,7 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		var rows *N1QLRowReader
+		var rows *AnalyticsRowReader
 		select {
 		case err := <-errCh:
 			return nil, err
@@ -170,6 +177,8 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 			if !testFailed {
 				break
 			}
+		} else {
+			t.Logf("Error occurred running analytics query, will retry: %s\n", err)
 		}
 
 		sleepDeadline := time.Now().Add(1000 * time.Millisecond)
@@ -201,14 +210,24 @@ func TestAnalytics(t *testing.T) {
 }
 
 func TestAnalyticsCancel(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+	testEnsureSupportsFeature(t, TestFeatureCbas)
 
-	agent, h := testGetAgentAndHarness(t)
+	agent, _ := testGetAgentAndHarness(t)
+
+	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
+	httpCpt := newHTTPComponent(
+		httpComponentProps{},
+		&http.Client{Transport: rt},
+		agent.httpMux,
+		agent.http.auth,
+		agent.tracer,
+	)
+	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: noopTracer{}})
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
-	op, err := agent.AnalyticsQuery(AnalyticsQueryOptions{
+	payloadStr := `{"statement":"SELECT * FROM test LIMIT 1"}`
+	op, err := cbasCpt.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
 	}, func(reader *AnalyticsRowReader, err error) {
@@ -242,7 +261,7 @@ func TestAnalyticsCancel(t *testing.T) {
 }
 
 func TestAnalyticsTimeout(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+	testEnsureSupportsFeature(t, TestFeatureCbas)
 
 	agent, h := testGetAgentAndHarness(t)
 

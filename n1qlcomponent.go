@@ -148,7 +148,7 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 }
 
 type n1qlQueryComponent struct {
-	httpComponent *httpComponent
+	httpComponent httpComponentInterface
 	cfgMgr        *configManagementComponent
 	tracer        *tracerComponent
 
@@ -169,7 +169,7 @@ type n1qlJSONPrepData struct {
 	Name        string `json:"name"`
 }
 
-func newN1QLQueryComponent(httpComponent *httpComponent, cfgMgr *configManagementComponent, tracer *tracerComponent) *n1qlQueryComponent {
+func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr *configManagementComponent, tracer *tracerComponent) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,
@@ -378,6 +378,8 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 				Deadline:         opts.Deadline,
 				RetryStrategy:    opts.RetryStrategy,
 				RootTraceContext: tracer.RootContext(),
+				Context:          ctx,
+				CancelFunc:       cancel,
 			}
 
 			results, err := nqc.execute(ireq, payloadMap, statement)
@@ -404,6 +406,8 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 			Deadline:         opts.Deadline,
 			RetryStrategy:    opts.RetryStrategy,
 			RootTraceContext: tracer.RootContext(),
+			Context:          ctx,
+			CancelFunc:       cancel,
 		}
 
 		cacheRes, err := nqc.execute(ireq, payloadMap, statement)

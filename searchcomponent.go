@@ -227,6 +227,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 			cb(&SearchRowReader{
 				streamer: streamer,
 			}, nil)
+			return
 		}
 	}()
 

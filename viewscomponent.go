@@ -182,6 +182,7 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 			cb(&ViewQueryRowReader{
 				streamer: streamer,
 			}, nil)
+			return
 		}
 	}()
 
