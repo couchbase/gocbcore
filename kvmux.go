@@ -591,12 +591,6 @@ func (mux *kvMux) muxTakeover(oldMux, newMux *kvMuxState) {
 	}
 }
 
-type pipelineSnapshot struct {
-	muxer *kvMuxState
-
-	idx int
-}
-
 func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -604,35 +598,17 @@ func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	}
 
 	return &pipelineSnapshot{
-		muxer: clientMux,
+		state: clientMux,
 	}, nil
 }
 
-func (pi *pipelineSnapshot) RevID() int64 {
-	return pi.muxer.revID
-}
-
-func (pi *pipelineSnapshot) NumPipelines() int {
-	return pi.muxer.NumPipelines()
-}
-
-func (pi *pipelineSnapshot) PipelineAt(idx int) *memdPipeline {
-	return pi.muxer.GetPipeline(idx)
-}
-
-func (pi *pipelineSnapshot) Iterate(offset int, cb func(*memdPipeline) bool) {
-	l := pi.muxer.NumPipelines()
-	pi.idx = offset
-	for iters := 0; iters < l; iters++ {
-		pi.idx = (pi.idx + 1) % l
-		p := pi.muxer.GetPipeline(pi.idx)
-
-		if cb(p) {
-			return
-		}
+func (mux *kvMux) ConfigSnapshot() (*ConfigSnapshot, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
 	}
-}
 
-func (pi *pipelineSnapshot) NodeByVbucket(vbID uint16, replicaID uint32) (int, error) {
-	return pi.muxer.vbMap.NodeByVbucket(vbID, replicaID)
+	return &ConfigSnapshot{
+		state: clientMux,
+	}, nil
 }

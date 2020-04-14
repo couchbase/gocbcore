@@ -1077,7 +1077,14 @@ func TestSubdocXattrsReorder(t *testing.T) {
 func TestStats(t *testing.T) {
 	agent, s := testGetAgentAndHarness(t)
 
-	numServers := agent.NumServers()
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		t.Fatalf("Failed to get config snapshot: %s", err)
+	}
+	numServers, err := snapshot.NumServers()
+	if err != nil {
+		t.Fatalf("Failed to get num servers: %s", err)
+	}
 
 	s.PushOp(agent.Stats(StatsOptions{
 		Key: "",

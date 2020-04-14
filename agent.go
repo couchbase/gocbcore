@@ -445,22 +445,6 @@ func (agent *Agent) Close() error {
 	return routeCloseErr
 }
 
-// BucketUUID returns the UUID of the bucket we are connected to.
-func (agent *Agent) BucketUUID() string {
-	return agent.kvMux.ConfigUUID()
-}
-
-// NumReplicas returns the number of replicas configured on the
-// connected cluster.
-func (agent *Agent) NumReplicas() int {
-	return agent.kvMux.NumReplicas()
-}
-
-// NumServers returns the number of servers accessible for K/V.
-func (agent *Agent) NumServers() int {
-	return agent.kvMux.NumPipelines()
-}
-
 // ClientID returns the unique id for this agent
 func (agent *Agent) ClientID() string {
 	return agent.clientID
@@ -514,4 +498,9 @@ func (agent *Agent) UsingGCCCP() bool {
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *Agent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions, cb WaitUntilReadyCallback) (PendingOp, error) {
 	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
+}
+
+// ConfigSnapshot returns a snapshot of the underlying configuration currently in use.
+func (agent *Agent) ConfigSnapshot() (*ConfigSnapshot, error) {
+	return agent.kvMux.ConfigSnapshot()
 }
