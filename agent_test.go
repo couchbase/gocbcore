@@ -702,6 +702,9 @@ func TestObserve(t *testing.T) {
 	testEnsureSupportsFeature(t, TestFeatureReplicas)
 
 	agent, s := testGetAgentAndHarness(t)
+	if agent.HasCollectionsSupport() {
+		t.Skip("Skipping test as observe does not support collections")
+	}
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
