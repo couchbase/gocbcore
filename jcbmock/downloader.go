@@ -63,9 +63,11 @@ func GetMockPath() (path string, err error) {
 	if err != nil {
 		throwMockError("Couldn't open output file", err)
 	}
-	if err := out.Close(); err != nil {
-		log.Printf("Failed to close file: %v", err)
-	}
+	defer func() {
+		if err := out.Close(); err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
+	}()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
