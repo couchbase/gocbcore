@@ -224,6 +224,12 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 		return nil, errShutdown
 	}
 
+	// We haven't seen a valid config yet so put this in the dead pipeline so
+	// it'll get requeued once we do get a config.
+	if clientMux.revID == -1 {
+		return clientMux.deadPipe, nil
+	}
+
 	var srvIdx int
 	repIdx := req.ReplicaIdx
 
