@@ -139,6 +139,14 @@ func (mux *kvMux) SetPostCompleteErrorHandler(handler postCompleteErrorHandler) 
 	mux.postCompleteErrHandler = handler
 }
 
+func (mux *kvMux) ConfigRev() (int64, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return 0, errShutdown
+	}
+	return clientMux.revID, nil
+}
+
 func (mux *kvMux) ConfigUUID() string {
 	clientMux := mux.getState()
 	if clientMux == nil {

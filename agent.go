@@ -495,6 +495,18 @@ func (agent *Agent) UsingGCCCP() bool {
 	return agent.kvMux.SupportsGCCCP()
 }
 
+// HasSeenConfig returns whether or not the Agent has seen a valid cluster config. This does not mean that the agent
+// currently has active connections.
+// Volatile: This API is subject to change at any time.
+func (agent *Agent) HasSeenConfig() (bool, error) {
+	seen, err := agent.kvMux.ConfigRev()
+	if err != nil {
+		return false, err
+	}
+
+	return seen > -1, nil
+}
+
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *Agent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions, cb WaitUntilReadyCallback) (PendingOp, error) {
 	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
