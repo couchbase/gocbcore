@@ -434,7 +434,10 @@ func (agent *Agent) Close() error {
 	// Wait for our external looper goroutines to finish, note that if the
 	// specific looper wasn't used, it will be a nil value otherwise it
 	// will be an open channel till its closed to signal completion.
-	<-agent.pollerController.Done()
+	pollerCh := agent.pollerController.Done()
+	if pollerCh != nil {
+		<-pollerCh
+	}
 
 	// Close the transports so that they don't hold open goroutines.
 	agent.http.Close()

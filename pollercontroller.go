@@ -8,6 +8,7 @@ import (
 type pollerController struct {
 	activeController configPollerController
 	controllerLock   sync.Mutex
+	stopped          bool
 
 	cccpPoller *cccpConfigController
 	httpPoller *httpConfigController
@@ -27,14 +28,18 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 }
 
 func (pc *pollerController) Start() {
+	pc.controllerLock.Lock()
+	if pc.stopped {
+		pc.controllerLock.Unlock()
+		return
+	}
+
 	if pc.cccpPoller == nil {
-		pc.controllerLock.Lock()
 		pc.activeController = pc.httpPoller
 		pc.controllerLock.Unlock()
 		pc.httpPoller.DoLoop()
 		return
 	}
-	pc.controllerLock.Lock()
 	pc.activeController = pc.cccpPoller
 	pc.controllerLock.Unlock()
 	err := pc.cccpPoller.DoLoop()
@@ -45,9 +50,16 @@ func (pc *pollerController) Start() {
 		}
 		if errors.Is(err, ErrDocumentNotFound) {
 			pc.controllerLock.Lock()
-			pc.activeController = pc.httpPoller
-			pc.controllerLock.Unlock()
-			pc.httpPoller.DoLoop()
+			// We can get into a weird race where the poller controller sent stop to the active controller but we then
+			// swap to a different one and so the Done() function never completes.
+			if pc.stopped {
+				pc.activeController = nil
+				pc.controllerLock.Unlock()
+			} else {
+				pc.activeController = pc.httpPoller
+				pc.controllerLock.Unlock()
+				pc.httpPoller.DoLoop()
+			}
 		}
 	}
 }
@@ -63,6 +75,7 @@ func (pc *pollerController) Pause(paused bool) {
 
 func (pc *pollerController) Stop() {
 	pc.controllerLock.Lock()
+	pc.stopped = true
 	controller := pc.activeController
 	pc.controllerLock.Unlock()
 
