@@ -309,3 +309,8 @@ func (agent *DCPAgent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, 
 func (agent *DCPAgent) HasCollectionsSupport() bool {
 	return agent.kvMux.SupportsCollections()
 }
+
+// ConfigSnapshot returns a snapshot of the underlying configuration currently in use.
+func (agent *DCPAgent) ConfigSnapshot() (*ConfigSnapshot, error) {
+	return agent.kvMux.ConfigSnapshot()
+}
