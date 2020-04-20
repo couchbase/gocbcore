@@ -11,7 +11,7 @@ type memdClientDialerComponent struct {
 	serverWaitTimeout time.Duration
 	clientID          string
 	breakerCfg        CircuitBreakerConfig
-	tlsConfig         *tls.Config
+	tlsConfig         *dynTLSConfig
 
 	compressionMinSize   int
 	compressionMinRatio  float64
@@ -31,7 +31,7 @@ type memdClientDialerProps struct {
 	KVConnectTimeout     time.Duration
 	ServerWaitTimeout    time.Duration
 	ClientID             string
-	TLSConfig            *tls.Config
+	TLSConfig            *dynTLSConfig
 	CompressionMinSize   int
 	CompressionMinRatio  float64
 	DisableDecompression bool
@@ -102,16 +102,15 @@ func (mcc *memdClientDialerComponent) dialMemdClient(address string, deadline ti
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config
 	if mcc.tlsConfig != nil {
-		host, err := hostFromHostPort(address)
+		srvTLSConfig, err := mcc.tlsConfig.MakeForAddr(address)
 		if err != nil {
-			logErrorf("Failed to parse address for TLS config (%s)", err)
+			return nil, err
 		}
 
-		tlsConfig = cloneTLSConfig(mcc.tlsConfig)
-		tlsConfig.ServerName = host
+		tlsConfig = srvTLSConfig
 	}
 
-	conn, err := dialMemdConn(address, mcc.tlsConfig, deadline)
+	conn, err := dialMemdConn(address, tlsConfig, deadline)
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
 		return nil, err

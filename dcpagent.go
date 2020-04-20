@@ -11,7 +11,7 @@ import (
 type DCPAgent struct {
 	clientID   string
 	bucketName string
-	tlsConfig  *tls.Config
+	tlsConfig  *dynTLSConfig
 	initFn     memdInitFunc
 
 	pollerController *pollerController
@@ -80,23 +80,24 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new dcp agent: %+v", config)
 
-	var tlsConfig *tls.Config
+	var tlsConfig *dynTLSConfig
 	if config.UseTLS {
-		tlsConfig = &tls.Config{
-			RootCAs: config.TLSRootCAs,
-			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				cert, err := config.Auth.Certificate(AuthCertRequest{})
-				if err != nil {
-					return nil, err
-				}
+		tlsConfig = &dynTLSConfig{
+			BaseConfig: &tls.Config{
+				GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					cert, err := config.Auth.Certificate(AuthCertRequest{})
+					if err != nil {
+						return nil, err
+					}
 
-				if cert == nil {
-					return &tls.Certificate{}, nil
-				}
+					if cert == nil {
+						return &tls.Certificate{}, nil
+					}
 
-				return cert, nil
+					return cert, nil
+				},
 			},
-			InsecureSkipVerify: config.TLSSkipVerify,
+			Provider: config.TLSRootCAProvider,
 		}
 	}
 

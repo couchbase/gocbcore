@@ -20,8 +20,7 @@ type DCPAgentConfig struct {
 	NetworkType string
 	Auth        AuthProvider
 
-	TLSRootCAs    *x509.CertPool
-	TLSSkipVerify bool
+	TLSRootCAProvider func() *x509.CertPool
 
 	UseCompression       bool
 	DisableDecompression bool
@@ -132,9 +131,9 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 				}
 			}
 
-			config.TLSRootCAs = roots
-		} else {
-			config.TLSSkipVerify = true
+			config.TLSRootCAProvider = func() *x509.CertPool {
+				return roots
+			}
 		}
 
 		config.UseTLS = true

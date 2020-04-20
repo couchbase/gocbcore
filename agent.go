@@ -18,7 +18,7 @@ import (
 type Agent struct {
 	clientID             string
 	bucketName           string
-	tlsConfig            *tls.Config
+	tlsConfig            *dynTLSConfig
 	initFn               memdInitFunc
 	defaultRetryStrategy RetryStrategy
 
@@ -84,33 +84,67 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new agent: %+v", config)
 
-	var tlsConfig *tls.Config
+	var tlsConfig *dynTLSConfig
 	if config.UseTLS {
-		tlsConfig = &tls.Config{
-			RootCAs: config.TLSRootCAs,
-			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				cert, err := config.Auth.Certificate(AuthCertRequest{})
-				if err != nil {
-					return nil, err
-				}
+		tlsConfig = &dynTLSConfig{
+			BaseConfig: &tls.Config{
+				GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					cert, err := config.Auth.Certificate(AuthCertRequest{})
+					if err != nil {
+						return nil, err
+					}
 
-				if cert == nil {
-					return &tls.Certificate{}, nil
-				}
+					if cert == nil {
+						return &tls.Certificate{}, nil
+					}
 
-				return cert, nil
+					return cert, nil
+				},
 			},
-			InsecureSkipVerify: config.TLSSkipVerify,
+			Provider: config.TLSRootCAProvider,
 		}
 	}
 
+	httpDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// We set up the transport to point at the BaseConfig from the dynamic TLS system.
+	// We also set ForceAttemptHTTP2, which will update the base-config to support HTTP2
+	// automatically, so that all configs from it will look for that.
+
+	var httpTLSConfig *dynTLSConfig
+	var httpBaseTLSConfig *tls.Config
+	if tlsConfig != nil {
+		httpTLSConfig = tlsConfig.Clone()
+		httpBaseTLSConfig = httpTLSConfig.BaseConfig
+	}
+
 	httpTransport := &http.Transport{
-		TLSClientConfig: tlsConfig,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:   httpBaseTLSConfig,
+		ForceAttemptHTTP2: true,
+
+		Dial: func(network, addr string) (net.Conn, error) {
+			return httpDialer.Dial(network, addr)
+		},
+		DialTLS: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			if httpTLSConfig == nil {
+				return nil, errors.New("TLS was not configured on this Agent")
+			}
+			srvTLSConfig, err := httpTLSConfig.MakeForAddr(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			tlsConn := tls.Client(tcpConn, srvTLSConfig)
+			return tlsConn, nil
+		},
 		MaxIdleConns:        config.HTTPMaxIdleConns,
 		MaxIdleConnsPerHost: config.HTTPMaxIdleConnsPerHost,
 		IdleConnTimeout:     config.HTTPIdleConnectionTimeout,

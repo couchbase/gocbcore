@@ -35,8 +35,7 @@ type AgentConfig struct {
 	NetworkType string
 	Auth        AuthProvider
 
-	TLSRootCAs    *x509.CertPool
-	TLSSkipVerify bool
+	TLSRootCAProvider func() *x509.CertPool
 
 	UseMutationTokens    bool
 	UseCompression       bool
@@ -195,9 +194,9 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 				}
 			}
 
-			config.TLSRootCAs = roots
-		} else {
-			config.TLSSkipVerify = true
+			config.TLSRootCAProvider = func() *x509.CertPool {
+				return roots
+			}
 		}
 
 		config.UseTLS = true
