@@ -114,6 +114,11 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 				}
 			}
 
+			err := oldClientMux.deadPipe.Close()
+			if err != nil {
+				logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
+			}
+
 			for _, pipeline := range newClientMux.pipelines {
 				pipeline.StartClients()
 			}
