@@ -448,7 +448,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 		resp, err := nqc.execute(ireq, payloadMap, statement)
 		if err != nil {
 			cancel()
-			cb(nil, wrapN1QLError(ireq, statement, err))
+			cb(nil, err)
 			return
 		}
 
