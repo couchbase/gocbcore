@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -28,7 +29,7 @@ func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...in
 		atomic.AddUint64(&logger.LogCount[level], 1)
 	}
 
-	return logger.Parent.Log(level, offset+1, format, v...)
+	return logger.Parent.Log(level, offset+1, fmt.Sprintf("[%s] ", logLevelToString(level))+format, v...)
 }
 
 func createTestLogger() *testLogger {
