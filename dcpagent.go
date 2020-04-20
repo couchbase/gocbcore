@@ -304,3 +304,8 @@ func (agent *DCPAgent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, 
 	cb GetVBucketSeqnosCallback) (PendingOp, error) {
 	return agent.dcp.GetVbucketSeqnos(serverIdx, state, opts, cb)
 }
+
+// HasCollectionsSupport verifies whether or not collections are available on the agent.
+func (agent *DCPAgent) HasCollectionsSupport() bool {
+	return agent.kvMux.SupportsCollections()
+}
