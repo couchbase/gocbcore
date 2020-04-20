@@ -92,22 +92,22 @@ type PasswordAuthProvider struct {
 }
 
 // SupportsNonTLS specifies whether this authenticator supports non-TLS connections.
-func (auth *PasswordAuthProvider) SupportsNonTLS() bool {
+func (auth PasswordAuthProvider) SupportsNonTLS() bool {
 	return true
 }
 
 // SupportsTLS specifies whether this authenticator supports TLS connections.
-func (auth *PasswordAuthProvider) SupportsTLS() bool {
+func (auth PasswordAuthProvider) SupportsTLS() bool {
 	return true
 }
 
 // Certificate directly returns a certificate chain to present for the connection.
-func (auth *PasswordAuthProvider) Certificate(req AuthCertRequest) (*tls.Certificate, error) {
+func (auth PasswordAuthProvider) Certificate(req AuthCertRequest) (*tls.Certificate, error) {
 	return nil, nil
 }
 
 // Credentials directly returns the username/password from the provider.
-func (auth *PasswordAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPair, error) {
+func (auth PasswordAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPair, error) {
 	return []UserPassPair{{
 		Username: auth.Username,
 		Password: auth.Password,
