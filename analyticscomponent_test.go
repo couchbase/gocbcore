@@ -59,7 +59,7 @@ func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 	payloadStr := fmt.Sprintf("{\"statement\":\"CREATE DATASET IF NOT EXISTS `%s` ON `%s`\"}", bucketName, bucketName)
 	_, err := hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
-		Deadline: time.Now().Add(5000 * time.Millisecond),
+		Deadline: time.Now().Add(30000 * time.Millisecond),
 	})
 	if err != nil {
 		t.Logf("Error occurred creating dataset: %s\n", err)
@@ -67,7 +67,7 @@ func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 	payloadStr = "{\"statement\":\"CONNECT LINK Local\"}"
 	_, err = hlpRunAnalyticsQuery(t, agent, AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
-		Deadline: time.Now().Add(5000 * time.Millisecond),
+		Deadline: time.Now().Add(30000 * time.Millisecond),
 	})
 	if err != nil {
 		t.Logf("Error occurred connecting link: %s\n", err)
