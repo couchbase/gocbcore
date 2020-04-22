@@ -105,70 +105,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		}
 	}
 
-	httpDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-
-	// We set up the transport to point at the BaseConfig from the dynamic TLS system.
-	// We also set ForceAttemptHTTP2, which will update the base-config to support HTTP2
-	// automatically, so that all configs from it will look for that.
-
-	var httpTLSConfig *dynTLSConfig
-	var httpBaseTLSConfig *tls.Config
-	if tlsConfig != nil {
-		httpTLSConfig = tlsConfig.Clone()
-		httpBaseTLSConfig = httpTLSConfig.BaseConfig
-	}
-
-	httpTransport := &http.Transport{
-		TLSClientConfig:   httpBaseTLSConfig,
-		ForceAttemptHTTP2: true,
-
-		Dial: func(network, addr string) (net.Conn, error) {
-			return httpDialer.Dial(network, addr)
-		},
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			tcpConn, err := httpDialer.Dial(network, addr)
-			if err != nil {
-				return nil, err
-			}
-
-			if httpTLSConfig == nil {
-				return nil, errors.New("TLS was not configured on this Agent")
-			}
-			srvTLSConfig, err := httpTLSConfig.MakeForAddr(addr)
-			if err != nil {
-				return nil, err
-			}
-
-			tlsConn := tls.Client(tcpConn, srvTLSConfig)
-			return tlsConn, nil
-		},
-		MaxIdleConns:        config.HTTPMaxIdleConns,
-		MaxIdleConnsPerHost: config.HTTPMaxIdleConnsPerHost,
-		IdleConnTimeout:     config.HTTPIdleConnectionTimeout,
-	}
-
-	httpCli := &http.Client{
-		Transport: httpTransport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// All that we're doing here is setting auth on any redirects.
-			// For that reason we can just pull it off the oldest (first) request.
-			if len(via) >= 10 {
-				// Just duplicate the default behaviour for maximum redirects.
-				return errors.New("stopped after 10 redirects")
-			}
-
-			oldest := via[0]
-			auth := oldest.Header.Get("Authorization")
-			if auth != "" {
-				req.Header.Set("Authorization", auth)
-			}
-
-			return nil
-		},
-	}
+	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
+		config.HTTPIdleConnectionTimeout, tlsConfig)
 
 	tracer := config.Tracer
 	if tracer == nil {
@@ -401,6 +339,74 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	go c.pollerController.Start()
 
 	return c, nil
+}
+
+func createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, tlsConfig *dynTLSConfig) *http.Client {
+	httpDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// We set up the transport to point at the BaseConfig from the dynamic TLS system.
+	// We also set ForceAttemptHTTP2, which will update the base-config to support HTTP2
+	// automatically, so that all configs from it will look for that.
+
+	var httpTLSConfig *dynTLSConfig
+	var httpBaseTLSConfig *tls.Config
+	if tlsConfig != nil {
+		httpTLSConfig = tlsConfig.Clone()
+		httpBaseTLSConfig = httpTLSConfig.BaseConfig
+	}
+
+	httpTransport := &http.Transport{
+		TLSClientConfig:   httpBaseTLSConfig,
+		ForceAttemptHTTP2: true,
+
+		Dial: func(network, addr string) (net.Conn, error) {
+			return httpDialer.Dial(network, addr)
+		},
+		DialTLS: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			if httpTLSConfig == nil {
+				return nil, errors.New("TLS was not configured on this Agent")
+			}
+			srvTLSConfig, err := httpTLSConfig.MakeForAddr(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			tlsConn := tls.Client(tcpConn, srvTLSConfig)
+			return tlsConn, nil
+		},
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		IdleConnTimeout:     idleTimeout,
+	}
+
+	httpCli := &http.Client{
+		Transport: httpTransport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// All that we're doing here is setting auth on any redirects.
+			// For that reason we can just pull it off the oldest (first) request.
+			if len(via) >= 10 {
+				// Just duplicate the default behaviour for maximum redirects.
+				return errors.New("stopped after 10 redirects")
+			}
+
+			oldest := via[0]
+			auth := oldest.Header.Get("Authorization")
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+
+			return nil
+		},
+	}
+	return httpCli
 }
 
 func buildAuthHandler(auth AuthProvider) authFuncHandler {

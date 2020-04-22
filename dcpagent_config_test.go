@@ -56,8 +56,24 @@ func TestDcpDCPAgentConfig_DefaultHTTP(t *testing.T) {
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
-	if err == nil {
-		t.Fatalf("Expected to fail for http scheme FromConnStr: %v", err)
+	if err != nil {
+		t.Fatalf("Failed to execute FromConnStr: %v", err)
+	}
+
+	if len(config.MemdAddrs) != 1 {
+		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
+	}
+
+	if len(config.HTTPAddrs) != 1 {
+		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+	}
+
+	if config.MemdAddrs[0] != "10.112.192.101:11210" {
+		t.Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
+	}
+
+	if config.HTTPAddrs[0] != "10.112.192.101:8091" {
+		t.Fatalf("Expected address to be 10.112.192.101:8091 but was %v", config.HTTPAddrs[0])
 	}
 }
 
@@ -66,12 +82,20 @@ func TestDcpDCPAgentConfig_NonDefaultHTTP(t *testing.T) {
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
-	if err == nil {
-		t.Fatalf("Expected to fail for http scheme FromConnStr: %v", err)
+	if err != nil {
+		t.Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if len(config.MemdAddrs) != 0 {
 		t.Fatalf("Expected MemdAddrs to be len 0 but was %v", config.MemdAddrs)
+	}
+
+	if len(config.HTTPAddrs) != 1 {
+		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+	}
+
+	if config.HTTPAddrs[0] != "10.112.192.101:9000" {
+		t.Fatalf("Expected address to be 10.112.192.101:9000 but was %v", config.HTTPAddrs[0])
 	}
 }
 

@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"crypto/tls"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -16,12 +17,14 @@ type DCPAgent struct {
 
 	pollerController *pollerController
 	kvMux            *kvMux
+	httpMux          *httpMux
 
 	cfgManager  *configManagementComponent
 	errMap      *errMapComponent
 	tracer      *tracerComponent
 	diagnostics *diagnosticsComponent
 	dcp         *dcpComponent
+	http        *httpComponent
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
@@ -101,6 +104,9 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		}
 	}
 
+	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
+		config.HTTPIdleConnectionTimeout, tlsConfig)
+
 	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false)
 
 	c := &DCPAgent{
@@ -151,6 +157,16 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		confCccpPollPeriod = config.CccpPollPeriod
 	}
 
+	confHTTPRetryDelay := 10 * time.Second
+	if config.HTTPRetryDelay > 0 {
+		confHTTPRetryDelay = config.HTTPRetryDelay
+	}
+
+	confHTTPRedialPeriod := 10 * time.Second
+	if config.HTTPRedialPeriod > 0 {
+		confHTTPRedialPeriod = config.HTTPRedialPeriod
+	}
+
 	if config.CompressionMinSize > 0 {
 		compressionMinSize = config.CompressionMinSize
 	}
@@ -171,6 +187,15 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	}
 
 	authHandler := buildAuthHandler(auth)
+
+	var httpEpList []string
+	for _, hostPort := range config.HTTPAddrs {
+		if !c.IsSecure() {
+			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
+		} else {
+			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+		}
+	}
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
@@ -219,16 +244,44 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		c.tracer,
 		dialer,
 	)
-	c.pollerController = newPollerController(
-		newCCCPConfigController(
+	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
+	c.http = newHTTPComponent(
+		httpComponentProps{
+			UserAgent:            userAgent,
+			DefaultRetryStrategy: &failFastRetryStrategy{},
+		},
+		httpCli,
+		c.httpMux,
+		auth,
+		c.tracer,
+	)
+
+	// If a user connects on a non default http port then we won't translate the address into memd addresses.
+	// If this happens then we should instruct the poller controller to skip straight to http polling. The cccp poller
+	// will not see no pipelines as a reason to fallback, it will just keep looping until it finds pipelines.
+	var cccpPoller *cccpConfigController
+	if len(config.MemdAddrs) > 0 {
+		cccpPoller = newCCCPConfigController(
 			cccpPollerProperties{
 				confCccpMaxWait:    confCccpMaxWait,
 				confCccpPollPeriod: confCccpPollPeriod,
 			},
 			c.kvMux,
 			c.cfgManager,
+		)
+	}
+	c.pollerController = newPollerController(
+		cccpPoller,
+		newHTTPConfigController(
+			c.bucketName,
+			httpPollerProperties{
+				httpComponent:        c.http,
+				confHTTPRetryDelay:   confHTTPRetryDelay,
+				confHTTPRedialPeriod: confHTTPRedialPeriod,
+			},
+			c.httpMux,
+			c.cfgManager,
 		),
-		nil,
 	)
 
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName)
@@ -237,10 +290,11 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	// Kick everything off.
 	cfg := &routeConfig{
 		kvServerList: config.MemdAddrs,
-		mgmtEpList:   []string{},
+		mgmtEpList:   httpEpList,
 		revID:        -1,
 	}
 
+	c.httpMux.OnNewRouteConfig(cfg)
 	c.kvMux.OnNewRouteConfig(cfg)
 
 	go c.pollerController.Start()

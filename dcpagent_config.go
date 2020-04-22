@@ -15,6 +15,7 @@ import (
 type DCPAgentConfig struct {
 	UserAgent   string
 	MemdAddrs   []string
+	HTTPAddrs   []string
 	UseTLS      bool
 	BucketName  string
 	NetworkType string
@@ -30,13 +31,19 @@ type DCPAgentConfig struct {
 	CompressionMinSize  int
 	CompressionMinRatio float64
 
-	CccpMaxWait    time.Duration
-	CccpPollPeriod time.Duration
+	HTTPRedialPeriod time.Duration
+	HTTPRetryDelay   time.Duration
+	CccpMaxWait      time.Duration
+	CccpPollPeriod   time.Duration
 
 	ConnectTimeout   time.Duration
 	KVConnectTimeout time.Duration
 	KvPoolSize       int
 	MaxQueueSize     int
+
+	HTTPMaxIdleConns          int
+	HTTPMaxIdleConnsPerHost   int
+	HTTPIdleConnectionTimeout time.Duration
 
 	AgentPriority   DcpAgentPriority
 	UseExpiryOpcode bool
@@ -50,6 +57,10 @@ func (config *DCPAgentConfig) redacted() interface{} {
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.
+		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
+		for i, addr := range newConfig.HTTPAddrs {
+			newConfig.HTTPAddrs[i] = redactSystemData(addr)
+		}
 		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
 		for i, addr := range newConfig.MemdAddrs {
 			newConfig.MemdAddrs[i] = redactSystemData(addr)
@@ -81,14 +92,15 @@ func (config *DCPAgentConfig) redacted() interface{} {
 //   enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
+//   max_idle_http_connections (int) - Maximum number of idle http connections in the pool.
+//   max_perhost_idle_http_connections (int) - Maximum number of idle http connections in the pool per host.
+//   idle_http_connection_timeout (duration) - Maximum length of time for an idle connection to stay in the pool in ms.
+//   http_redial_period (duration) - The maximum length of time for the HTTP poller to stay connected before reconnecting.
+//   http_retry_delay (duration) - The length of time to wait between HTTP poller retries if connecting fails.
 func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := connstr.Parse(connStr)
 	if err != nil {
 		return err
-	}
-
-	if baseSpec.Scheme == "http" {
-		return errors.New("http scheme is not supported for dcp agent, use couchbase or couchbases instead")
 	}
 
 	spec, err := connstr.Resolve(baseSpec)
@@ -104,12 +116,38 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 		return optValue[len(optValue)-1], true
 	}
 
+	// Grab the resolved hostnames into a set of string arrays
+	var httpHosts []string
+	for _, specHost := range spec.HttpHosts {
+		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
 	var memdHosts []string
 	for _, specHost := range spec.MemdHosts {
 		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
 	}
+	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
+	switch val, _ := fetchOption("bootstrap_on"); val {
+	case "http":
+		memdHosts = nil
+		if len(httpHosts) == 0 {
+			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
+		}
+	case "cccp":
+		httpHosts = nil
+		if len(memdHosts) == 0 {
+			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
+		}
+	case "both":
+	case "":
+		// Do nothing
+		break
+	default:
+		return errors.New("bootstrap_on={http,cccp,both}")
+	}
 
 	config.MemdAddrs = memdHosts
+	config.HTTPAddrs = httpHosts
 
 	if spec.UseSsl {
 		var cacertpaths []string
@@ -197,6 +235,48 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 			return fmt.Errorf("compression_min_size option must be an int")
 		}
 		config.CompressionMinRatio = val
+	}
+
+	if valStr, ok := fetchOption("max_idle_http_connections"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("http max idle connections option must be a number")
+		}
+		config.HTTPMaxIdleConns = int(val)
+	}
+
+	if valStr, ok := fetchOption("max_perhost_idle_http_connections"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("max_perhost_idle_http_connections option must be a number")
+		}
+		config.HTTPMaxIdleConnsPerHost = int(val)
+	}
+
+	if valStr, ok := fetchOption("idle_http_connection_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
+		}
+		config.HTTPIdleConnectionTimeout = val
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("http_redial_period"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return fmt.Errorf("http redial period option must be a duration or a number")
+		}
+		config.HTTPRedialPeriod = val
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("http_retry_delay"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return fmt.Errorf("http retry delay option must be a duration or a number")
+		}
+		config.HTTPRetryDelay = val
 	}
 
 	// This option is experimental
