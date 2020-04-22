@@ -339,17 +339,20 @@ func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState
 		cb(vbs, nil)
 	}
 
-	extraBuf := make([]byte, 8)
-	binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
+	var extraBuf []byte
 
-	if opts.FilterOptions != nil {
+	if opts.FilterOptions == nil {
+		extraBuf = make([]byte, 4)
+		binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
+	} else {
 		if !dcp.kvMux.SupportsCollections() {
 			return nil, errCollectionsUnsupported
 		}
 
+		extraBuf = make([]byte, 8)
+		binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
 		binary.BigEndian.PutUint32(extraBuf[4:], opts.FilterOptions.CollectionID)
 	}
-
 	req := &memdQRequest{
 		Packet: memd.Packet{
 			Magic:    memd.CmdMagicReq,
