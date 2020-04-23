@@ -171,6 +171,7 @@ func (suite *StandardTestSuite) makeBaseAgentConfig(testConfig *TestConfig) Agen
 	config.UseMutationTokens = true
 	config.UseCollections = true
 	config.BucketName = testConfig.BucketName
+	config.UseOutOfOrderResponses = true
 
 	config.Auth = testConfig.Authenticator
 

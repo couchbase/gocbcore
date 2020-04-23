@@ -136,6 +136,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	useDurations := config.UseDurations
+	useOutOfOrder := config.UseOutOfOrderResponses
 
 	kvConnectTimeout := 7000 * time.Millisecond
 	if config.KVConnectTimeout > 0 {
@@ -247,6 +248,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				MutationTokensEnabled: useMutationTokens,
 				CompressionEnabled:    useCompression,
 				DurationsEnabled:      useDurations,
+				OutOfOrderEnabled:     useOutOfOrder,
 			},
 			Bucket:         c.bucketName,
 			UserAgent:      userAgent,

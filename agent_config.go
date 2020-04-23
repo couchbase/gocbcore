@@ -37,10 +37,11 @@ type AgentConfig struct {
 
 	TLSRootCAProvider func() *x509.CertPool
 
-	UseMutationTokens    bool
-	UseCompression       bool
-	UseDurations         bool
-	DisableDecompression bool
+	UseMutationTokens      bool
+	UseCompression         bool
+	UseDurations           bool
+	DisableDecompression   bool
+	UseOutOfOrderResponses bool
 
 	UseCollections bool
 

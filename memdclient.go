@@ -565,6 +565,10 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 		features = append(features, memd.FeatureCollections)
 	}
 
+	if props.OutOfOrderEnabled {
+		features = append(features, memd.FeatureUnorderedExec)
+	}
+
 	// These flags are informational so don't actually enable anything
 	// but the enhanced durability flag tells us if the server supports
 	// the feature
@@ -579,6 +583,7 @@ type helloProps struct {
 	CollectionsEnabled    bool
 	CompressionEnabled    bool
 	DurationsEnabled      bool
+	OutOfOrderEnabled     bool
 }
 
 type bootstrapProps struct {
