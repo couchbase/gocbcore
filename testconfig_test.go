@@ -1,5 +1,7 @@
 package gocbcore
 
+import "crypto/x509"
+
 var globalTestConfig *TestConfig
 
 type TestConfig struct {
@@ -8,8 +10,8 @@ type TestConfig struct {
 	MemdBucketName string
 	ScopeName      string
 	CollectionName string
-	Username       string
-	Password       string
+	Authenticator  AuthProvider
+	CAProvider     func() *x509.CertPool
 	ClusterVersion NodeVersion
 	FeatureFlags   []TestFeatureFlag
 }
@@ -21,8 +23,8 @@ type DCPTestConfig struct {
 	BucketName     string
 	Scope          uint32
 	Collections    []uint32
-	Username       string
-	Password       string
+	Authenticator  AuthProvider
+	CAProvider     func() *x509.CertPool
 	ClusterVersion NodeVersion
 	FeatureFlags   []TestFeatureFlag
 	NumMutations   int

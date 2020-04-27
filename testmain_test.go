@@ -1,6 +1,8 @@
 package gocbcore
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"log"
@@ -93,6 +95,8 @@ func TestMain(m *testing.M) {
 		"The scope name to use to test with collections")
 	collectionName := envFlagString("GCBCOLL", "collection-name", "",
 		"The collection name to use to test with collections")
+	certsDir := envFlagString("GCBCERTSDIR", "certs-dir", "",
+		"The path to the directory containing certificates with following names: ca.pem[,client.pem,client.key]")
 	numMutations := envFlagInt("GCBDCPMUTATIONS", "dcp-num-mutations", 50,
 		"The number of mutations to create")
 	numDeletions := envFlagInt("GCBDCPDELETIONS", "dcp-num-deletions", 5,
@@ -108,6 +112,35 @@ func TestMain(m *testing.M) {
 
 	featureFlags := ParseFeatureFlags(*featuresToTest)
 
+	var authenticator AuthProvider
+	var caProvider func() *x509.CertPool
+	if len(*certsDir) > 0 {
+		ca, cert, err := ParseCerts(*certsDir)
+		if err != nil {
+			panic("failed to parse certificates")
+		}
+
+		// Just because we have a root cert doesn't mean that we have client certs.
+		if cert == nil {
+			authenticator = &PasswordAuthProvider{
+				Username: *username,
+				Password: *password,
+			}
+		} else {
+			authenticator = &CertificateAuthenticator{
+				ClientCertificate: cert,
+			}
+		}
+		caProvider = func() *x509.CertPool {
+			return ca
+		}
+	} else {
+		authenticator = &PasswordAuthProvider{
+			Username: *username,
+			Password: *password,
+		}
+	}
+
 	if *testSuite == 1 {
 		globalTestConfig = &TestConfig{
 			ConnStr:        *connStr,
@@ -115,8 +148,8 @@ func TestMain(m *testing.M) {
 			MemdBucketName: *memdBucketName,
 			ScopeName:      *scopeName,
 			CollectionName: *collectionName,
-			Username:       *username,
-			Password:       *password,
+			Authenticator:  authenticator,
+			CAProvider:     caProvider,
 			ClusterVersion: clusterVersion,
 			FeatureFlags:   featureFlags,
 		}
@@ -124,8 +157,8 @@ func TestMain(m *testing.M) {
 		globalDCPTestConfig = &DCPTestConfig{
 			ConnStr:        *connStr,
 			BucketName:     *bucketName,
-			Username:       *username,
-			Password:       *password,
+			Authenticator:  authenticator,
+			CAProvider:     caProvider,
 			ClusterVersion: clusterVersion,
 			FeatureFlags:   featureFlags,
 			NumMutations:   *numMutations,
@@ -196,4 +229,27 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(result)
+}
+
+type CertificateAuthenticator struct {
+	ClientCertificate *tls.Certificate
+}
+
+func (ca CertificateAuthenticator) SupportsTLS() bool {
+	return true
+}
+
+func (ca CertificateAuthenticator) SupportsNonTLS() bool {
+	return false
+}
+
+func (ca CertificateAuthenticator) Certificate(req AuthCertRequest) (*tls.Certificate, error) {
+	return ca.ClientCertificate, nil
+}
+
+func (ca CertificateAuthenticator) Credentials(req AuthCredsRequest) ([]UserPassPair, error) {
+	return []UserPassPair{{
+		Username: "",
+		Password: "",
+	}}, nil
 }

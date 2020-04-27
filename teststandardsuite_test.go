@@ -46,18 +46,20 @@ func (suite *StandardTestSuite) SetupSuite() {
 		globalTestConfig.ConnStr = fmt.Sprintf("couchbase://%s", strings.Join(couchbaseAddrs, ","))
 		globalTestConfig.BucketName = "default"
 		globalTestConfig.MemdBucketName = "memd"
-		globalTestConfig.Username = "Administrator"
-		globalTestConfig.Password = "password"
+		globalTestConfig.Authenticator = &PasswordAuthProvider{
+			Username: "Administrator",
+			Password: "password",
+		}
 	}
 
 	suite.TestConfig = globalTestConfig
 	var err error
 	suite.defaultAgent, err = suite.initAgent(suite.makeBaseAgentConfig(globalTestConfig))
-	suite.Require().Nil(err)
+	suite.Require().Nil(err, err)
 
 	if suite.SupportsFeature(TestFeatureMemd) {
 		suite.memdAgent, err = suite.initAgent(suite.makeMemdAgentConfig(globalTestConfig))
-		suite.Require().Nil(err)
+		suite.Require().Nil(err, err)
 	}
 }
 
@@ -170,9 +172,10 @@ func (suite *StandardTestSuite) makeBaseAgentConfig(testConfig *TestConfig) Agen
 	config.UseCollections = true
 	config.BucketName = testConfig.BucketName
 
-	config.Auth = &PasswordAuthProvider{
-		Username: testConfig.Username,
-		Password: testConfig.Password,
+	config.Auth = testConfig.Authenticator
+
+	if testConfig.CAProvider != nil {
+		config.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config
@@ -184,9 +187,10 @@ func (suite *StandardTestSuite) makeMemdAgentConfig(testConfig *TestConfig) Agen
 
 	config.BucketName = testConfig.MemdBucketName
 
-	config.Auth = &PasswordAuthProvider{
-		Username: testConfig.Username,
-		Password: testConfig.Password,
+	config.Auth = testConfig.Authenticator
+
+	if testConfig.CAProvider != nil {
+		config.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config
@@ -200,7 +204,7 @@ func (suite *StandardTestSuite) initAgent(config AgentConfig) (*Agent, error) {
 
 	ch := make(chan error)
 	_, err = agent.WaitUntilReady(
-		time.Now().Add(2*time.Second),
+		time.Now().Add(5*time.Second),
 		WaitUntilReadyOptions{},
 		func(result *WaitUntilReadyResult, err error) {
 			ch <- err

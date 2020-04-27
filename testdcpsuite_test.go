@@ -88,9 +88,10 @@ func (suite *DCPTestSuite) makeOpAgentConfig(testConfig *DCPTestConfig) AgentCon
 	config.UseCollections = true
 	config.BucketName = testConfig.BucketName
 
-	config.Auth = &PasswordAuthProvider{
-		Username: testConfig.Username,
-		Password: testConfig.Password,
+	config.Auth = testConfig.Authenticator
+
+	if testConfig.CAProvider != nil {
+		config.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config
@@ -133,9 +134,10 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 		config.UseExpiryOpcode = true
 	}
 
-	config.Auth = &PasswordAuthProvider{
-		Username: testConfig.Username,
-		Password: testConfig.Password,
+	config.Auth = testConfig.Authenticator
+
+	if testConfig.CAProvider != nil {
+		config.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config

@@ -1,8 +1,12 @@
 package gocbcore
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +73,35 @@ func ParseFeatureFlags(featuresToTest string) []TestFeatureFlag {
 	}
 
 	return featureFlags
+}
+
+func ParseCerts(path string) (*x509.CertPool, *tls.Certificate, error) {
+	ca, err := ioutil.ReadFile(path + "/ca.pem")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(ca)
+
+	clientCert, err := ioutil.ReadFile(path + "/client.pem")
+	if err == os.ErrNotExist {
+		return roots, nil, nil
+	} else if err != nil {
+		return nil, nil, err
+	}
+
+	clientKey, err := ioutil.ReadFile(path + "/client.key")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cert, err := tls.X509KeyPair(clientCert, clientKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return roots, &cert, nil
 }
 
 func TimeTravel(waitDura time.Duration, mockInst *jcbmock.Mock) {
