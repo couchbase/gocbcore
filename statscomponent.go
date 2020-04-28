@@ -99,12 +99,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 					logDebugf("Got additional error for stats: %s: %v", serverAddress, err)
 				}
 
-				// When an error occurs, we need to cancel our persistent op.  However, because
-				// a previous error may already have cancelled this and then raced, we should
-				// ensure only a single completion is counted.
-				if req.internalCancel(err) {
-					opHandledLocked()
-				}
+				opHandledLocked()
 
 				return
 			}

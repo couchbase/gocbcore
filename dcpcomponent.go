@@ -25,16 +25,35 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 	cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
-		if resp != nil && resp.Magic == memd.CmdMagicRes {
-			// This is the response to the open stream request.
-			if err != nil {
-				req.internalCancel(err)
+		if resp == nil && err == nil {
+			logWarnf("DCP event occurred with no error and no response")
+			return
+		}
 
+		if err != nil {
+			// If response is nil then the error must have occurred internally so must be the open stream response.
+			if resp == nil {
 				// All client errors are handled by the StreamObserver
 				cb(nil, err)
 				return
 			}
 
+			if resp.Magic == memd.CmdMagicRes {
+				// All client errors are handled by the StreamObserver
+				cb(nil, err)
+				return
+			}
+
+			var streamID uint16
+			if opts.StreamOptions != nil {
+				streamID = opts.StreamOptions.StreamID
+			}
+			evtHandler.End(vbID, streamID, err)
+			return
+		}
+
+		if resp.Magic == memd.CmdMagicRes {
+			// This is the response to the open stream request.
 			numEntries := len(resp.Value) / 16
 			entries := make([]FailoverEntry, numEntries)
 			for i := 0; i < numEntries; i++ {
@@ -45,21 +64,6 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			}
 
 			cb(entries, nil)
-			return
-		}
-
-		if err != nil {
-			req.internalCancel(err)
-			var streamID uint16
-			if opts.StreamOptions != nil {
-				streamID = opts.StreamOptions.StreamID
-			}
-			evtHandler.End(vbID, streamID, err)
-			return
-		}
-
-		if resp == nil {
-			logWarnf("DCP event occurred with no error and no response")
 			return
 		}
 
