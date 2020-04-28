@@ -80,8 +80,21 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "Unlock",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -189,8 +202,21 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "Unlock",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 

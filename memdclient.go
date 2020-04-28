@@ -152,9 +152,12 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
 		return false
 	}
 
-	req.lastDispatchedTo = client.Address()
-	req.lastDispatchedFrom = client.conn.LocalAddr()
-	req.lastConnectionID = client.connID
+	connInfo := memdQRequestConnInfo{
+		lastDispatchedTo:   client.Address(),
+		lastDispatchedFrom: client.conn.LocalAddr(),
+		lastConnectionID:   client.connID,
+	}
+	req.SetConnectionInfo(connInfo)
 
 	client.opList.Add(req)
 	return true

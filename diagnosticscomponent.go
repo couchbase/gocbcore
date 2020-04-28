@@ -129,8 +129,21 @@ func (dc *diagnosticsComponent) pingKV(iter *pipelineSnapshot, op *pingOp, deadl
 		}
 
 		if !deadline.IsZero() {
-			timer := time.AfterFunc(deadline.Sub(time.Now()), func() {
-				req.cancelWithCallback(errUnambiguousTimeout)
+			start := time.Now()
+			timer := time.AfterFunc(deadline.Sub(start), func() {
+				connInfo := req.ConnectionInfo()
+				count, reasons := req.Retries()
+				req.cancelWithCallback(&TimeoutError{
+					InnerError:         errUnambiguousTimeout,
+					OperationID:        "PingKV",
+					Opaque:             req.Identifier(),
+					TimeObserved:       time.Now().Sub(start),
+					RetryReasons:       reasons,
+					RetryAttempts:      count,
+					LastDispatchedTo:   connInfo.lastDispatchedTo,
+					LastDispatchedFrom: connInfo.lastDispatchedFrom,
+					LastConnectionID:   connInfo.lastConnectionID,
+				})
 			})
 			req.processingLock.Lock()
 			req.Timer = timer
@@ -496,8 +509,13 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 	}
 
 	op.lock.Lock()
-	op.timer = time.AfterFunc(deadline.Sub(time.Now()), func() {
-		op.cancel(errUnambiguousTimeout)
+	start := time.Now()
+	op.timer = time.AfterFunc(deadline.Sub(start), func() {
+		op.cancel(&TimeoutError{
+			InnerError:   errUnambiguousTimeout,
+			OperationID:  "WaitUntilReady",
+			TimeObserved: time.Now().Sub(start),
+		})
 	})
 	op.lock.Unlock()
 

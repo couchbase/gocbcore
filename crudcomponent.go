@@ -73,8 +73,21 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "Get",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -134,8 +147,21 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "GetAndTouch",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -195,8 +221,21 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "GetAndLock",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -256,8 +295,21 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "GetOneReplica",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -314,8 +366,21 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "Touch",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -369,8 +434,21 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "Unlock",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -440,8 +518,21 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "Delete",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -514,8 +605,21 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        opName,
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -642,8 +746,21 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        opName,
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -744,8 +861,21 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        opName,
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -808,8 +938,21 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "GetRandom",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -876,8 +1019,21 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "GetMeta",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -885,7 +1041,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
+	tracer := crud.tracer.CreateOpTrace("SetMeta", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -940,8 +1096,21 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "SetMeta",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -949,7 +1118,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
+	tracer := crud.tracer.CreateOpTrace("DeleteMeta", nil)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1004,8 +1173,21 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "DeleteMeta",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 

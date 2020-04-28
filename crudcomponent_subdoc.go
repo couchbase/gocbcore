@@ -136,8 +136,21 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errUnambiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "LookupIn",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 
@@ -297,8 +310,21 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	}
 
 	if !opts.Deadline.IsZero() {
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-			req.cancelWithCallback(errAmbiguousTimeout)
+		start := time.Now()
+		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallback(&TimeoutError{
+				InnerError:         errAmbiguousTimeout,
+				OperationID:        "MutateIn",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Now().Sub(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			})
 		})
 	}
 

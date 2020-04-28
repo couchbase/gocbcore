@@ -70,12 +70,16 @@ type memdQRequest struct {
 	// This is the set of reasons why this request has been retried.
 	retryReasons []RetryReason
 
+	// This is used to lock access to the request when processing
+	// retry reasons or attempts.
+	retryLock sync.Mutex
+
 	// This is the timer which is used for cancellation of the request when deadlines are used.
 	Timer *time.Timer
 
-	lastDispatchedTo   string
-	lastDispatchedFrom string
-	lastConnectionID   string
+	// This stores a memdQRequestConnInfo value which is used to track connection information
+	// for the request.
+	connInfo atomic.Value
 
 	RootTraceContext RequestSpanContext
 	cmdTraceSpan     RequestSpan
@@ -85,20 +89,39 @@ type memdQRequest struct {
 	ScopeName      string
 }
 
+type memdQRequestConnInfo struct {
+	lastDispatchedTo   string
+	lastDispatchedFrom string
+	lastConnectionID   string
+}
+
 func (req *memdQRequest) RetryAttempts() uint32 {
-	return atomic.LoadUint32(&req.retryCount)
+	req.retryLock.Lock()
+	defer req.retryLock.Unlock()
+	return req.retryCount
+}
+
+func (req *memdQRequest) RetryReasons() []RetryReason {
+	req.retryLock.Lock()
+	defer req.retryLock.Unlock()
+	return req.retryReasons
+}
+
+// Retries is here because we're locked into a publically exposed interface for RetryAttempts/RetryReasons.
+// This function allows us to internally get count and reasons together preventing any races causing the count and
+// reasons to mismatch.
+func (req *memdQRequest) Retries() (uint32, []RetryReason) {
+	req.retryLock.Lock()
+	defer req.retryLock.Unlock()
+	return req.retryCount, req.retryReasons
 }
 
 func (req *memdQRequest) retryStrategy() RetryStrategy {
 	return req.RetryStrategy
 }
 
-func (req *memdQRequest) incrementRetryAttempts() {
-	atomic.AddUint32(&req.retryCount, 1)
-}
-
 func (req *memdQRequest) Identifier() string {
-	return fmt.Sprintf("0x%x", req.Opaque)
+	return fmt.Sprintf("0x%x", atomic.LoadUint32(&req.Opaque))
 }
 
 func (req *memdQRequest) Idempotent() bool {
@@ -106,23 +129,18 @@ func (req *memdQRequest) Idempotent() bool {
 	return ok
 }
 
-func (req *memdQRequest) RetryReasons() []RetryReason {
-	return req.retryReasons
+func (req *memdQRequest) ConnectionInfo() memdQRequestConnInfo {
+	return req.connInfo.Load().(memdQRequestConnInfo)
 }
 
-func (req *memdQRequest) LocalEndpoint() string {
-	return req.lastDispatchedFrom
+func (req *memdQRequest) SetConnectionInfo(info memdQRequestConnInfo) {
+	req.connInfo.Store(info)
 }
 
-func (req *memdQRequest) RemoteEndpoint() string {
-	return req.lastDispatchedTo
-}
-
-func (req *memdQRequest) ConnectionID() string {
-	return req.lastConnectionID
-}
-
-func (req *memdQRequest) addRetryReason(retryReason RetryReason) {
+func (req *memdQRequest) recordRetryAttempt(retryReason RetryReason) {
+	req.retryLock.Lock()
+	defer req.retryLock.Unlock()
+	req.retryCount++
 	found := false
 	for i := 0; i < len(req.retryReasons); i++ {
 		if req.retryReasons[i] == retryReason {

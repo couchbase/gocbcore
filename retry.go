@@ -16,8 +16,7 @@ type RetryRequest interface {
 	RetryReasons() []RetryReason
 
 	retryStrategy() RetryStrategy
-	addRetryReason(reason RetryReason)
-	incrementRetryAttempts()
+	recordRetryAttempt(reason RetryReason)
 }
 
 // RetryReason represents the reason for an operation possibly being retried.
@@ -158,8 +157,7 @@ func retryOrchMaybeRetry(req RetryRequest, reason RetryReason) (bool, time.Time)
 		duration := ControlledBackoff(req.RetryAttempts())
 		logInfof("Will retry request. Backoff=%s, OperationID=%s. Reason=%s", duration, req.Identifier(), reason)
 
-		req.addRetryReason(reason)
-		req.incrementRetryAttempts()
+		req.recordRetryAttempt(reason)
 
 		return true, time.Now().Add(duration)
 	}
@@ -182,8 +180,7 @@ func retryOrchMaybeRetry(req RetryRequest, reason RetryReason) (bool, time.Time)
 	}
 
 	logInfof("Will retry request. Backoff=%s, OperationID=%s. Reason=%s", duration, req.Identifier(), reason)
-	req.addRetryReason(reason)
-	req.incrementRetryAttempts()
+	req.recordRetryAttempt(reason)
 
 	return true, time.Now().Add(duration)
 }

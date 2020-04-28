@@ -150,12 +150,13 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 		}
 	}()
 
+	start := time.Now()
 	var cancelationIsTimeout uint32
 	// Having no deadline is a legitimate case.
 	if !req.Deadline.IsZero() {
 		go func() {
 			select {
-			case <-time.After(req.Deadline.Sub(time.Now())):
+			case <-time.After(req.Deadline.Sub(start)):
 				atomic.StoreUint32(&cancelationIsTimeout, 1)
 				ctxCancel()
 			case <-doneCh:
@@ -230,9 +231,25 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 				isTimeout := atomic.LoadUint32(&cancelationIsTimeout)
 				if isTimeout == 1 {
 					if req.IsIdempotent {
-						err = errUnambiguousTimeout
+						err = &TimeoutError{
+							InnerError:       errUnambiguousTimeout,
+							OperationID:      "http",
+							Opaque:           req.Identifier(),
+							TimeObserved:     time.Now().Sub(start),
+							RetryReasons:     req.retryReasons,
+							RetryAttempts:    req.retryCount,
+							LastDispatchedTo: endpoint,
+						}
 					} else {
-						err = errAmbiguousTimeout
+						err = &TimeoutError{
+							InnerError:       errAmbiguousTimeout,
+							OperationID:      "http",
+							Opaque:           req.Identifier(),
+							TimeObserved:     time.Now().Sub(start),
+							RetryReasons:     req.retryReasons,
+							RetryAttempts:    req.retryCount,
+							LastDispatchedTo: endpoint,
+						}
 					}
 				} else {
 					err = errRequestCanceled
@@ -271,7 +288,15 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 				// continue!
 			case <-time.After(req.Deadline.Sub(time.Now())):
 				if errors.Is(err, context.DeadlineExceeded) {
-					err = errUnambiguousTimeout
+					err = &TimeoutError{
+						InnerError:       errAmbiguousTimeout,
+						OperationID:      "http",
+						Opaque:           req.Identifier(),
+						TimeObserved:     time.Now().Sub(start),
+						RetryReasons:     req.retryReasons,
+						RetryAttempts:    req.retryCount,
+						LastDispatchedTo: endpoint,
+					}
 				}
 
 				return nil, err

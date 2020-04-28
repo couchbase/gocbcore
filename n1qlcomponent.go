@@ -459,6 +459,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 }
 
 func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string) (*N1QLRowReader, error) {
+	start := time.Now()
 ExecuteLoop:
 	for {
 		{ // Produce an updated payload with the appropriate timeout
@@ -512,7 +513,16 @@ ExecuteLoop:
 			case <-time.After(retryTime.Sub(time.Now())):
 				continue ExecuteLoop
 			case <-time.After(ireq.Deadline.Sub(time.Now())):
-				return nil, wrapN1QLError(ireq, statementForErr, errUnambiguousTimeout)
+				err := &TimeoutError{
+					InnerError:       errUnambiguousTimeout,
+					OperationID:      "N1QLQuery",
+					Opaque:           ireq.Identifier(),
+					TimeObserved:     time.Now().Sub(start),
+					RetryReasons:     ireq.retryReasons,
+					RetryAttempts:    ireq.retryCount,
+					LastDispatchedTo: ireq.Endpoint,
+				}
+				return nil, wrapN1QLError(ireq, statementForErr, err)
 			}
 		}
 

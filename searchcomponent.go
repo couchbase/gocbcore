@@ -155,6 +155,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 		Context:          ctx,
 		CancelFunc:       cancel,
 	}
+	start := time.Now()
 
 	go func() {
 	ExecuteLoop:
@@ -212,7 +213,16 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 					continue ExecuteLoop
 				case <-time.After(ireq.Deadline.Sub(time.Now())):
 					cancel()
-					cb(nil, wrapSearchError(ireq, nil, indexName, query, errUnambiguousTimeout))
+					err := &TimeoutError{
+						InnerError:       errUnambiguousTimeout,
+						OperationID:      "SearchQuery",
+						Opaque:           ireq.Identifier(),
+						TimeObserved:     time.Now().Sub(start),
+						RetryReasons:     ireq.retryReasons,
+						RetryAttempts:    ireq.retryCount,
+						LastDispatchedTo: ireq.Endpoint,
+					}
+					cb(nil, wrapSearchError(ireq, nil, indexName, query, err))
 					return
 				}
 			}

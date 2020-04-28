@@ -24,10 +24,6 @@ func (mgr *mockRetryRequest) RetryAttempts() uint32 {
 	return mgr.attempts
 }
 
-func (mgr *mockRetryRequest) incrementRetryAttempts() {
-	mgr.attempts++
-}
-
 func (mgr *mockRetryRequest) Identifier() string {
 	return mgr.identifier
 }
@@ -40,7 +36,8 @@ func (mgr *mockRetryRequest) RetryReasons() []RetryReason {
 	return mgr.reasons
 }
 
-func (mgr *mockRetryRequest) addRetryReason(reason RetryReason) {
+func (mgr *mockRetryRequest) recordRetryAttempt(reason RetryReason) {
+	mgr.attempts++
 	for _, foundReason := range mgr.reasons {
 		if foundReason == reason {
 			return

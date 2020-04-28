@@ -190,6 +190,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 		Context:          ctx,
 		CancelFunc:       cancel,
 	}
+	start := time.Now()
 
 	go func() {
 	ExecuteLoop:
@@ -252,7 +253,16 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 					continue ExecuteLoop
 				case <-time.After(ireq.Deadline.Sub(time.Now())):
 					cancel()
-					cb(nil, wrapAnalyticsError(ireq, statement, errUnambiguousTimeout))
+					err := &TimeoutError{
+						InnerError:       errUnambiguousTimeout,
+						OperationID:      "http",
+						Opaque:           ireq.Identifier(),
+						TimeObserved:     time.Now().Sub(start),
+						RetryReasons:     ireq.retryReasons,
+						RetryAttempts:    ireq.retryCount,
+						LastDispatchedTo: ireq.Endpoint,
+					}
+					cb(nil, wrapAnalyticsError(ireq, statement, err))
 					return
 				}
 			}

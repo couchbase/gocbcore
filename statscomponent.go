@@ -137,8 +137,21 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 		}
 
 		if !opts.Deadline.IsZero() {
-			req.Timer = time.AfterFunc(opts.Deadline.Sub(time.Now()), func() {
-				req.cancelWithCallback(errAmbiguousTimeout)
+			start := time.Now()
+			req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+				connInfo := req.ConnectionInfo()
+				count, reasons := req.Retries()
+				req.cancelWithCallback(&TimeoutError{
+					InnerError:         errAmbiguousTimeout,
+					OperationID:        "Unlock",
+					Opaque:             req.Identifier(),
+					TimeObserved:       time.Now().Sub(start),
+					RetryReasons:       reasons,
+					RetryAttempts:      count,
+					LastDispatchedTo:   connInfo.lastDispatchedTo,
+					LastDispatchedFrom: connInfo.lastDispatchedFrom,
+					LastConnectionID:   connInfo.lastConnectionID,
+				})
 			})
 		}
 

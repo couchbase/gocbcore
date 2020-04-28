@@ -74,11 +74,14 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 		enhErr.CollectionName = req.CollectionName
 		enhErr.CollectionID = req.CollectionID
 
-		enhErr.RetryReasons = req.retryReasons
-		enhErr.RetryAttempts = req.retryCount
-		enhErr.LastDispatchedTo = req.lastDispatchedTo
-		enhErr.LastDispatchedFrom = req.lastDispatchedFrom
-		enhErr.LastConnectionID = req.lastConnectionID
+		retryCount, reasons := req.Retries()
+		enhErr.RetryReasons = reasons
+		enhErr.RetryAttempts = retryCount
+
+		connInfo := req.ConnectionInfo()
+		enhErr.LastDispatchedTo = connInfo.lastDispatchedTo
+		enhErr.LastDispatchedFrom = connInfo.lastDispatchedFrom
+		enhErr.LastConnectionID = connInfo.lastConnectionID
 	}
 
 	if resp != nil {

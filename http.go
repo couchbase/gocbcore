@@ -59,11 +59,8 @@ func (hr *httpRequest) RetryReasons() []RetryReason {
 	return hr.retryReasons
 }
 
-func (hr *httpRequest) incrementRetryAttempts() {
+func (hr *httpRequest) recordRetryAttempt(reason RetryReason) {
 	atomic.AddUint32(&hr.retryCount, 1)
-}
-
-func (hr *httpRequest) addRetryReason(reason RetryReason) {
 	idx := sort.Search(len(hr.retryReasons), func(i int) bool {
 		return hr.retryReasons[i] == reason
 	})

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
 )
@@ -214,6 +215,79 @@ func (e HTTPError) Error() string {
 // Unwrap returns the underlying reason for the error
 func (e HTTPError) Unwrap() error {
 	return e.InnerError
+}
+
+// TimeoutError wraps timeout errors that occur within the SDK.
+type TimeoutError struct {
+	InnerError         error
+	OperationID        string
+	Opaque             string
+	TimeObserved       time.Duration
+	RetryReasons       []RetryReason
+	RetryAttempts      uint32
+	LastDispatchedTo   string
+	LastDispatchedFrom string
+	LastConnectionID   string
+}
+
+type timeoutError struct {
+	InnerError         error         `json:"-"`
+	OperationID        string        `json:"s,omitempty"`
+	Opaque             string        `json:"i,omitempty"`
+	TimeObserved       uint64        `json:"t,omitempty"`
+	RetryReasons       []RetryReason `json:"rr,omitempty"`
+	RetryAttempts      uint32        `json:"ra,omitempty"`
+	LastDispatchedTo   string        `json:"r,omitempty"`
+	LastDispatchedFrom string        `json:"l,omitempty"`
+	LastConnectionID   string        `json:"c,omitempty"`
+}
+
+// MarshalJSON implements the Marshaler interface.
+func (err *TimeoutError) MarshalJSON() ([]byte, error) {
+	toMarshal := timeoutError{
+		InnerError:         err.InnerError,
+		OperationID:        err.OperationID,
+		Opaque:             err.Opaque,
+		TimeObserved:       uint64(err.TimeObserved / time.Microsecond),
+		RetryReasons:       err.RetryReasons,
+		RetryAttempts:      err.RetryAttempts,
+		LastDispatchedTo:   err.LastDispatchedTo,
+		LastDispatchedFrom: err.LastDispatchedFrom,
+		LastConnectionID:   err.LastConnectionID,
+	}
+
+	return json.Marshal(toMarshal)
+}
+
+// UnmarshalJSON implements the Unmarshaler interface.
+func (err *TimeoutError) UnmarshalJSON(data []byte) error {
+	var tErr timeoutError
+	if jErr := json.Unmarshal(data, &tErr); jErr != nil {
+		return jErr
+	}
+
+	duration := time.Duration(tErr.TimeObserved) * time.Microsecond
+
+	err.InnerError = tErr.InnerError
+	err.OperationID = tErr.OperationID
+	err.Opaque = tErr.Opaque
+	err.TimeObserved = duration
+	err.RetryReasons = tErr.RetryReasons
+	err.RetryAttempts = tErr.RetryAttempts
+	err.LastDispatchedTo = tErr.LastDispatchedTo
+	err.LastDispatchedFrom = tErr.LastDispatchedFrom
+	err.LastConnectionID = tErr.LastConnectionID
+
+	return nil
+}
+
+func (err TimeoutError) Error() string {
+	return err.InnerError.Error() + " | " + serializeError(err)
+}
+
+// Unwrap returns the underlying reason for the error
+func (err TimeoutError) Unwrap() error {
+	return err.InnerError
 }
 
 // ncError is a wrapper error that provides no additional context to one of the

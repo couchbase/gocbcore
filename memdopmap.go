@@ -1,6 +1,10 @@
 package gocbcore
 
-import "github.com/couchbase/gocbcore/v9/memd"
+import (
+	"sync/atomic"
+
+	"github.com/couchbase/gocbcore/v9/memd"
+)
 
 type memdOpMapItem struct {
 	value *memdQRequest
@@ -23,7 +27,7 @@ type memdOpMap struct {
 // Add a new request to the bottom of the op queue.
 func (q *memdOpMap) Add(req *memdQRequest) {
 	q.opIndex++
-	req.Opaque = q.opIndex
+	atomic.StoreUint32(&req.Opaque, q.opIndex)
 
 	item := &memdOpMapItem{
 		value: req,
