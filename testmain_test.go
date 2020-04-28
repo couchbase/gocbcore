@@ -7,14 +7,11 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
-)
-
-const (
-	defaultServerVersion = "5.1.0"
 )
 
 type testLogger struct {
@@ -45,6 +42,18 @@ func envFlagString(envName, name, value, usage string) *string {
 	return flag.String(name, value, usage)
 }
 
+func envFlagInt(envName, name string, value int, usage string) *int {
+	envValue := os.Getenv(envName)
+	if envValue != "" {
+		var err error
+		value, err = strconv.Atoi(envValue)
+		if err != nil {
+			panic("failed to parse string as int")
+		}
+	}
+	return flag.Int(name, value, usage)
+}
+
 func envFlagBool(envName, name string, value bool, usage string) *bool {
 	envValue := os.Getenv(envName)
 	if envValue != "" {
@@ -62,26 +71,34 @@ func envFlagBool(envName, name string, value bool, usage string) *bool {
 func TestMain(m *testing.M) {
 	initialGoroutineCount := runtime.NumGoroutine()
 
+	testSuite := envFlagInt("GCBCTESTSUITE", "test-suite", 1,
+		"The test suite to run, 1=standard,2=dcp")
 	connStr := envFlagString("GCBCONNSTR", "connstr", "",
 		"Connection string to run tests with")
 	bucketName := envFlagString("GCBBUCKET", "bucket", "default",
 		"The bucket to use to test against")
-	memdBucketName := envFlagString("GCBMEMDBUCKET", "memd-bucket", "memd",
-		"The memd bucket to use to test against")
+	disableLogger := envFlagBool("GCBNOLOG", "disable-logger", false,
+		"Whether or not to disable the logger")
 	username := envFlagString("GCBUSER", "user", "",
 		"The username to use to authenticate when using a real server")
 	password := envFlagString("GCBPASS", "pass", "",
 		"The password to use to authenticate when using a real server")
-	clusterVersionStr := envFlagString("GCBCVER", "cluster-version", defaultServerVersion,
+	clusterVersionStr := envFlagString("GCBCVER", "cluster-version", "6.5.0",
 		"The server version being tested against (major.minor.patch.build_edition)")
+	featuresToTest := envFlagString("GCBFEAT", "features", "",
+		"The features that should be tested")
+	memdBucketName := envFlagString("GCBMEMDBUCKET", "memd-bucket", "memd",
+		"The memd bucket to use to test against")
 	scopeName := envFlagString("GCBSCOPE", "scope-name", "",
 		"The scope name to use to test with collections")
 	collectionName := envFlagString("GCBCOLL", "collection-name", "",
 		"The collection name to use to test with collections")
-	featuresToTest := envFlagString("GCBFEAT", "features", "",
-		"The features that should be tested")
-	disableLogger := envFlagBool("GCBNOLOG", "disable-logger", false,
-		"Whether or not to disable the logger")
+	numMutations := envFlagInt("GCBDCPMUTATIONS", "dcp-num-mutations", 50,
+		"The number of mutations to create")
+	numDeletions := envFlagInt("GCBDCPDELETIONS", "dcp-num-deletions", 5,
+		"The number of deletions to create")
+	numExpirations := envFlagInt("GCBDCPEXPIRATIONS", "dcp-num-expirations", 5,
+		"The number of expirations to create")
 	flag.Parse()
 
 	clusterVersion, err := nodeVersionFromString(*clusterVersionStr)
@@ -89,28 +106,34 @@ func TestMain(m *testing.M) {
 		panic("failed to parse specified cluster version")
 	}
 
-	var featureFlags []TestFeatureFlag
-	featureFlagStrs := strings.Split(*featuresToTest, ",")
-	for _, featureFlagStr := range featureFlagStrs {
-		if len(featureFlagStr) == 0 {
-			continue
-		}
+	featureFlags := ParseFeatureFlags(*featuresToTest)
 
-		if featureFlagStr[0] == '+' {
-			featureFlags = append(featureFlags, TestFeatureFlag{
-				Enabled: true,
-				Feature: TestFeatureCode(featureFlagStr[1:]),
-			})
-			continue
-		} else if featureFlagStr[0] == '-' {
-			featureFlags = append(featureFlags, TestFeatureFlag{
-				Enabled: false,
-				Feature: TestFeatureCode(featureFlagStr[1:]),
-			})
-			continue
+	if *testSuite == 1 {
+		globalTestConfig = &TestConfig{
+			ConnStr:        *connStr,
+			BucketName:     *bucketName,
+			MemdBucketName: *memdBucketName,
+			ScopeName:      *scopeName,
+			CollectionName: *collectionName,
+			Username:       *username,
+			Password:       *password,
+			ClusterVersion: clusterVersion,
+			FeatureFlags:   featureFlags,
 		}
-
-		panic("failed to parse specified feature codes")
+	} else if *testSuite == 2 {
+		globalDCPTestConfig = &DCPTestConfig{
+			ConnStr:        *connStr,
+			BucketName:     *bucketName,
+			Username:       *username,
+			Password:       *password,
+			ClusterVersion: clusterVersion,
+			FeatureFlags:   featureFlags,
+			NumMutations:   *numMutations,
+			NumDeletions:   *numDeletions,
+			NumExpirations: *numExpirations,
+		}
+	} else {
+		panic("Unrecognized test suite requested")
 	}
 
 	var logger *testLogger
@@ -118,18 +141,6 @@ func TestMain(m *testing.M) {
 		// Set up our special logger which logs the log level count
 		logger = createTestLogger()
 		SetLogger(logger)
-	}
-
-	globalTestConfig = &TestConfig{
-		ConnStr:        *connStr,
-		BucketName:     *bucketName,
-		MemdBucketName: *memdBucketName,
-		ScopeName:      *scopeName,
-		CollectionName: *collectionName,
-		Username:       *username,
-		Password:       *password,
-		ClusterVersion: clusterVersion,
-		FeatureFlags:   featureFlags,
 	}
 
 	result := m.Run()
