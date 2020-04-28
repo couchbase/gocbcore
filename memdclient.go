@@ -249,7 +249,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 		return
 	}
-	if !req.Persistent {
+	if !req.Persistent || resp.Status != memd.StatusSuccess {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
