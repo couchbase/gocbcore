@@ -17,8 +17,6 @@ const (
 	defaultServerVersion = "5.1.0"
 )
 
-var globalTestHarness *TestHarness
-
 type testLogger struct {
 	Parent   Logger
 	LogCount []uint64
@@ -70,8 +68,6 @@ func TestMain(m *testing.M) {
 		"The bucket to use to test against")
 	memdBucketName := envFlagString("GCBMEMDBUCKET", "memd-bucket", "memd",
 		"The memd bucket to use to test against")
-	dcpBucketName := envFlagString("GCBDCPBUCKET", "dcp-bucket", "",
-		"The dcp bucket to use to test against")
 	username := envFlagString("GCBUSER", "user", "",
 		"The username to use to authenticate when using a real server")
 	password := envFlagString("GCBPASS", "pass", "",
@@ -124,11 +120,10 @@ func TestMain(m *testing.M) {
 		SetLogger(logger)
 	}
 
-	globalTestHarness = &TestHarness{
+	globalTestConfig = &TestConfig{
 		ConnStr:        *connStr,
 		BucketName:     *bucketName,
 		MemdBucketName: *memdBucketName,
-		DcpBucketName:  *dcpBucketName,
 		ScopeName:      *scopeName,
 		CollectionName: *collectionName,
 		Username:       *username,
@@ -137,14 +132,7 @@ func TestMain(m *testing.M) {
 		FeatureFlags:   featureFlags,
 	}
 
-	err = globalTestHarness.init()
-	if err != nil {
-		log.Fatalf("failed to initialise the test harness: %v", err)
-	}
-
 	result := m.Run()
-
-	globalTestHarness.finish()
 
 	if logger != nil {
 		log.Printf("Log Messages Emitted:")
@@ -197,29 +185,4 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(result)
-}
-
-func testLogCounts(logger *testLogger, level string) {
-}
-
-func testEnsureSupportsFeature(t *testing.T, feature TestFeatureCode) {
-	h := testGetHarness(t)
-	if !h.SupportsFeature(feature) {
-		t.Skipf("Skipping test due to disabled feature code: %s", feature)
-	}
-}
-
-func testEnsureNotShort(t *testing.T) {
-	if testing.Short() {
-		t.Skipf("Skipping test as using short mode")
-	}
-}
-
-func testGetHarness(t *testing.T) *TestSubHarness {
-	return makeTestSubHarness(t, globalTestHarness)
-}
-
-func testGetAgentAndHarness(t *testing.T) (*Agent, *TestSubHarness) {
-	h := testGetHarness(t)
-	return h.DefaultAgent(), h
 }

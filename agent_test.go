@@ -9,20 +9,19 @@ import (
 	"log"
 	"net/url"
 	"strconv"
-	"testing"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 /* BUG(brett19): GOCBC-691: Disabled due to known issue with CID error retries
-func TestCidRetries(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureCollections)
+func (suite *StandardTestSuite) TestCidRetries() {
+	suite.EnsureSupportsFeature(t, TestFeatureCollections)
 
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness(t)
 
 	bucketName := s.BucketName
-	scopeName := s.ScopeName
+	scopeName := suite.ScopeName
 	collectionName := "testCidRetries"
 
 	_, err := testCreateCollection(collectionName, scopeName, bucketName, agent)
@@ -45,13 +44,13 @@ func TestCidRetries(t *testing.T) {
 	// delete the collection
 	_, err = testDeleteCollection(collectionName, scopeName, bucketName, agent, true)
 	if err != nil {
-		t.Fatalf("Failed to delete collection: %v", err)
+		suite.T().Fatalf("Failed to delete collection: %v", err)
 	}
 
 	// recreate
 	_, err = testCreateCollection(collectionName, scopeName, bucketName, agent)
 	if err != nil {
-		t.Fatalf("Failed to create collection: %v", err)
+		suite.T().Fatalf("Failed to create collection: %v", err)
 	}
 
 	// Set should succeed as we detect cid unknown, fetch the cid and then retry again. This should happen
@@ -92,15 +91,15 @@ func TestCidRetries(t *testing.T) {
 }
 */
 
-func TestBasicOps(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestBasicOps() {
+	agent, s := suite.GetAgentAndHarness()
 
 	// Set
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("test"),
 		Value:          []byte("{}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -116,8 +115,8 @@ func TestBasicOps(t *testing.T) {
 	// Get
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("test"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -131,16 +130,16 @@ func TestBasicOps(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestCasMismatch(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestCasMismatch() {
+	agent, s := suite.GetAgentAndHarness()
 
 	// Set
 	var cas Cas
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -158,8 +157,8 @@ func TestCasMismatch(t *testing.T) {
 	s.PushOp(agent.Replace(ReplaceOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{\"key\":\"value\"}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -176,8 +175,8 @@ func TestCasMismatch(t *testing.T) {
 	s.PushOp(agent.Replace(ReplaceOptions{
 		Key:            []byte("testCasMismatch"),
 		Value:          []byte("{\"key\":\"value2\"}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 		Cas:            cas,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
@@ -186,23 +185,23 @@ func TestCasMismatch(t *testing.T) {
 			}
 
 			if !errors.Is(err, ErrCasMismatch) {
-				t.Fatalf("Expected CasMismatch error but was %v", err)
+				suite.T().Fatalf("Expected CasMismatch error but was %v", err)
 			}
 		})
 	}))
 	s.Wait(0)
 }
 
-func TestGetReplica(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureReplicas)
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestGetReplica() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+	agent, s := suite.GetAgentAndHarness()
 
 	// Set
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testReplica"),
 		Value:          []byte("{}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -221,8 +220,8 @@ func TestGetReplica(t *testing.T) {
 		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
 			Key:            []byte("testReplica"),
 			ReplicaIdx:     1,
-			CollectionName: s.CollectionName,
-			ScopeName:      s.ScopeName,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
 		}, func(res *GetReplicaResult, err error) {
 			s.Wrap(func() {
 				keyNotFound := errors.Is(err, ErrDocumentNotFound)
@@ -242,21 +241,21 @@ func TestGetReplica(t *testing.T) {
 		}
 		retries++
 		if retries >= 5 {
-			t.Fatalf("GetReplica could not locate key")
+			suite.T().Fatalf("GetReplica could not locate key")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 }
 
-func TestBasicReplace(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestBasicReplace() {
+	agent, s := suite.GetAgentAndHarness()
 
 	oldCas := Cas(0)
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testx"),
 		Value:          []byte("{}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		oldCas = res.Cas
 		s.Continue()
@@ -267,8 +266,8 @@ func TestBasicReplace(t *testing.T) {
 		Key:            []byte("testx"),
 		Value:          []byte("[]"),
 		Cas:            oldCas,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -282,14 +281,14 @@ func TestBasicReplace(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestBasicRemove(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestBasicRemove() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testy"),
 		Value:          []byte("{}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -297,8 +296,8 @@ func TestBasicRemove(t *testing.T) {
 
 	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testy"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -309,13 +308,13 @@ func TestBasicRemove(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestBasicInsert(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestBasicInsert() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testz"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
@@ -324,8 +323,8 @@ func TestBasicInsert(t *testing.T) {
 	s.PushOp(agent.Add(AddOptions{
 		Key:            []byte("testz"),
 		Value:          []byte("[]"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -339,14 +338,14 @@ func TestBasicInsert(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestBasicCounters(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestBasicCounters() {
+	agent, s := suite.GetAgentAndHarness()
 
 	// Counters
 	s.PushOp(agent.Delete(DeleteOptions{
 		Key:            []byte("testCounters"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *DeleteResult, err error) {
 		s.Continue()
 	}))
@@ -356,8 +355,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        11,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -377,8 +376,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          5,
 		Initial:        22,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -398,8 +397,8 @@ func TestBasicCounters(t *testing.T) {
 		Key:            []byte("testCounters"),
 		Delta:          3,
 		Initial:        65,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *CounterResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -416,16 +415,16 @@ func TestBasicCounters(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestBasicAdjoins(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureAdjoin)
+func (suite *StandardTestSuite) TestBasicAdjoins() {
+	suite.EnsureSupportsFeature(TestFeatureAdjoin)
 
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("there"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -434,8 +433,8 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.Append(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte(" Frank!"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -451,8 +450,8 @@ func TestBasicAdjoins(t *testing.T) {
 	s.PushOp(agent.Prepend(AdjoinOptions{
 		Key:            []byte("testAdjoins"),
 		Value:          []byte("Hello "),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *AdjoinResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -467,8 +466,8 @@ func TestBasicAdjoins(t *testing.T) {
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testAdjoins"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -486,15 +485,15 @@ func TestBasicAdjoins(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestExpiry(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestExpiry() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testExpiry"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -504,12 +503,12 @@ func TestExpiry(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.TimeTravel(2000 * time.Millisecond)
+	suite.TimeTravel(2000 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testExpiry"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 		RetryStrategy:  NewBestEffortRetryStrategy(nil),
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
@@ -521,15 +520,15 @@ func TestExpiry(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestTouch(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestTouch() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -542,8 +541,8 @@ func TestTouch(t *testing.T) {
 	s.PushOp(agent.Touch(TouchOptions{
 		Key:            []byte("testTouch"),
 		Expiry:         3,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *TouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -553,12 +552,12 @@ func TestTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.TimeTravel(1500 * time.Millisecond)
+	suite.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testTouch"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -568,12 +567,12 @@ func TestTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.TimeTravel(2500 * time.Millisecond)
+	suite.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testTouch"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !errors.Is(err, ErrDocumentNotFound) {
@@ -584,15 +583,15 @@ func TestTouch(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestGetAndTouch(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestGetAndTouch() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testGetAndTouch"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -605,8 +604,8 @@ func TestGetAndTouch(t *testing.T) {
 	s.PushOp(agent.GetAndTouch(GetAndTouchOptions{
 		Key:            []byte("testGetAndTouch"),
 		Expiry:         3,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetAndTouchResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -616,12 +615,12 @@ func TestGetAndTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.TimeTravel(1500 * time.Millisecond)
+	suite.TimeTravel(1500 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testGetAndTouch"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -631,12 +630,12 @@ func TestGetAndTouch(t *testing.T) {
 	}))
 	s.Wait(0)
 
-	s.TimeTravel(2500 * time.Millisecond)
+	suite.TimeTravel(2500 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testGetAndTouch"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !errors.Is(err, ErrDocumentNotFound) {
@@ -649,15 +648,15 @@ func TestGetAndTouch(t *testing.T) {
 
 // This test will lock the document for 1 second, it will then perform set requests for up to 2 seconds,
 // the operation should succeed within the 2 seconds.
-func TestRetrySet(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestRetrySet() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -670,8 +669,8 @@ func TestRetrySet(t *testing.T) {
 	s.PushOp(agent.GetAndLock(GetAndLockOptions{
 		Key:            []byte("testRetrySet"),
 		LockTime:       1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetAndLockResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -685,8 +684,8 @@ func TestRetrySet(t *testing.T) {
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
 		Expiry:         1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 		RetryStrategy:  NewBestEffortRetryStrategy(nil),
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
@@ -698,19 +697,19 @@ func TestRetrySet(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestObserve(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureReplicas)
+func (suite *StandardTestSuite) TestObserve() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
 
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 	if agent.HasCollectionsSupport() {
-		t.Skip("Skipping test as observe does not support collections")
+		suite.T().Skip("Skipping test as observe does not support collections")
 	}
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Continue()
 	}))
@@ -719,8 +718,8 @@ func TestObserve(t *testing.T) {
 	s.PushOp(agent.Observe(ObserveOptions{
 		Key:            []byte("testObserve"),
 		ReplicaIdx:     1,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *ObserveResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -731,17 +730,17 @@ func TestObserve(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestObserveSeqNo(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureReplicas)
+func (suite *StandardTestSuite) TestObserveSeqNo() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
 
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 
 	origMt := MutationToken{}
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -783,8 +782,8 @@ func TestObserveSeqNo(t *testing.T) {
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testObserve"),
 		Value:          []byte("there"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -817,16 +816,16 @@ func TestObserveSeqNo(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestRandomGet(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestRandomGet() {
+	agent, s := suite.GetAgentAndHarness()
 
-	distkeys := s.MakeDistKeys(agent)
+	distkeys := MakeDistKeys(agent)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
 			Key:            []byte(k),
 			Value:          []byte("Hello World!"),
-			CollectionName: s.CollectionName,
-			ScopeName:      s.ScopeName,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -856,14 +855,14 @@ func TestRandomGet(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestSubdocXattrs(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestSubdocXattrs() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testXattr"),
 		Value:          []byte("{\"x\":\"xattrs\"}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -896,8 +895,8 @@ func TestSubdocXattrs(t *testing.T) {
 	s.PushOp(agent.MutateIn(MutateInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            mutateOps,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *MutateInResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -925,8 +924,8 @@ func TestSubdocXattrs(t *testing.T) {
 	s.PushOp(agent.LookupIn(LookupInOptions{
 		Key:            []byte("testXattr"),
 		Ops:            lookupOps,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *LookupInResult, err error) {
 		s.Wrap(func() {
 			if len(res.Ops) != 2 {
@@ -956,14 +955,14 @@ func TestSubdocXattrs(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestSubdocXattrsReorder(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testXattrReorder"),
 		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\"}"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -997,8 +996,8 @@ func TestSubdocXattrsReorder(t *testing.T) {
 	s.PushOp(agent.MutateIn(MutateInOptions{
 		Key:            []byte("testXattrReorder"),
 		Ops:            mutateOps,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *MutateInResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1043,8 +1042,8 @@ func TestSubdocXattrsReorder(t *testing.T) {
 	s.PushOp(agent.LookupIn(LookupInOptions{
 		Key:            []byte("testXattrReorder"),
 		Ops:            lookupOps,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *LookupInResult, err error) {
 		s.Wrap(func() {
 			if len(res.Ops) != 3 {
@@ -1074,16 +1073,16 @@ func TestSubdocXattrsReorder(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestStats(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestStats() {
+	agent, s := suite.GetAgentAndHarness()
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
-		t.Fatalf("Failed to get config snapshot: %s", err)
+		suite.T().Fatalf("Failed to get config snapshot: %s", err)
 	}
 	numServers, err := snapshot.NumServers()
 	if err != nil {
-		t.Fatalf("Failed to get num servers: %s", err)
+		suite.T().Fatalf("Failed to get num servers: %s", err)
 	}
 
 	s.PushOp(agent.Stats(StatsOptions{
@@ -1107,31 +1106,31 @@ func TestStats(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestGetHttpEps(t *testing.T) {
-	agent, _ := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestGetHttpEps() {
+	agent, _ := suite.GetAgentAndHarness()
 
 	// Relies on a 3.0.0+ server
 	n1qlEpList := agent.N1qlEps()
 	if len(n1qlEpList) == 0 {
-		t.Fatalf("Failed to retrieve N1QL endpoint list")
+		suite.T().Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 
 	mgmtEpList := agent.MgmtEps()
 	if len(mgmtEpList) == 0 {
-		t.Fatalf("Failed to retrieve N1QL endpoint list")
+		suite.T().Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 
 	capiEpList := agent.CapiEps()
 	if len(capiEpList) == 0 {
-		t.Fatalf("Failed to retrieve N1QL endpoint list")
+		suite.T().Fatalf("Failed to retrieve N1QL endpoint list")
 	}
 }
 
-func TestMemcachedBucket(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureMemd)
+func (suite *StandardTestSuite) TestMemcachedBucket() {
+	suite.EnsureSupportsFeature(TestFeatureMemd)
 
-	s := testGetHarness(t)
-	agent := s.MemdAgent()
+	s := suite.GetHarness()
+	agent := suite.MemdAgent()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:   []byte("key"),
@@ -1169,20 +1168,20 @@ func TestMemcachedBucket(t *testing.T) {
 	})
 
 	if !errors.Is(err, ErrFeatureNotAvailable) {
-		t.Fatalf("Expected observe error for memcached bucket!")
+		suite.T().Fatalf("Expected observe error for memcached bucket!")
 	}
 }
 
-func TestFlagsRoundTrip(t *testing.T) {
+func (suite *StandardTestSuite) TestFlagsRoundTrip() {
 	// Ensure flags are round-tripped with the server correctly.
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("flagskey"),
 		Value:          []byte(""),
 		Flags:          0x99889988,
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1194,8 +1193,8 @@ func TestFlagsRoundTrip(t *testing.T) {
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("flagskey"),
-		CollectionName: s.CollectionName,
-		ScopeName:      s.ScopeName,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1209,10 +1208,10 @@ func TestFlagsRoundTrip(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestMetaOps(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureGetMeta)
+func (suite *StandardTestSuite) TestMetaOps() {
+	suite.EnsureSupportsFeature(TestFeatureGetMeta)
 
-	agent, s := testGetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 
 	var currentCas Cas
 
@@ -1257,8 +1256,8 @@ func TestMetaOps(t *testing.T) {
 	s.Wait(0)
 }
 
-func TestPing(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestPing() {
+	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Ping(PingOptions{}, func(res *PingResult, err error) {
 		s.Wrap(func() {
@@ -1270,21 +1269,21 @@ func TestPing(t *testing.T) {
 	s.Wait(5)
 }
 
-func TestDiagnostics(t *testing.T) {
-	agent, _ := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestDiagnostics() {
+	agent, _ := suite.GetAgentAndHarness()
 
 	report, err := agent.Diagnostics(DiagnosticsOptions{})
 	if err != nil {
-		t.Fatalf("Failed to fetch diagnostics: %s", err)
+		suite.T().Fatalf("Failed to fetch diagnostics: %s", err)
 	}
 
 	if len(report.MemdConns) == 0 {
-		t.Fatalf("Diagnostics report contained no results")
+		suite.T().Fatalf("Diagnostics report contained no results")
 	}
 
 	for _, conn := range report.MemdConns {
 		if conn.RemoteAddr == "" {
-			t.Fatalf("Diagnostic report contained invalid entry")
+			suite.T().Fatalf("Diagnostic report contained invalid entry")
 		}
 	}
 }
@@ -1297,8 +1296,8 @@ func (taa *testAlternateAddressesRouteConfigMgr) OnNewRouteConfig(cfg *routeConf
 	taa.cfg = cfg
 }
 
-func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1311,7 +1310,7 @@ func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1319,13 +1318,13 @@ func TestAlternateAddressesEmptyStringConfig(t *testing.T) {
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesAutoConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1339,7 +1338,7 @@ func TestAlternateAddressesAutoConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1347,13 +1346,13 @@ func TestAlternateAddressesAutoConfig(t *testing.T) {
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1367,7 +1366,7 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "default" {
-		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1375,13 +1374,13 @@ func TestAlternateAddressesAutoInternalConfig(t *testing.T) {
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesDefaultConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1395,7 +1394,7 @@ func TestAlternateAddressesDefaultConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "default" {
-		t.Fatalf("Expected agent networkType to be default, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1403,13 +1402,13 @@ func TestAlternateAddressesDefaultConfig(t *testing.T) {
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesExternalConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1423,7 +1422,7 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1431,13 +1430,13 @@ func TestAlternateAddressesExternalConfig(t *testing.T) {
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses_without_ports.json")
+func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses_without_ports.json")
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1450,7 +1449,7 @@ func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "external" {
-		t.Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
@@ -1458,13 +1457,13 @@ func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
-			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
 	}
 }
 
-func TestAlternateAddressesInvalidConfig(t *testing.T) {
-	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
 	var invalid bool
 	cfgManager := newConfigManager(configManagerProperties{
@@ -1477,11 +1476,11 @@ func TestAlternateAddressesInvalidConfig(t *testing.T) {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "invalid" {
-		t.Fatalf("Expected agent networkType to be invalid, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be invalid, was %s", networkType)
 	}
 
 	if !invalid {
-		t.Fatalf("Expected route config to be invalid, was valid")
+		suite.T().Fatalf("Expected route config to be invalid, was valid")
 	}
 }
 

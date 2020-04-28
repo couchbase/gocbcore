@@ -13,6 +13,7 @@ type n1qlTestHelper struct {
 	TestName      string
 	NumDocs       int
 	QueryTestDocs *testDocs
+	suite         *StandardTestSuite
 }
 
 func hlpRunQuery(t *testing.T, agent *Agent, opts N1QLQueryOptions) ([][]byte, error) {
@@ -64,11 +65,11 @@ func hlpEnsurePrimaryIndex(t *testing.T, agent *Agent, bucketName string) {
 }
 
 func (nqh *n1qlTestHelper) testSetupN1ql(t *testing.T) {
-	agent, h := testGetAgentAndHarness(t)
+	agent := nqh.suite.DefaultAgent()
 
 	nqh.QueryTestDocs = makeTestDocs(t, agent, nqh.TestName, nqh.NumDocs)
 
-	hlpEnsurePrimaryIndex(t, agent, h.BucketName)
+	hlpEnsurePrimaryIndex(t, agent, nqh.suite.BucketName)
 }
 
 func (nqh *n1qlTestHelper) testCleanupN1ql(t *testing.T) {
@@ -79,16 +80,16 @@ func (nqh *n1qlTestHelper) testCleanupN1ql(t *testing.T) {
 }
 
 func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
-	agent, h := testGetAgentAndHarness(t)
+	agent := nqh.suite.DefaultAgent()
 
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", h.BucketName, nqh.TestName),
+			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
-			t.Errorf("failed to marshal test payload: %s", err)
+			nqh.suite.T().Errorf("failed to marshal test payload: %s", err)
 		}
 
 		iterDeadline := time.Now().Add(5000 * time.Millisecond)
@@ -175,23 +176,23 @@ func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
 		time.Sleep(sleepDeadline.Sub(time.Now()))
 
 		if sleepDeadline == deadline {
-			t.Errorf("timed out waiting for indexing: %s", lastError)
+			nqh.suite.T().Errorf("timed out waiting for indexing: %s", lastError)
 			break
 		}
 	}
 }
 
 func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
-	agent, h := testGetAgentAndHarness(t)
+	agent := nqh.suite.DefaultAgent()
 
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", h.BucketName, nqh.TestName),
+			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
-			t.Errorf("failed to marshal test payload: %s", err)
+			nqh.suite.T().Errorf("failed to marshal test payload: %s", err)
 		}
 
 		iterDeadline := time.Now().Add(5000 * time.Millisecond)
@@ -279,25 +280,26 @@ func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
 		time.Sleep(sleepDeadline.Sub(time.Now()))
 
 		if sleepDeadline == deadline {
-			t.Errorf("timed out waiting for indexing: %s", lastError)
+			nqh.suite.T().Errorf("timed out waiting for indexing: %s", lastError)
 			break
 		}
 	}
 }
 
-func TestN1QL(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+func (suite *StandardTestSuite) TestN1QL() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
 	helper := &n1qlTestHelper{
 		TestName: "testQuery",
 		NumDocs:  5,
+		suite:    suite,
 	}
 
-	t.Run("setup", helper.testSetupN1ql)
+	suite.T().Run("setup", helper.testSetupN1ql)
 
-	t.Run("Basic", helper.testN1QLBasic)
+	suite.T().Run("Basic", helper.testN1QLBasic)
 
-	t.Run("cleanup", helper.testCleanupN1ql)
+	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
 
 type roundTripper struct {
@@ -310,9 +312,9 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return rt.tsport.RoundTrip(req)
 }
 
-func TestN1QLCancel(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
-	agent, _ := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestN1QLCancel() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
+	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
 	httpCpt := newHTTPComponent(
@@ -338,7 +340,7 @@ func TestN1QLCancel(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 	op.Cancel()
 
@@ -352,22 +354,22 @@ func TestN1QLCancel(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrRequestCanceled) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 }
 
-func TestN1QLTimeout(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+func (suite *StandardTestSuite) TestN1QLTimeout() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
-	agent, h := testGetAgentAndHarness(t)
+	agent := suite.DefaultAgent()
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
 	_, err := agent.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
@@ -379,7 +381,7 @@ func TestN1QLTimeout(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 
 	var rows *N1QLRowReader
@@ -392,33 +394,34 @@ func TestN1QLTimeout(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrTimeout) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 }
 
-func TestN1QLPrepared(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+func (suite *StandardTestSuite) TestN1QLPrepared() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
 	helper := &n1qlTestHelper{
 		TestName: "testPreparedQuery",
 		NumDocs:  5,
+		suite:    suite,
 	}
 
-	t.Run("setup", helper.testSetupN1ql)
+	suite.T().Run("setup", helper.testSetupN1ql)
 
-	t.Run("Basic", helper.testN1QLPrepared)
+	suite.T().Run("Basic", helper.testN1QLPrepared)
 
-	t.Run("cleanup", helper.testCleanupN1ql)
+	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
 
-func TestN1QLPreparedCancel(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
-	agent, _ := testGetAgentAndHarness(t)
+	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
 	httpCpt := newHTTPComponent(
@@ -444,7 +447,7 @@ func TestN1QLPreparedCancel(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 	op.Cancel()
 
@@ -458,22 +461,22 @@ func TestN1QLPreparedCancel(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrRequestCanceled) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 }
 
-func TestN1QLPreparedTimeout(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureN1ql)
+func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
-	agent, h := testGetAgentAndHarness(t)
+	agent := suite.DefaultAgent()
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
 	_, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
@@ -485,7 +488,7 @@ func TestN1QLPreparedTimeout(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 
 	var rows *N1QLRowReader
@@ -498,10 +501,10 @@ func TestN1QLPreparedTimeout(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrTimeout) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 }

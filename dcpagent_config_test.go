@@ -5,101 +5,101 @@ import (
 	"time"
 )
 
-func TestDcpDCPAgentConfig_FromConnStr(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_FromConnStr() {
 	connStr := "couchbase://10.112.192.101,10.112.192.102?bootstrap_on=cccp&network=external&kv_connect_timeout=100us"
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
 	if err != nil {
-		t.Fatalf("Failed to execute FromConnStr: %v", err)
+		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if config.KVConnectTimeout != 100*time.Microsecond {
-		t.Fatalf("Ex :%v", config.KVConnectTimeout)
+		suite.T().Fatalf("Ex :%v", config.KVConnectTimeout)
 	}
 }
 
-func TestDcpDCPAgentConfig_Couchbase1(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_Couchbase1() {
 	connStr := "couchbase://10.112.192.101"
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
 	if err != nil {
-		t.Fatalf("Failed to execute FromConnStr: %v", err)
+		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if len(config.MemdAddrs) != 1 {
-		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
 	}
 
 	if config.MemdAddrs[0] != "10.112.192.101:11210" {
-		t.Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
+		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
 	}
 }
 
-func TestDcpDCPAgentConfig_Couchbase2(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_Couchbase2() {
 	connStr := "couchbase://10.112.192.101,10.112.192.102"
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
 	if err != nil {
-		t.Fatalf("Failed to execute FromConnStr: %v", err)
+		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if len(config.MemdAddrs) != 2 {
-		t.Fatalf("Expected MemdAddrs to be len 2 but was %v", config.MemdAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 2 but was %v", config.MemdAddrs)
 	}
 }
 
-func TestDcpDCPAgentConfig_DefaultHTTP(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_DefaultHTTP() {
 	connStr := "http://10.112.192.101:8091"
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
 	if err != nil {
-		t.Fatalf("Failed to execute FromConnStr: %v", err)
+		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if len(config.MemdAddrs) != 1 {
-		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
 	}
 
 	if len(config.HTTPAddrs) != 1 {
-		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
 	}
 
 	if config.MemdAddrs[0] != "10.112.192.101:11210" {
-		t.Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
+		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
 	}
 
 	if config.HTTPAddrs[0] != "10.112.192.101:8091" {
-		t.Fatalf("Expected address to be 10.112.192.101:8091 but was %v", config.HTTPAddrs[0])
+		suite.T().Fatalf("Expected address to be 10.112.192.101:8091 but was %v", config.HTTPAddrs[0])
 	}
 }
 
-func TestDcpDCPAgentConfig_NonDefaultHTTP(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_NonDefaultHTTP() {
 	connStr := "http://10.112.192.101:9000"
 
 	config := &DCPAgentConfig{}
 	err := config.FromConnStr(connStr)
 	if err != nil {
-		t.Fatalf("Failed to execute FromConnStr: %v", err)
+		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
 	if len(config.MemdAddrs) != 0 {
-		t.Fatalf("Expected MemdAddrs to be len 0 but was %v", config.MemdAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 0 but was %v", config.MemdAddrs)
 	}
 
 	if len(config.HTTPAddrs) != 1 {
-		t.Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
 	}
 
 	if config.HTTPAddrs[0] != "10.112.192.101:9000" {
-		t.Fatalf("Expected address to be 10.112.192.101:9000 but was %v", config.HTTPAddrs[0])
+		suite.T().Fatalf("Expected address to be 10.112.192.101:9000 but was %v", config.HTTPAddrs[0])
 	}
 }
 
-func TestDcpDCPAgentConfig_Network(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_Network() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -112,20 +112,20 @@ func TestDcpDCPAgentConfig_Network(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); err != nil {
 				t.Errorf("FromConnStr() error = %v", err)
 			}
 
 			if config.NetworkType != tt.expected {
-				t.Fatalf("Expected %s but was %s", tt.expected, config.NetworkType)
+				suite.T().Fatalf("Expected %s but was %s", tt.expected, config.NetworkType)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_KVConnectTimeout(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_KVConnectTimeout() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -149,20 +149,20 @@ func TestDcpDCPAgentConfig_KVConnectTimeout(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
 			}
 
 			if config.KVConnectTimeout != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.KVConnectTimeout)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KVConnectTimeout)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_ConfigPollTimeout(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_ConfigPollTimeout() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -186,20 +186,20 @@ func TestDcpDCPAgentConfig_ConfigPollTimeout(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
 			}
 
 			if config.CccpMaxWait != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.CccpMaxWait)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CccpMaxWait)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_ConfigPollPeriod(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_ConfigPollPeriod() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -223,7 +223,7 @@ func TestDcpDCPAgentConfig_ConfigPollPeriod(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -234,13 +234,13 @@ func TestDcpDCPAgentConfig_ConfigPollPeriod(t *testing.T) {
 			}
 
 			if config.CccpPollPeriod != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.CccpPollPeriod)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CccpPollPeriod)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_Compression(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_Compression() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -264,7 +264,7 @@ func TestDcpDCPAgentConfig_Compression(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -275,13 +275,13 @@ func TestDcpDCPAgentConfig_Compression(t *testing.T) {
 			}
 
 			if config.UseCompression != tt.expected {
-				t.Fatalf("Expected %t but was %t", tt.expected, config.UseCompression)
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.UseCompression)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_CompressionMinSize(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_CompressionMinSize() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -300,7 +300,7 @@ func TestDcpDCPAgentConfig_CompressionMinSize(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -311,13 +311,13 @@ func TestDcpDCPAgentConfig_CompressionMinSize(t *testing.T) {
 			}
 
 			if config.CompressionMinSize != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.CompressionMinSize)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CompressionMinSize)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_CompressionMinRatio(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_CompressionMinRatio() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -336,7 +336,7 @@ func TestDcpDCPAgentConfig_CompressionMinRatio(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -347,13 +347,13 @@ func TestDcpDCPAgentConfig_CompressionMinRatio(t *testing.T) {
 			}
 
 			if config.CompressionMinRatio != tt.expected {
-				t.Fatalf("Expected %f but was %f", tt.expected, config.CompressionMinRatio)
+				suite.T().Fatalf("Expected %f but was %f", tt.expected, config.CompressionMinRatio)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_DCPPriority(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_DCPPriority() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -387,7 +387,7 @@ func TestDcpDCPAgentConfig_DCPPriority(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -398,13 +398,13 @@ func TestDcpDCPAgentConfig_DCPPriority(t *testing.T) {
 			}
 
 			if config.AgentPriority != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.AgentPriority)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.AgentPriority)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_EnableDCPExpiry(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_EnableDCPExpiry() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -428,7 +428,7 @@ func TestDcpDCPAgentConfig_EnableDCPExpiry(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -439,13 +439,13 @@ func TestDcpDCPAgentConfig_EnableDCPExpiry(t *testing.T) {
 			}
 
 			if config.UseExpiryOpcode != tt.expected {
-				t.Fatalf("Expected %t but was %t", tt.expected, config.UseExpiryOpcode)
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.UseExpiryOpcode)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_KVPoolSize(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_KVPoolSize() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -464,7 +464,7 @@ func TestDcpDCPAgentConfig_KVPoolSize(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -475,13 +475,13 @@ func TestDcpDCPAgentConfig_KVPoolSize(t *testing.T) {
 			}
 
 			if config.KvPoolSize != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.KvPoolSize)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KvPoolSize)
 			}
 		})
 	}
 }
 
-func TestDcpDCPAgentConfig_MaxQueueSize(t *testing.T) {
+func (suite *StandardTestSuite) TestDCPAgentConfig_MaxQueueSize() {
 	tests := []struct {
 		name     string
 		connStr  string
@@ -500,7 +500,7 @@ func TestDcpDCPAgentConfig_MaxQueueSize(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.T().Run(tt.name, func(t *testing.T) {
 			config := &DCPAgentConfig{}
 			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
@@ -511,7 +511,7 @@ func TestDcpDCPAgentConfig_MaxQueueSize(t *testing.T) {
 			}
 
 			if config.MaxQueueSize != tt.expected {
-				t.Fatalf("Expected %d but was %d", tt.expected, config.MaxQueueSize)
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.MaxQueueSize)
 			}
 		})
 	}

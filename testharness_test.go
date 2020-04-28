@@ -24,18 +24,18 @@ var (
 type TestFeatureCode string
 
 var (
-	TestFeatureReplicas    = TestFeatureCode("replicas")
-	TestFeatureSsl         = TestFeatureCode("ssl")
-	TestFeatureViews       = TestFeatureCode("views")
-	TestFeatureN1ql        = TestFeatureCode("n1ql")
-	TestFeatureCbas        = TestFeatureCode("cbas")
-	TestFeatureAdjoin      = TestFeatureCode("adjoin")
-	TestFeatureErrMap      = TestFeatureCode("errmap")
-	TestFeatureCollections = TestFeatureCode("collections")
-	TestFeatureDCP         = TestFeatureCode("dcp")
-	TestFeatureDCPExpiry   = TestFeatureCode("dcpexpiry")
-	TestFeatureMemd        = TestFeatureCode("memd")
-	TestFeatureGetMeta     = TestFeatureCode("getmeta")
+	TestFeatureReplicas       = TestFeatureCode("replicas")
+	TestFeatureSsl            = TestFeatureCode("ssl")
+	TestFeatureViews          = TestFeatureCode("views")
+	TestFeatureN1ql           = TestFeatureCode("n1ql")
+	TestFeatureCbas           = TestFeatureCode("cbas")
+	TestFeatureAdjoin         = TestFeatureCode("adjoin")
+	TestFeatureErrMap         = TestFeatureCode("errmap")
+	TestFeatureCollections    = TestFeatureCode("collections")
+	TestFeatureDCPExpiry      = TestFeatureCode("dcpexpiry")
+	TestFeatureDCPDeleteTimes = TestFeatureCode("dcpdeletetimes")
+	TestFeatureMemd           = TestFeatureCode("memd")
+	TestFeatureGetMeta        = TestFeatureCode("getmeta")
 )
 
 type TestFeatureFlag struct {
@@ -43,252 +43,50 @@ type TestFeatureFlag struct {
 	Feature TestFeatureCode
 }
 
-type TestHarness struct {
-	ConnStr        string
-	BucketName     string
-	MemdBucketName string
-	DcpBucketName  string
-	ScopeName      string
-	CollectionName string
-	Username       string
-	Password       string
-	ClusterVersion NodeVersion
-	FeatureFlags   []TestFeatureFlag
-
-	mockInst     *jcbmock.Mock
-	defaultAgent *Agent
-	memdAgent    *Agent
-	dcpAgent     *Agent
-}
-
-func (h *TestHarness) init() error {
-	if h.ConnStr == "" {
-		mpath, err := jcbmock.GetMockPath()
-		if err != nil {
-			panic(err.Error())
+func ParseFeatureFlags(featuresToTest string) []TestFeatureFlag {
+	var featureFlags []TestFeatureFlag
+	featureFlagStrs := strings.Split(featuresToTest, ",")
+	for _, featureFlagStr := range featureFlagStrs {
+		if len(featureFlagStr) == 0 {
+			continue
 		}
 
-		mock, err := jcbmock.NewMock(mpath, 4, 1, 64, []jcbmock.BucketSpec{
-			{Name: "default", Type: jcbmock.BCouchbase},
-			{Name: "memd", Type: jcbmock.BMemcached},
-		}...)
-		if err != nil {
-			return err
+		if featureFlagStr[0] == '+' {
+			featureFlags = append(featureFlags, TestFeatureFlag{
+				Enabled: true,
+				Feature: TestFeatureCode(featureFlagStr[1:]),
+			})
+			continue
+		} else if featureFlagStr[0] == '-' {
+			featureFlags = append(featureFlags, TestFeatureFlag{
+				Enabled: false,
+				Feature: TestFeatureCode(featureFlagStr[1:]),
+			})
+			continue
 		}
 
-		mock.Control(jcbmock.NewCommand(jcbmock.CSetCCCP,
-			map[string]interface{}{"enabled": "true"}))
-		mock.Control(jcbmock.NewCommand(jcbmock.CSetSASLMechanisms,
-			map[string]interface{}{"mechs": []string{"SCRAM-SHA512"}}))
-
-		h.mockInst = mock
-
-		var couchbaseAddrs []string
-		for _, mcport := range mock.MemcachedPorts() {
-			couchbaseAddrs = append(couchbaseAddrs, fmt.Sprintf("127.0.0.1:%d", mcport))
-		}
-
-		h.ConnStr = fmt.Sprintf("couchbase://%s", strings.Join(couchbaseAddrs, ","))
-		h.BucketName = "default"
-		h.MemdBucketName = "memd"
-		h.Username = "Administrator"
-		h.Password = "password"
+		panic("failed to parse specified feature codes")
 	}
 
-	err := h.initDefaultAgent()
-	if err != nil {
-		return err
-	}
-
-	if h.SupportsFeature(TestFeatureMemd) {
-		err = h.initMemdAgent()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return featureFlags
 }
 
-func (h *TestHarness) finish() {
-	if h.dcpAgent != nil {
-		h.dcpAgent.Close()
-		h.dcpAgent = nil
-	}
-
-	if h.memdAgent != nil {
-		h.memdAgent.Close()
-		h.memdAgent = nil
-	}
-
-	if h.defaultAgent != nil {
-		h.defaultAgent.Close()
-		h.defaultAgent = nil
-	}
-}
-
-func (h *TestHarness) initDefaultAgent() error {
-	config := AgentConfig{}
-	config.FromConnStr(h.ConnStr)
-
-	config.UseMutationTokens = true
-	config.UseCollections = true
-	config.BucketName = h.BucketName
-
-	config.Auth = &PasswordAuthProvider{
-		Username: h.Username,
-		Password: h.Password,
-	}
-
-	agent, err := CreateAgent(&config)
-	if err != nil {
-		return err
-	}
-
-	ch := make(chan error)
-	_, err = agent.WaitUntilReady(
-		time.Now().Add(2*time.Second),
-		WaitUntilReadyOptions{},
-		func(result *WaitUntilReadyResult, err error) {
-			ch <- err
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	err = <-ch
-	if err != nil {
-		return err
-	}
-
-	h.defaultAgent = agent
-
-	return nil
-}
-
-func (h *TestHarness) initMemdAgent() error {
-	config := AgentConfig{}
-	config.FromConnStr(h.ConnStr)
-
-	config.Auth = &PasswordAuthProvider{
-		Username: h.Username,
-		Password: h.Password,
-	}
-
-	config.BucketName = h.MemdBucketName
-
-	agent, err := CreateAgent(&config)
-	if err != nil {
-		return err
-	}
-
-	ch := make(chan error)
-	_, err = agent.WaitUntilReady(
-		time.Now().Add(2*time.Second),
-		WaitUntilReadyOptions{},
-		func(result *WaitUntilReadyResult, err error) {
-			ch <- err
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	err = <-ch
-	if err != nil {
-		return err
-	}
-
-	h.memdAgent = agent
-
-	return nil
-}
-
-func (h *TestHarness) initDcpAgent() error {
-	return nil
-}
-
-func (h *TestHarness) DefaultAgent() *Agent {
-	return h.defaultAgent
-}
-
-func (h *TestHarness) MemdAgent() *Agent {
-	return h.memdAgent
-}
-
-func (h *TestHarness) DcpAgent() *Agent {
-	return h.dcpAgent
-}
-
-func (h *TestHarness) IsMockServer() bool {
-	return h.mockInst != nil
-}
-
-func (h *TestHarness) SupportsFeature(feature TestFeatureCode) bool {
-	featureFlagValue := 0
-	for _, featureFlag := range h.FeatureFlags {
-		if featureFlag.Feature == feature || featureFlag.Feature == "*" {
-			if featureFlag.Enabled {
-				featureFlagValue = +1
-			} else {
-				featureFlagValue = -1
-			}
-		}
-	}
-	if featureFlagValue == -1 {
-		return false
-	} else if featureFlagValue == +1 {
-		return true
-	}
-
-	switch feature {
-	case TestFeatureSsl:
-		return true
-	case TestFeatureViews:
-		return true
-	case TestFeatureErrMap:
-		return true
-	case TestFeatureReplicas:
-		return true
-	case TestFeatureN1ql:
-		return !h.IsMockServer() && !h.ClusterVersion.Equal(srvVer700)
-	case TestFeatureCbas:
-		return !h.IsMockServer() && h.ClusterVersion.Higher(srvVer600) && !h.ClusterVersion.Equal(srvVer700)
-	case TestFeatureAdjoin:
-		return !h.IsMockServer()
-	case TestFeatureCollections:
-		return !h.IsMockServer()
-	case TestFeatureMemd:
-		return !h.IsMockServer()
-	case TestFeatureGetMeta:
-		return !h.IsMockServer()
-	case TestFeatureDCP:
-		return !h.IsMockServer() &&
-			!h.ClusterVersion.Lower(srvVer450)
-	case TestFeatureDCPExpiry:
-		return !h.IsMockServer() &&
-			!h.ClusterVersion.Lower(srvVer650)
-	}
-
-	panic("found unsupported feature code")
-}
-
-func (h *TestHarness) TimeTravel(waitDura time.Duration) {
-	if h.IsMockServer() {
-		waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
-		h.mockInst.Control(jcbmock.NewCommand(jcbmock.CTimeTravel, map[string]interface{}{
-			"Offset": waitSecs,
-		}))
-	} else {
+func TimeTravel(waitDura time.Duration, mockInst *jcbmock.Mock) {
+	if mockInst == nil {
 		time.Sleep(waitDura)
+		return
 	}
+
+	waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
+	mockInst.Control(jcbmock.NewCommand(jcbmock.CTimeTravel, map[string]interface{}{
+		"Offset": waitSecs,
+	}))
 }
 
 // Gets a set of keys evenly distributed across all server nodes.
 // the result is an array of strings, each index representing an index
 // of a server
-func (h *TestHarness) MakeDistKeys(agent *Agent) (keys []string) {
+func MakeDistKeys(agent *Agent) (keys []string) {
 	// Get the routing information
 	clientMux := agent.kvMux.getState()
 	keys = make([]string, clientMux.NumPipelines())
@@ -309,20 +107,17 @@ func (h *TestHarness) MakeDistKeys(agent *Agent) (keys []string) {
 }
 
 type TestSubHarness struct {
-	*TestHarness
-
 	sigT  *testing.T
 	sigCh chan int
 	sigOp PendingOp
 }
 
-func makeTestSubHarness(t *testing.T, h *TestHarness) *TestSubHarness {
+func makeTestSubHarness(t *testing.T) *TestSubHarness {
 	// Note that the signaling channel here must have a queue of
 	// at least 1 to avoid deadlocks during cancellations.
 	return &TestSubHarness{
-		TestHarness: h,
-		sigT:        t,
-		sigCh:       make(chan int, 1),
+		sigT:  t,
+		sigCh: make(chan int, 1),
 	}
 }
 

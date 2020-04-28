@@ -2,15 +2,14 @@ package gocbcore
 
 import (
 	"errors"
-	"testing"
 
 	"github.com/couchbase/gocbcore/v9/memd"
 
 	"github.com/couchbase/gocbcore/v9/jcbmock"
 )
 
-func TestEnhancedErrors(t *testing.T) {
-	agent, s := testGetAgentAndHarness(t)
+func (suite *StandardTestSuite) TestEnhancedErrors() {
+	agent, s := suite.GetAgentAndHarness()
 
 	var err1, err2 error
 
@@ -33,21 +32,21 @@ func TestEnhancedErrors(t *testing.T) {
 	s.Wait(0)
 
 	if err1 == err2 {
-		t.Fatalf("Operation error results should never return equivalent values")
+		suite.T().Fatalf("Operation error results should never return equivalent values")
 	}
 }
 
-func TestEnhancedErrorOp(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureErrMap)
+func (suite *StandardTestSuite) TestEnhancedErrorOp() {
+	suite.EnsureSupportsFeature(TestFeatureErrMap)
 
-	agent, h := testGetAgentAndHarness(t)
-	if !h.IsMockServer() {
-		t.Skipf("only supported when testing against mock server")
+	agent, h := suite.GetAgentAndHarness()
+	if !suite.IsMockServer() {
+		suite.T().Skipf("only supported when testing against mock server")
 	}
 
-	h.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	suite.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": true,
-		"bucket":  h.BucketName,
+		"bucket":  suite.BucketName,
 	}))
 
 	h.PushOp(agent.GetAndLock(GetAndLockOptions{
@@ -83,8 +82,8 @@ func TestEnhancedErrorOp(t *testing.T) {
 	}))
 	h.Wait(0)
 
-	h.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
+	suite.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
 		"enabled": false,
-		"bucket":  h.BucketName,
+		"bucket":  suite.BucketName,
 	}))
 }

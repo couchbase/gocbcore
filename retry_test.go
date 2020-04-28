@@ -67,7 +67,7 @@ func mockBackoffCalculator(retryAttempts uint32) time.Duration {
 	return time.Millisecond * time.Duration(retryAttempts)
 }
 
-func TestRetryOrchestrator(t *testing.T) {
+func (suite *StandardTestSuite) TestRetryOrchestrator() {
 	type test struct {
 		name             string
 		shouldRetry      bool
@@ -214,7 +214,7 @@ func TestRetryOrchestrator(t *testing.T) {
 	for strategy, rsTests := range tests {
 		stratTyp := reflect.ValueOf(strategy).Type()
 		for _, tt := range rsTests {
-			t.Run(fmt.Sprintf("%s - %s", stratTyp, tt.name), func(t *testing.T) {
+			suite.T().Run(fmt.Sprintf("%s - %s", stratTyp, tt.name), func(t *testing.T) {
 				// Copy it and add the strategy
 				baseReq := *tt.request
 				req := &baseReq
@@ -224,7 +224,7 @@ func TestRetryOrchestrator(t *testing.T) {
 				for {
 					shouldRetry, retryTime := retryOrchMaybeRetry(req, tt.retryReason)
 					if shouldRetry != tt.shouldRetry {
-						t.Fatalf("Expected retried to be %v, got %v", tt.shouldRetry, shouldRetry)
+						suite.T().Fatalf("Expected retried to be %v, got %v", tt.shouldRetry, shouldRetry)
 					}
 
 					// No need to retry, just break
@@ -241,11 +241,11 @@ func TestRetryOrchestrator(t *testing.T) {
 				}
 
 				if tt.expectedAttempts != req.RetryAttempts() {
-					t.Fatalf("Expected retries to be %d, was %d", tt.expectedAttempts, req.RetryAttempts())
+					suite.T().Fatalf("Expected retries to be %d, was %d", tt.expectedAttempts, req.RetryAttempts())
 				}
 
 				if tt.retryReasonsLen != len(req.RetryReasons()) {
-					t.Fatalf("Expected reasons to be %d, was %d", tt.retryReasonsLen, len(req.RetryReasons()))
+					suite.T().Fatalf("Expected reasons to be %d, was %d", tt.retryReasonsLen, len(req.RetryReasons()))
 				}
 			})
 		}
@@ -259,7 +259,7 @@ func (crs *cancellationRetryStrategy) RetryAfter(req RetryRequest, reason RetryR
 	return &WithDurationRetryAction{WithDuration: 50 * time.Millisecond}
 }
 
-func TestControlledBackoff(t *testing.T) {
+func (suite *StandardTestSuite) TestControlledBackoff() {
 	type test struct {
 		attempts        uint32
 		expectedBackoff time.Duration
@@ -298,12 +298,12 @@ func TestControlledBackoff(t *testing.T) {
 	for _, tt := range tests {
 		backoff := ControlledBackoff(tt.attempts)
 		if backoff != tt.expectedBackoff {
-			t.Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
+			suite.T().Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
 		}
 	}
 }
 
-func TestExponentialBackoff(t *testing.T) {
+func (suite *StandardTestSuite) TestExponentialBackoff() {
 	type test struct {
 		attempts        uint32
 		expectedBackoff time.Duration
@@ -359,11 +359,11 @@ func TestExponentialBackoff(t *testing.T) {
 		calc := ExponentialBackoff(0, 0, 0)
 		backoff := calc(tt.attempts)
 		if backoff != tt.expectedBackoff {
-			t.Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
+			suite.T().Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
 		}
 	}
 }
-func TestExponentialBackoffNonDefaults(t *testing.T) {
+func (suite *StandardTestSuite) TestExponentialBackoffNonDefaults() {
 	type test struct {
 		attempts        uint32
 		expectedBackoff time.Duration
@@ -403,7 +403,7 @@ func TestExponentialBackoffNonDefaults(t *testing.T) {
 		calc := ExponentialBackoff(10*time.Millisecond, 1000*time.Millisecond, 3)
 		backoff := calc(tt.attempts)
 		if backoff != tt.expectedBackoff {
-			t.Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
+			suite.T().Fatalf("Expected backoff to be %s but was %s", tt.expectedBackoff.String(), backoff.String())
 		}
 	}
 }

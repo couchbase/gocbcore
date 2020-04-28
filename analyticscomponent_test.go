@@ -13,6 +13,7 @@ type analyticsTestHelper struct {
 	TestName string
 	NumDocs  int
 	TestDocs *testDocs
+	suite    *StandardTestSuite
 }
 
 func hlpRunAnalyticsQuery(t *testing.T, agent *Agent, opts AnalyticsQueryOptions) ([][]byte, error) {
@@ -75,11 +76,11 @@ func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 }
 
 func (nqh *analyticsTestHelper) testSetup(t *testing.T) {
-	agent, h := testGetAgentAndHarness(t)
+	agent := nqh.suite.DefaultAgent()
 
 	nqh.TestDocs = makeTestDocs(t, agent, nqh.TestName, nqh.NumDocs)
 
-	hlpEnsureDataset(t, agent, h.BucketName)
+	hlpEnsureDataset(t, agent, nqh.suite.BucketName)
 }
 
 func (nqh *analyticsTestHelper) testCleanup(t *testing.T) {
@@ -90,12 +91,12 @@ func (nqh *analyticsTestHelper) testCleanup(t *testing.T) {
 }
 
 func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
-	agent, h := testGetAgentAndHarness(t)
+	agent := nqh.suite.DefaultAgent()
 
 	deadline := time.Now().Add(60000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", h.BucketName, nqh.TestName),
+			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
@@ -194,25 +195,26 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 	}
 }
 
-func TestAnalytics(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureCbas)
+func (suite *StandardTestSuite) TestAnalytics() {
+	suite.EnsureSupportsFeature(TestFeatureCbas)
 
 	helper := &analyticsTestHelper{
 		TestName: "testAnalyticsQuery",
 		NumDocs:  5,
+		suite:    suite,
 	}
 
-	if t.Run("setup", helper.testSetup) {
-		t.Run("Basic", helper.testBasic)
+	if suite.T().Run("setup", helper.testSetup) {
+		suite.T().Run("Basic", helper.testBasic)
 	}
 
-	t.Run("cleanup", helper.testCleanup)
+	suite.T().Run("cleanup", helper.testCleanup)
 }
 
-func TestAnalyticsCancel(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureCbas)
+func (suite *StandardTestSuite) TestAnalyticsCancel() {
+	suite.EnsureSupportsFeature(TestFeatureCbas)
 
-	agent, _ := testGetAgentAndHarness(t)
+	agent, _ := suite.GetAgentAndHarness()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
 	httpCpt := newHTTPComponent(
@@ -238,7 +240,7 @@ func TestAnalyticsCancel(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 	op.Cancel()
 
@@ -252,22 +254,22 @@ func TestAnalyticsCancel(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrRequestCanceled) {
-		t.Fatalf("Error should have been request canceled but was %s", resErr)
+		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 }
 
-func TestAnalyticsTimeout(t *testing.T) {
-	testEnsureSupportsFeature(t, TestFeatureCbas)
+func (suite *StandardTestSuite) TestAnalyticsTimeout() {
+	suite.EnsureSupportsFeature(TestFeatureCbas)
 
-	agent, h := testGetAgentAndHarness(t)
+	agent := suite.DefaultAgent()
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, h.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
 	_, err := agent.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
@@ -279,7 +281,7 @@ func TestAnalyticsTimeout(t *testing.T) {
 		resCh <- reader
 	})
 	if err != nil {
-		t.Fatalf("Failed to execute query %s", err)
+		suite.T().Fatalf("Failed to execute query %s", err)
 	}
 
 	var rows *AnalyticsRowReader
@@ -292,10 +294,10 @@ func TestAnalyticsTimeout(t *testing.T) {
 	}
 
 	if rows != nil {
-		t.Fatal("Received rows but should not have")
+		suite.T().Fatal("Received rows but should not have")
 	}
 
 	if !errors.Is(resErr, ErrTimeout) {
-		t.Fatalf("Error should have been timeout but was %s", resErr)
+		suite.T().Fatalf("Error should have been timeout but was %s", resErr)
 	}
 }

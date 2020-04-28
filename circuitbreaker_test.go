@@ -2,11 +2,10 @@ package gocbcore
 
 import (
 	"sync/atomic"
-	"testing"
 	"time"
 )
 
-func TestLazyCircuitBreakerSuccessfulCanary(t *testing.T) {
+func (suite *StandardTestSuite) TestLazyCircuitBreakerSuccessfulCanary() {
 	var canarySent int32
 	var breaker *lazyCircuitBreaker
 	breaker = newLazyCircuitBreaker(CircuitBreakerConfig{
@@ -20,50 +19,50 @@ func TestLazyCircuitBreakerSuccessfulCanary(t *testing.T) {
 	})
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkSuccessful()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkSuccessful()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	// Give time for the sleep window to expire
 	time.Sleep(20 * time.Millisecond)
 
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	// Give time for the canary to be sent
 	time.Sleep(10 * time.Millisecond)
 
 	if atomic.LoadInt32(&canarySent) != 1 {
-		t.Fatalf("Circuit breaker should have sent canary")
+		suite.T().Fatalf("Circuit breaker should have sent canary")
 	}
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	// Give time for rolling window to reset.
@@ -71,11 +70,11 @@ func TestLazyCircuitBreakerSuccessfulCanary(t *testing.T) {
 	breaker.MarkSuccessful()
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 }
 
-func TestLazyCircuitBreakerFailedCanary(t *testing.T) {
+func (suite *StandardTestSuite) TestLazyCircuitBreakerFailedCanary() {
 	var canarySent int32
 	var breaker *lazyCircuitBreaker
 	breaker = newLazyCircuitBreaker(CircuitBreakerConfig{
@@ -89,50 +88,50 @@ func TestLazyCircuitBreakerFailedCanary(t *testing.T) {
 	})
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkSuccessful()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkSuccessful()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	// Give time for the sleep window to expire.
 	time.Sleep(20 * time.Millisecond)
 
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	// Give time for the canary to be sent.
 	time.Sleep(10 * time.Millisecond)
 
 	if atomic.LoadInt32(&canarySent) != 1 {
-		t.Fatalf("Circuit breaker should not have sent canary")
+		suite.T().Fatalf("Circuit breaker should not have sent canary")
 	}
 
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	// Give time for rolling window to reset.
@@ -140,11 +139,11 @@ func TestLazyCircuitBreakerFailedCanary(t *testing.T) {
 	breaker.MarkSuccessful()
 
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 }
 
-func TestLazyCircuitBreakerReset(t *testing.T) {
+func (suite *StandardTestSuite) TestLazyCircuitBreakerReset() {
 	var canarySent int32
 	var breaker *lazyCircuitBreaker
 	breaker = newLazyCircuitBreaker(CircuitBreakerConfig{
@@ -158,27 +157,27 @@ func TestLazyCircuitBreakerReset(t *testing.T) {
 	})
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	breaker.MarkFailure()
 	if breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should not have allowed request")
+		suite.T().Fatalf("Circuit breaker should not have allowed request")
 	}
 
 	breaker.Reset()
@@ -188,18 +187,18 @@ func TestLazyCircuitBreakerReset(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	// Give time for the canary to be sent
 	time.Sleep(10 * time.Millisecond)
 
 	if atomic.LoadInt32(&canarySent) != 0 {
-		t.Fatalf("Circuit breaker should not have sent canary")
+		suite.T().Fatalf("Circuit breaker should not have sent canary")
 	}
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 
 	// Give time for rolling window to reset.
@@ -207,6 +206,6 @@ func TestLazyCircuitBreakerReset(t *testing.T) {
 	breaker.MarkSuccessful()
 
 	if !breaker.AllowsRequest() {
-		t.Fatalf("Circuit breaker should have allowed request")
+		suite.T().Fatalf("Circuit breaker should have allowed request")
 	}
 }

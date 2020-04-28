@@ -84,12 +84,12 @@ func (lrs *errMapTestRetryStrategy) RetryAfter(request RetryRequest, reason Retr
 	return &WithDurationRetryAction{50 * time.Millisecond}
 }
 
-func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
-	testEnsureSupportsFeature(t, TestFeatureErrMap)
+func (suite *StandardTestSuite) testKvErrorMapGeneric(errCode uint16) {
+	suite.EnsureSupportsFeature(TestFeatureErrMap)
 
-	agent, h := testGetAgentAndHarness(t)
-	if !h.IsMockServer() {
-		t.Skipf("only supported when testing against mock server")
+	agent, h := suite.GetAgentAndHarness()
+	if !suite.IsMockServer() {
+		suite.T().Skipf("only supported when testing against mock server")
 	}
 
 	testKey := "hello"
@@ -99,8 +99,8 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 		agent.pollerController.Pause(false)
 	}()
 
-	h.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
-		"bucket": h.BucketName,
+	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
+		"bucket": suite.BucketName,
 		"code":   errCode,
 		"count":  3,
 	}))
@@ -115,21 +115,21 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 	h.Wait(0)
 
 	if strategy.retries != 3 {
-		t.Fatalf("Expected retries to be 3 but was %d", strategy.retries)
+		suite.T().Fatalf("Expected retries to be 3 but was %d", strategy.retries)
 	}
 
 	if len(strategy.reasons) != 3 {
-		t.Fatalf("Expected 3 retry reasons but was %v", strategy.reasons)
+		suite.T().Fatalf("Expected 3 retry reasons but was %v", strategy.reasons)
 	}
 
 	for _, reason := range strategy.reasons {
 		if reason != KVErrMapRetryReason {
-			t.Fatalf("Expected reason to be KVErrMapRetryReason but was %s", reason.Description())
+			suite.T().Fatalf("Expected reason to be KVErrMapRetryReason but was %s", reason.Description())
 		}
 	}
 
-	h.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
-		"bucket": h.BucketName,
+	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
+		"bucket": suite.BucketName,
 		"code":   errCode,
 		"count":  0,
 	}))
@@ -137,14 +137,14 @@ func testKvErrorMapGeneric(t *testing.T, errCode uint16) {
 
 // It doesn't actually matter what strategy the error map specifies, we just test that retries happen as the
 // strategy dictates no matter what.
-func TestKvErrorMap7ff0(t *testing.T) {
-	testKvErrorMapGeneric(t, 0x7ff0)
+func (suite *StandardTestSuite) TestKvErrorMap7ff0() {
+	suite.testKvErrorMapGeneric(0x7ff0)
 }
 
-func TestKvErrorMap7ff1(t *testing.T) {
-	testKvErrorMapGeneric(t, 0x7ff1)
+func (suite *StandardTestSuite) TestKvErrorMap7ff1() {
+	suite.testKvErrorMapGeneric(0x7ff1)
 }
 
-func TestKvErrorMap7ff2(t *testing.T) {
-	testKvErrorMapGeneric(t, 0x7ff2)
+func (suite *StandardTestSuite) TestKvErrorMap7ff2() {
+	suite.testKvErrorMapGeneric(0x7ff2)
 }
