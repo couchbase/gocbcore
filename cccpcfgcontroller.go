@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"errors"
 	"math/rand"
 	"time"
 
@@ -102,9 +101,9 @@ Looper:
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
 				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
-				if errors.Is(err, ErrDocumentNotFound) {
+				if isPollingFallbackError(err) {
 					// This error is indicative of a memcached bucket which we can't handle so return the error.
-					logDebugf("CCCPPOLL: Document not found error detecting, returning error upstream.")
+					logDebugf("CCCPPOLL: CCCP not supported, returning error upstream.")
 					foundErr = err
 					return true
 				}

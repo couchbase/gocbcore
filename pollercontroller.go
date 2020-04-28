@@ -48,7 +48,7 @@ func (pc *pollerController) Start() {
 			logErrorf("CCCP poller has exited for http fallback but no http poller is configured")
 			return
 		}
-		if errors.Is(err, ErrDocumentNotFound) {
+		if isPollingFallbackError(err) {
 			pc.controllerLock.Lock()
 			// We can get into a weird race where the poller controller sent stop to the active controller but we then
 			// swap to a different one and so the Done() function never completes.
@@ -93,4 +93,8 @@ func (pc *pollerController) Done() chan struct{} {
 		return nil
 	}
 	return controller.Done()
+}
+
+func isPollingFallbackError(err error) bool {
+	return errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrUnsupportedOperation)
 }
