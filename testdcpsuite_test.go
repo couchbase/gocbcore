@@ -65,7 +65,7 @@ func (suite *DCPTestSuite) SetupSuite() {
 		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry)),
 		flags,
 	)
-	suite.Require().Nil(err)
+	suite.Require().Nil(err, err)
 }
 
 func (suite *DCPTestSuite) TearDownSuite() {
@@ -151,7 +151,7 @@ func (suite *DCPTestSuite) initDCPAgent(config DCPAgentConfig, openFlags memd.Dc
 
 	ch := make(chan error)
 	_, err = agent.WaitUntilReady(
-		time.Now().Add(2*time.Second),
+		time.Now().Add(10*time.Second),
 		WaitUntilReadyOptions{},
 		func(result *WaitUntilReadyResult, err error) {
 			ch <- err
@@ -182,18 +182,28 @@ func (suite *DCPTestSuite) TestBasic() {
 	h := makeTestSubHarness(suite.T())
 
 	var seqnos []VbSeqNoEntry
-	h.PushOp(suite.dcpAgent.GetVbucketSeqnos(0, memd.VbucketStateActive, GetVbucketSeqnoOptions{},
-		func(entries []VbSeqNoEntry, err error) {
-			h.Wrap(func() {
-				if err != nil {
-					h.Fatalf("GetVbucketSeqnos operation failed: %v", err)
-					return
-				}
+	snapshot, err := suite.dcpAgent.ConfigSnapshot()
+	suite.Require().Nil(err, err)
 
-				seqnos = entries
-			})
-		}))
-	h.Wait(0)
+	numNodes, err := snapshot.NumServers()
+	suite.Require().Nil(err, err)
+
+	for i := 1; i < numNodes+1; i++ {
+		h.PushOp(suite.dcpAgent.GetVbucketSeqnos(i, memd.VbucketStateActive, GetVbucketSeqnoOptions{},
+			func(entries []VbSeqNoEntry, err error) {
+				h.Wrap(func() {
+					if err != nil {
+						h.Fatalf("GetVbucketSeqnos operation failed: %v", err)
+						return
+					}
+
+					seqnos = append(seqnos, entries...)
+				})
+			}))
+		h.Wait(0)
+	}
+
+	suite.T().Logf("Running with seqno map: %v", seqnos)
 
 	so := &TestStreamObserver{
 		mutations:   make(map[string]Mutation),
@@ -201,20 +211,58 @@ func (suite *DCPTestSuite) TestBasic() {
 		expirations: make(map[string]Deletion),
 	}
 	so.endWg.Add(len(seqnos))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var openWg sync.WaitGroup
+	openWg.Add(len(seqnos))
+
 	for _, entry := range seqnos {
-		h.PushOp(
-			suite.dcpAgent.OpenStream(entry.VbID, memd.DcpStreamAddFlagActiveOnly, 0, 0, entry.SeqNo,
+		go func(en VbSeqNoEntry) {
+			ch := make(chan error)
+			op, err := suite.dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, 0, 0, en.SeqNo,
 				0, 0, so, OpenStreamOptions{}, func(entries []FailoverEntry, err error) {
-					h.Wrap(func() {
-						if err != nil {
-							h.Fatalf("Failed to open stream %v", err)
-						}
-					})
+					ch <- err
 				},
-			),
-		)
-		h.Wait(0)
+			)
+			if err != nil {
+				cancel()
+				return
+			}
+
+			select {
+			case err := <-ch:
+				if err != nil {
+					suite.T().Logf("Error received from open stream: %v", err)
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				op.Cancel()
+				return
+			}
+
+			openWg.Done()
+		}(entry)
 	}
+
+	wgCh := make(chan struct{}, 1)
+	go func() {
+		openWg.Wait()
+		wgCh <- struct{}{}
+	}()
+
+	select {
+	case <-ctx.Done():
+		suite.T().Fatal("Failed to open streams")
+	case <-wgCh:
+		cancel()
+		// Let any expirations do their thing
+		time.Sleep(5 * time.Second)
+	}
+
+	suite.T().Logf("All streams open, waiting for streams to complete")
 
 	waitCh := make(chan struct{})
 	go func() {
@@ -227,6 +275,8 @@ func (suite *DCPTestSuite) TestBasic() {
 		suite.T().Fatal("Timed out waiting for streams to complete")
 	case <-waitCh:
 	}
+
+	suite.T().Logf("All streams complete")
 
 	// Compaction can run and cause expirations to be hidden from us
 	suite.Assert().InDelta(suite.NumMutations, len(so.mutations), float64(suite.NumExpirations))
