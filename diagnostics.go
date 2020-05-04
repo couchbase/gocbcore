@@ -138,11 +138,12 @@ const (
 )
 
 type waitUntilOp struct {
-	lock      sync.Mutex
-	remaining int32
-	callback  WaitUntilReadyCallback
-	stopCh    chan struct{}
-	timer     *time.Timer
+	lock       sync.Mutex
+	remaining  int32
+	callback   WaitUntilReadyCallback
+	stopCh     chan struct{}
+	timer      *time.Timer
+	httpCancel context.CancelFunc
 }
 
 func (wuo *waitUntilOp) cancel(err error) {
@@ -150,6 +151,7 @@ func (wuo *waitUntilOp) cancel(err error) {
 	wuo.timer.Stop()
 	wuo.lock.Unlock()
 	close(wuo.stopCh)
+	wuo.httpCancel()
 	wuo.callback(nil, err)
 }
 
@@ -161,6 +163,7 @@ func (wuo *waitUntilOp) handledOneLocked() {
 	remaining := atomic.AddInt32(&wuo.remaining, -1)
 	if remaining == 0 {
 		wuo.timer.Stop()
+		wuo.httpCancel()
 		wuo.callback(&WaitUntilReadyResult{}, nil)
 	}
 }

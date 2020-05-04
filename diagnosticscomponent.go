@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +44,7 @@ func (dc *diagnosticsComponent) pingHTTPService(ctx context.Context, epList []st
 				Endpoint:      ep,
 				IsIdempotent:  true,
 				Context:       ctx,
+				UniqueID:      uuid.New().String(),
 			}
 			start := time.Now()
 			_, err := dc.httpComponent.DoInternalHTTPRequest(req)
@@ -182,7 +185,8 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		case MemdService:
 			dc.pingKV(iter, op, opts.KVDeadline, retryStrat)
 		case CapiService:
-			dc.pingHTTPService(ctx, httpMuxClient.capiEpList, "/", CapiService, op, opts.CapiDeadline, retryStrat)
+			dc.pingHTTPService(ctx, dc.endpointsFromCapiList(httpMuxClient.capiEpList), "/", CapiService, op,
+				opts.CapiDeadline, retryStrat)
 		case N1qlService:
 			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.N1QLDeadline, retryStrat)
 		case FtsService:
@@ -200,6 +204,15 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 	op.lock.Unlock()
 
 	return op, nil
+}
+
+func (dc *diagnosticsComponent) endpointsFromCapiList(capiEpList []string) []string {
+	var epList []string
+	for _, ep := range capiEpList {
+		epList = append(epList, strings.TrimRight(ep, "/"+dc.bucket))
+	}
+
+	return epList
 }
 
 // Diagnostics returns diagnostics information about the client.
@@ -347,6 +360,116 @@ func (dc *diagnosticsComponent) checkKVReady(interval time.Duration, desiredStat
 	}
 }
 
+func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service ServiceType,
+	interval time.Duration, desiredState ClusterState, op *waitUntilOp) {
+	retryStrat := &failFastRetryStrategy{}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	muxer := dc.httpMux
+
+	var path string
+	switch service {
+	case N1qlService:
+		path = "/admin/ping"
+	case CbasService:
+		path = "/admin/ping"
+	case FtsService:
+		path = "/api/ping"
+	case CapiService:
+		path = "/"
+	}
+
+	for {
+		clientMux := muxer.Get()
+		if clientMux.revID > -1 {
+			var epList []string
+			switch service {
+			case N1qlService:
+				epList = clientMux.n1qlEpList
+			case CbasService:
+				epList = clientMux.cbasEpList
+			case FtsService:
+				epList = clientMux.ftsEpList
+			case CapiService:
+				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
+			}
+
+			connected := uint32(0)
+			var wg sync.WaitGroup
+			for _, ep := range epList {
+				wg.Add(1)
+				go func(ep string) {
+					defer wg.Done()
+					req := &httpRequest{
+						Service:       service,
+						Method:        "GET",
+						Path:          path,
+						RetryStrategy: retryStrat,
+						Endpoint:      ep,
+						IsIdempotent:  true,
+						Context:       ctx,
+						UniqueID:      uuid.New().String(),
+					}
+					resp, err := dc.httpComponent.DoInternalHTTPRequest(req)
+					if err != nil {
+						if errors.Is(err, context.Canceled) {
+							return
+						}
+
+						if desiredState == ClusterStateOnline {
+							// Cancel this run entirely, we can't satisfy the requirements
+							cancel()
+						}
+						return
+					}
+					if resp.StatusCode != 200 {
+						if desiredState == ClusterStateOnline {
+							// Cancel this run entirely, we can't satisfy the requirements
+							cancel()
+						}
+						return
+					}
+					atomic.AddUint32(&connected, 1)
+					if desiredState == ClusterStateDegraded {
+						// Cancel this run entirely, we've successfully satisfied the requirements
+						cancel()
+					}
+				}(ep)
+			}
+
+			wg.Wait()
+
+			switch desiredState {
+			case ClusterStateDegraded:
+				if atomic.LoadUint32(&connected) > 0 {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
+			case ClusterStateOnline:
+				if atomic.LoadUint32(&connected) == uint32(len(epList)) {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
+			default:
+				// How we got here no-one does know
+				// But round and round we must go
+			}
+		}
+
+		select {
+		case <-op.stopCh:
+			return
+		case <-time.After(interval):
+		}
+	}
+}
+
 func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
 	cb WaitUntilReadyCallback) (PendingOp, error) {
 	desiredState := opts.DesiredState
@@ -363,10 +486,13 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		serviceTypes = []ServiceType{MemdService}
 	}
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
 	op := &waitUntilOp{
-		remaining: int32(len(serviceTypes)),
-		stopCh:    make(chan struct{}),
-		callback:  cb,
+		remaining:  int32(len(serviceTypes)),
+		stopCh:     make(chan struct{}),
+		callback:   cb,
+		httpCancel: cancelFunc,
 	}
 
 	op.lock.Lock()
@@ -381,8 +507,14 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		switch serviceType {
 		case MemdService:
 			go dc.checkKVReady(interval, desiredState, op)
-		default:
-			// Right now we only support the Memdservice
+		case CapiService:
+			go dc.checkHTTPReady(ctx, CapiService, interval, desiredState, op)
+		case N1qlService:
+			go dc.checkHTTPReady(ctx, N1qlService, interval, desiredState, op)
+		case FtsService:
+			go dc.checkHTTPReady(ctx, FtsService, interval, desiredState, op)
+		case CbasService:
+			go dc.checkHTTPReady(ctx, CbasService, interval, desiredState, op)
 		}
 	}
 

@@ -220,6 +220,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 	for {
 		// dSpan := agent.tracer.StartSpan("dispatch_to_server", req.RootTraceContext).
 		// 	SetTag("retry", req.retryCount)
+		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
 		hresp, err := hc.cli.Do(hreq)
 		// dSpan.Finish()
 		if err != nil {

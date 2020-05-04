@@ -114,6 +114,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureCbas:
 		return !suite.IsMockServer() && suite.ClusterVersion.Higher(srvVer600) &&
 			!suite.ClusterVersion.Equal(srvVer700)
+	case TestFeatureFts:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer551)
 	case TestFeatureAdjoin:
 		return !suite.IsMockServer()
 	case TestFeatureCollections:
@@ -203,10 +205,26 @@ func (suite *StandardTestSuite) initAgent(config AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 
+	services := []ServiceType{MemdService}
+	if suite.SupportsFeature(TestFeatureN1ql) {
+		services = append(services, N1qlService)
+	}
+	if suite.SupportsFeature(TestFeatureCbas) {
+		services = append(services, CbasService)
+	}
+	if suite.SupportsFeature(TestFeatureFts) {
+		services = append(services, CbasService)
+	}
+	if suite.SupportsFeature(TestFeatureViews) && !suite.IsMockServer() { // Mock doesn't like the ping endpoint
+		services = append(services, CapiService)
+	}
+
 	ch := make(chan error)
 	_, err = agent.WaitUntilReady(
 		time.Now().Add(5*time.Second),
-		WaitUntilReadyOptions{},
+		WaitUntilReadyOptions{
+			ServiceTypes: services,
+		},
 		func(result *WaitUntilReadyResult, err error) {
 			ch <- err
 		},

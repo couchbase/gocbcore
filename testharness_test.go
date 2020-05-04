@@ -33,6 +33,7 @@ var (
 	TestFeatureViews          = TestFeatureCode("views")
 	TestFeatureN1ql           = TestFeatureCode("n1ql")
 	TestFeatureCbas           = TestFeatureCode("cbas")
+	TestFeatureFts            = TestFeatureCode("fts")
 	TestFeatureAdjoin         = TestFeatureCode("adjoin")
 	TestFeatureErrMap         = TestFeatureCode("errmap")
 	TestFeatureCollections    = TestFeatureCode("collections")
