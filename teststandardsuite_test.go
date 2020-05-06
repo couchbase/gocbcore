@@ -110,16 +110,16 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureReplicas:
 		return true
 	case TestFeatureN1ql:
-		return !suite.IsMockServer() && !suite.ClusterVersion.Equal(srvVer700)
+		return !suite.IsMockServer() && !suite.ClusterVersion.Equal(srvVer650DP)
 	case TestFeatureCbas:
 		return !suite.IsMockServer() && suite.ClusterVersion.Higher(srvVer600) &&
-			!suite.ClusterVersion.Equal(srvVer700)
+			!suite.ClusterVersion.Equal(srvVer650DP)
 	case TestFeatureFts:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer551)
 	case TestFeatureAdjoin:
 		return !suite.IsMockServer()
 	case TestFeatureCollections:
-		return !suite.IsMockServer()
+		return !suite.IsMockServer() && (suite.ClusterVersion.Equal(srvVer650DP) || !suite.ClusterVersion.Lower(srvVer700))
 	case TestFeatureMemd:
 		return !suite.IsMockServer()
 	case TestFeatureGetMeta:

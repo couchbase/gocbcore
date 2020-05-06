@@ -12,7 +12,7 @@ type TestConfig struct {
 	CollectionName string
 	Authenticator  AuthProvider
 	CAProvider     func() *x509.CertPool
-	ClusterVersion NodeVersion
+	ClusterVersion *NodeVersion
 	FeatureFlags   []TestFeatureFlag
 }
 
@@ -25,7 +25,7 @@ type DCPTestConfig struct {
 	Collections    []uint32
 	Authenticator  AuthProvider
 	CAProvider     func() *x509.CertPool
-	ClusterVersion NodeVersion
+	ClusterVersion *NodeVersion
 	FeatureFlags   []TestFeatureFlag
 	NumMutations   int
 	NumDeletions   int
