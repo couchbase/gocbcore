@@ -110,6 +110,8 @@ Looper:
 				return false
 			}
 
+			logDebugf("CCCPPOLL: Got Block: %v", string(cccpBytes))
+
 			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {
 				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
