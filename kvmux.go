@@ -79,64 +79,38 @@ func (mux *kvMux) clear() *kvMuxState {
 
 //  This method MUST NEVER BLOCK due to its use from various contention points.
 func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
-	oldClientMux := mux.getState()
-	newClientMux := mux.newKVMuxState(cfg)
+	oldMuxState := mux.getState()
+	newMuxState := mux.newKVMuxState(cfg)
 
 	// Attempt to atomically update the routing data
-	if !mux.updateState(oldClientMux, newClientMux) {
+	if !mux.updateState(oldMuxState, newMuxState) {
 		logErrorf("Someone preempted the config update, skipping update")
 		return
 	}
 
-	if oldClientMux == nil {
-		if newClientMux.revID > -1 && mux.collectionsEnabled && !newClientMux.collectionsSupported {
+	if oldMuxState == nil {
+		if newMuxState.revID > -1 && mux.collectionsEnabled && !newMuxState.collectionsSupported {
 			logDebugf("Collections disabled as unsupported")
 		}
 		// There is no existing muxer.  We can simply start the new pipelines.
-		for _, pipeline := range newClientMux.pipelines {
+		for _, pipeline := range newMuxState.pipelines {
 			pipeline.StartClients()
 		}
 	} else {
 		if !mux.collectionsEnabled {
 			// If collections just aren't enabled then we never need to refresh the connections because collections
 			// have come online.
-			mux.muxTakeover(oldClientMux, newClientMux)
-		} else if oldClientMux.collectionsSupported == newClientMux.collectionsSupported {
+			mux.pipelineTakeover(oldMuxState, newMuxState)
+		} else if oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
 			// Get the new muxer to takeover the pipelines from the older one
-			mux.muxTakeover(oldClientMux, newClientMux)
+			mux.pipelineTakeover(oldMuxState, newMuxState)
 		} else {
 			// Collections support has changed so we need to reconnect all connections in order to support the new
 			// state.
-			for _, pipeline := range oldClientMux.pipelines {
-				err := pipeline.Close()
-				if err != nil {
-					logErrorf("failed to shut down pipeline: %s", err)
-				}
-			}
-
-			err := oldClientMux.deadPipe.Close()
-			if err != nil {
-				logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
-			}
-
-			for _, pipeline := range newClientMux.pipelines {
-				pipeline.StartClients()
-			}
+			mux.reconnectPipelines(oldMuxState, newMuxState)
 		}
 
-		// Gather all the requests from all the old pipelines and then
-		//  sort and redispatch them (which will use the new pipelines)
-		var requestList []*memdQRequest
-		mux.muxDrain(oldClientMux, func(req *memdQRequest) {
-			requestList = append(requestList, req)
-		})
-
-		sort.Sort(memdQRequestSorter(requestList))
-
-		for _, req := range requestList {
-			stopCmdTrace(req)
-			mux.RequeueDirect(req, false)
-		}
+		mux.requeueRequests(oldMuxState)
 	}
 }
 
@@ -418,7 +392,7 @@ func (mux *kvMux) Close() error {
 		req.tryCallback(nil, errShutdown)
 	}
 
-	mux.muxDrain(clientMux, cb)
+	mux.drainPipelines(clientMux, cb)
 
 	return muxErr
 }
@@ -513,7 +487,7 @@ func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) boo
 	return mux.waitAndRetryOperation(req, KVNotMyVBucketRetryReason)
 }
 
-func (mux *kvMux) muxDrain(clientMux *kvMuxState, cb func(req *memdQRequest)) {
+func (mux *kvMux) drainPipelines(clientMux *kvMuxState, cb func(req *memdQRequest)) {
 	for _, pipeline := range clientMux.pipelines {
 		logDebugf("Draining queue %+v", pipeline)
 		pipeline.Drain(cb)
@@ -544,7 +518,41 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 	return newKVMuxState(cfg, pipelines, newDeadPipeline(mux.queueSize))
 }
 
-func (mux *kvMux) muxTakeover(oldMux, newMux *kvMuxState) {
+func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState) {
+	for _, pipeline := range oldMuxState.pipelines {
+		err := pipeline.Close()
+		if err != nil {
+			logErrorf("failed to shut down pipeline: %s", err)
+		}
+	}
+
+	err := oldMuxState.deadPipe.Close()
+	if err != nil {
+		logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
+	}
+
+	for _, pipeline := range newMuxState.pipelines {
+		pipeline.StartClients()
+	}
+}
+
+func (mux *kvMux) requeueRequests(oldMuxState *kvMuxState) {
+	// Gather all the requests from all the old pipelines and then
+	//  sort and redispatch them (which will use the new pipelines)
+	var requestList []*memdQRequest
+	mux.drainPipelines(oldMuxState, func(req *memdQRequest) {
+		requestList = append(requestList, req)
+	})
+
+	sort.Sort(memdQRequestSorter(requestList))
+
+	for _, req := range requestList {
+		stopCmdTrace(req)
+		mux.RequeueDirect(req, false)
+	}
+}
+
+func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 	oldPipelines := list.New()
 
 	// Gather all our old pipelines up for takeover and what not
