@@ -12,7 +12,6 @@ type configManagementComponent struct {
 
 	cfgChangeWatchers []routeConfigWatcher
 	watchersLock      sync.Mutex
-	invalidWatcher    func()
 
 	collectionsSupported bool
 	collectionsEnabled   bool
@@ -33,12 +32,11 @@ type routeConfigWatcher interface {
 	OnNewRouteConfig(cfg *routeConfig)
 }
 
-func newConfigManager(props configManagerProperties, invalidCfgWatcher func()) *configManagementComponent {
+func newConfigManager(props configManagerProperties) *configManagementComponent {
 	return &configManagementComponent{
-		useSSL:         props.UseSSL,
-		networkType:    props.NetworkType,
-		srcServers:     append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
-		invalidWatcher: invalidCfgWatcher,
+		useSSL:      props.UseSSL,
+		networkType: props.NetworkType,
+		srcServers:  append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
@@ -54,8 +52,7 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
-		// This will trigger something upstream to react, i.e. agent to shutdown.
-		cm.invalidWatcher()
+		logDebugf("Routing data is not valid, skipping update: \n%s", routeCfg.DebugString())
 		return
 	}
 

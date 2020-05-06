@@ -1287,10 +1287,12 @@ func (suite *StandardTestSuite) TestDiagnostics() {
 }
 
 type testAlternateAddressesRouteConfigMgr struct {
-	cfg *routeConfig
+	cfg       *routeConfig
+	cfgCalled bool
 }
 
 func (taa *testAlternateAddressesRouteConfigMgr) OnNewRouteConfig(cfg *routeConfig) {
+	taa.cfgCalled = true
 	taa.cfg = cfg
 }
 
@@ -1300,7 +1302,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1328,8 +1329,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
-
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1356,7 +1355,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []string{"172.17.0.4:11210"},
-	}, func() {
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1384,8 +1382,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "default",
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
-
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1412,8 +1408,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
-
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1440,7 +1434,6 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1463,13 +1456,13 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	var invalid bool
+	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "invalid",
 		SrcMemdAddrs: []string{"192.168.132.234:32799"},
-	}, func() {
-		invalid = true
 	})
+
+	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
 
 	networkType := cfgManager.NetworkType()
@@ -1477,8 +1470,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 		suite.T().Fatalf("Expected agent networkType to be invalid, was %s", networkType)
 	}
 
-	if !invalid {
-		suite.T().Fatalf("Expected route config to be invalid, was valid")
+	if mgr.cfgCalled {
+		suite.T().Fatalf("Expected route config to not be propagated, was propagated")
 	}
 }
 

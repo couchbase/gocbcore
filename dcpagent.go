@@ -204,7 +204,6 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 			SrcMemdAddrs: config.MemdAddrs,
 			SrcHTTPAddrs: []string{},
 		},
-		c.onInvalidConfig,
 	)
 
 	dialer := newMemdClientDialerComponent(
@@ -305,13 +304,6 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 // IsSecure returns whether this client is connected via SSL.
 func (agent *DCPAgent) IsSecure() bool {
 	return agent.tlsConfig != nil
-}
-
-func (agent *DCPAgent) onInvalidConfig() {
-	err := agent.Close()
-	if err != nil {
-		logErrorf("Invalid config caused agent close failure (%s)", err)
-	}
 }
 
 // Close shuts down the agent, disconnecting from all servers and failing

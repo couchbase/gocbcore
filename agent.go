@@ -229,7 +229,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			SrcMemdAddrs: config.MemdAddrs,
 			SrcHTTPAddrs: httpEpList,
 		},
-		c.onInvalidConfig,
 	)
 
 	dialer := newMemdClientDialerComponent(
@@ -453,13 +452,6 @@ func (agent *Agent) disconnectClient(client *memdClient) {
 	err := client.Close()
 	if err != nil {
 		logErrorf("Failed to shut down client connection (%s)", err)
-	}
-}
-
-func (agent *Agent) onInvalidConfig() {
-	err := agent.Close()
-	if err != nil {
-		logErrorf("Invalid config caused agent close failure (%s)", err)
 	}
 }
 
