@@ -14,24 +14,23 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
-/* BUG(brett19): GOCBC-691: Disabled due to known issue with CID error retries
 func (suite *StandardTestSuite) TestCidRetries() {
-	suite.EnsureSupportsFeature(t, TestFeatureCollections)
+	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	agent, s := suite.GetAgentAndHarness(t)
+	agent, s := suite.GetAgentAndHarness()
 
-	bucketName := s.BucketName
+	bucketName := suite.BucketName
 	scopeName := suite.ScopeName
 	collectionName := "testCidRetries"
 
 	_, err := testCreateCollection(collectionName, scopeName, bucketName, agent)
 	if err != nil {
-		t.Logf("Failed to create collection: %v", err)
+		suite.T().Logf("Failed to create collection: %v", err)
 	}
 
 	// prime the cid map cache
 	s.PushOp(agent.GetCollectionID(scopeName, collectionName, GetCollectionIDOptions{},
-		func(manifestID uint64, collectionID uint32, err error) {
+		func(result *GetCollectionIDResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
 					s.Fatalf("Get CID operation failed: %v", err)
@@ -89,7 +88,6 @@ func (suite *StandardTestSuite) TestCidRetries() {
 	}))
 	s.Wait(0)
 }
-*/
 
 func (suite *StandardTestSuite) TestBasicOps() {
 	agent, s := suite.GetAgentAndHarness()

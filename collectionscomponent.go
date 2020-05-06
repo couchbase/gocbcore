@@ -55,7 +55,7 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 		}()
 	}
 
-	return false
+	return shouldRetry
 }
 
 func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
@@ -108,6 +108,8 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 	return cidMgr.mux.DispatchDirect(req)
 }
 
+// GetCollectionID does not trigger retries on unknown collection. This is because the request sets the scope and collection
+// name in the key rather than in the corresponding fields.
 func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb GetCollectionIDCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
