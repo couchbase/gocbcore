@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -121,11 +122,6 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 		}
 
 		if err != nil {
-			cidCache.lock.Lock()
-			cidCache.id = invalidCid
-			cidCache.err = err
-			cidCache.lock.Unlock()
-
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -237,10 +233,6 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	return nil
 }
 
-func (cid *collectionIDCache) rejectRequest(req *memdQRequest) error {
-	return cid.err
-}
-
 func (cid *collectionIDCache) queueRequest(req *memdQRequest) error {
 	return cid.opQueue.Push(req, cid.maxQueueSize)
 }
@@ -253,8 +245,20 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 
 	_, err = cid.parent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
 		func(result *GetCollectionIDResult, err error) {
-			// GetCollectionID will handle updating the id cache so we don't need to do it here
 			if err != nil {
+				if errors.Is(err, ErrCollectionNotFound) {
+					// If this is a collection unknown error then it'll get retried so we just leave the
+					// cid in pending state. Either the collection will eventually come online or this request will
+					// timeout.
+					if cid.opQueue.Remove(req) {
+						cid.lock.Lock()
+						cid.id = unknownCid
+						cid.lock.Unlock()
+						if cid.parent.handleCollectionUnknown(req) {
+							return
+						}
+					}
+				}
 				cid.opQueue.Close()
 				cid.opQueue.Drain(func(request *memdQRequest) {
 					request.tryCallback(nil, err)
@@ -278,20 +282,18 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	cid.lock.Lock()
 	// if the cid is unknown then mark the request pending and refresh cid first
 	// if it's pending then queue the request
-	// if it's invalid then reject the request
 	// otherwise send the request
 	switch cid.id {
 	case unknownCid:
+		logDebugf("Collection %s.%s unknown, refreshing id", req.ScopeName, req.CollectionName)
 		cid.id = pendingCid
 		cid.opQueue = newMemdOpQueue()
 		cid.lock.Unlock()
 		return cid.refreshCid(req)
 	case pendingCid:
+		logDebugf("Collection %s.%s pending, queueing request", req.ScopeName, req.CollectionName)
 		cid.lock.Unlock()
 		return cid.queueRequest(req)
-	case invalidCid:
-		cid.lock.Unlock()
-		return cid.rejectRequest(req)
 	default:
 		cid.lock.Unlock()
 		return cid.sendWithCid(req)
@@ -341,7 +343,7 @@ func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 		cidMgr.add(cidCache, req.ScopeName, req.CollectionName)
 	}
 	cidCache.lock.Lock()
-	if cidCache.id != unknownCid && cidCache.id != pendingCid && cidCache.id != invalidCid {
+	if cidCache.id != unknownCid && cidCache.id != pendingCid {
 		cidCache.id = unknownCid
 	}
 	cidCache.lock.Unlock()

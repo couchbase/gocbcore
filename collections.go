@@ -8,7 +8,6 @@ import (
 const (
 	unknownCid = uint32(0xFFFFFFFF)
 	pendingCid = uint32(0xFFFFFFFE)
-	invalidCid = uint32(0xFFFFFFFD)
 )
 
 // ManifestCollection is the representation of a collection within a manifest.
