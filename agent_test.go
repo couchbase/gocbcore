@@ -1558,7 +1558,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 	}
 
 	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError)
+	waitCh := make(chan testManifestWithError, 1)
 	go waitForManifest(agent, uint64(uid), waitCh)
 
 	for {
@@ -1651,7 +1651,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 	}
 
 	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError)
+	waitCh := make(chan testManifestWithError, 1)
 	go waitForManifest(agent, uint64(uid), waitCh)
 
 	for {
