@@ -59,7 +59,6 @@ type pingOp struct {
 	remaining  int32
 	results    map[ServiceType][]EndpointPingResult
 	callback   PingCallback
-	configRev  int64
 	bucketName string
 	httpCancel context.CancelFunc
 }
@@ -71,12 +70,12 @@ func (pop *pingOp) Cancel() {
 	pop.httpCancel()
 }
 
-func (pop *pingOp) handledOneLocked() {
+func (pop *pingOp) handledOneLocked(configRev int64) {
 	remaining := atomic.AddInt32(&pop.remaining, -1)
 	if remaining == 0 {
 		pop.httpCancel()
 		pop.callback(&PingResult{
-			ConfigRev: pop.configRev,
+			ConfigRev: configRev,
 			Services:  pop.results,
 		}, nil)
 	}
@@ -91,6 +90,7 @@ type PingOptions struct {
 	N1QLDeadline time.Time
 	FtsDeadline  time.Time
 	CapiDeadline time.Time
+	MgmtDeadline time.Time
 	ServiceTypes []ServiceType
 }
 

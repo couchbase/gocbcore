@@ -32,6 +32,11 @@ type routeConfigWatcher interface {
 	OnNewRouteConfig(cfg *routeConfig)
 }
 
+type configManager interface {
+	AddConfigWatcher(watcher routeConfigWatcher)
+	RemoveConfigWatcher(watcher routeConfigWatcher)
+}
+
 func newConfigManager(props configManagerProperties) *configManagementComponent {
 	return &configManagementComponent{
 		useSSL:      props.UseSSL,

@@ -16,7 +16,7 @@ type n1qlTestHelper struct {
 	suite         *StandardTestSuite
 }
 
-func hlpRunQuery(t *testing.T, agent *Agent, opts N1QLQueryOptions) ([][]byte, error) {
+func hlpRunQuery(t *testing.T, agent *AgentGroup, opts N1QLQueryOptions) ([][]byte, error) {
 	t.Helper()
 
 	resCh := make(chan *N1QLRowReader, 1)
@@ -54,7 +54,7 @@ func hlpRunQuery(t *testing.T, agent *Agent, opts N1QLQueryOptions) ([][]byte, e
 	return rowBytes, err
 }
 
-func hlpEnsurePrimaryIndex(t *testing.T, agent *Agent, bucketName string) {
+func hlpEnsurePrimaryIndex(t *testing.T, agent *AgentGroup, bucketName string) {
 	t.Helper()
 
 	payloadStr := fmt.Sprintf(`{"statement":"CREATE PRIMARY INDEX ON %s"}`, bucketName)
@@ -66,10 +66,11 @@ func hlpEnsurePrimaryIndex(t *testing.T, agent *Agent, bucketName string) {
 
 func (nqh *n1qlTestHelper) testSetupN1ql(t *testing.T) {
 	agent := nqh.suite.DefaultAgent()
+	ag := nqh.suite.AgentGroup()
 
 	nqh.QueryTestDocs = makeTestDocs(t, agent, nqh.TestName, nqh.NumDocs)
 
-	hlpEnsurePrimaryIndex(t, agent, nqh.suite.BucketName)
+	hlpEnsurePrimaryIndex(t, ag, nqh.suite.BucketName)
 }
 
 func (nqh *n1qlTestHelper) testCleanupN1ql(t *testing.T) {
@@ -80,7 +81,7 @@ func (nqh *n1qlTestHelper) testCleanupN1ql(t *testing.T) {
 }
 
 func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
-	agent := nqh.suite.DefaultAgent()
+	ag := nqh.suite.AgentGroup()
 
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
@@ -99,7 +100,7 @@ func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
 
 		resCh := make(chan *N1QLRowReader)
 		errCh := make(chan error)
-		_, err = agent.N1QLQuery(N1QLQueryOptions{
+		_, err = ag.N1QLQuery(N1QLQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,
@@ -183,7 +184,7 @@ func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
 }
 
 func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
-	agent := nqh.suite.DefaultAgent()
+	ag := nqh.suite.AgentGroup()
 
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
@@ -202,7 +203,7 @@ func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
 
 		resCh := make(chan *N1QLRowReader)
 		errCh := make(chan error)
-		_, err = agent.PreparedN1QLQuery(N1QLQueryOptions{
+		_, err = ag.PreparedN1QLQuery(N1QLQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,

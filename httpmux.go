@@ -8,10 +8,10 @@ import (
 type httpMux struct {
 	muxPtr     unsafe.Pointer
 	breakerCfg CircuitBreakerConfig
-	cfgMgr     *configManagementComponent
+	cfgMgr     configManager
 }
 
-func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr *configManagementComponent) *httpMux {
+func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr configManager) *httpMux {
 	mux := &httpMux{
 		breakerCfg: breakerCfg,
 		cfgMgr:     cfgMgr,
@@ -100,6 +100,15 @@ func (mux *httpMux) FtsEps() []string {
 	}
 
 	return clientMux.ftsEpList
+}
+
+func (mux *httpMux) ConfigRev() (int64, error) {
+	clientMux := mux.Get()
+	if clientMux == nil {
+		return 0, errShutdown
+	}
+
+	return clientMux.revID, nil
 }
 
 func (mux *httpMux) Close() error {

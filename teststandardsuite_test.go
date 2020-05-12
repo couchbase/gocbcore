@@ -3,7 +3,6 @@ package gocbcore
 import (
 	"fmt"
 	"io/ioutil"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,9 +14,8 @@ type StandardTestSuite struct {
 	suite.Suite
 
 	*TestConfig
-	defaultAgent *Agent
-	memdAgent    *Agent
-	mockInst     *jcbmock.Mock
+	agentGroup *AgentGroup
+	mockInst   *jcbmock.Mock
 }
 
 func (suite *StandardTestSuite) SetupSuite() {
@@ -38,12 +36,10 @@ func (suite *StandardTestSuite) SetupSuite() {
 
 		suite.mockInst = mock
 
-		var couchbaseAddrs []string
-		for _, mcport := range mock.MemcachedPorts() {
-			couchbaseAddrs = append(couchbaseAddrs, fmt.Sprintf("127.0.0.1:%d", mcport))
-		}
-
-		globalTestConfig.ConnStr = fmt.Sprintf("couchbase://%s", strings.Join(couchbaseAddrs, ","))
+		// Unfortunately we have to use http with the mock. Config polling has to be done over HTTP for memcached
+		// buckets and if we use a non-default port with the couchbase protocol then we won't automatically
+		// translate over the http address(es) and so we can never fetch the cluster config for the memd bucket.
+		globalTestConfig.ConnStr = fmt.Sprintf("http://127.0.0.1:%d", mock.EntryPort)
 		globalTestConfig.BucketName = "default"
 		globalTestConfig.MemdBucketName = "memd"
 		globalTestConfig.Authenticator = &PasswordAuthProvider{
@@ -54,25 +50,21 @@ func (suite *StandardTestSuite) SetupSuite() {
 
 	suite.TestConfig = globalTestConfig
 	var err error
-	suite.defaultAgent, err = suite.initAgent(suite.makeBaseAgentConfig(globalTestConfig))
+	suite.agentGroup, err = suite.initAgentGroup(suite.makeAgentGroupConfig(globalTestConfig))
+	suite.Require().Nil(err, err)
+
+	err = suite.agentGroup.OpenBucket(globalTestConfig.BucketName)
 	suite.Require().Nil(err, err)
 
 	if suite.SupportsFeature(TestFeatureMemd) {
-		suite.memdAgent, err = suite.initAgent(suite.makeMemdAgentConfig(globalTestConfig))
+		err = suite.agentGroup.OpenBucket(globalTestConfig.MemdBucketName)
 		suite.Require().Nil(err, err)
 	}
 }
 
 func (suite *StandardTestSuite) TearDownSuite() {
-	if suite.memdAgent != nil {
-		suite.memdAgent.Close()
-		suite.memdAgent = nil
-	}
-
-	if suite.defaultAgent != nil {
-		suite.defaultAgent.Close()
-		suite.defaultAgent = nil
-	}
+	err := suite.agentGroup.Close()
+	suite.Require().Nil(err, err)
 }
 
 func (suite *StandardTestSuite) TimeTravel(waitDura time.Duration) {
@@ -109,6 +101,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return true
 	case TestFeatureReplicas:
 		return true
+	case TestFeatureMemd:
+		return true
 	case TestFeatureN1ql:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Equal(srvVer650DP)
 	case TestFeatureCbas:
@@ -120,8 +114,6 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer()
 	case TestFeatureCollections:
 		return !suite.IsMockServer() && (suite.ClusterVersion.Equal(srvVer650DP) || !suite.ClusterVersion.Lower(srvVer700))
-	case TestFeatureMemd:
-		return !suite.IsMockServer()
 	case TestFeatureGetMeta:
 		return !suite.IsMockServer()
 	}
@@ -130,11 +122,15 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 }
 
 func (suite *StandardTestSuite) DefaultAgent() *Agent {
-	return suite.defaultAgent
+	return suite.agentGroup.GetAgent(globalTestConfig.BucketName)
 }
 
 func (suite *StandardTestSuite) MemdAgent() *Agent {
-	return suite.memdAgent
+	return suite.agentGroup.GetAgent(globalTestConfig.MemdBucketName)
+}
+
+func (suite *StandardTestSuite) AgentGroup() *AgentGroup {
+	return suite.agentGroup
 }
 
 func (suite *StandardTestSuite) GetHarness() *TestSubHarness {
@@ -166,13 +162,12 @@ func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBuc
 	return
 }
 
-func (suite *StandardTestSuite) makeBaseAgentConfig(testConfig *TestConfig) AgentConfig {
-	config := AgentConfig{}
+func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) AgentGroupConfig {
+	config := AgentGroupConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
 	config.UseMutationTokens = true
 	config.UseCollections = true
-	config.BucketName = testConfig.BucketName
 	config.UseOutOfOrderResponses = true
 
 	config.Auth = testConfig.Authenticator
@@ -184,61 +179,13 @@ func (suite *StandardTestSuite) makeBaseAgentConfig(testConfig *TestConfig) Agen
 	return config
 }
 
-func (suite *StandardTestSuite) makeMemdAgentConfig(testConfig *TestConfig) AgentConfig {
-	config := AgentConfig{}
-	config.FromConnStr(testConfig.ConnStr)
-
-	config.BucketName = testConfig.MemdBucketName
-
-	config.Auth = testConfig.Authenticator
-
-	if testConfig.CAProvider != nil {
-		config.TLSRootCAProvider = testConfig.CAProvider
-	}
-
-	return config
-}
-
-func (suite *StandardTestSuite) initAgent(config AgentConfig) (*Agent, error) {
-	agent, err := CreateAgent(&config)
+func (suite *StandardTestSuite) initAgentGroup(config AgentGroupConfig) (*AgentGroup, error) {
+	ag, err := CreateAgentGroup(&config)
 	if err != nil {
 		return nil, err
 	}
 
-	services := []ServiceType{MemdService}
-	if suite.SupportsFeature(TestFeatureN1ql) {
-		services = append(services, N1qlService)
-	}
-	if suite.SupportsFeature(TestFeatureCbas) {
-		services = append(services, CbasService)
-	}
-	if suite.SupportsFeature(TestFeatureFts) {
-		services = append(services, CbasService)
-	}
-	if suite.SupportsFeature(TestFeatureViews) && !suite.IsMockServer() { // Mock doesn't like the ping endpoint
-		services = append(services, CapiService)
-	}
-
-	ch := make(chan error)
-	_, err = agent.WaitUntilReady(
-		time.Now().Add(5*time.Second),
-		WaitUntilReadyOptions{
-			ServiceTypes: services,
-		},
-		func(result *WaitUntilReadyResult, err error) {
-			ch <- err
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	err = <-ch
-	if err != nil {
-		return nil, err
-	}
-
-	return agent, nil
+	return ag, nil
 }
 
 func TestStandardSuite(t *testing.T) {

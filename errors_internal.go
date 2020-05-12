@@ -290,6 +290,20 @@ func (err TimeoutError) Unwrap() error {
 	return err.InnerError
 }
 
+type notConnectedOrUnsupportedError struct {
+	InnerError error
+}
+
+func (err notConnectedOrUnsupportedError) Error() string {
+	return "no connections could be made to the cluster or the cluster does not support cluster-level queries " +
+		"(only Couchbase Server 6.5 and later) and no bucket is open. If an older Couchbase Server version " +
+		"is used, at least one bucket needs to be opened | " + err.InnerError.Error()
+}
+
+func (err notConnectedOrUnsupportedError) Unwrap() error {
+	return err.InnerError
+}
+
 // ncError is a wrapper error that provides no additional context to one of the
 // publicly exposed error types.  This is to force people to correctly use the
 // error handling behaviours to check the error, rather than direct compares.

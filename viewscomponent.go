@@ -154,7 +154,7 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 
 	go func() {
 		for {
-			resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq)
+			resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 			if err != nil {
 				cancel()
 				// execHTTPRequest will handle retrying due to in-flight socket close based

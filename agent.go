@@ -4,6 +4,7 @@ package gocbcore
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -86,23 +87,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	var tlsConfig *dynTLSConfig
 	if config.UseTLS {
-		tlsConfig = &dynTLSConfig{
-			BaseConfig: &tls.Config{
-				GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-					cert, err := config.Auth.Certificate(AuthCertRequest{})
-					if err != nil {
-						return nil, err
-					}
-
-					if cert == nil {
-						return &tls.Certificate{}, nil
-					}
-
-					return cert, nil
-				},
-			},
-			Provider: config.TLSRootCAProvider,
-		}
+		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
 	}
 
 	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
@@ -305,19 +290,26 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.cfgManager,
 		)
 	}
-	c.pollerController = newPollerController(
-		cccpPoller,
-		newHTTPConfigController(
-			c.bucketName,
-			httpPollerProperties{
-				httpComponent:        c.http,
-				confHTTPRetryDelay:   confHTTPRetryDelay,
-				confHTTPRedialPeriod: confHTTPRedialPeriod,
-			},
-			c.httpMux,
-			c.cfgManager,
-		),
-	)
+
+	if cccpPoller == nil && config.BucketName == "" {
+		// The http poller can't run without a bucket. We don't trigger an error for this case
+		// because AgentGroup users who use memcached buckets on non-default ports will end up here.
+		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
+	} else {
+		c.pollerController = newPollerController(
+			cccpPoller,
+			newHTTPConfigController(
+				c.bucketName,
+				httpPollerProperties{
+					httpComponent:        c.http,
+					confHTTPRetryDelay:   confHTTPRetryDelay,
+					confHTTPRedialPeriod: confHTTPRedialPeriod,
+				},
+				c.httpMux,
+				c.cfgManager,
+			),
+		)
+	}
 
 	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap)
 	c.stats = newStatsComponent(c.kvMux, c.defaultRetryStrategy, c.tracer)
@@ -337,9 +329,31 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.httpMux.OnNewRouteConfig(cfg)
 	c.kvMux.OnNewRouteConfig(cfg)
 
-	go c.pollerController.Start()
+	if c.pollerController != nil {
+		go c.pollerController.Start()
+	}
 
 	return c, nil
+}
+
+func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {
+	return &dynTLSConfig{
+		BaseConfig: &tls.Config{
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				cert, err := auth.Certificate(AuthCertRequest{})
+				if err != nil {
+					return nil, err
+				}
+
+				if cert == nil {
+					return &tls.Certificate{}, nil
+				}
+
+				return cert, nil
+			},
+		},
+		Provider: caProvider,
+	}
 }
 
 func createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, tlsConfig *dynTLSConfig) *http.Client {
@@ -459,18 +473,24 @@ func (agent *Agent) disconnectClient(client *memdClient) {
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
 	routeCloseErr := agent.kvMux.Close()
-	agent.pollerController.Stop()
+
+	poller := agent.pollerController
+	if poller != nil {
+		poller.Stop()
+	}
 
 	if agent.zombieLogger != nil {
 		agent.zombieLogger.Stop()
 	}
 
-	// Wait for our external looper goroutines to finish, note that if the
-	// specific looper wasn't used, it will be a nil value otherwise it
-	// will be an open channel till its closed to signal completion.
-	pollerCh := agent.pollerController.Done()
-	if pollerCh != nil {
-		<-pollerCh
+	if poller != nil {
+		// Wait for our external looper goroutines to finish, note that if the
+		// specific looper wasn't used, it will be a nil value otherwise it
+		// will be an open channel till its closed to signal completion.
+		pollerCh := poller.Done()
+		if pollerCh != nil {
+			<-pollerCh
+		}
 	}
 
 	// Close the transports so that they don't hold open goroutines.

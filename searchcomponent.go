@@ -176,7 +176,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 				ireq.Body = newPayload
 			}
 
-			resp, err := sqc.httpComponent.DoInternalHTTPRequest(ireq)
+			resp, err := sqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 			if err != nil {
 				cancel()
 				// execHTTPRequest will handle retrying due to in-flight socket close based

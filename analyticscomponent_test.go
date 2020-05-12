@@ -16,7 +16,7 @@ type analyticsTestHelper struct {
 	suite    *StandardTestSuite
 }
 
-func hlpRunAnalyticsQuery(t *testing.T, agent *Agent, opts AnalyticsQueryOptions) ([][]byte, error) {
+func hlpRunAnalyticsQuery(t *testing.T, agent *AgentGroup, opts AnalyticsQueryOptions) ([][]byte, error) {
 	t.Helper()
 
 	resCh := make(chan *AnalyticsRowReader, 1)
@@ -54,7 +54,7 @@ func hlpRunAnalyticsQuery(t *testing.T, agent *Agent, opts AnalyticsQueryOptions
 	return rowBytes, err
 }
 
-func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
+func hlpEnsureDataset(t *testing.T, agent *AgentGroup, bucketName string) {
 	t.Helper()
 
 	payloadStr := fmt.Sprintf("{\"statement\":\"CREATE DATASET IF NOT EXISTS `%s` ON `%s`\"}", bucketName, bucketName)
@@ -77,10 +77,11 @@ func hlpEnsureDataset(t *testing.T, agent *Agent, bucketName string) {
 
 func (nqh *analyticsTestHelper) testSetup(t *testing.T) {
 	agent := nqh.suite.DefaultAgent()
+	ag := nqh.suite.AgentGroup()
 
 	nqh.TestDocs = makeTestDocs(t, agent, nqh.TestName, nqh.NumDocs)
 
-	hlpEnsureDataset(t, agent, nqh.suite.BucketName)
+	hlpEnsureDataset(t, ag, nqh.suite.BucketName)
 }
 
 func (nqh *analyticsTestHelper) testCleanup(t *testing.T) {

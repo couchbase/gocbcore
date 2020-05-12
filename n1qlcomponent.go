@@ -149,7 +149,7 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 
 type n1qlQueryComponent struct {
 	httpComponent httpComponentInterface
-	cfgMgr        *configManagementComponent
+	cfgMgr        configManager
 	tracer        *tracerComponent
 
 	queryCache map[string]*n1qlQueryCacheEntry
@@ -169,7 +169,7 @@ type n1qlJSONPrepData struct {
 	Name        string `json:"name"`
 }
 
-func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr *configManagementComponent, tracer *tracerComponent) *n1qlQueryComponent {
+func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr configManager, tracer *tracerComponent) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,
@@ -473,7 +473,7 @@ ExecuteLoop:
 			ireq.Body = newPayload
 		}
 
-		resp, err := nqc.httpComponent.DoInternalHTTPRequest(ireq)
+		resp, err := nqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 		if err != nil {
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest

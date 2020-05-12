@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,145 +31,304 @@ func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *http
 	}
 }
 
-func (dc *diagnosticsComponent) pingHTTPService(ctx context.Context, epList []string, path string, service ServiceType, op *pingOp,
-	deadline time.Time, retryStrat RetryStrategy) {
-	for _, ep := range epList {
-		atomic.AddInt32(&op.remaining, 1)
-		go func(ep string) {
-			req := &httpRequest{
-				Service:       service,
-				Method:        "GET",
-				Path:          path,
-				Deadline:      deadline,
-				RetryStrategy: retryStrat,
-				Endpoint:      ep,
-				IsIdempotent:  true,
-				Context:       ctx,
-				UniqueID:      uuid.New().String(),
-			}
-			start := time.Now()
-			_, err := dc.httpComponent.DoInternalHTTPRequest(req)
-			pingLatency := time.Now().Sub(start)
-			state := PingStateOK
-			if err != nil {
-				if errors.Is(err, ErrTimeout) {
-					state = PingStateTimeout
+func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Duration, deadline time.Time,
+	retryStrat RetryStrategy, op *pingOp) {
+
+	if !deadline.IsZero() {
+		// We have to setup a new child context with its own deadline because services have their own timeout values.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+
+	for {
+		iter, err := dc.kvMux.PipelineSnapshot()
+		if err != nil {
+			logErrorf("failed to get pipeline snapshot")
+
+			select {
+			case <-ctx.Done():
+				ctxErr := ctx.Err()
+				var cancelReason error
+				if errors.Is(ctxErr, context.Canceled) {
+					cancelReason = ctxErr
 				} else {
-					state = PingStateError
+					cancelReason = errUnambiguousTimeout
 				}
+
+				op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
+					Error: cancelReason,
+					Scope: op.bucketName,
+					ID:    uuid.New().String(),
+					State: PingStateTimeout,
+				})
+				op.handledOneLocked(iter.RevID())
+				return
+			case <-time.After(interval):
+				continue
 			}
-			op.lock.Lock()
-			op.results[service] = append(op.results[service], EndpointPingResult{
-				Endpoint: ep,
-				Error:    err,
-				Latency:  pingLatency,
-				Scope:    op.bucketName,
-				ID:       uuid.New().String(),
-				State:    state,
+		}
+
+		if iter.RevID() > -1 {
+			var wg sync.WaitGroup
+			iter.Iterate(0, func(p *memdPipeline) bool {
+				wg.Add(1)
+				go func(pipeline *memdPipeline) {
+					serverAddress := pipeline.Address()
+
+					startTime := time.Now()
+					handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+						pingLatency := time.Now().Sub(startTime)
+
+						state := PingStateOK
+						if err != nil {
+							if errors.Is(err, ErrTimeout) {
+								state = PingStateTimeout
+							} else {
+								state = PingStateError
+							}
+						}
+
+						op.lock.Lock()
+						op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
+							Endpoint: serverAddress,
+							Error:    err,
+							Latency:  pingLatency,
+							Scope:    op.bucketName,
+							ID:       fmt.Sprintf("%p", pipeline),
+							State:    state,
+						})
+						op.lock.Unlock()
+						wg.Done()
+					}
+
+					req := &memdQRequest{
+						Packet: memd.Packet{
+							Magic:    memd.CmdMagicReq,
+							Command:  memd.CmdNoop,
+							Datatype: 0,
+							Cas:      0,
+							Key:      nil,
+							Value:    nil,
+						},
+						Callback:      handler,
+						RetryStrategy: retryStrat,
+					}
+
+					curOp, err := dc.kvMux.DispatchDirectToAddress(req, pipeline)
+					if err != nil {
+						op.lock.Lock()
+						op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
+							Endpoint: redactSystemData(serverAddress),
+							Error:    err,
+							Latency:  0,
+							Scope:    op.bucketName,
+						})
+						op.lock.Unlock()
+						wg.Done()
+						return
+					}
+
+					if !deadline.IsZero() {
+						start := time.Now()
+						timer := time.AfterFunc(deadline.Sub(start), func() {
+							connInfo := req.ConnectionInfo()
+							count, reasons := req.Retries()
+							req.cancelWithCallback(&TimeoutError{
+								InnerError:         errUnambiguousTimeout,
+								OperationID:        "PingKV",
+								Opaque:             req.Identifier(),
+								TimeObserved:       time.Now().Sub(start),
+								RetryReasons:       reasons,
+								RetryAttempts:      count,
+								LastDispatchedTo:   connInfo.lastDispatchedTo,
+								LastDispatchedFrom: connInfo.lastDispatchedFrom,
+								LastConnectionID:   connInfo.lastConnectionID,
+							})
+						})
+						req.processingLock.Lock()
+						req.Timer = timer
+						req.processingLock.Unlock()
+					}
+
+					op.lock.Lock()
+					op.subops = append(op.subops, pingSubOp{
+						endpoint: serverAddress,
+						op:       curOp,
+					})
+					op.lock.Unlock()
+				}(p)
+
+				// We iterate through all pipelines
+				return false
 			})
-			op.handledOneLocked()
+
+			wg.Wait()
+			op.lock.Lock()
+			op.handledOneLocked(iter.RevID())
 			op.lock.Unlock()
-		}(ep)
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			ctxErr := ctx.Err()
+			var cancelReason error
+			if errors.Is(ctxErr, context.Canceled) {
+				cancelReason = ctxErr
+			} else {
+				cancelReason = errUnambiguousTimeout
+			}
+
+			op.lock.Lock()
+			op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
+				Error: cancelReason,
+				Scope: op.bucketName,
+				ID:    uuid.New().String(),
+				State: PingStateTimeout,
+			})
+			op.handledOneLocked(iter.RevID())
+			op.lock.Unlock()
+			return
+		case <-time.After(interval):
+		}
 	}
 }
 
-func (dc *diagnosticsComponent) pingKV(iter *pipelineSnapshot, op *pingOp, deadline time.Time, retryStrat RetryStrategy) {
-	iter.Iterate(0, func(pipeline *memdPipeline) bool {
-		serverAddress := pipeline.Address()
+func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceType,
+	interval time.Duration, deadline time.Time, retryStrat RetryStrategy, op *pingOp) {
 
-		startTime := time.Now()
-		handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-			pingLatency := time.Now().Sub(startTime)
+	if !deadline.IsZero() {
+		// We have to setup a new child context with its own deadline because services have their own timeout values.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
 
-			state := PingStateOK
-			if err != nil {
-				if errors.Is(err, ErrTimeout) {
-					state = PingStateTimeout
-				} else {
-					state = PingStateError
-				}
+	muxer := dc.httpMux
+
+	var path string
+	switch service {
+	case N1qlService:
+		path = "/admin/ping"
+	case CbasService:
+		path = "/admin/ping"
+	case FtsService:
+		path = "/api/ping"
+	case CapiService:
+		path = "/"
+	}
+
+	for {
+		clientMux := muxer.Get()
+		if clientMux.revID > -1 {
+			var epList []string
+			switch service {
+			case N1qlService:
+				epList = clientMux.n1qlEpList
+			case CbasService:
+				epList = clientMux.cbasEpList
+			case FtsService:
+				epList = clientMux.ftsEpList
+			case CapiService:
+				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
+			}
+
+			if len(epList) == 0 {
+				op.lock.Lock()
+				op.results[service] = append(op.results[service], EndpointPingResult{
+					Error: errServiceNotAvailable,
+					Scope: op.bucketName,
+					ID:    uuid.New().String(),
+					State: PingStateTimeout,
+				})
+				op.handledOneLocked(clientMux.revID)
+				op.lock.Unlock()
+				return
+			}
+
+			var wg sync.WaitGroup
+			for _, ep := range epList {
+				wg.Add(1)
+				go func(ep string) {
+					defer wg.Done()
+					req := &httpRequest{
+						Service:       service,
+						Method:        "GET",
+						Path:          path,
+						Endpoint:      ep,
+						IsIdempotent:  true,
+						RetryStrategy: retryStrat,
+						Context:       ctx,
+						UniqueID:      uuid.New().String(),
+					}
+					start := time.Now()
+					resp, err := dc.httpComponent.DoInternalHTTPRequest(req, false)
+					pingLatency := time.Now().Sub(start)
+					state := PingStateOK
+					if err != nil {
+						if errors.Is(err, ErrTimeout) {
+							state = PingStateTimeout
+						} else {
+							state = PingStateError
+						}
+					} else {
+						if resp.StatusCode > 200 {
+							state = PingStateError
+							b, pErr := ioutil.ReadAll(resp.Body)
+							if pErr != nil {
+								logDebugf("Failed to read response body for ping: %v", pErr)
+							}
+
+							err = errors.New(string(b))
+						}
+					}
+					op.lock.Lock()
+					op.results[service] = append(op.results[service], EndpointPingResult{
+						Endpoint: ep,
+						Error:    err,
+						Latency:  pingLatency,
+						Scope:    op.bucketName,
+						ID:       uuid.New().String(),
+						State:    state,
+					})
+					op.lock.Unlock()
+				}(ep)
+			}
+
+			wg.Wait()
+			op.lock.Lock()
+			op.handledOneLocked(clientMux.revID)
+			op.lock.Unlock()
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			ctxErr := ctx.Err()
+			var cancelReason error
+			if errors.Is(ctxErr, context.Canceled) {
+				cancelReason = ctxErr
+			} else {
+				cancelReason = errUnambiguousTimeout
 			}
 
 			op.lock.Lock()
-			op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
-				Endpoint: serverAddress,
-				Error:    err,
-				Latency:  pingLatency,
-				Scope:    op.bucketName,
-				ID:       fmt.Sprintf("%p", pipeline),
-				State:    state,
+			op.results[service] = append(op.results[service], EndpointPingResult{
+				Error: cancelReason,
+				Scope: op.bucketName,
+				ID:    uuid.New().String(),
+				State: PingStateTimeout,
 			})
-			op.handledOneLocked()
+			op.handledOneLocked(clientMux.revID)
 			op.lock.Unlock()
+			return
+		case <-time.After(interval):
 		}
-
-		req := &memdQRequest{
-			Packet: memd.Packet{
-				Magic:    memd.CmdMagicReq,
-				Command:  memd.CmdNoop,
-				Datatype: 0,
-				Cas:      0,
-				Key:      nil,
-				Value:    nil,
-			},
-			Callback:      handler,
-			RetryStrategy: retryStrat,
-		}
-
-		curOp, err := dc.kvMux.DispatchDirectToAddress(req, pipeline)
-		if err != nil {
-			op.lock.Lock()
-			op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
-				Endpoint: redactSystemData(serverAddress),
-				Error:    err,
-				Latency:  0,
-				Scope:    op.bucketName,
-			})
-			op.lock.Unlock()
-			return false
-		}
-
-		if !deadline.IsZero() {
-			start := time.Now()
-			timer := time.AfterFunc(deadline.Sub(start), func() {
-				connInfo := req.ConnectionInfo()
-				count, reasons := req.Retries()
-				req.cancelWithCallback(&TimeoutError{
-					InnerError:         errUnambiguousTimeout,
-					OperationID:        "PingKV",
-					Opaque:             req.Identifier(),
-					TimeObserved:       time.Now().Sub(start),
-					RetryReasons:       reasons,
-					RetryAttempts:      count,
-					LastDispatchedTo:   connInfo.lastDispatchedTo,
-					LastDispatchedFrom: connInfo.lastDispatchedFrom,
-					LastConnectionID:   connInfo.lastConnectionID,
-				})
-			})
-			req.processingLock.Lock()
-			req.Timer = timer
-			req.processingLock.Unlock()
-		}
-
-		op.lock.Lock()
-		op.subops = append(op.subops, pingSubOp{
-			endpoint: serverAddress,
-			op:       curOp,
-		})
-		atomic.AddInt32(&op.remaining, 1)
-		op.lock.Unlock()
-
-		// We iterate through all pipelines
-		return false
-	})
+	}
 }
 
 func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (PendingOp, error) {
-	iter, err := dc.kvMux.PipelineSnapshot()
-	if err != nil {
-		return nil, err
-	}
-
 	bucketName := ""
 	if dc.bucket != "" {
 		bucketName = redactMetaData(dc.bucket)
@@ -183,8 +343,7 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 
 	op := &pingOp{
 		callback:   cb,
-		remaining:  1,
-		configRev:  iter.RevID(),
+		remaining:  int32(len(serviceTypes)),
 		results:    make(map[ServiceType][]EndpointPingResult),
 		bucketName: bucketName,
 		httpCancel: cancelFunc,
@@ -192,29 +351,25 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 
 	retryStrat := newFailFastRetryStrategy()
 
-	httpMuxClient := dc.httpMux.Get()
+	// interval is how long to wait between checking if we've seen a cluster config
+	interval := 10 * time.Millisecond
+
 	for _, serviceType := range serviceTypes {
 		switch serviceType {
 		case MemdService:
-			dc.pingKV(iter, op, opts.KVDeadline, retryStrat)
+			go dc.pingKV(ctx, interval, opts.KVDeadline, retryStrat, op)
 		case CapiService:
-			dc.pingHTTPService(ctx, dc.endpointsFromCapiList(httpMuxClient.capiEpList), "/", CapiService, op,
-				opts.CapiDeadline, retryStrat)
+			go dc.pingHTTP(ctx, CapiService, interval, opts.CapiDeadline, retryStrat, op)
 		case N1qlService:
-			dc.pingHTTPService(ctx, httpMuxClient.n1qlEpList, "/admin/ping", N1qlService, op, opts.N1QLDeadline, retryStrat)
+			go dc.pingHTTP(ctx, N1qlService, interval, opts.N1QLDeadline, retryStrat, op)
 		case FtsService:
-			dc.pingHTTPService(ctx, httpMuxClient.ftsEpList, "/api/ping", FtsService, op, opts.FtsDeadline, retryStrat)
+			go dc.pingHTTP(ctx, FtsService, interval, opts.FtsDeadline, retryStrat, op)
 		case CbasService:
-			dc.pingHTTPService(ctx, httpMuxClient.cbasEpList, "/admin/ping", CbasService, op, opts.CbasDeadline, retryStrat)
+			go dc.pingHTTP(ctx, CbasService, interval, opts.CbasDeadline, retryStrat, op)
+		case MgmtService:
+			go dc.pingHTTP(ctx, MgmtService, interval, opts.MgmtDeadline, retryStrat, op)
 		}
 	}
-
-	// We initialized remaining to one to ensure that the callback is not
-	// invoked until all of the operations have been dispatched first.  This
-	// final handling is to indicate that all operations were dispatched.
-	op.lock.Lock()
-	op.handledOneLocked()
-	op.lock.Unlock()
 
 	return op, nil
 }
@@ -423,7 +578,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 						Context:       ctx,
 						UniqueID:      uuid.New().String(),
 					}
-					resp, err := dc.httpComponent.DoInternalHTTPRequest(req)
+					resp, err := dc.httpComponent.DoInternalHTTPRequest(req, false)
 					if err != nil {
 						if errors.Is(err, context.Canceled) {
 							return

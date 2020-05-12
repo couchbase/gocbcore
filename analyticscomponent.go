@@ -208,7 +208,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 				ireq.Body = newPayload
 			}
 
-			resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq)
+			resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 			if err != nil {
 				cancel()
 				// execHTTPRequest will handle retrying due to in-flight socket close based

@@ -16,7 +16,7 @@ import (
 )
 
 type httpComponentInterface interface {
-	DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse, error)
+	DoInternalHTTPRequest(req *httpRequest, skipConfigCheck bool) (*HTTPResponse, error)
 }
 
 type httpComponent struct {
@@ -84,7 +84,7 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 	}
 
 	go func() {
-		resp, err := hc.DoInternalHTTPRequest(ireq)
+		resp, err := hc.DoInternalHTTPRequest(ireq, false)
 		if err != nil {
 			cancel()
 			cb(nil, wrapHTTPError(ireq, err))
@@ -97,39 +97,9 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 	return ireq, nil
 }
 
-func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse, error) {
+func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck bool) (*HTTPResponse, error) {
 	if req.Service == MemdService {
 		return nil, errInvalidService
-	}
-
-	// Identify an endpoint to use for the request
-	endpoint := req.Endpoint
-	if endpoint == "" {
-		var err error
-		switch req.Service {
-		case MgmtService:
-			endpoint, err = hc.getMgmtEp()
-		case CapiService:
-			endpoint, err = hc.getCapiEp()
-		case N1qlService:
-			endpoint, err = hc.getN1qlEp()
-		case FtsService:
-			endpoint, err = hc.getFtsEp()
-		case CbasService:
-			endpoint, err = hc.getCbasEp()
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Generate a request URI
-	reqURI := endpoint + req.Path
-
-	// Create a new request
-	hreq, err := http.NewRequest(req.Method, reqURI, nil)
-	if err != nil {
-		return nil, err
 	}
 
 	// This creates a context that has a parent with no cancel function. As such WithCancel will not setup any
@@ -162,6 +132,69 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 			case <-doneCh:
 			}
 		}()
+	}
+
+	if !skipConfigCheck {
+		for {
+			revID, err := hc.muxer.ConfigRev()
+			if err != nil {
+				return nil, err
+			}
+
+			if revID > -1 {
+				break
+			}
+
+			// We've not successfully been setup with a cluster map yet
+			select {
+			case <-ctx.Done():
+				err := ctx.Err()
+				if errors.Is(err, context.Canceled) {
+					isTimeout := atomic.LoadUint32(&cancelationIsTimeout)
+					if isTimeout == 1 {
+						if req.IsIdempotent {
+							return nil, errUnambiguousTimeout
+						}
+						return nil, errAmbiguousTimeout
+					}
+
+					return nil, errRequestCanceled
+				}
+
+				return nil, err
+			case <-time.After(500 * time.Microsecond):
+			}
+		}
+	}
+
+	// Identify an endpoint to use for the request
+	endpoint := req.Endpoint
+	if endpoint == "" {
+		var err error
+		switch req.Service {
+		case MgmtService:
+			endpoint, err = hc.getMgmtEp()
+		case CapiService:
+			endpoint, err = hc.getCapiEp()
+		case N1qlService:
+			endpoint, err = hc.getN1qlEp()
+		case FtsService:
+			endpoint, err = hc.getFtsEp()
+		case CbasService:
+			endpoint, err = hc.getCbasEp()
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Generate a request URI
+	reqURI := endpoint + req.Path
+
+	// Create a new request
+	hreq, err := http.NewRequest(req.Method, reqURI, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	// Lets add our context to the httpRequest
