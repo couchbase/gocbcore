@@ -74,6 +74,9 @@ var (
 
 	// ErrGCCCPInUse occurs when an operation dis performed whilst the client is connect via GCCCP.
 	ErrGCCCPInUse = errors.New("connected via gcccp, kv operations are not supported, open a bucket first")
+
+	// ErrNotMyVBucket occurs when an operation is sent to a node which does not own the vbucket.
+	ErrNotMyVBucket = errors.New("not my vbucket")
 )
 
 // Shared Error Definitions RFC#58@15

@@ -411,7 +411,8 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 	err = translateMemdError(err, req)
 
 	// Handle potentially retrying the operation
-	if resp != nil && resp.Status == memd.StatusNotMyVBucket {
+	// ErrMemdNotMyVBucket isn't translated from memd as we don't expose it.
+	if errors.Is(err, ErrNotMyVBucket) {
 		if mux.handleNotMyVbucket(resp, req) {
 			return true, nil
 		}

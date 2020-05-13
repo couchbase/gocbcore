@@ -347,6 +347,7 @@ var (
 	errIndexNotFound         = ncError{ErrIndexNotFound}
 	errIndexExists           = ncError{ErrIndexExists}
 	errGCCCPInUse            = ncError{ErrGCCCPInUse}
+	errNotMyVBucket          = ncError{ErrNotMyVBucket}
 
 	errDocumentNotFound                  = ncError{ErrDocumentNotFound}
 	errDocumentUnretrievable             = ncError{ErrDocumentUnretrievable}

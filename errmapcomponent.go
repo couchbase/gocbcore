@@ -205,6 +205,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errXattrCannotModifyVirtualAttribute
 	case ErrXattrInvalidOrder:
 		return errXattrInvalidOrder
+	case ErrMemdNotMyVBucket:
+		return errNotMyVBucket
 	}
 
 	return err

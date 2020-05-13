@@ -60,7 +60,7 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 }
 
 func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
-	if resp != nil && resp.Status == memd.StatusCollectionUnknown {
+	if errors.Is(err, ErrCollectionNotFound) {
 		if cidMgr.handleCollectionUnknown(req) {
 			return true, nil
 		}
