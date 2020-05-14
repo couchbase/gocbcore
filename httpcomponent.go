@@ -219,11 +219,10 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest) (*HTTPResponse,
 	hreq.Header.Set("User-Agent", clientInfoString(uniqueID, hc.userAgent))
 
 	for {
-		// dSpan := agent.tracer.StartSpan("dispatch_to_server", req.RootTraceContext).
-		// 	SetTag("retry", req.retryCount)
+		dSpan := hc.tracer.StartHTTPSpan(req, "dispatch_to_server")
 		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
 		hresp, err := hc.cli.Do(hreq)
-		// dSpan.Finish()
+		dSpan.Finish()
 		if err != nil {
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation
 			// of the error message here for better UX.

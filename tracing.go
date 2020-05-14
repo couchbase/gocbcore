@@ -98,6 +98,11 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 	}
 }
 
+func (tc *tracerComponent) StartHTTPSpan(req *httpRequest, name string) RequestSpan {
+	return tc.tracer.StartSpan(name, req.RootTraceContext).
+		SetTag("retry", req.RetryAttempts())
+}
+
 func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	if req.cmdTraceSpan != nil {
 		logWarnf("Attempted to start tracing on traced request")
