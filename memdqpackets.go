@@ -130,7 +130,11 @@ func (req *memdQRequest) Idempotent() bool {
 }
 
 func (req *memdQRequest) ConnectionInfo() memdQRequestConnInfo {
-	return req.connInfo.Load().(memdQRequestConnInfo)
+	p := req.connInfo.Load()
+	if p == nil {
+		return memdQRequestConnInfo{}
+	}
+	return p.(memdQRequestConnInfo)
 }
 
 func (req *memdQRequest) SetConnectionInfo(info memdQRequestConnInfo) {
