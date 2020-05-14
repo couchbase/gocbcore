@@ -111,17 +111,6 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 	return enhErr
 }
 
-func (errMgr *errMapComponent) MakeSubDocError(index int, code memd.StatusCode, req *memdQRequest, resp *memdQResponse) error {
-	err := getKvStatusCodeError(code)
-	err = translateMemdError(err, req)
-	err = errMgr.EnhanceKvError(err, resp, req)
-
-	return SubDocumentError{
-		Index:      index,
-		InnerError: err,
-	}
-}
-
 func translateMemdError(err error, req *memdQRequest) error {
 	switch err {
 	case ErrMemdInvalidArgs:

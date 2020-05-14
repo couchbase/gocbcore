@@ -56,7 +56,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 			}
 
 			if resError != memd.StatusSuccess {
-				results[subdocs.indexes[i]].Err = crud.errMapManager.MakeSubDocError(i, resError, req, resp)
+				results[subdocs.indexes[i]].Err = crud.makeSubDocError(i, resError, req, resp)
 			}
 
 			results[subdocs.indexes[i]].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
@@ -182,7 +182,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			opIndex := int(resp.Value[0])
 			resError := memd.StatusCode(binary.BigEndian.Uint16(resp.Value[1:]))
 
-			err := crud.errMapManager.MakeSubDocError(opIndex, resError, req, resp)
+			err := crud.makeSubDocError(opIndex, resError, req, resp)
 			tracer.Finish()
 			cb(nil, err)
 			return
@@ -192,7 +192,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			opIndex := int(resp.Value[readPos+0])
 			opStatus := memd.StatusCode(binary.BigEndian.Uint16(resp.Value[readPos+1:]))
 
-			results[subdocs.indexes[opIndex]].Err = crud.errMapManager.MakeSubDocError(opIndex, opStatus, req, resp)
+			results[subdocs.indexes[opIndex]].Err = crud.makeSubDocError(opIndex, opStatus, req, resp)
 			readPos += 3
 
 			if opStatus == memd.StatusSuccess {
@@ -329,4 +329,15 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	}
 
 	return crud.cidMgr.Dispatch(req)
+}
+
+func (crud *crudComponent) makeSubDocError(index int, code memd.StatusCode, req *memdQRequest, resp *memdQResponse) error {
+	err := getKvStatusCodeError(code)
+	err = translateMemdError(err, req)
+	err = crud.errMapManager.EnhanceKvError(err, resp, req)
+
+	return SubDocumentError{
+		Index:      index,
+		InnerError: err,
+	}
 }
