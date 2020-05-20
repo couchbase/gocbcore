@@ -49,6 +49,7 @@ type DCPAgentConfig struct {
 	UseExpiryOpcode bool
 	UseStreamID     bool
 	UseOSOBackfill  bool
+	BackfillOrder   DCPBackfillOrder
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {

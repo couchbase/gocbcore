@@ -65,3 +65,16 @@ const (
 	// ClusterCapabilityEnhancedPreparedStatements represents that the cluster supports enhanced prepared statements.
 	ClusterCapabilityEnhancedPreparedStatements = ClusterCapability(0x01)
 )
+
+// DCPBackfillOrder represents the order in which vBuckets will be backfilled by the cluster.
+type DCPBackfillOrder uint8
+
+const (
+	// DCPBackfillOrderRoundRobin means that all the requested vBuckets will be backfilled together where each vBucket
+	// has some data backfilled before moving on to the next. This is the default behaviour.
+	DCPBackfillOrderRoundRobin DCPBackfillOrder = iota + 1
+
+	// DCPBackfillOrderSequential means that all the data for the first vBucket will be streamed before advancing onto
+	// the next vBucket.
+	DCPBackfillOrderSequential
+)

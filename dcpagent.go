@@ -70,6 +70,22 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			}
 		}
 
+		// If the user doesn't explicitly set the backfill order, the DCP control flag will not be sent to the cluster
+		// and the default will implicitly be used (which is 'round-robin').
+		var backfillOrder string
+		switch config.BackfillOrder {
+		case DCPBackfillOrderRoundRobin:
+			backfillOrder = "round-robin"
+		case DCPBackfillOrderSequential:
+			backfillOrder = "sequential"
+		}
+
+		if backfillOrder != "" {
+			if err := sclient.ExecDcpControl("backfill_order", backfillOrder, deadline); err != nil {
+				return err
+			}
+		}
+
 		if err := sclient.ExecEnableDcpClientEnd(deadline); err != nil {
 			return err
 		}
