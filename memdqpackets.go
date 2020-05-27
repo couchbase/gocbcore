@@ -75,7 +75,7 @@ type memdQRequest struct {
 	retryLock sync.Mutex
 
 	// This is the timer which is used for cancellation of the request when deadlines are used.
-	Timer *time.Timer
+	timer atomic.Value
 
 	// This stores a memdQRequestConnInfo value which is used to track connection information
 	// for the request.
@@ -141,6 +141,19 @@ func (req *memdQRequest) SetConnectionInfo(info memdQRequestConnInfo) {
 	req.connInfo.Store(info)
 }
 
+func (req *memdQRequest) SetTimer(t *time.Timer) {
+	req.timer.Store(t)
+}
+
+func (req *memdQRequest) Timer() *time.Timer {
+	t := req.timer.Load()
+	if t == nil {
+		return nil
+	}
+
+	return t.(*time.Timer)
+}
+
 func (req *memdQRequest) recordRetryAttempt(retryReason RetryReason) {
 	req.retryLock.Lock()
 	defer req.retryLock.Unlock()
@@ -160,8 +173,9 @@ func (req *memdQRequest) recordRetryAttempt(retryReason RetryReason) {
 }
 
 func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
-	if req.Timer != nil {
-		req.Timer.Stop()
+	t := req.Timer()
+	if t != nil {
+		t.Stop()
 	}
 
 	if req.Persistent {
@@ -199,10 +213,11 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		return false
 	}
 
-	if req.Timer != nil {
+	t := req.Timer()
+	if t != nil {
 		// This timer might have already fired and that's how we got here, however we might have also got here
 		// via other means so we should always try to stop it.
-		req.Timer.Stop()
+		t.Stop()
 	}
 
 	queuedWith := (*memdOpQueue)(atomic.LoadPointer(&req.queuedWith))

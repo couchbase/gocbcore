@@ -72,9 +72,14 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -88,10 +93,10 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
@@ -146,9 +151,14 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -162,10 +172,10 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
@@ -220,9 +230,14 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -236,10 +251,10 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
@@ -294,9 +309,14 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -310,10 +330,10 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp, error) {
@@ -365,9 +385,14 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -381,10 +406,10 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (PendingOp, error) {
@@ -433,9 +458,14 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -449,10 +479,10 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (PendingOp, error) {
@@ -517,9 +547,14 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -533,10 +568,10 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
@@ -604,9 +639,14 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -620,10 +660,10 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Set(opts SetOptions, cb StoreCallback) (PendingOp, error) {
@@ -745,9 +785,14 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -761,10 +806,10 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Append(opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
@@ -860,9 +905,14 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -876,10 +926,10 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) Increment(opts CounterOptions, cb CounterCallback) (PendingOp, error) {
@@ -937,9 +987,14 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -953,10 +1008,10 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
@@ -1018,9 +1073,14 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -1034,10 +1094,10 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
@@ -1095,9 +1155,14 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -1111,10 +1176,10 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
@@ -1172,9 +1237,14 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -1188,8 +1258,8 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }

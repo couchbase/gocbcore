@@ -79,9 +79,14 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -95,10 +100,10 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }
 
 func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
@@ -201,9 +206,14 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
+	op, err := crud.cidMgr.Dispatch(req)
+	if err != nil {
+		return nil, err
+	}
+
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
-		req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
 			req.cancelWithCallback(&TimeoutError{
@@ -217,8 +227,8 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
 			})
-		})
+		}))
 	}
 
-	return crud.cidMgr.Dispatch(req)
+	return op, nil
 }

@@ -131,7 +131,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 
 					if !deadline.IsZero() {
 						start := time.Now()
-						timer := time.AfterFunc(deadline.Sub(start), func() {
+						req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
 							connInfo := req.ConnectionInfo()
 							count, reasons := req.Retries()
 							req.cancelWithCallback(&TimeoutError{
@@ -145,10 +145,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 								LastDispatchedFrom: connInfo.lastDispatchedFrom,
 								LastConnectionID:   connInfo.lastConnectionID,
 							})
-						})
-						req.processingLock.Lock()
-						req.Timer = timer
-						req.processingLock.Unlock()
+						}))
 					}
 
 					op.lock.Lock()

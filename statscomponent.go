@@ -136,9 +136,21 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 			RetryStrategy:    opts.RetryStrategy,
 		}
 
+		curOp, err := sc.kvMux.DispatchDirectToAddress(req, pipeline)
+		if err != nil {
+			statsLock.Lock()
+			stats[serverAddress] = SingleServerStats{
+				Error: err,
+			}
+			opHandledLocked()
+			statsLock.Unlock()
+
+			continue
+		}
+
 		if !opts.Deadline.IsZero() {
 			start := time.Now()
-			req.Timer = time.AfterFunc(opts.Deadline.Sub(start), func() {
+			req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 				connInfo := req.ConnectionInfo()
 				count, reasons := req.Retries()
 				req.cancelWithCallback(&TimeoutError{
@@ -152,19 +164,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 					LastDispatchedFrom: connInfo.lastDispatchedFrom,
 					LastConnectionID:   connInfo.lastConnectionID,
 				})
-			})
-		}
-
-		curOp, err := sc.kvMux.DispatchDirectToAddress(req, pipeline)
-		if err != nil {
-			statsLock.Lock()
-			stats[serverAddress] = SingleServerStats{
-				Error: err,
-			}
-			opHandledLocked()
-			statsLock.Unlock()
-
-			continue
+			}))
 		}
 
 		op.ops = append(op.ops, curOp)
