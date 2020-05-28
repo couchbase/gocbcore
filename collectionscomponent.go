@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -21,6 +22,12 @@ type collectionsComponent struct {
 	maxQueueSize         int
 	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
+	cfgMgr               *configManagementComponent
+
+	// pendingOpQueue is used when collections are enabled but we've not yet seen a cluster config to confirm
+	// whether or not collections are supported.
+	pendingOpQueue *memdOpQueue
+	configSeen     uint32
 }
 
 type collectionIDProps struct {
@@ -28,18 +35,41 @@ type collectionIDProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent) *collectionsComponent {
+func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent,
+	cfgMgr *configManagementComponent) *collectionsComponent {
 	cidMgr := &collectionsComponent{
 		mux:                  mux,
 		idMap:                make(map[string]*collectionIDCache),
 		maxQueueSize:         props.MaxQueueSize,
 		tracer:               tracerCmpt,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
+		cfgMgr:               cfgMgr,
+		pendingOpQueue:       newMemdOpQueue(),
 	}
 
+	cfgMgr.AddConfigWatcher(cidMgr)
 	mux.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
 
 	return cidMgr
+}
+
+func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
+	if !atomic.CompareAndSwapUint32(&cidMgr.configSeen, 0, 1) {
+		return
+	}
+
+	colsSupported := cfg.ContainsBucketCapability("collections")
+	cidMgr.cfgMgr.RemoveConfigWatcher(cidMgr)
+	cidMgr.pendingOpQueue.Close()
+	cidMgr.pendingOpQueue.Drain(func(request *memdQRequest) {
+		// Anything in this queue is here because collections were present so if we definitely don't support collections
+		// then fail them.
+		if !colsSupported {
+			request.tryCallback(nil, errCollectionsUnsupported)
+			return
+		}
+		cidMgr.mux.RequeueDirect(request, false)
+	})
 }
 
 func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
@@ -305,7 +335,8 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
 	collectionIDPresent := req.CollectionID > 0
 
-	if !cidMgr.mux.SupportsCollections() {
+	// If the user didn't enable collections then we can just not bother with any collections logic.
+	if !cidMgr.mux.CollectionsEnabled() {
 		if !(noCollection || defaultCollection) || collectionIDPresent {
 			return nil, errCollectionsUnsupported
 		}
@@ -319,6 +350,20 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 
 	if noCollection || defaultCollection || collectionIDPresent {
 		return cidMgr.mux.DispatchDirect(req)
+	}
+
+	if atomic.LoadUint32(&cidMgr.configSeen) == 0 {
+		logDebugf("Collections are enabled but we've not yet seen a config so queueing request")
+		err := cidMgr.pendingOpQueue.Push(req, cidMgr.maxQueueSize)
+		if err != nil {
+			return nil, err
+		}
+
+		return req, nil
+	}
+
+	if !cidMgr.mux.SupportsCollections() {
+		return nil, errCollectionsUnsupported
 	}
 
 	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)

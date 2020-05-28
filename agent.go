@@ -263,6 +263,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		},
 		c.kvMux,
 		c.tracer,
+		c.cfgManager,
 	)
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
 	c.http = newHTTPComponent(

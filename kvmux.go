@@ -183,6 +183,12 @@ func (mux *kvMux) NumPipelines() int {
 	return clientMux.NumPipelines()
 }
 
+// CollectionsEnaled returns whether or not the kv mux was created with collections enabled.
+func (mux *kvMux) CollectionsEnabled() bool {
+	return mux.collectionsEnabled
+}
+
+// SupportsCollections returns whether or not collections are enabled AND supported by the server.
 func (mux *kvMux) SupportsCollections() bool {
 	if !mux.collectionsEnabled {
 		return false
