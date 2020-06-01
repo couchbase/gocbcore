@@ -817,7 +817,8 @@ func (suite *StandardTestSuite) TestObserveSeqNo() {
 func (suite *StandardTestSuite) TestRandomGet() {
 	agent, s := suite.GetAgentAndHarness()
 
-	distkeys := MakeDistKeys(agent)
+	distkeys, err := MakeDistKeys(agent, time.Now().Add(2*time.Second))
+	suite.Require().Nil(err, err)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
 			Key:            []byte(k),

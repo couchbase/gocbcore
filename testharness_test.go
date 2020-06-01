@@ -121,9 +121,24 @@ func TimeTravel(waitDura time.Duration, mockInst *jcbmock.Mock) {
 // Gets a set of keys evenly distributed across all server nodes.
 // the result is an array of strings, each index representing an index
 // of a server
-func MakeDistKeys(agent *Agent) (keys []string) {
+func MakeDistKeys(agent *Agent, deadline time.Time) (keys []string, errOut error) {
 	// Get the routing information
-	clientMux := agent.kvMux.getState()
+	// We can't make dist keys until we're connected.
+	var clientMux *kvMuxState
+	for {
+		clientMux = agent.kvMux.getState()
+
+		if clientMux.revID > -1 {
+			break
+		}
+
+		select {
+		case <-time.After(time.Until(deadline)):
+			errOut = errTimeout
+			return
+		case <-time.After(time.Millisecond):
+		}
+	}
 	keys = make([]string, clientMux.NumPipelines())
 	remaining := len(keys)
 
