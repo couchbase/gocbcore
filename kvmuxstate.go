@@ -34,10 +34,13 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
 	}
 
-	if cfg.ContainsBucketCapability("syncreplication") {
-		mux.durabilityLevelStatus = durabilityLevelStatusSupported
-	} else {
-		mux.durabilityLevelStatus = durabilityLevelStatusUnsupported
+	// We setup with a fake config, this means that durability support is still unknown.
+	if cfg.revID > -1 {
+		if cfg.ContainsBucketCapability("syncreplication") {
+			mux.durabilityLevelStatus = durabilityLevelStatusSupported
+		} else {
+			mux.durabilityLevelStatus = durabilityLevelStatusUnsupported
+		}
 	}
 
 	return mux
