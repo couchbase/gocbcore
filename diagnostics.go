@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -146,6 +147,47 @@ type waitUntilOp struct {
 	stopCh     chan struct{}
 	timer      *time.Timer
 	httpCancel context.CancelFunc
+
+	retryLock    sync.Mutex
+	retries      uint32
+	retryReasons []RetryReason
+	retryStrat   RetryStrategy
+}
+
+func (wuo *waitUntilOp) RetryAttempts() uint32 {
+	return atomic.LoadUint32(&wuo.retries)
+}
+
+func (wuo *waitUntilOp) RetryReasons() []RetryReason {
+	wuo.retryLock.Lock()
+	defer wuo.retryLock.Unlock()
+	return wuo.retryReasons
+}
+
+func (wuo *waitUntilOp) Identifier() string {
+	return "waituntilready"
+}
+
+func (wuo *waitUntilOp) Idempotent() bool {
+	return true
+}
+
+func (wuo *waitUntilOp) retryStrategy() RetryStrategy {
+	return wuo.retryStrat
+}
+
+func (wuo *waitUntilOp) recordRetryAttempt(reason RetryReason) {
+	atomic.AddUint32(&wuo.retries, 1)
+	wuo.retryLock.Lock()
+	defer wuo.retryLock.Unlock()
+	idx := sort.Search(len(wuo.retryReasons), func(i int) bool {
+		return wuo.retryReasons[i] == reason
+	})
+
+	// if idx is out of the range of retryReasons then it wasn't found.
+	if idx > len(wuo.retryReasons)-1 {
+		wuo.retryReasons = append(wuo.retryReasons, reason)
+	}
 }
 
 func (wuo *waitUntilOp) cancel(err error) {
@@ -178,4 +220,6 @@ type WaitUntilReadyResult struct {
 type WaitUntilReadyOptions struct {
 	DesiredState ClusterState  // Defaults to ClusterStateOnline
 	ServiceTypes []ServiceType // Defaults to all services
+	// If the cluster state is offline and a connect error has been observed then fast fail and return it.
+	RetryStrategy RetryStrategy
 }

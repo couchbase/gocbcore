@@ -20,14 +20,17 @@ type diagnosticsComponent struct {
 	httpMux       *httpMux
 	httpComponent *httpComponent
 	bucket        string
+	defaultRetry  RetryStrategy
 }
 
-func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *httpComponent, bucket string) *diagnosticsComponent {
+func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *httpComponent, bucket string,
+	defaultRetry RetryStrategy) *diagnosticsComponent {
 	return &diagnosticsComponent{
 		kvMux:         kvMux,
 		httpMux:       httpMux,
 		bucket:        bucket,
 		httpComponent: httpComponent,
+		defaultRetry:  defaultRetry,
 	}
 }
 
@@ -463,28 +466,50 @@ func (dc *diagnosticsComponent) Diagnostics(opts DiagnosticsOptions) (*Diagnosti
 	}
 }
 
-func (dc *diagnosticsComponent) checkKVReady(interval time.Duration, desiredState ClusterState,
-	op *waitUntilOp) {
+func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *waitUntilOp) {
 	for {
 		iter, err := dc.kvMux.PipelineSnapshot()
 		if err != nil {
-			logErrorf("failed to get pipeline snapshot")
+			logErrorf("failed to get pipeline snapshot: %v", err)
+
+			shouldRetry, until := retryOrchMaybeRetry(op, NoPipelineSnapshotRetryReason)
+			if !shouldRetry {
+				op.cancel(err)
+				return
+			}
 
 			select {
 			case <-op.stopCh:
 				return
-			case <-time.After(interval):
+			case <-time.After(time.Until(until)):
 				continue
 			}
 		}
 
-		if iter.RevID() > -1 {
-			expected := 0
+		var connectErr error
+		revID := iter.RevID()
+		if revID == -1 {
+			// We've not seen a config so let's see if there are any errors lurking on the connections.
+			iter.Iterate(0, func(pipeline *memdPipeline) bool {
+				pipeline.clientsLock.Lock()
+				defer pipeline.clientsLock.Unlock()
+				for _, cli := range pipeline.clients {
+					err := cli.Error()
+					if err != nil {
+						connectErr = err
+
+						return true
+					}
+				}
+
+				return false
+			})
+		} else if revID > -1 {
+			expected := iter.NumPipelines()
 			connected := 0
 			iter.Iterate(0, func(pipeline *memdPipeline) bool {
 				pipeline.clientsLock.Lock()
 				defer pipeline.clientsLock.Unlock()
-				expected += pipeline.maxClients
 				for _, cli := range pipeline.clients {
 					state := cli.State()
 					if state == EndpointStateConnected {
@@ -493,9 +518,21 @@ func (dc *diagnosticsComponent) checkKVReady(interval time.Duration, desiredStat
 							// If we're after degraded state then we can just bail early as we've already fulfilled that.
 							return true
 						}
-					} else if desiredState == ClusterStateOnline {
-						// If we're after online state then we can just bail early as we've already failed to fulfill that.
-						return true
+
+						// We only need one of the pipeline clients to be connected for this pipeline to be considered
+						// online.
+						break
+					}
+
+					err := cli.Error()
+					if err != nil {
+						connectErr = err
+
+						// If the desired state is degraded then we need to keep trying as a different client or pipeline
+						// might be connected. If it's online then we can bail now as we'll never achieve that.
+						if desiredState == ClusterStateOnline {
+							return true
+						}
 					}
 				}
 
@@ -525,16 +562,33 @@ func (dc *diagnosticsComponent) checkKVReady(interval time.Duration, desiredStat
 			}
 		}
 
+		var until time.Time
+		if connectErr == nil {
+			var shouldRetry bool
+			shouldRetry, until = retryOrchMaybeRetry(op, NotReadyRetryReason)
+			if !shouldRetry {
+				op.cancel(errCliInternalError)
+				return
+			}
+		} else {
+			var shouldRetry bool
+			shouldRetry, until = retryOrchMaybeRetry(op, ConnectionErrorRetryReason)
+			if !shouldRetry {
+				op.cancel(connectErr)
+				return
+			}
+		}
+
 		select {
 		case <-op.stopCh:
 			return
-		case <-time.After(interval):
+		case <-time.After(time.Until(until)):
 		}
 	}
 }
 
 func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service ServiceType,
-	interval time.Duration, desiredState ClusterState, op *waitUntilOp) {
+	desiredState ClusterState, op *waitUntilOp) {
 	retryStrat := &failFastRetryStrategy{}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -639,10 +693,17 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 			}
 		}
 
+		var shouldRetry bool
+		shouldRetry, until := retryOrchMaybeRetry(op, NotReadyRetryReason)
+		if !shouldRetry {
+			op.cancel(errCliInternalError)
+			return
+		}
+
 		select {
 		case <-op.stopCh:
 			return
-		case <-time.After(interval):
+		case <-time.After(time.Until(until)):
 		}
 	}
 }
@@ -663,6 +724,11 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		serviceTypes = []ServiceType{MemdService}
 	}
 
+	retry := opts.RetryStrategy
+	if retry == nil {
+		retry = dc.defaultRetry
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	op := &waitUntilOp{
@@ -670,35 +736,36 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		stopCh:     make(chan struct{}),
 		callback:   cb,
 		httpCancel: cancelFunc,
+		retryStrat: retry,
 	}
 
 	op.lock.Lock()
 	start := time.Now()
 	op.timer = time.AfterFunc(deadline.Sub(start), func() {
 		op.cancel(&TimeoutError{
-			InnerError:   errUnambiguousTimeout,
-			OperationID:  "WaitUntilReady",
-			TimeObserved: time.Since(start),
+			InnerError:    errUnambiguousTimeout,
+			OperationID:   "WaitUntilReady",
+			TimeObserved:  time.Since(start),
+			RetryReasons:  op.RetryReasons(),
+			RetryAttempts: op.RetryAttempts(),
 		})
 	})
 	op.lock.Unlock()
 
-	interval := 10 * time.Millisecond
-
 	for _, serviceType := range serviceTypes {
 		switch serviceType {
 		case MemdService:
-			go dc.checkKVReady(interval, desiredState, op)
+			go dc.checkKVReady(desiredState, op)
 		case CapiService:
-			go dc.checkHTTPReady(ctx, CapiService, interval, desiredState, op)
+			go dc.checkHTTPReady(ctx, CapiService, desiredState, op)
 		case N1qlService:
-			go dc.checkHTTPReady(ctx, N1qlService, interval, desiredState, op)
+			go dc.checkHTTPReady(ctx, N1qlService, desiredState, op)
 		case FtsService:
-			go dc.checkHTTPReady(ctx, FtsService, interval, desiredState, op)
+			go dc.checkHTTPReady(ctx, FtsService, desiredState, op)
 		case CbasService:
-			go dc.checkHTTPReady(ctx, CbasService, interval, desiredState, op)
+			go dc.checkHTTPReady(ctx, CbasService, desiredState, op)
 		case MgmtService:
-			go dc.checkHTTPReady(ctx, MgmtService, interval, desiredState, op)
+			go dc.checkHTTPReady(ctx, MgmtService, desiredState, op)
 		}
 	}
 

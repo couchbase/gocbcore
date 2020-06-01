@@ -15,6 +15,8 @@ type memdPipelineClient struct {
 	lock      sync.Mutex
 	closedSig chan struct{}
 	state     uint32
+
+	connectError error
 }
 
 func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
@@ -28,6 +30,12 @@ func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
 
 func (pipecli *memdPipelineClient) State() EndpointState {
 	return EndpointState(atomic.LoadUint32(&pipecli.state))
+}
+
+func (pipecli *memdPipelineClient) Error() error {
+	pipecli.lock.Lock()
+	defer pipecli.lock.Unlock()
+	return pipecli.connectError
 }
 
 func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
@@ -202,8 +210,14 @@ func (pipecli *memdPipelineClient) Run() {
 		client, err := pipeline.getClientFn()
 		if err != nil {
 			atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnected))
+			pipecli.lock.Lock()
+			pipecli.connectError = err
+			pipecli.lock.Unlock()
 			continue
 		}
+		pipecli.lock.Lock()
+		pipecli.connectError = nil
+		pipecli.lock.Unlock()
 		atomic.StoreUint32(&pipecli.state, uint32(EndpointStateConnected))
 
 		// Runs until the connection has died (for whatever reason)

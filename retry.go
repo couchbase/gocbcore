@@ -112,6 +112,15 @@ var (
 
 	// SearchTooManyRequestsRetryReason indicates that a search operation failed due to too many requests
 	SearchTooManyRequestsRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "SEARCH_TOO_MANY_REQUESTS"}
+
+	// NotReadyRetryReason indicates that the WaitUntilReady operation is not ready
+	NotReadyRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "NOT_READY"}
+
+	// NoPipelineSnapshotRetryReason indicates that there was no pipeline snapshot available
+	NoPipelineSnapshotRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "NO_PIPELINE_SNAPSHOT"}
+
+	// ConnectionErrorRetryReason indicates that there were errors reported by underlying connections
+	ConnectionErrorRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CONNECTION_ERROR"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.

@@ -47,6 +47,9 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 	}
+	if c.defaultRetryStrategy == nil {
+		c.defaultRetryStrategy = newFailFastRetryStrategy()
+	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
 	auth := config.Auth
@@ -78,7 +81,7 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	c.views = newViewQueryComponent(c.http, c.tracer)
 	// diagnostics at this level will never need to hook KV. There are no persistent connections
 	// so Diagnostics calls should be blocked. Ping and WaitUntilReady will only try HTTP services.
-	c.diagnostics = newDiagnosticsComponent(nil, c.httpMux, c.http, "")
+	c.diagnostics = newDiagnosticsComponent(nil, c.httpMux, c.http, "", c.defaultRetryStrategy)
 
 	// Kick everything off.
 	cfg := &routeConfig{
