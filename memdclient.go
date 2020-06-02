@@ -959,7 +959,7 @@ func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeatur
 }
 
 func (client *memdClient) doBootstrapRequest(req *memd.Packet, deadline time.Time, cb func(b []byte, err error)) error {
-	signal := make(chan BytesAndError)
+	signal := make(chan BytesAndError, 1)
 	qreq := memdQRequest{
 		Packet: *req,
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -987,8 +987,12 @@ func (client *memdClient) doBootstrapRequest(req *memd.Packet, deadline time.Tim
 			return
 		case <-timeoutTmr.C:
 			ReleaseTimer(timeoutTmr, true)
-			qreq.cancelWithCallback(errAmbiguousTimeout)
-			<-signal
+			if qreq.internalCancel(errAmbiguousTimeout) {
+				// Let's trigger the callback and consume the signal to stop anything from leaking.
+				qreq.Callback(nil, nil, errAmbiguousTimeout)
+				resp := <-signal
+				cb(resp.Bytes, resp.Err)
+			}
 			return
 		}
 	}()
