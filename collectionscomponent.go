@@ -68,7 +68,7 @@ func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
 			request.tryCallback(nil, errCollectionsUnsupported)
 			return
 		}
-		cidMgr.mux.RequeueDirect(request, false)
+		cidMgr.requeue(request)
 	})
 }
 
