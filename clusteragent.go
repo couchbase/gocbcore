@@ -186,7 +186,8 @@ func (agent *clusterAgent) Ping(opts PingOptions, cb PingCallback) (PendingOp, e
 	}
 
 	if len(opts.ServiceTypes) == 0 {
-		opts.ServiceTypes = []ServiceType{CbasService, FtsService, N1qlService} // TODO: don't merge until management service in here
+		opts.ServiceTypes = []ServiceType{CbasService, FtsService, N1qlService, MgmtService}
+		opts.ignoreMissingServices = true
 	}
 
 	return agent.diagnostics.Ping(opts, cb)
@@ -203,7 +204,7 @@ func (agent *clusterAgent) WaitUntilReady(deadline time.Time, opts WaitUntilRead
 	}
 
 	if len(opts.ServiceTypes) == 0 {
-		opts.ServiceTypes = []ServiceType{CbasService, FtsService, N1qlService} // TODO: don't merge until management service in here
+		opts.ServiceTypes = []ServiceType{CbasService, FtsService, N1qlService, MgmtService}
 	}
 
 	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)

@@ -193,7 +193,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 }
 
 func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceType,
-	interval time.Duration, deadline time.Time, retryStrat RetryStrategy, op *pingOp) {
+	interval time.Duration, deadline time.Time, retryStrat RetryStrategy, op *pingOp, ignoreMissingServices bool) {
 
 	if !deadline.IsZero() {
 		// We have to setup a new child context with its own deadline because services have their own timeout values.
@@ -227,18 +227,21 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 				epList = clientMux.cbasEpList
 			case FtsService:
 				epList = clientMux.ftsEpList
+			case MgmtService:
+				epList = clientMux.mgmtEpList
 			case CapiService:
 				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
 			}
 
 			if len(epList) == 0 {
 				op.lock.Lock()
-				op.results[service] = append(op.results[service], EndpointPingResult{
-					Error: errServiceNotAvailable,
-					Scope: op.bucketName,
-					ID:    uuid.New().String(),
-					State: PingStateTimeout,
-				})
+				if !ignoreMissingServices {
+					op.results[service] = append(op.results[service], EndpointPingResult{
+						Error: errServiceNotAvailable,
+						Scope: op.bucketName,
+						ID:    uuid.New().String(),
+					})
+				}
 				op.handledOneLocked(clientMux.revID)
 				op.lock.Unlock()
 				return
@@ -331,10 +334,15 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		bucketName = redactMetaData(dc.bucket)
 	}
 
+	ignoreMissingServices := false
 	serviceTypes := opts.ServiceTypes
 	if len(serviceTypes) == 0 {
-		serviceTypes = []ServiceType{MemdService}
+		// We're defaulting to pinging what we can so don't ping anything that isn't in the cluster config
+		ignoreMissingServices = true
+		serviceTypes = []ServiceType{MemdService, CapiService, N1qlService, FtsService, CbasService, MgmtService}
 	}
+
+	ignoreMissingServices = ignoreMissingServices || opts.ignoreMissingServices
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
@@ -356,15 +364,15 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 		case MemdService:
 			go dc.pingKV(ctx, interval, opts.KVDeadline, retryStrat, op)
 		case CapiService:
-			go dc.pingHTTP(ctx, CapiService, interval, opts.CapiDeadline, retryStrat, op)
+			go dc.pingHTTP(ctx, CapiService, interval, opts.CapiDeadline, retryStrat, op, ignoreMissingServices)
 		case N1qlService:
-			go dc.pingHTTP(ctx, N1qlService, interval, opts.N1QLDeadline, retryStrat, op)
+			go dc.pingHTTP(ctx, N1qlService, interval, opts.N1QLDeadline, retryStrat, op, ignoreMissingServices)
 		case FtsService:
-			go dc.pingHTTP(ctx, FtsService, interval, opts.FtsDeadline, retryStrat, op)
+			go dc.pingHTTP(ctx, FtsService, interval, opts.FtsDeadline, retryStrat, op, ignoreMissingServices)
 		case CbasService:
-			go dc.pingHTTP(ctx, CbasService, interval, opts.CbasDeadline, retryStrat, op)
+			go dc.pingHTTP(ctx, CbasService, interval, opts.CbasDeadline, retryStrat, op, ignoreMissingServices)
 		case MgmtService:
-			go dc.pingHTTP(ctx, MgmtService, interval, opts.MgmtDeadline, retryStrat, op)
+			go dc.pingHTTP(ctx, MgmtService, interval, opts.MgmtDeadline, retryStrat, op, ignoreMissingServices)
 		}
 	}
 

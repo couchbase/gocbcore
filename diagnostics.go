@@ -92,6 +92,8 @@ type PingOptions struct {
 	CapiDeadline time.Time
 	MgmtDeadline time.Time
 	ServiceTypes []ServiceType
+
+	ignoreMissingServices bool
 }
 
 // PingResult encapsulates the result of a PingKv operation.
