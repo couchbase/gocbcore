@@ -3,6 +3,7 @@ devsetup:
 	go get -u "golang.org/x/lint/golint"
 	go get -u "github.com/gordonklaus/ineffassign"
 	go get -u "github.com/client9/misspell/cmd/misspell"
+	go get github.com/vektra/mockery/.../
 
 test:
 	go test ./...
@@ -33,4 +34,9 @@ lint: checkfmt checkerrs checkvet checkiea checkspell
 check: lint
 	go test -cover -race ./...
 
-.PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check
+updatemocks:
+	mockery -name dispatcher -output . -testonly -inpkg
+	mockery -name tracerManager -output . -testonly -inpkg
+	mockery -name configManager -output . -testonly -inpkg
+
+.PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check updatemocks

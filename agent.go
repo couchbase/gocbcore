@@ -34,6 +34,7 @@ type Agent struct {
 	http         *httpComponent
 	diagnostics  *diagnosticsComponent
 	crud         *crudComponent
+	observe      *observeComponent
 	stats        *statsComponent
 	n1ql         *n1qlQueryComponent
 	analytics    *analyticsQueryComponent
@@ -312,7 +313,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		)
 	}
 
-	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap)
+	c.observe = newObserveComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.kvMux)
+	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap, c.kvMux)
 	c.stats = newStatsComponent(c.kvMux, c.defaultRetryStrategy, c.tracer)
 	c.n1ql = newN1QLQueryComponent(c.http, c.cfgManager, c.tracer)
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)

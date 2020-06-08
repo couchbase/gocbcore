@@ -225,7 +225,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.cidMgr.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{

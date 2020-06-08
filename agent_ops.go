@@ -151,7 +151,7 @@ type ObserveCallback func(*ObserveResult, error)
 
 // Observe retrieves the current CAS and persistence state for a document.
 func (agent *Agent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
-	return agent.crud.Observe(opts, cb)
+	return agent.observe.Observe(opts, cb)
 }
 
 // ObserveVbCallback is invoked upon completion of a ObserveVb operation.
@@ -160,7 +160,7 @@ type ObserveVbCallback func(*ObserveVbResult, error)
 // ObserveVb retrieves the persistence state sequence numbers for a particular VBucket
 // and includes additional details not included by the basic version.
 func (agent *Agent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
-	return agent.crud.ObserveVb(opts, cb)
+	return agent.observe.ObserveVb(opts, cb)
 }
 
 // SubDocOp defines a per-operation structure to be passed to MutateIn

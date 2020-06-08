@@ -12,6 +12,19 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
+type durabilityVerifier interface {
+	HasDurabilityLevelStatus(status durabilityLevelStatus) bool
+}
+
+type dispatcher interface {
+	DispatchDirect(req *memdQRequest) (PendingOp, error)
+	RequeueDirect(req *memdQRequest, isRetry bool)
+	DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error)
+	CollectionsEnabled() bool
+	SupportsCollections() bool
+	SetPostCompleteErrorHandler(handler postCompleteErrorHandler)
+}
+
 type kvMux struct {
 	muxPtr unsafe.Pointer
 

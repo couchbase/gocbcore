@@ -7,10 +7,32 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
-func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("Observe", opts.TraceContext)
+type bucketUtilsProvider interface {
+	KeyToVbucket(key []byte) (uint16, error)
+	BucketType() bucketType
+}
 
-	if crud.cidMgr.BucketType() != bktTypeCouchbase {
+type observeComponent struct {
+	cidMgr               *collectionsComponent
+	defaultRetryStrategy RetryStrategy
+	tracer               *tracerComponent
+	bucketUtils          bucketUtilsProvider
+}
+
+func newObserveComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
+	bucketUtils bucketUtilsProvider) *observeComponent {
+	return &observeComponent{
+		cidMgr:               cidMgr,
+		defaultRetryStrategy: defaultRetryStrategy,
+		tracer:               tracerCmpt,
+		bucketUtils:          bucketUtils,
+	}
+}
+
+func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
+	tracer := oc.tracer.CreateOpTrace("Observe", opts.TraceContext)
+
+	if oc.bucketUtils.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
 		return nil, errFeatureNotAvailable
 	}
@@ -44,7 +66,7 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 		}, nil)
 	}
 
-	vbID, err := crud.cidMgr.KeyToVbucket(opts.Key)
+	vbID, err := oc.bucketUtils.KeyToVbucket(opts.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +78,7 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 	copy(valueBuf[4:], opts.Key)
 
 	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = crud.defaultRetryStrategy
+		opts.RetryStrategy = oc.defaultRetryStrategy
 	}
 
 	req := &memdQRequest{
@@ -79,7 +101,7 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
-	op, err := crud.cidMgr.Dispatch(req)
+	op, err := oc.cidMgr.Dispatch(req)
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +128,10 @@ func (crud *crudComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pen
 	return op, nil
 }
 
-func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("ObserveVb", nil)
+func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
+	tracer := oc.tracer.CreateOpTrace("ObserveVb", nil)
 
-	if crud.cidMgr.BucketType() != bktTypeCouchbase {
+	if oc.bucketUtils.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
 		return nil, errFeatureNotAvailable
 	}
@@ -186,7 +208,7 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 	binary.BigEndian.PutUint64(valueBuf[0:], uint64(opts.VbUUID))
 
 	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = crud.defaultRetryStrategy
+		opts.RetryStrategy = oc.defaultRetryStrategy
 	}
 
 	req := &memdQRequest{
@@ -206,7 +228,7 @@ func (crud *crudComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback
 		RetryStrategy:    opts.RetryStrategy,
 	}
 
-	op, err := crud.cidMgr.Dispatch(req)
+	op, err := oc.cidMgr.Dispatch(req)
 	if err != nil {
 		return nil, err
 	}

@@ -65,6 +65,13 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 	return tracer.parentContext
 }
 
+type tracerManager interface {
+	CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer
+	StartHTTPSpan(req *httpRequest, name string) RequestSpan
+	StartCmdTrace(req *memdQRequest)
+	StartNetTrace(req *memdQRequest)
+}
+
 type tracerComponent struct {
 	tracer           RequestTracer
 	bucket           string

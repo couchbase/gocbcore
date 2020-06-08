@@ -18,11 +18,11 @@ func (cidMgr *collectionsComponent) createKey(scopeName, collectionName string) 
 type collectionsComponent struct {
 	idMap                map[string]*collectionIDCache
 	mapLock              sync.Mutex
-	mux                  *kvMux
+	dispatcher           dispatcher
 	maxQueueSize         int
-	tracer               *tracerComponent
+	tracer               tracerManager
 	defaultRetryStrategy RetryStrategy
-	cfgMgr               *configManagementComponent
+	cfgMgr               configManager
 
 	// pendingOpQueue is used when collections are enabled but we've not yet seen a cluster config to confirm
 	// whether or not collections are supported.
@@ -35,20 +35,20 @@ type collectionIDProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newCollectionIDManager(props collectionIDProps, mux *kvMux, tracerCmpt *tracerComponent,
-	cfgMgr *configManagementComponent) *collectionsComponent {
+func newCollectionIDManager(props collectionIDProps, dispatcher dispatcher, tracer tracerManager,
+	cfgMgr configManager) *collectionsComponent {
 	cidMgr := &collectionsComponent{
-		mux:                  mux,
+		dispatcher:           dispatcher,
 		idMap:                make(map[string]*collectionIDCache),
 		maxQueueSize:         props.MaxQueueSize,
-		tracer:               tracerCmpt,
+		tracer:               tracer,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		cfgMgr:               cfgMgr,
 		pendingOpQueue:       newMemdOpQueue(),
 	}
 
 	cfgMgr.AddConfigWatcher(cidMgr)
-	mux.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
+	dispatcher.SetPostCompleteErrorHandler(cidMgr.handleOpRoutingResp)
 
 	return cidMgr
 }
@@ -136,7 +136,7 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 		RootTraceContext: opts.TraceContext,
 	}
 
-	return cidMgr.mux.DispatchDirect(req)
+	return cidMgr.dispatcher.DispatchDirect(req)
 }
 
 // GetCollectionID does not trigger retries on unknown collection. This is because the request sets the scope and collection
@@ -204,7 +204,7 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 
 	req.Callback = handler
 
-	return cidMgr.mux.DispatchDirect(req)
+	return cidMgr.dispatcher.DispatchDirect(req)
 }
 
 func (cidMgr *collectionsComponent) add(id *collectionIDCache, scopeName, collectionName string) {
@@ -233,7 +233,7 @@ func (cidMgr *collectionsComponent) remove(scopeName, collectionName string) {
 
 func (cidMgr *collectionsComponent) newCollectionIDCache() *collectionIDCache {
 	return &collectionIDCache{
-		mux:          cidMgr.mux,
+		dispatcher:   cidMgr.dispatcher,
 		maxQueueSize: cidMgr.maxQueueSize,
 		parent:       cidMgr,
 	}
@@ -245,7 +245,7 @@ type collectionIDCache struct {
 	collectionName string
 	scopeName      string
 	parent         *collectionsComponent
-	mux            *kvMux
+	dispatcher     dispatcher
 	lock           sync.Mutex
 	err            error
 	maxQueueSize   int
@@ -255,7 +255,7 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	cid.lock.Lock()
 	req.CollectionID = cid.id
 	cid.lock.Unlock()
-	_, err := cid.mux.DispatchDirect(req)
+	_, err := cid.dispatcher.DispatchDirect(req)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 			cid.opQueue.Close()
 			cid.opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = result.CollectionID
-				cid.mux.RequeueDirect(request, false)
+				cid.dispatcher.RequeueDirect(request, false)
 			})
 		},
 	)
@@ -336,11 +336,11 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 	collectionIDPresent := req.CollectionID > 0
 
 	// If the user didn't enable collections then we can just not bother with any collections logic.
-	if !cidMgr.mux.CollectionsEnabled() {
+	if !cidMgr.dispatcher.CollectionsEnabled() {
 		if !(noCollection || defaultCollection) || collectionIDPresent {
 			return nil, errCollectionsUnsupported
 		}
-		_, err := cidMgr.mux.DispatchDirect(req)
+		_, err := cidMgr.dispatcher.DispatchDirect(req)
 		if err != nil {
 			return nil, err
 		}
@@ -349,7 +349,7 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 	}
 
 	if noCollection || defaultCollection || collectionIDPresent {
-		return cidMgr.mux.DispatchDirect(req)
+		return cidMgr.dispatcher.DispatchDirect(req)
 	}
 
 	if atomic.LoadUint32(&cidMgr.configSeen) == 0 {
@@ -362,7 +362,7 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 		return req, nil
 	}
 
-	if !cidMgr.mux.SupportsCollections() {
+	if !cidMgr.dispatcher.SupportsCollections() {
 		return nil, errCollectionsUnsupported
 	}
 
@@ -397,16 +397,4 @@ func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 	if err != nil {
 		req.tryCallback(nil, err)
 	}
-}
-
-func (cidMgr *collectionsComponent) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
-	return cidMgr.mux.HasDurabilityLevelStatus(status)
-}
-
-func (cidMgr *collectionsComponent) BucketType() bucketType {
-	return cidMgr.mux.BucketType()
-}
-
-func (cidMgr *collectionsComponent) KeyToVbucket(key []byte) (uint16, error) {
-	return cidMgr.mux.KeyToVbucket(key)
 }
