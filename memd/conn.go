@@ -266,7 +266,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		return err
 	}
 	if bytesWritten != len(buffer) {
-		return errors.New("failed to write all packet bytes to stream")
+		return io.ErrShortWrite
 	}
 
 	return nil

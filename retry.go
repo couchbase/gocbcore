@@ -121,6 +121,9 @@ var (
 
 	// ConnectionErrorRetryReason indicates that there were errors reported by underlying connections
 	ConnectionErrorRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CONNECTION_ERROR"}
+
+	// MemdWriteFailure indicates that the operation failed because the write failed on the connection.
+	MemdWriteFailure = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "MEMD_WRITE_FAILURE"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.

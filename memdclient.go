@@ -226,7 +226,6 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 	err := client.conn.WritePacket(packet)
 	if err != nil {
 		logDebugf("memdClient write failure: %v", err)
-		client.CancelRequest(req, err)
 		return err
 	}
 

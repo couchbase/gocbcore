@@ -430,7 +430,6 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 	err = translateMemdError(err, req)
 
 	// Handle potentially retrying the operation
-	// ErrMemdNotMyVBucket isn't translated from memd as we don't expose it.
 	if errors.Is(err, ErrNotMyVBucket) {
 		if mux.handleNotMyVbucket(resp, req) {
 			return true, nil
@@ -455,6 +454,13 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, er
 		if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
 			return true, nil
 		}
+	} else if errors.Is(err, io.ErrShortWrite) {
+		// This is a special case where the write has failed on the underlying connection and not all of the bytes
+		// were written to the network.
+		if mux.waitAndRetryOperation(req, MemdWriteFailure) {
+			return true, nil
+		}
+
 	}
 
 	if resp != nil && resp.Magic == memd.CmdMagicRes {
