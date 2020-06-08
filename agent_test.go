@@ -1481,6 +1481,179 @@ type testManifestWithError struct {
 	Err      error
 }
 
+func testCreateScope(name, bucketName string, agent *Agent) (*Manifest, error) {
+	data := url.Values{}
+	data.Set("name", name)
+
+	req := &HTTPRequest{
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections", bucketName),
+		Method:   "POST",
+		Body:     []byte(data.Encode()),
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(10 * time.Second),
+	}
+
+	req.Headers["Content-Type"] = "application/x-www-form-urlencoded"
+
+	resCh := make(chan *HTTPResponse)
+	errCh := make(chan error)
+	_, err := agent.DoHTTPRequest(req, func(response *HTTPResponse, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- response
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp *HTTPResponse
+	select {
+	case respErr := <-errCh:
+		if respErr != nil {
+			return nil, respErr
+		}
+	case res := <-resCh:
+		resp = res
+	}
+
+	if resp.StatusCode >= 300 {
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not create scope, status code: %d", resp.StatusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			logDebugf("Failed to close response body")
+		}
+		return nil, fmt.Errorf("could not create scope, %s", string(data))
+	}
+
+	respBody := struct {
+		UID string `json:"uid"`
+	}{}
+	jsonDec := json.NewDecoder(resp.Body)
+	err = jsonDec.Decode(&respBody)
+	if err != nil {
+		return nil, err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := strconv.ParseInt(respBody.UID, 16, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	timer := time.NewTimer(20 * time.Second)
+	waitCh := make(chan testManifestWithError, 1)
+	go waitForManifest(agent, uint64(uid), waitCh)
+
+	for {
+		select {
+		case <-timer.C:
+			return nil, errors.New("wait time for scope to become available expired")
+		case manifest := <-waitCh:
+			if manifest.Err != nil {
+				return nil, manifest.Err
+			}
+
+			return &manifest.Manifest, nil
+		}
+	}
+}
+
+func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
+	data := url.Values{}
+	data.Set("name", name)
+
+	req := &HTTPRequest{
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s", bucketName, name),
+		Method:   "DELETE",
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(10 * time.Second),
+	}
+
+	resCh := make(chan *HTTPResponse)
+	errCh := make(chan error)
+	_, err := agent.DoHTTPRequest(req, func(response *HTTPResponse, err error) {
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- response
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp *HTTPResponse
+	select {
+	case respErr := <-errCh:
+		if respErr != nil {
+			return nil, respErr
+		}
+	case res := <-resCh:
+		resp = res
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not delete scope, status code: %d", resp.StatusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			logDebugf("Failed to close response body")
+		}
+		return nil, fmt.Errorf("could not delete scope, %s", string(data))
+	}
+
+	respBody := struct {
+		UID string `json:"uid"`
+	}{}
+	jsonDec := json.NewDecoder(resp.Body)
+	err = jsonDec.Decode(&respBody)
+	if err != nil {
+		return nil, err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := strconv.ParseInt(respBody.UID, 16, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	timer := time.NewTimer(20 * time.Second)
+	waitCh := make(chan testManifestWithError, 1)
+	go waitForManifest(agent, uint64(uid), waitCh)
+
+	for {
+		select {
+		case <-timer.C:
+			return nil, errors.New("wait time for scope to become deleted expired")
+		case manifest := <-waitCh:
+			if manifest.Err != nil {
+				return nil, manifest.Err
+			}
+
+			return &manifest.Manifest, nil
+		}
+	}
+
+}
+
 func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
 	if scopeName == "" {
 		scopeName = "_default"

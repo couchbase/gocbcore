@@ -30,4 +30,6 @@ type DCPTestConfig struct {
 	NumMutations   int
 	NumDeletions   int
 	NumExpirations int
+	NumScopes      int
+	NumCollections int
 }

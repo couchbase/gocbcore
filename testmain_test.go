@@ -103,6 +103,10 @@ func TestMain(m *testing.M) {
 		"The number of deletions to create")
 	numExpirations := envFlagInt("GCBDCPEXPIRATIONS", "dcp-num-expirations", 5,
 		"The number of expirations to create")
+	numScopes := envFlagInt("GCBDCPSCOPES", "dcp-num-scopes", 2,
+		"The number of scopes to create")
+	numCollections := envFlagInt("GCBDCPCOLLECTIONS", "dcp-num-colletions", 5,
+		"The number of collections to create, per scope")
 	flag.Parse()
 
 	clusterVersion, err := nodeVersionFromString(*clusterVersionStr)
@@ -164,6 +168,8 @@ func TestMain(m *testing.M) {
 			NumMutations:   *numMutations,
 			NumDeletions:   *numDeletions,
 			NumExpirations: *numExpirations,
+			NumScopes:      *numScopes,
+			NumCollections: *numCollections,
 		}
 	} else {
 		panic("Unrecognized test suite requested")
