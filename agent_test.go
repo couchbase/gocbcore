@@ -628,7 +628,7 @@ func (suite *StandardTestSuite) TestGetAndTouch() {
 	}))
 	s.Wait(0)
 
-	suite.TimeTravel(2500 * time.Millisecond)
+	suite.TimeTravel(3000 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testGetAndTouch"),
@@ -637,7 +637,7 @@ func (suite *StandardTestSuite) TestGetAndTouch() {
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if !errors.Is(err, ErrDocumentNotFound) {
-				s.Fatalf("Get should have returned document not found")
+				s.Fatalf("Get should have returned document not found: %v", err)
 			}
 		})
 	}))
