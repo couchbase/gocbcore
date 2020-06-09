@@ -774,14 +774,25 @@ type BytesAndError struct {
 
 func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdSASLAuth,
-			Key:     k,
-			Value:   v,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLAuth,
+				Key:     k,
+				Value:   v,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				// Auth is special, auth continue is surfaced as an error
+				var val []byte
+				if resp != nil {
+					val = resp.Value
+				}
+
+				cb(val, err)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		cb,
 	)
 	if err != nil {
 		return err
@@ -792,21 +803,24 @@ func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []
 
 func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdSASLStep,
-			Key:     k,
-			Value:   v,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLStep,
+				Key:     k,
+				Value:   v,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					cb(err)
+					return
+				}
+
+				cb(nil)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		func(b []byte, err error) {
-			if err != nil {
-				cb(err)
-				return
-			}
-
-			cb(nil)
-		},
 	)
 	if err != nil {
 		return err
@@ -818,24 +832,27 @@ func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err 
 func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
 	completedCh := make(chan BytesAndError, 1)
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdSelectBucket,
-			Key:     b,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSelectBucket,
+				Key:     b,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- BytesAndError{
+						Err: err,
+					}
+					return
+				}
+
+				completedCh <- BytesAndError{
+					Bytes: resp.Value,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		func(b []byte, err error) {
-			if err != nil {
-				completedCh <- BytesAndError{
-					Err: err,
-				}
-				return
-			}
-
-			completedCh <- BytesAndError{
-				Bytes: b,
-			}
-		},
 	)
 	if err != nil {
 		return nil, err
@@ -850,24 +867,27 @@ func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 	binary.BigEndian.PutUint16(valueBuf, version)
 
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdGetErrorMap,
-			Value:   valueBuf,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdGetErrorMap,
+				Value:   valueBuf,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- BytesAndError{
+						Err: err,
+					}
+					return
+				}
+
+				completedCh <- BytesAndError{
+					Bytes: resp.Value,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		func(b []byte, err error) {
-			if err != nil {
-				completedCh <- BytesAndError{
-					Err: err,
-				}
-				return
-			}
-
-			completedCh <- BytesAndError{
-				Bytes: b,
-			}
-		},
 	)
 	if err != nil {
 		return nil, err
@@ -878,25 +898,28 @@ func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 
 func (client *memdClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdSASLListMechs,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLListMechs,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					cb(nil, err)
+					return
+				}
+
+				mechs := strings.Split(string(resp.Value), " ")
+				var authMechs []AuthMechanism
+				for _, mech := range mechs {
+					authMechs = append(authMechs, AuthMechanism(mech))
+				}
+
+				cb(authMechs, nil)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		func(b []byte, err error) {
-			if err != nil {
-				cb(nil, err)
-				return
-			}
-
-			mechs := strings.Split(string(b), " ")
-			var authMechs []AuthMechanism
-			for _, mech := range mechs {
-				authMechs = append(authMechs, AuthMechanism(mech))
-			}
-
-			cb(authMechs, nil)
-		},
 	)
 	if err != nil {
 		return err
@@ -925,31 +948,34 @@ func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeatur
 
 	completedCh := make(chan ExecHelloResponse)
 	err := client.doBootstrapRequest(
-		&memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdHello,
-			Key:     []byte(clientID),
-			Value:   featureBytes,
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdHello,
+				Key:     []byte(clientID),
+				Value:   featureBytes,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- ExecHelloResponse{
+						Err: err,
+					}
+					return
+				}
+
+				var srvFeatures []memd.HelloFeature
+				for i := 0; i < len(resp.Value); i += 2 {
+					feature := binary.BigEndian.Uint16(resp.Value[i:])
+					srvFeatures = append(srvFeatures, memd.HelloFeature(feature))
+				}
+
+				completedCh <- ExecHelloResponse{
+					SrvFeatures: srvFeatures,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
 		},
 		deadline,
-		func(b []byte, err error) {
-			if err != nil {
-				completedCh <- ExecHelloResponse{
-					Err: err,
-				}
-				return
-			}
-
-			var srvFeatures []memd.HelloFeature
-			for i := 0; i < len(b); i += 2 {
-				feature := binary.BigEndian.Uint16(b[i:])
-				srvFeatures = append(srvFeatures, memd.HelloFeature(feature))
-			}
-
-			completedCh <- ExecHelloResponse{
-				SrvFeatures: srvFeatures,
-			}
-		},
 	)
 	if err != nil {
 		return nil, err
@@ -958,44 +984,28 @@ func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeatur
 	return completedCh, nil
 }
 
-func (client *memdClient) doBootstrapRequest(req *memd.Packet, deadline time.Time, cb func(b []byte, err error)) error {
-	signal := make(chan BytesAndError, 1)
-	qreq := memdQRequest{
-		Packet: *req,
-		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
-			signalResp := BytesAndError{}
-			if resp != nil {
-				signalResp.Bytes = resp.Packet.Value
-			}
-			signalResp.Err = err
-			signal <- signalResp
-		},
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
+func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Time) error {
+	start := time.Now()
+	req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
+		connInfo := req.ConnectionInfo()
+		count, reasons := req.Retries()
+		req.cancelWithCallback(&TimeoutError{
+			InnerError:         errAmbiguousTimeout,
+			OperationID:        req.Command.Name(),
+			Opaque:             req.Identifier(),
+			TimeObserved:       time.Now().Sub(start),
+			RetryReasons:       reasons,
+			RetryAttempts:      count,
+			LastDispatchedTo:   connInfo.lastDispatchedTo,
+			LastDispatchedFrom: connInfo.lastDispatchedFrom,
+			LastConnectionID:   connInfo.lastConnectionID,
+		})
+	}))
 
-	err := client.SendRequest(&qreq)
+	err := client.SendRequest(req)
 	if err != nil {
 		return err
 	}
-
-	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
-	go func() {
-		select {
-		case resp := <-signal:
-			ReleaseTimer(timeoutTmr, false)
-			cb(resp.Bytes, resp.Err)
-			return
-		case <-timeoutTmr.C:
-			ReleaseTimer(timeoutTmr, true)
-			if qreq.internalCancel(errAmbiguousTimeout) {
-				// Let's trigger the callback and consume the signal to stop anything from leaking.
-				qreq.Callback(nil, nil, errAmbiguousTimeout)
-				resp := <-signal
-				cb(resp.Bytes, resp.Err)
-			}
-			return
-		}
-	}()
 
 	return nil
 }
