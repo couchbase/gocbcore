@@ -42,7 +42,10 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 			extras := make([]byte, 12)
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
-			req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+			})
 		})
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
@@ -55,7 +58,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 			suite.Assert().Equal(sName, req.ScopeName)
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
 		})
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
@@ -66,9 +71,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 		cfgMgr,
 	)
 
-	var called bool
+	waitCh := make(chan error, 1)
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		called = true
+		waitCh <- err
 	}
 
 	// This request should get queued as the manager hasn't seen a config.
@@ -95,9 +100,16 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 		bucketCapabilities: []string{"collections"},
 	})
 
+	// Requeueing on cid unknown is done in a go routine
+	select {
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("Timed out waiting for callback to be called")
+	case err := <-waitCh:
+		suite.Assert().Nil(err, err)
+	}
+
 	cfgMgr.AssertExpectations(suite.T())
 	dispatcher.AssertExpectations(suite.T())
-	suite.Assert().True(called)
 }
 
 // When the SDK starts up collections support is unknown.
@@ -129,7 +141,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+			})
 		}).Once()
 	// Second request we simulate the collection coming online.
 	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
@@ -146,7 +160,10 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			extras := make([]byte, 12)
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
-			req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+			})
 		}).Once()
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
@@ -159,7 +176,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			suite.Assert().Equal(sName, req.ScopeName)
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
 		}).Once()
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
@@ -238,7 +257,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errInternalServerFailure)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errInternalServerFailure)
+			})
 		}).Once()
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
@@ -249,10 +270,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 		cfgMgr,
 	)
 
-	var called bool
+	waitCh := make(chan error, 1)
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		called = true
-		suite.Assert().NotNil(err)
+		waitCh <- err
 	}
 
 	// This request should get queued as the manager hasn't seen a config.
@@ -279,9 +299,15 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 		bucketCapabilities: []string{"collections"},
 	})
 
+	select {
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("Timed out waiting for callback to be called")
+	case err := <-waitCh:
+		suite.Assert().NotNil(err, err)
+	}
+
 	cfgMgr.AssertExpectations(suite.T())
 	dispatcher.AssertExpectations(suite.T())
-	suite.Assert().True(called)
 }
 
 // When the SDK starts up collections support is unknown.
@@ -434,7 +460,10 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			extras := make([]byte, 12)
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
-			req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+			})
 		})
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
@@ -447,7 +476,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(sName, req.ScopeName)
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
 		})
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
@@ -459,9 +490,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	)
 	cidMgr.configSeen = 1
 
-	var called bool
+	waitCh := make(chan error, 1)
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		called = true
+		waitCh <- err
 	}
 
 	// This request should get queued as the manager hasn't seen a config.
@@ -483,9 +514,15 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	suite.Require().Nil(err, err)
 	suite.Assert().NotNil(op)
 
+	select {
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("Timed out waiting for callback to be called")
+	case err := <-waitCh:
+		suite.Assert().Nil(err, err)
+	}
+
 	cfgMgr.AssertExpectations(suite.T())
 	dispatcher.AssertExpectations(suite.T())
-	suite.Assert().True(called)
 }
 
 // This test is for the scenario when a request is made whilst collections support is known
@@ -515,7 +552,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+			})
 		}).Once()
 	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
@@ -531,7 +570,10 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			extras := make([]byte, 12)
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
-			req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+			})
 		}).Once()
 
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
@@ -545,7 +587,9 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(sName, req.ScopeName)
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
 		}).Once()
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
@@ -595,7 +639,6 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 // This test extends TestCollectionsComponentCollectionsSupportedCollectionExists to add a second
 // request which should be dispatched with no extra calls.
-
 func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollectionUpdate() {
 	cName := "test"
 	sName := "_default"
@@ -605,8 +648,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
-	dispatcher.On("CollectionsEnabled").Return(true).Twice()
-	dispatcher.On("SupportsCollections").Return(true).Twice()
+	dispatcher.On("CollectionsEnabled").Return(true).Times(3)
+	dispatcher.On("SupportsCollections").Return(true).Times(3)
 	// The first request to dispatch getting the cid.
 	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
@@ -622,22 +665,12 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			extras := make([]byte, 12)
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
-			req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
-		}).Once()
-	// The second request to dispatch sending the second user request.
-	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
-		Run(func(args mock.Arguments) {
-			req := args[0].(*memdQRequest)
 
-			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
-			suite.Assert().Equal(memd.CmdGet, req.Command)
-			suite.Assert().Equal([]byte("test-key"), req.Key)
-			suite.Assert().Equal(cName, req.CollectionName)
-			suite.Assert().Equal(sName, req.ScopeName)
-			suite.Assert().Equal(uint32(8), req.CollectionID)
-
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+			})
 		}).Once()
+	// The second request should be queued due to cid being pending so it should get requeued.
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
 		Run(func(args mock.Arguments) {
 			req := args[0].(*memdQRequest)
@@ -649,8 +682,26 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(sName, req.ScopeName)
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
-			req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
-		})
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
+		}).Twice()
+	// The third request should go straight through to Dispatch.
+	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
+		Run(func(args mock.Arguments) {
+			req := args[0].(*memdQRequest)
+
+			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
+			suite.Assert().Equal(memd.CmdGet, req.Command)
+			suite.Assert().Equal([]byte("test-key"), req.Key)
+			suite.Assert().Equal(cName, req.CollectionName)
+			suite.Assert().Equal(sName, req.ScopeName)
+			suite.Assert().Equal(uint32(8), req.CollectionID)
+
+			time.AfterFunc(time.Millisecond, func() {
+				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+			})
+		}).Once()
 
 	cidMgr := newCollectionIDManager(collectionIDProps{
 		DefaultRetryStrategy: &failFastRetryStrategy{},
@@ -681,7 +732,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	suite.Require().Nil(err, err)
 	suite.Assert().NotNil(op)
 
-	var called bool
+	// This request should get queued because the cid is pending, it will then be requeued.
+	waitCh := make(chan error)
 	op, err = cidMgr.Dispatch(&memdQRequest{
 		Packet: memd.Packet{
 			Magic:    memd.CmdMagicReq,
@@ -695,14 +747,48 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		CollectionName: cName,
 		ScopeName:      sName,
 		Callback: func(resp *memdQResponse, req *memdQRequest, err error) {
-			called = true
+			waitCh <- err
 		},
 		RootTraceContext: noopSpanContext{},
 	})
 	suite.Require().Nil(err, err)
 	suite.Assert().NotNil(op)
 
+	select {
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("Timed out waiting for callback to be called")
+	case err := <-waitCh:
+		suite.Assert().Nil(err, err)
+	}
+
+	waitCh = make(chan error)
+	op, err = cidMgr.Dispatch(&memdQRequest{
+		Packet: memd.Packet{
+			Magic:    memd.CmdMagicReq,
+			Command:  memd.CmdGet,
+			Datatype: 0,
+			Cas:      0,
+			Extras:   nil,
+			Key:      []byte("test-key"),
+			Value:    nil,
+		},
+		CollectionName: cName,
+		ScopeName:      sName,
+		Callback: func(resp *memdQResponse, req *memdQRequest, err error) {
+			waitCh <- err
+		},
+		RootTraceContext: noopSpanContext{},
+	})
+	suite.Require().Nil(err, err)
+	suite.Assert().NotNil(op)
+
+	select {
+	case <-time.After(1 * time.Second):
+		suite.T().Fatalf("Timed out waiting for callback to be called")
+	case err := <-waitCh:
+		suite.Assert().Nil(err, err)
+	}
+
 	cfgMgr.AssertExpectations(suite.T())
 	dispatcher.AssertExpectations(suite.T())
-	suite.Assert().True(called)
 }

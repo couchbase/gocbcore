@@ -73,7 +73,8 @@ func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
 }
 
 func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
-	// We cannot retry requests with no collection information
+	// We cannot retry requests with no collection information.
+	// This also prevents the GetCollectionID requests from being automatically retried.
 	if req.CollectionName == "" && req.ScopeName == "" {
 		return false
 	}
@@ -141,13 +142,14 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 
 // GetCollectionID does not trigger retries on unknown collection. This is because the request sets the scope and collection
 // name in the key rather than in the corresponding fields.
-func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions, cb GetCollectionIDCallback) (PendingOp, error) {
+func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions,
+	cb GetCollectionIDCallback) (PendingOp, error) {
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		cidCache, ok := cidMgr.get(scopeName, collectionName)
 		if !ok {
-			cidCache = cidMgr.newCollectionIDCache()
+			cidCache = cidMgr.newCollectionIDCache(scopeName, collectionName)
 			cidMgr.add(cidCache, scopeName, collectionName)
 		}
 
@@ -161,7 +163,7 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 		collectionID := binary.BigEndian.Uint32(resp.Extras[8:])
 
 		cidCache.lock.Lock()
-		cidCache.id = collectionID
+		cidCache.setID(collectionID)
 		cidCache.lock.Unlock()
 
 		res := GetCollectionIDResult{
@@ -226,16 +228,19 @@ func (cidMgr *collectionsComponent) get(scopeName, collectionName string) (*coll
 }
 
 func (cidMgr *collectionsComponent) remove(scopeName, collectionName string) {
+	logDebugf("Removing cache entry for", scopeName, collectionName)
 	cidMgr.mapLock.Lock()
 	delete(cidMgr.idMap, cidMgr.createKey(scopeName, collectionName))
 	cidMgr.mapLock.Unlock()
 }
 
-func (cidMgr *collectionsComponent) newCollectionIDCache() *collectionIDCache {
+func (cidMgr *collectionsComponent) newCollectionIDCache(scope, collection string) *collectionIDCache {
 	return &collectionIDCache{
-		dispatcher:   cidMgr.dispatcher,
-		maxQueueSize: cidMgr.maxQueueSize,
-		parent:       cidMgr,
+		dispatcher:     cidMgr.dispatcher,
+		maxQueueSize:   cidMgr.maxQueueSize,
+		parent:         cidMgr,
+		scopeName:      scope,
+		collectionName: collection,
 	}
 }
 
@@ -264,7 +269,14 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 }
 
 func (cid *collectionIDCache) queueRequest(req *memdQRequest) error {
+	cid.lock.Lock()
+	defer cid.lock.Unlock()
 	return cid.opQueue.Push(req, cid.maxQueueSize)
+}
+
+func (cid *collectionIDCache) setID(id uint32) {
+	logDebugf("Setting cache ID to %d for %s.%s", id, cid.scopeName, cid.collectionName)
+	cid.id = id
 }
 
 func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
@@ -273,32 +285,51 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 		return err
 	}
 
+	logDebugf("Refreshing collection ID for %s.%s", req.ScopeName, req.CollectionName)
 	_, err = cid.parent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
 		func(result *GetCollectionIDResult, err error) {
 			if err != nil {
 				if errors.Is(err, ErrCollectionNotFound) {
-					// If this is a collection unknown error then it'll get retried so we just leave the
-					// cid in pending state. Either the collection will eventually come online or this request will
-					// timeout.
+					// The collection is unknown so we need to mark the cid unknown and attempt to retry the request.
+					// Retrying the request will requeue it in the cid manager so either it will pick up the unknown cid
+					// and cause a refresh or another request will and this one will get queued within the cache.
+					// Either the collection will eventually come online or this request will timeout.
+					logDebugf("Collection %s.%s not found, attempting retry", req.ScopeName, req.CollectionName)
+					cid.lock.Lock()
+					cid.setID(unknownCid)
+					cid.lock.Unlock()
 					if cid.opQueue.Remove(req) {
-						cid.lock.Lock()
-						cid.id = unknownCid
-						cid.lock.Unlock()
 						if cid.parent.handleCollectionUnknown(req) {
 							return
 						}
+					} else {
+						logDebugf("Request no longer existed in op queue, possibly cancelled?",
+							req.Opaque, req.CollectionName)
 					}
+				} else {
+					logDebugf("Collection ID refresh failed: %v", err)
 				}
+
+				// There was an error getting this collection ID so lets remove the cache from the manager and try to
+				// callback on all of the queued requests.
+				cid.parent.remove(req.ScopeName, req.CollectionName)
 				cid.opQueue.Close()
 				cid.opQueue.Drain(func(request *memdQRequest) {
 					request.tryCallback(nil, err)
 				})
-				cid.opQueue = nil
 				return
 			}
 
-			cid.opQueue.Close()
-			cid.opQueue.Drain(func(request *memdQRequest) {
+			// We successfully got the cid, the GetCollectionID itself will have handled setting the ID on this cache,
+			// so lets reset the op queue and requeue all of our requests.
+			logDebugf("Collection %s.%s refresh succeeded, requeuing requests", req.ScopeName, req.CollectionName)
+			cid.lock.Lock()
+			opQueue := cid.opQueue
+			cid.opQueue = newMemdOpQueue()
+			cid.lock.Unlock()
+
+			opQueue.Close()
+			opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = result.CollectionID
 				cid.dispatcher.RequeueDirect(request, false)
 			})
@@ -316,10 +347,23 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	switch cid.id {
 	case unknownCid:
 		logDebugf("Collection %s.%s unknown, refreshing id", req.ScopeName, req.CollectionName)
-		cid.id = pendingCid
+		cid.setID(pendingCid)
 		cid.opQueue = newMemdOpQueue()
+
+		// We attempt to send the refresh inside of the lock, that way we haven't released the lock and allowed an op
+		// to get queued if we need to move the status back to unknown. Without doing this it's possible for one or
+		// more op(s) to sneak into the queue and then no more requests come in and those sit in the queue until they
+		// timeout because nothing is triggering the cid refresh.
+		err := cid.refreshCid(req)
+		if err != nil {
+			// We've failed to send the cid refresh so we need to set it back to unknown otherwise it'll never
+			// get updated.
+			cid.setID(unknownCid)
+			cid.lock.Unlock()
+			return err
+		}
 		cid.lock.Unlock()
-		return cid.refreshCid(req)
+		return nil
 	case pendingCid:
 		logDebugf("Collection %s.%s pending, queueing request", req.ScopeName, req.CollectionName)
 		cid.lock.Unlock()
@@ -368,8 +412,8 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 
 	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)
 	if !ok {
-		cidCache = cidMgr.newCollectionIDCache()
-		cidCache.id = unknownCid
+		cidCache = cidMgr.newCollectionIDCache(req.ScopeName, req.CollectionName)
+		cidCache.setID(unknownCid)
 		cidMgr.add(cidCache, req.ScopeName, req.CollectionName)
 	}
 	err := cidCache.dispatch(req)
@@ -383,13 +427,13 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 	cidCache, ok := cidMgr.get(req.ScopeName, req.CollectionName)
 	if !ok {
-		cidCache = cidMgr.newCollectionIDCache()
-		cidCache.id = unknownCid
+		cidCache = cidMgr.newCollectionIDCache(req.ScopeName, req.CollectionName)
+		cidCache.setID(unknownCid)
 		cidMgr.add(cidCache, req.ScopeName, req.CollectionName)
 	}
 	cidCache.lock.Lock()
 	if cidCache.id != unknownCid && cidCache.id != pendingCid {
-		cidCache.id = unknownCid
+		cidCache.setID(unknownCid)
 	}
 	cidCache.lock.Unlock()
 
