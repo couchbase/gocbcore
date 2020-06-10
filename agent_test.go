@@ -821,10 +821,8 @@ func (suite *StandardTestSuite) TestRandomGet() {
 	suite.Require().Nil(err, err)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
-			Key:            []byte(k),
-			Value:          []byte("Hello World!"),
-			CollectionName: suite.CollectionName,
-			ScopeName:      suite.ScopeName,
+			Key:   []byte(k),
+			Value: []byte("Hello World!"),
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
