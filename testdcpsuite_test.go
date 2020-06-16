@@ -254,9 +254,9 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					ch = make(chan error)
 					op, err := suite.opAgent.Delete(
 						DeleteOptions{
-							Key: []byte(fmt.Sprintf("key-%d", id)),
+							Key:            []byte(fmt.Sprintf("key-%d", id)),
 							CollectionName: collection,
-							ScopeName: scope,
+							ScopeName:      scope,
 						}, func(result *DeleteResult, err error) {
 							ch <- err
 						},
@@ -628,7 +628,7 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, cPrefix, pScopes, suite.BucketName, suite.opAgent)
 	suite.getPrunedScopeManifests(sPrefix, lastScopeManifest)
 	time.Sleep(5 * time.Second) //Needed to ensure collection ready before performing mutations.
-	mutations, deletionKeys := suite.runMutations(cPrefix + "0", sPrefix + "0")
+	mutations, deletionKeys := suite.runMutations(cPrefix+"0", sPrefix+"0")
 
 	suite.runDCPStream()
 

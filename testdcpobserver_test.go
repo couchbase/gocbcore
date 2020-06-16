@@ -37,7 +37,6 @@ type DCPEventCounter struct {
 	collectionsDeleted map[string]int
 }
 
-
 type TestStreamObserver struct {
 	lock      sync.Mutex
 	lastSeqno map[uint16]uint64
