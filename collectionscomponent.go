@@ -82,7 +82,7 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 	shouldRetry, retryTime := retryOrchMaybeRetry(req, KVCollectionOutdatedRetryReason)
 	if shouldRetry {
 		go func() {
-			time.Sleep(retryTime.Sub(time.Now()))
+			time.Sleep(time.Until(retryTime))
 			cidMgr.requeue(req)
 		}()
 	}
@@ -252,7 +252,6 @@ type collectionIDCache struct {
 	parent         *collectionsComponent
 	dispatcher     dispatcher
 	lock           sync.Mutex
-	err            error
 	maxQueueSize   int
 }
 

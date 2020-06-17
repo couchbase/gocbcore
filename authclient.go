@@ -1,7 +1,7 @@
 package gocbcore
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // nolint: gosec
 	"crypto/sha256"
 	"crypto/sha512"
 	"hash"
@@ -139,42 +139,4 @@ func saslMethod(method AuthMechanism, username, password string, client AuthClie
 	default:
 		return errNoSupportedMechanisms
 	}
-}
-
-func saslBestMethod(methods []AuthMechanism) AuthMechanism {
-	var bestMethod AuthMechanism
-	var bestPriority int
-	for _, method := range methods {
-		if bestPriority <= 1 && method == PlainAuthMechanism {
-			bestPriority = 1
-			bestMethod = method
-		}
-
-		// CRAM-MD5 is intentionally disabled here as it provides a false
-		// sense of security to users.  SCRAM-SHA1 should be used, or TLS
-		// connection coupled with PLAIN auth would also be sufficient.
-		/*
-			if bestPriority <= 2 && method == "CRAM-MD5" {
-				bestPriority = 2
-				bestMethod = method
-			}
-		*/
-
-		if bestPriority <= 3 && method == ScramSha1AuthMechanism {
-			bestPriority = 3
-			bestMethod = method
-		}
-
-		if bestPriority <= 4 && method == ScramSha256AuthMechanism {
-			bestPriority = 4
-			bestMethod = method
-		}
-
-		if bestPriority <= 5 && method == ScramSha512AuthMechanism {
-			bestPriority = 5
-			bestMethod = method
-		}
-	}
-
-	return bestMethod
 }

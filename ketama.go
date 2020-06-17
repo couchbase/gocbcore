@@ -1,7 +1,7 @@
 package gocbcore
 
 import (
-	"crypto/md5"
+	"crypto/md5" // nolint: gosec
 	"fmt"
 	"sort"
 )
@@ -25,7 +25,7 @@ type ketamaContinuum struct {
 }
 
 func ketamaHash(key []byte) uint32 {
-	digest := md5.Sum(key)
+	digest := md5.Sum(key) // nolint: gosec
 
 	return ((uint32(digest[3])&0xFF)<<24 |
 		(uint32(digest[2])&0xFF)<<16 |
@@ -43,7 +43,7 @@ func newKetamaContinuum(serverList []string) *ketamaContinuum {
 		// 160 points per server
 		for hh := 0; hh < 40; hh++ {
 			hostkey := []byte(fmt.Sprintf("%s-%d", authority, hh))
-			digest := md5.Sum(hostkey)
+			digest := md5.Sum(hostkey) // nolint: gosec
 
 			for nn := 0; nn < 4; nn++ {
 

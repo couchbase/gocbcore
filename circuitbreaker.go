@@ -105,11 +105,7 @@ func newLazyCircuitBreaker(config CircuitBreakerConfig, canaryFn func()) *lazyCi
 	}
 	if config.CompletionCallback == nil {
 		config.CompletionCallback = func(err error) bool {
-			if errors.Is(err, ErrTimeout) {
-				return false
-			}
-
-			return true
+			return !errors.Is(err, ErrTimeout)
 		}
 	}
 

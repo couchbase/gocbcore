@@ -46,7 +46,7 @@ func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (respO
 		return nil, err
 	}
 
-	timeoutTmr := AcquireTimer(deadline.Sub(time.Now()))
+	timeoutTmr := AcquireTimer(time.Until(deadline))
 	select {
 	case <-signal:
 		ReleaseTimer(timeoutTmr, false)

@@ -96,7 +96,7 @@ func (config *routeConfig) IsGCCCPConfig() bool {
 func (config *routeConfig) ContainsClusterCapability(version int, category, capability string) bool {
 	caps := config.clusterCapabilities
 	capsVer := config.clusterCapabilitiesVer
-	if capsVer == nil || len(capsVer) == 0 || caps == nil {
+	if len(capsVer) == 0 || caps == nil {
 		return false
 	}
 

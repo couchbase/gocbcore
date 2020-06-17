@@ -48,17 +48,13 @@ func newMemdOpQueue() *memdOpQueue {
 	return &q
 }
 
+// nolint: unused
 func (q *memdOpQueue) debugString() string {
 	var outStr string
 	q.lock.Lock()
 
 	outStr += fmt.Sprintf("Num Items: %d\n", q.items.Len())
-
-	if q.isOpen {
-		outStr += fmt.Sprintf("Is Open: true")
-	} else {
-		outStr += fmt.Sprintf("Is Open: false")
-	}
+	outStr += fmt.Sprintf("Is Open: %t", q.isOpen)
 
 	q.lock.Unlock()
 	return outStr

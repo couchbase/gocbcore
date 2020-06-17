@@ -139,7 +139,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 	}
 
 	indexName := opts.IndexName
-	query, _ := payloadMap["query"]
+	query := payloadMap["query"]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
@@ -161,7 +161,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 	ExecuteLoop:
 		for {
 			{ // Produce an updated payload with the appropriate timeout
-				timeoutLeft := ireq.Deadline.Sub(time.Now())
+				timeoutLeft := time.Until(ireq.Deadline)
 
 				ctlMap["timeout"] = timeoutLeft / time.Millisecond
 				payloadMap["ctl"] = ctlMap
@@ -209,15 +209,15 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 				}
 
 				select {
-				case <-time.After(retryTime.Sub(time.Now())):
+				case <-time.After(time.Until(retryTime)):
 					continue ExecuteLoop
-				case <-time.After(ireq.Deadline.Sub(time.Now())):
+				case <-time.After(time.Until(ireq.Deadline)):
 					cancel()
 					err := &TimeoutError{
 						InnerError:       errUnambiguousTimeout,
 						OperationID:      "SearchQuery",
 						Opaque:           ireq.Identifier(),
-						TimeObserved:     time.Now().Sub(start),
+						TimeObserved:     time.Since(start),
 						RetryReasons:     ireq.retryReasons,
 						RetryAttempts:    ireq.retryCount,
 						LastDispatchedTo: ireq.Endpoint,

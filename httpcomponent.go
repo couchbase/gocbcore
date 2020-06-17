@@ -254,7 +254,8 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	for {
 		dSpan := hc.tracer.StartHTTPSpan(req, "dispatch_to_server")
 		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
-		hresp, err := hc.cli.Do(hreq)
+		// we can't close the body of this response as it's long lived beyond the function
+		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
 		dSpan.Finish()
 		if err != nil {
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation
@@ -267,7 +268,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 							InnerError:       errUnambiguousTimeout,
 							OperationID:      "http",
 							Opaque:           req.Identifier(),
-							TimeObserved:     time.Now().Sub(start),
+							TimeObserved:     time.Since(start),
 							RetryReasons:     req.retryReasons,
 							RetryAttempts:    req.retryCount,
 							LastDispatchedTo: endpoint,
@@ -277,7 +278,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 							InnerError:       errAmbiguousTimeout,
 							OperationID:      "http",
 							Opaque:           req.Identifier(),
-							TimeObserved:     time.Now().Sub(start),
+							TimeObserved:     time.Since(start),
 							RetryReasons:     req.retryReasons,
 							RetryAttempts:    req.retryCount,
 							LastDispatchedTo: endpoint,
@@ -316,15 +317,15 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			}
 
 			select {
-			case <-time.After(retryTime.Sub(time.Now())):
+			case <-time.After(time.Until(retryTime)):
 				// continue!
-			case <-time.After(req.Deadline.Sub(time.Now())):
+			case <-time.After(time.Until(req.Deadline)):
 				if errors.Is(err, context.DeadlineExceeded) {
 					err = &TimeoutError{
 						InnerError:       errAmbiguousTimeout,
 						OperationID:      "http",
 						Opaque:           req.Identifier(),
-						TimeObserved:     time.Now().Sub(start),
+						TimeObserved:     time.Since(start),
 						RetryReasons:     req.retryReasons,
 						RetryAttempts:    req.retryCount,
 						LastDispatchedTo: endpoint,

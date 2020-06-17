@@ -407,7 +407,7 @@ func (client *memdClient) run() {
 						}
 						dcpBufferQ <- &dcpBuffer{
 							resp:       endResp,
-							packetLen:  int(n),
+							packetLen:  n,
 							isInternal: true,
 						}
 					}
@@ -432,7 +432,7 @@ func (client *memdClient) run() {
 			case memd.CmdDcpStreamEnd:
 				dcpBufferQ <- &dcpBuffer{
 					resp:      resp,
-					packetLen: int(n),
+					packetLen: n,
 				}
 				continue
 			default:
@@ -993,7 +993,7 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 			InnerError:         errAmbiguousTimeout,
 			OperationID:        req.Command.Name(),
 			Opaque:             req.Identifier(),
-			TimeObserved:       time.Now().Sub(start),
+			TimeObserved:       time.Since(start),
 			RetryReasons:       reasons,
 			RetryAttempts:      count,
 			LastDispatchedTo:   connInfo.lastDispatchedTo,

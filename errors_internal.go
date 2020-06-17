@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -47,14 +46,6 @@ func (err SubDocumentError) Error() string {
 // Unwrap returns the underlying error for the operation failing.
 func (err SubDocumentError) Unwrap() error {
 	return err.InnerError
-}
-
-func retryReasonsToString(reasons []RetryReason) string {
-	reasonStrs := make([]string, len(reasons))
-	for reasonIdx, reason := range reasons {
-		reasonStrs[reasonIdx] = reason.Description()
-	}
-	return strings.Join(reasonStrs, ",")
 }
 
 func serializeError(err error) string {
@@ -290,20 +281,6 @@ func (err TimeoutError) Unwrap() error {
 	return err.InnerError
 }
 
-type notConnectedOrUnsupportedError struct {
-	InnerError error
-}
-
-func (err notConnectedOrUnsupportedError) Error() string {
-	return "no connections could be made to the cluster or the cluster does not support cluster-level queries " +
-		"(only Couchbase Server 6.5 and later) and no bucket is open. If an older Couchbase Server version " +
-		"is used, at least one bucket needs to be opened | " + err.InnerError.Error()
-}
-
-func (err notConnectedOrUnsupportedError) Unwrap() error {
-	return err.InnerError
-}
-
 // ncError is a wrapper error that provides no additional context to one of the
 // publicly exposed error types.  This is to force people to correctly use the
 // error handling behaviours to check the error, rather than direct compares.
@@ -331,14 +308,11 @@ var (
 	// errCircuitBreakerOpen is passed around internally to signal that an
 	// operation was cancelled due to the circuit breaker being open.
 	errCircuitBreakerOpen = errors.New("circuit breaker open")
-
-	// errNoMoreOps is passed around internally to signal that an operation
-	// was cancelled due to there being no more operations to wait for.
-	errNoMoreOps = errors.New("no more operations")
 )
 
 // This list contains protected versions of all the errors we throw
 // to ensure no users inadvertently rely on direct comparisons.
+// nolint: deadcode,varcheck
 var (
 	errTimeout               = ncError{ErrTimeout}
 	errRequestCanceled       = ncError{ErrRequestCanceled}

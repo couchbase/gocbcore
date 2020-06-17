@@ -151,9 +151,7 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 	config.HTTPAddrs = httpHosts
 
 	if spec.UseSsl {
-		var cacertpaths []string
-
-		cacertpaths = spec.Options["ca_cert_path"]
+		cacertpaths := spec.Options["ca_cert_path"]
 
 		if len(cacertpaths) > 0 {
 			roots := x509.NewCertPool()

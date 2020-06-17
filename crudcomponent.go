@@ -88,7 +88,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "Get",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -167,7 +167,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "GetAndTouch",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -246,7 +246,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "GetAndLock",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -325,7 +325,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetOneReplica",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -401,7 +401,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Touch",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -474,7 +474,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Unlock",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -518,7 +518,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
-			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+			DurabilityLevel: opts.DurabilityLevel,
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
@@ -563,7 +563,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Delete",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -607,7 +607,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
-			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+			DurabilityLevel: opts.DurabilityLevel,
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
@@ -655,7 +655,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -707,22 +707,7 @@ func (crud *crudComponent) Add(opts AddOptions, cb StoreCallback) (PendingOp, er
 }
 
 func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (PendingOp, error) {
-	return crud.store("Replace", memd.CmdReplace, storeOptions{
-		Key:                    opts.Key,
-		CollectionName:         opts.CollectionName,
-		ScopeName:              opts.ScopeName,
-		RetryStrategy:          opts.RetryStrategy,
-		Value:                  opts.Value,
-		Flags:                  opts.Flags,
-		Datatype:               opts.Datatype,
-		Cas:                    opts.Cas,
-		Expiry:                 opts.Expiry,
-		TraceContext:           opts.TraceContext,
-		DurabilityLevel:        opts.DurabilityLevel,
-		DurabilityLevelTimeout: opts.DurabilityLevelTimeout,
-		CollectionID:           opts.CollectionID,
-		Deadline:               opts.Deadline,
-	}, cb)
+	return crud.store("Replace", memd.CmdReplace, storeOptions(opts), cb)
 }
 
 func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
@@ -756,7 +741,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
-			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+			DurabilityLevel: opts.DurabilityLevel,
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
@@ -801,7 +786,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -866,7 +851,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
-			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+			DurabilityLevel: opts.DurabilityLevel,
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
@@ -921,7 +906,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -1003,7 +988,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetRandom",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -1089,7 +1074,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetMeta",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -1129,7 +1114,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 	extraBuf := make([]byte, 30+len(opts.Extra))
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
-	binary.BigEndian.PutUint64(extraBuf[8:], uint64(opts.RevNo))
+	binary.BigEndian.PutUint64(extraBuf[8:], opts.RevNo)
 	binary.BigEndian.PutUint64(extraBuf[16:], uint64(opts.Cas))
 	binary.BigEndian.PutUint32(extraBuf[24:], opts.Options)
 	binary.BigEndian.PutUint16(extraBuf[28:], uint16(len(opts.Extra)))
@@ -1171,7 +1156,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "SetMeta",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -1253,7 +1238,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "DeleteMeta",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,

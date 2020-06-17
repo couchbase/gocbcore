@@ -153,37 +153,34 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 	view := opts.ViewName
 
 	go func() {
-		for {
-			resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
-			if err != nil {
-				cancel()
-				// execHTTPRequest will handle retrying due to in-flight socket close based
-				// on whether or not IsIdempotent is set on the httpRequest
-				cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
-				return
-			}
-
-			if resp.StatusCode != 200 {
-				viewErr := parseViewQueryError(ireq, ddoc, view, resp)
-
-				cancel()
-				// viewErr is already wrapped here
-				cb(nil, viewErr)
-				return
-			}
-
-			streamer, err := newQueryStreamer(resp.Body, "rows")
-			if err != nil {
-				cancel()
-				cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
-				return
-			}
-
-			cb(&ViewQueryRowReader{
-				streamer: streamer,
-			}, nil)
+		resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
+		if err != nil {
+			cancel()
+			// execHTTPRequest will handle retrying due to in-flight socket close based
+			// on whether or not IsIdempotent is set on the httpRequest
+			cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
 			return
 		}
+
+		if resp.StatusCode != 200 {
+			viewErr := parseViewQueryError(ireq, ddoc, view, resp)
+
+			cancel()
+			// viewErr is already wrapped here
+			cb(nil, viewErr)
+			return
+		}
+
+		streamer, err := newQueryStreamer(resp.Body, "rows")
+		if err != nil {
+			cancel()
+			cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
+			return
+		}
+
+		cb(&ViewQueryRowReader{
+			streamer: streamer,
+		}, nil)
 	}()
 
 	return ireq, nil

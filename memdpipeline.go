@@ -21,7 +21,6 @@ type memdPipeline struct {
 	maxClients  int
 	clients     []*memdPipelineClient
 	clientsLock sync.Mutex
-	breakerCfg  CircuitBreakerConfig
 }
 
 func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
@@ -38,6 +37,7 @@ func newDeadPipeline(maxItems int) *memdPipeline {
 	return newPipeline("", 0, maxItems, nil)
 }
 
+// nolint: unused
 func (pipeline *memdPipeline) debugString() string {
 	var outStr string
 

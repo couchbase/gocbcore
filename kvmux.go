@@ -479,7 +479,7 @@ func (mux *kvMux) waitAndRetryOperation(req *memdQRequest, reason RetryReason) b
 	shouldRetry, retryTime := retryOrchMaybeRetry(req, reason)
 	if shouldRetry {
 		go func() {
-			time.Sleep(retryTime.Sub(time.Now()))
+			time.Sleep(time.Until(retryTime))
 			mux.RequeueDirect(req, true)
 		}()
 		return true

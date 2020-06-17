@@ -7,13 +7,6 @@ import (
 	"strings"
 )
 
-// RestPool represents a single pool returned from the pools REST API.
-type cfgRestPool struct {
-	Name         string `json:"name"`
-	StreamingURI string `json:"streamingUri"`
-	URI          string `json:"uri"`
-}
-
 // A Node is a computer in a cluster running the couchbase software.
 type cfgNode struct {
 	ClusterCompatibility int                `json:"clusterCompatibility"`

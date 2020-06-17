@@ -12,7 +12,7 @@ const (
 	cfCmprMask = 0xE0000000
 
 	// Common flag format for sdk-private data.
-	cfFmtPrivate = 1 << 24
+	cfFmtPrivate = 1 << 24 // nolint: deadcode,varcheck,unused
 	// Common flag format for JSON data.
 	cfFmtJSON = 2 << 24
 	// Common flag format for binary data.

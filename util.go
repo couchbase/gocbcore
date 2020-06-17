@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 )
@@ -62,12 +61,4 @@ func clientInfoString(connID, userAgent string) string {
 	}
 
 	return string(clientInfoBytes)
-}
-
-func cloneTLSConfig(c *tls.Config) *tls.Config {
-	if c == nil {
-		return &tls.Config{}
-	}
-
-	return c.Clone()
 }

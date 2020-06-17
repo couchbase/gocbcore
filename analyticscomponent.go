@@ -196,7 +196,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 	ExecuteLoop:
 		for {
 			{ // Produce an updated payload with the appropriate timeout
-				timeoutLeft := ireq.Deadline.Sub(time.Now())
+				timeoutLeft := time.Until(ireq.Deadline)
 				payloadMap["timeout"] = timeoutLeft.String()
 
 				newPayload, err := json.Marshal(payloadMap)
@@ -249,15 +249,15 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 				}
 
 				select {
-				case <-time.After(retryTime.Sub(time.Now())):
+				case <-time.After(time.Until(retryTime)):
 					continue ExecuteLoop
-				case <-time.After(ireq.Deadline.Sub(time.Now())):
+				case <-time.After(time.Until(ireq.Deadline)):
 					cancel()
 					err := &TimeoutError{
 						InnerError:       errUnambiguousTimeout,
 						OperationID:      "http",
 						Opaque:           ireq.Identifier(),
-						TimeObserved:     time.Now().Sub(start),
+						TimeObserved:     time.Since(start),
 						RetryReasons:     ireq.retryReasons,
 						RetryAttempts:    ireq.retryCount,
 						LastDispatchedTo: ireq.Endpoint,

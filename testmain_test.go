@@ -218,7 +218,7 @@ func TestMain(m *testing.M) {
 	// Loop for at most a second checking for goroutines leaks, this gives any HTTP goroutines time to shutdown
 	start := time.Now()
 	var finalGoroutineCount int
-	for time.Now().Sub(start) <= 1*time.Second {
+	for time.Since(start) <= 1*time.Second {
 		runtime.Gosched()
 		finalGoroutineCount = runtime.NumGoroutine()
 		if finalGoroutineCount == initialGoroutineCount {

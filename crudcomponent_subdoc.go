@@ -149,7 +149,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "LookupIn",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -229,7 +229,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
-			DurabilityLevel: memd.DurabilityLevel(opts.DurabilityLevel),
+			DurabilityLevel: opts.DurabilityLevel,
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
@@ -328,7 +328,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "MutateIn",
 				Opaque:             req.Identifier(),
-				TimeObserved:       time.Now().Sub(start),
+				TimeObserved:       time.Since(start),
 				RetryReasons:       reasons,
 				RetryAttempts:      count,
 				LastDispatchedTo:   connInfo.lastDispatchedTo,

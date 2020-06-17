@@ -13,9 +13,6 @@ type configManagementComponent struct {
 	cfgChangeWatchers []routeConfigWatcher
 	watchersLock      sync.Mutex
 
-	collectionsSupported bool
-	collectionsEnabled   bool
-
 	srcServers []string
 
 	seenConfig bool

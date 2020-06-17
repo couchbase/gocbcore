@@ -139,7 +139,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			return errors.New("cannot specify status in a request packet")
 		}
 
-		binary.BigEndian.PutUint16(buffer[6:], uint16(pkt.Vbucket))
+		binary.BigEndian.PutUint16(buffer[6:], pkt.Vbucket)
 	} else if pkt.Magic == CmdMagicRes {
 		if pkt.Vbucket != 0 {
 			return errors.New("cannot specify vbucket in a response packet")
@@ -242,7 +242,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		serverDurationEnc := EncodeSrvDura16(pkt.ServerDurationFrame.ServerDuration)
 
 		buffer[bodyPos+0] = makeFrameHeader(frameTypeResSrvDuration, 2)
-		binary.BigEndian.PutUint16(buffer[bodyPos+1:], uint16(serverDurationEnc))
+		binary.BigEndian.PutUint16(buffer[bodyPos+1:], serverDurationEnc)
 		bodyPos += 3
 	}
 

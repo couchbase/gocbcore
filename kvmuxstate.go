@@ -31,6 +31,8 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		uuid:         cfg.uuid,
 		revID:        cfg.revID,
 
+		durabilityLevelStatus: durabilityLevelStatusUnknown,
+
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
 	}
 
@@ -61,6 +63,7 @@ func (mux *kvMuxState) GetPipeline(index int) *memdPipeline {
 	return mux.pipelines[index]
 }
 
+// nolint: unused
 func (mux *kvMuxState) debugString() string {
 	var outStr string
 

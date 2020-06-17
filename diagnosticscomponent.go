@@ -78,7 +78,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 
 					startTime := time.Now()
 					handler := func(resp *memdQResponse, req *memdQRequest, err error) {
-						pingLatency := time.Now().Sub(startTime)
+						pingLatency := time.Since(startTime)
 
 						state := PingStateOK
 						if err != nil {
@@ -138,7 +138,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 								InnerError:         errUnambiguousTimeout,
 								OperationID:        "PingKV",
 								Opaque:             req.Identifier(),
-								TimeObserved:       time.Now().Sub(start),
+								TimeObserved:       time.Since(start),
 								RetryReasons:       reasons,
 								RetryAttempts:      count,
 								LastDispatchedTo:   connInfo.lastDispatchedTo,
@@ -264,7 +264,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 					}
 					start := time.Now()
 					resp, err := dc.httpComponent.DoInternalHTTPRequest(req, false)
-					pingLatency := time.Now().Sub(start)
+					pingLatency := time.Since(start)
 					state := PingStateOK
 					if err != nil {
 						if errors.Is(err, ErrTimeout) {
@@ -674,7 +674,7 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		op.cancel(&TimeoutError{
 			InnerError:   errUnambiguousTimeout,
 			OperationID:  "WaitUntilReady",
-			TimeObserved: time.Now().Sub(start),
+			TimeObserved: time.Since(start),
 		})
 	})
 	op.lock.Unlock()

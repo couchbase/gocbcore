@@ -463,7 +463,7 @@ func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]
 ExecuteLoop:
 	for {
 		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := ireq.Deadline.Sub(time.Now())
+			timeoutLeft := time.Until(ireq.Deadline)
 			payloadMap["timeout"] = timeoutLeft.String()
 
 			newPayload, err := json.Marshal(payloadMap)
@@ -510,14 +510,14 @@ ExecuteLoop:
 			}
 
 			select {
-			case <-time.After(retryTime.Sub(time.Now())):
+			case <-time.After(time.Until(retryTime)):
 				continue ExecuteLoop
-			case <-time.After(ireq.Deadline.Sub(time.Now())):
+			case <-time.After(time.Until(ireq.Deadline)):
 				err := &TimeoutError{
 					InnerError:       errUnambiguousTimeout,
 					OperationID:      "N1QLQuery",
 					Opaque:           ireq.Identifier(),
-					TimeObserved:     time.Now().Sub(start),
+					TimeObserved:     time.Since(start),
 					RetryReasons:     ireq.retryReasons,
 					RetryAttempts:    ireq.retryCount,
 					LastDispatchedTo: ireq.Endpoint,

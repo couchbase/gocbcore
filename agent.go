@@ -465,13 +465,6 @@ func buildAuthHandler(auth AuthProvider) authFuncHandler {
 	}
 }
 
-func (agent *Agent) disconnectClient(client *memdClient) {
-	err := client.Close()
-	if err != nil {
-		logErrorf("Failed to shut down client connection (%s)", err)
-	}
-}
-
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {

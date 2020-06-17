@@ -49,41 +49,6 @@ func getKvAuthCreds(auth AuthProvider, endpoint string) (UserPassPair, error) {
 	})
 }
 
-func getMgmtAuthCreds(auth AuthProvider, endpoint string) (UserPassPair, error) {
-	return getSingleAuthCreds(auth, AuthCredsRequest{
-		Service:  MgmtService,
-		Endpoint: endpoint,
-	})
-}
-
-func getCapiAuthCreds(auth AuthProvider, endpoint string) (UserPassPair, error) {
-	return getSingleAuthCreds(auth, AuthCredsRequest{
-		Service:  CapiService,
-		Endpoint: endpoint,
-	})
-}
-
-func getN1qlAuthCreds(auth AuthProvider, endpoint string) ([]UserPassPair, error) {
-	return auth.Credentials(AuthCredsRequest{
-		Service:  N1qlService,
-		Endpoint: endpoint,
-	})
-}
-
-func getFtsAuthCreds(auth AuthProvider, endpoint string) ([]UserPassPair, error) {
-	return auth.Credentials(AuthCredsRequest{
-		Service:  FtsService,
-		Endpoint: endpoint,
-	})
-}
-
-func getCbasAuthCreds(auth AuthProvider, endpoint string) ([]UserPassPair, error) {
-	return auth.Credentials(AuthCredsRequest{
-		Service:  CbasService,
-		Endpoint: endpoint,
-	})
-}
-
 // PasswordAuthProvider provides a standard AuthProvider implementation
 // for use with a standard username/password pair (for example, RBAC).
 type PasswordAuthProvider struct {
