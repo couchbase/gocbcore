@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,4 +17,8 @@ func TestUnitSuite(t *testing.T) {
 	}
 
 	suite.Run(t, new(UnitTestSuite))
+}
+
+func (suite *UnitTestSuite) LoadRawTestDataset(dataset string) ([]byte, error) {
+	return ioutil.ReadFile("testdata/" + dataset + ".json")
 }

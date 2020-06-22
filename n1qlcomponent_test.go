@@ -1,9 +1,11 @@
 package gocbcore
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
@@ -508,4 +510,37 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	if !errors.Is(resErr, ErrTimeout) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
+}
+
+// TestN1QLRowStreamerErrorsAndResults tests the case where we receive both errors and results from the server meaning
+// that we cannot immediately return an error and must surface it through Err instead.
+func (suite *UnitTestSuite) TestN1QLRowStreamerErrorsAndResults() {
+	d, err := suite.LoadRawTestDataset("query_rows_errors")
+	suite.Require().Nil(err)
+
+	qStreamer, err := newQueryStreamer(ioutil.NopCloser(bytes.NewBuffer(d)), "results")
+	suite.Require().Nil(err)
+
+	reader := N1QLRowReader{
+		streamer: qStreamer,
+	}
+
+	numRows := 0
+	for reader.NextRow() != nil {
+		numRows++
+	}
+	suite.Assert().Zero(numRows)
+
+	err = reader.Err()
+	suite.Require().NotNil(err)
+
+	suite.Assert().True(errors.Is(err, ErrCasMismatch))
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().NotEmpty(firstErr.Message)
 }

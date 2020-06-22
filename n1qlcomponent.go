@@ -1,9 +1,11 @@
 package gocbcore
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -23,7 +25,25 @@ func (q *N1QLRowReader) NextRow() []byte {
 
 // Err returns any errors that occurred during streaming.
 func (q N1QLRowReader) Err() error {
-	return q.streamer.Err()
+	err := q.streamer.Err()
+	if err != nil {
+		return err
+	}
+
+	meta, metaErr := q.streamer.MetaData()
+	if metaErr != nil {
+		return metaErr
+	}
+
+	descs, err := parseN1QLError(bytes.NewReader(meta))
+	if err != nil {
+		return &N1QLError{
+			InnerError: err,
+			Errors:     descs,
+		}
+	}
+
+	return nil
 }
 
 // MetaData fetches the non-row bytes streamed in the response.
@@ -94,11 +114,18 @@ type jsonN1QLErrorResponse struct {
 	Errors []jsonN1QLError
 }
 
-func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1QLError {
+func parseN1QLErrorResp(req *httpRequest, statement string, resp *HTTPResponse) *N1QLError {
+	errorDescs, err := parseN1QLError(resp.Body)
+	errOut := wrapN1QLError(req, statement, err)
+	errOut.Errors = errorDescs
+	return errOut
+}
+
+func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
 	var err error
 	var errorDescs []N1QLErrorDesc
 
-	respBody, readErr := ioutil.ReadAll(resp.Body)
+	respBody, readErr := ioutil.ReadAll(data)
 	if readErr == nil {
 		var respParse jsonN1QLErrorResponse
 		parseErr := json.Unmarshal(respBody, &respParse)
@@ -118,6 +145,16 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 		errCode := firstErr.Code
 		errCodeGroup := errCode / 1000
 
+		if errCodeGroup == 4 {
+			err = errPlanningFailure
+		}
+		if errCodeGroup == 12 || errCodeGroup == 14 && errCode != 12004 && errCode != 12016 {
+			err = errIndexFailure
+		}
+		if errCode == 4040 || errCode == 4050 || errCode == 4060 || errCode == 4070 || errCode == 4080 || errCode == 4090 {
+			err = errPreparedStatementFailure
+		}
+
 		if errCode == 3000 {
 			err = errParsingFailure
 		}
@@ -130,21 +167,9 @@ func parseN1QLError(req *httpRequest, statement string, resp *HTTPResponse) *N1Q
 		if errCodeGroup == 10 {
 			err = errAuthenticationFailure
 		}
-
-		if errCodeGroup == 4 {
-			err = errPlanningFailure
-		}
-		if errCodeGroup == 12 || errCodeGroup == 14 && errCode != 12004 && errCode != 12016 {
-			err = errIndexFailure
-		}
-		if errCode == 4040 || errCode == 4050 || errCode == 4060 || errCode == 4070 || errCode == 4080 || errCode == 4090 {
-			err = errPreparedStatementFailure
-		}
 	}
 
-	errOut := wrapN1QLError(req, statement, err)
-	errOut.Errors = errorDescs
-	return errOut
+	return errorDescs, err
 }
 
 type n1qlQueryComponent struct {
@@ -481,7 +506,7 @@ ExecuteLoop:
 		}
 
 		if resp.StatusCode != 200 {
-			n1qlErr := parseN1QLError(ireq, statementForErr, resp)
+			n1qlErr := parseN1QLErrorResp(ireq, statementForErr, resp)
 
 			var retryReason RetryReason
 			if len(n1qlErr.Errors) >= 1 {
