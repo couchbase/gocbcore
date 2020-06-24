@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/couchbase/gocbcore/v9/memd"
 )
@@ -24,6 +25,7 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 	endSeqNo, snapStartSeqNo, snapEndSeqNo SeqNo, evtHandler StreamObserver, opts OpenStreamOptions,
 	cb OpenStreamCallback) (PendingOp, error) {
 	var req *memdQRequest
+	var openHandled uint32
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if resp == nil && err == nil {
 			logWarnf("DCP event occurred with no error and no response")
@@ -31,15 +33,18 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 		}
 
 		if err != nil {
-			// If response is nil then the error must have occurred internally so must be the open stream response.
 			if resp == nil {
-				// All client errors are handled by the StreamObserver
-				cb(nil, err)
-				return
+				if atomic.CompareAndSwapUint32(&openHandled, 0, 1) {
+					// If open hasn't been handled and there's no response then it's reasonably safe to assume that
+					// this occurring for the open stream request.
+					cb(nil, err)
+					return
+				}
 			}
 
-			if resp.Magic == memd.CmdMagicRes {
-				// All client errors are handled by the StreamObserver
+			if resp != nil && resp.Magic == memd.CmdMagicRes {
+				atomic.StoreUint32(&openHandled, 1)
+				// CmdMagicRes means that this must be the open stream request response.
 				cb(nil, err)
 				return
 			}
@@ -53,6 +58,7 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 		}
 
 		if resp.Magic == memd.CmdMagicRes {
+			atomic.StoreUint32(&openHandled, 1)
 			// This is the response to the open stream request.
 			numEntries := len(resp.Value) / 16
 			entries := make([]FailoverEntry, numEntries)
