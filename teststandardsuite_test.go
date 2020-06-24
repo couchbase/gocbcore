@@ -120,6 +120,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeaturePingServices:
 		return !suite.IsMockServer()
+	case TestFeatureEnhancedDurability:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
 	}
 
 	panic("found unsupported feature code")
@@ -207,6 +209,22 @@ func (suite *StandardTestSuite) initAgentGroup(config AgentGroupConfig) (*AgentG
 	}
 
 	return ag, nil
+}
+
+func (suite *StandardTestSuite) tryAtMost(times int, interval time.Duration, fn func() bool) bool {
+	i := 0
+	for {
+		success := fn()
+		if success {
+			return true
+		}
+
+		i++
+		if i >= times {
+			return false
+		}
+		time.Sleep(interval)
+	}
 }
 
 func TestStandardSuite(t *testing.T) {

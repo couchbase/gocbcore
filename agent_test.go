@@ -245,6 +245,271 @@ func (suite *StandardTestSuite) TestGetReplica() {
 	}
 }
 
+func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
+	agent, s := suite.GetAgentAndHarness()
+
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:                    []byte("testDurableReplica"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	retries := 0
+	keyExists := false
+	for {
+		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
+			Key:            []byte("testDurableReplica"),
+			ReplicaIdx:     1,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
+		}, func(res *GetReplicaResult, err error) {
+			s.Wrap(func() {
+				keyNotFound := errors.Is(err, ErrDocumentNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
+				}
+				if !keyNotFound && res.Cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			suite.T().Fatalf("GetReplica could not locate key")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
+	agent, s := suite.GetAgentAndHarness()
+
+	s.PushOp(agent.Add(AddOptions{
+		Key:                    []byte("testAddDurableReplica"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Add operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	retries := 0
+	keyExists := false
+	for {
+		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
+			Key:            []byte("testAddDurableReplica"),
+			ReplicaIdx:     1,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
+		}, func(res *GetReplicaResult, err error) {
+			s.Wrap(func() {
+				keyNotFound := errors.Is(err, ErrDocumentNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
+				}
+				if !keyNotFound && res.Cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			suite.T().Fatalf("GetReplica could not locate key")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func (suite *StandardTestSuite) TestReplaceDurableWriteGetReplica() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
+	agent, s := suite.GetAgentAndHarness()
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:                    []byte("testReplaceDurableReplica"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Replace(ReplaceOptions{
+		Key:                    []byte("testReplaceDurableReplica"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	retries := 0
+	keyExists := false
+	for {
+		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
+			Key:            []byte("testReplaceDurableReplica"),
+			ReplicaIdx:     1,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
+		}, func(res *GetReplicaResult, err error) {
+			s.Wrap(func() {
+				keyNotFound := errors.Is(err, ErrDocumentNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
+				}
+				if !keyNotFound && res.Cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			suite.T().Fatalf("GetReplica could not locate key")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
+	agent, s := suite.GetAgentAndHarness()
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:                    []byte("testDeleteDurableReplica"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Delete(DeleteOptions{
+		Key:                    []byte("testDeleteDurableReplica"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *DeleteResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Delete operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	retries := 0
+	keyNotFound := false
+	for {
+		s.PushOp(agent.GetOneReplica(GetOneReplicaOptions{
+			Key:            []byte("testDeleteDurableReplica"),
+			ReplicaIdx:     1,
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
+		}, func(res *GetReplicaResult, err error) {
+			s.Wrap(func() {
+				if errors.Is(err, ErrDocumentNotFound) {
+					keyNotFound = true
+				} else if err != nil {
+					s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
+				}
+				if !keyNotFound && res.Cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
+		if keyNotFound {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			suite.T().Fatalf("GetReplica could always locate key")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func (suite *StandardTestSuite) TestBasicReplace() {
 	agent, s := suite.GetAgentAndHarness()
 
