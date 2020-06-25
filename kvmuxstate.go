@@ -16,6 +16,7 @@ type kvMuxState struct {
 	revID        int64
 
 	durabilityLevelStatus durabilityLevelStatus
+	createAsDeletedStatus createAsDeletedStatus
 	collectionsSupported  bool
 }
 
@@ -32,6 +33,7 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		revID:        cfg.revID,
 
 		durabilityLevelStatus: durabilityLevelStatusUnknown,
+		createAsDeletedStatus: createAsDeletedStatusUnknown,
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
 	}
@@ -42,6 +44,12 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 			mux.durabilityLevelStatus = durabilityLevelStatusSupported
 		} else {
 			mux.durabilityLevelStatus = durabilityLevelStatusUnsupported
+		}
+
+		if cfg.ContainsBucketCapability("tombstonedUserXAttrs") {
+			mux.createAsDeletedStatus = createAsDeletedStatusSupported
+		} else {
+			mux.createAsDeletedStatus = createAsDeletedStatusUnsupported
 		}
 	}
 

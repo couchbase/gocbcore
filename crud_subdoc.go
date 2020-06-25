@@ -123,6 +123,11 @@ type SubDocResult struct {
 type LookupInResult struct {
 	Cas Cas
 	Ops []SubDocResult
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		IsDeleted bool
+	}
 }
 
 // MutateInResult encapsulates the result of a MutateInEx operation.

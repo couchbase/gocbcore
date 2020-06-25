@@ -12,17 +12,17 @@ type crudComponent struct {
 	defaultRetryStrategy RetryStrategy
 	tracer               *tracerComponent
 	errMapManager        *errMapComponent
-	durabilityVerifier   durabilityVerifier
+	featureVerifier      kvFeatureVerifier
 }
 
 func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
-	errMapManager *errMapComponent, durabilityVerifier durabilityVerifier) *crudComponent {
+	errMapManager *errMapComponent, featureVerifier kvFeatureVerifier) *crudComponent {
 	return &crudComponent{
 		cidMgr:               cidMgr,
 		defaultRetryStrategy: defaultRetryStrategy,
 		tracer:               tracerCmpt,
 		errMapManager:        errMapManager,
-		durabilityVerifier:   durabilityVerifier,
+		featureVerifier:      featureVerifier,
 	}
 }
 
@@ -514,7 +514,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.featureVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -603,7 +603,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.featureVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -737,7 +737,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.featureVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -847,7 +847,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.featureVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{

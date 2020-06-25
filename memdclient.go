@@ -576,6 +576,7 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 	// the feature
 	features = append(features, memd.FeatureAltRequests)
 	features = append(features, memd.FeatureSyncReplication)
+	features = append(features, memd.FeatureCreateAsDeleted)
 
 	return features
 }

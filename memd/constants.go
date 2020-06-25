@@ -92,6 +92,9 @@ const (
 
 	// FeatureOpenTracing indicates support for OpenTracing.
 	FeatureOpenTracing = HelloFeature(0x13)
+
+	// FeatureCreateAsDeleted indicates support for the create as deleted feature.
+	FeatureCreateAsDeleted = HelloFeature(0x17)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending
@@ -365,6 +368,11 @@ const (
 	// SubdocDocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
 	// Internal: This should never be used and is not supported.
 	SubdocDocFlagAccessDeleted = SubdocDocFlag(0x04)
+
+	// SubdocDocFlagCreateAsDeleted indicates that the document should be created as deleted.
+	// That is, to create a tombstone only.
+	// Internal: This should never be used and is not supported.
+	SubdocDocFlagCreateAsDeleted = SubdocDocFlag(0x08)
 )
 
 // DurabilityLevel specifies the level to use for enhanced durability requirements.

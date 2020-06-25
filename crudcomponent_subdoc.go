@@ -67,7 +67,11 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		cb(&LookupInResult{
 			Cas: Cas(resp.Cas),
 			Ops: results,
-		}, err)
+			Internal: struct{ IsDeleted bool }{
+				IsDeleted: isErrorStatus(err, memd.StatusSubDocSuccessDeleted) ||
+					isErrorStatus(err, memd.StatusSubDocMultiPathFailureDeleted),
+			},
+		}, nil)
 	}
 
 	for i, op := range opts.Ops {
@@ -225,7 +229,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.durabilityVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
+		if crud.featureVerifier.HasDurabilityLevelStatus(durabilityLevelStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -233,6 +237,14 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}
 		duraTimeoutFrame = &memd.DurabilityTimeoutFrame{
 			DurabilityTimeout: opts.DurabilityLevelTimeout,
+		}
+	}
+
+	if opts.Flags&memd.SubdocDocFlagCreateAsDeleted != 0 {
+		// We can get here before support status is actually known, we'll send the request unless we know for a fact
+		// that this is unsupported.
+		if crud.featureVerifier.HasCreateAsDeletedStatus(createAsDeletedStatusUnsupported) {
+			return nil, errFeatureNotAvailable
 		}
 	}
 

@@ -12,8 +12,9 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
-type durabilityVerifier interface {
+type kvFeatureVerifier interface {
 	HasDurabilityLevelStatus(status durabilityLevelStatus) bool
+	HasCreateAsDeletedStatus(status createAsDeletedStatus) bool
 }
 
 type dispatcher interface {
@@ -64,7 +65,12 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 }
 
 func (mux *kvMux) getState() *kvMuxState {
-	return (*kvMuxState)(atomic.LoadPointer(&mux.muxPtr))
+	muxPtr := atomic.LoadPointer(&mux.muxPtr)
+	if muxPtr == nil {
+		return nil
+	}
+
+	return (*kvMuxState)(muxPtr)
 }
 
 func (mux *kvMux) updateState(old, new *kvMuxState) bool {
@@ -222,6 +228,15 @@ func (mux *kvMux) HasDurabilityLevelStatus(status durabilityLevelStatus) bool {
 	}
 
 	return clientMux.durabilityLevelStatus == status
+}
+
+func (mux *kvMux) HasCreateAsDeletedStatus(status createAsDeletedStatus) bool {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return false
+	}
+
+	return clientMux.createAsDeletedStatus == status
 }
 
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {

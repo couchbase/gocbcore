@@ -58,6 +58,14 @@ const (
 	durabilityLevelStatusUnsupported = durabilityLevelStatus(0x02)
 )
 
+type createAsDeletedStatus uint32
+
+const (
+	createAsDeletedStatusUnknown     = createAsDeletedStatus(0x00)
+	createAsDeletedStatusSupported   = createAsDeletedStatus(0x01)
+	createAsDeletedStatusUnsupported = createAsDeletedStatus(0x02)
+)
+
 // ClusterCapability represents a capability that the cluster supports
 type ClusterCapability uint32
 

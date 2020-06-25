@@ -22,6 +22,7 @@ var (
 	srvVer600   = NodeVersion{6, 0, 0, 0, 0, ""}
 	srvVer650   = NodeVersion{6, 5, 0, 0, 0, ""}
 	srvVer650DP = NodeVersion{6, 5, 0, 0, 0, "dp"}
+	srvVer660   = NodeVersion{6, 6, 0, 0, 0, ""}
 	srvVer700   = NodeVersion{7, 0, 0, 0, 0, ""}
 	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
@@ -45,6 +46,7 @@ var (
 	TestFeatureGCCCP              = TestFeatureCode("gcccp")
 	TestFeaturePingServices       = TestFeatureCode("pingservices")
 	TestFeatureEnhancedDurability = TestFeatureCode("durability")
+	TestFeatureCreateDeleted      = TestFeatureCode("createasdeleted")
 )
 
 type TestFeatureFlag struct {
