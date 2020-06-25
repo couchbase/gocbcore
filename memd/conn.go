@@ -190,14 +190,14 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			buffer[bodyPos+1] = uint8(pkt.DurabilityLevelFrame.DurabilityLevel)
 			bodyPos += 2
 		} else {
-			durabilityTimeoutSecs := pkt.DurabilityTimeoutFrame.DurabilityTimeout / time.Second
-			if durabilityTimeoutSecs > 65535 {
-				durabilityTimeoutSecs = 65535
+			durabilityTimeoutMillis := pkt.DurabilityTimeoutFrame.DurabilityTimeout / time.Millisecond
+			if durabilityTimeoutMillis > 65535 {
+				durabilityTimeoutMillis = 65535
 			}
 
 			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqSyncDurability, 3)
 			buffer[bodyPos+1] = uint8(pkt.DurabilityLevelFrame.DurabilityLevel)
-			binary.BigEndian.PutUint16(buffer[bodyPos+2:], uint16(durabilityTimeoutSecs))
+			binary.BigEndian.PutUint16(buffer[bodyPos+2:], uint16(durabilityTimeoutMillis))
 			bodyPos += 4
 		}
 	}
@@ -360,9 +360,9 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 						DurabilityLevel: DurabilityLevel(frameBody[0]),
 					}
 					if frameLen == 3 {
-						durabilityTimeoutSecs := binary.BigEndian.Uint16(frameBody[1:])
+						durabilityTimeoutMillis := binary.BigEndian.Uint16(frameBody[1:])
 						pkt.DurabilityTimeoutFrame = &DurabilityTimeoutFrame{
-							DurabilityTimeout: time.Duration(durabilityTimeoutSecs) * time.Second,
+							DurabilityTimeout: time.Duration(durabilityTimeoutMillis) * time.Millisecond,
 						}
 					} else {
 						// We follow the semantic that duplicate frames overwrite previous ones,
