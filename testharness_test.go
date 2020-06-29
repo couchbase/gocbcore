@@ -42,6 +42,8 @@ var (
 	TestFeatureDCPDeleteTimes = TestFeatureCode("dcpdeletetimes")
 	TestFeatureMemd           = TestFeatureCode("memd")
 	TestFeatureGetMeta        = TestFeatureCode("getmeta")
+	TestFeatureGCCCP          = TestFeatureCode("gcccp")
+	TestFeaturePingServices   = TestFeatureCode("pingservices")
 )
 
 type TestFeatureFlag struct {

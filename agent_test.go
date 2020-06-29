@@ -1474,6 +1474,178 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 	}
 }
 
+func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
+	suite.EnsureSupportsFeature(TestFeatureGCCCP)
+
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
+	report, err := agent.Diagnostics(DiagnosticsOptions{})
+	suite.Require().Nil(err, err)
+
+	suite.Assert().Greater(report.ConfigRev, int64(0))
+	suite.Assert().Equal(ClusterStateOnline, report.State)
+
+	if len(report.MemdConns) == 0 {
+		suite.T().Fatalf("Diagnostics report contained no results")
+	}
+
+	for _, conn := range report.MemdConns {
+		suite.Assert().NotEmpty(conn.RemoteAddr)
+		suite.Assert().Equal(EndpointStateConnected, conn.State)
+	}
+
+	// We can't run a set on a gcccp connection
+}
+
+func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
+	report, err := agent.Diagnostics(DiagnosticsOptions{})
+	suite.Require().Nil(err, err)
+
+	suite.Assert().Greater(report.ConfigRev, int64(0))
+	suite.Assert().Equal(ClusterStateOnline, report.State)
+
+	if len(report.MemdConns) == 0 {
+		suite.T().Fatalf("Diagnostics report contained no results")
+	}
+
+	for _, conn := range report.MemdConns {
+		suite.Assert().NotEmpty(conn.RemoteAddr)
+		suite.Assert().Equal(EndpointStateConnected, conn.State)
+	}
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("TestAgentWaitUntilReadyBucket"),
+		Value:          []byte(""),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Got error for Set: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
+	suite.EnsureSupportsFeature(TestFeatureGCCCP)
+
+	cfg := suite.makeAgentGroupConfig(globalTestConfig)
+	ag, err := CreateAgentGroup(&cfg)
+	suite.Require().Nil(err, err)
+	defer ag.Close()
+	s := suite.GetHarness()
+
+	s.PushOp(ag.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
+	report, err := ag.Diagnostics(DiagnosticsOptions{})
+	suite.Require().Nil(err, err)
+
+	suite.Assert().Greater(report.ConfigRev, int64(0))
+	suite.Assert().Equal(ClusterStateOnline, report.State)
+
+	if len(report.MemdConns) == 0 {
+		suite.T().Fatalf("Diagnostics report contained no results")
+	}
+
+	for _, conn := range report.MemdConns {
+		suite.Assert().NotEmpty(conn.RemoteAddr)
+		suite.Assert().Equal(EndpointStateConnected, conn.State)
+	}
+}
+
+// This test cannot run against mock as the mock does not respond with 200 status code for all of the endpoints.
+func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
+	suite.EnsureSupportsFeature(TestFeaturePingServices)
+
+	cfg := suite.makeAgentGroupConfig(globalTestConfig)
+	ag, err := CreateAgentGroup(&cfg)
+	suite.Require().Nil(err, err)
+	defer ag.Close()
+	s := suite.GetHarness()
+
+	err = ag.OpenBucket(globalTestConfig.BucketName)
+	suite.Require().Nil(err, err)
+
+	s.PushOp(ag.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
+	agent := ag.GetAgent("default")
+	suite.Require().NotNil(agent)
+
+	report, err := agent.Diagnostics(DiagnosticsOptions{})
+	suite.Require().Nil(err, err)
+
+	suite.Assert().Greater(report.ConfigRev, int64(0))
+	suite.Assert().Equal(ClusterStateOnline, report.State)
+
+	if len(report.MemdConns) == 0 {
+		suite.T().Fatalf("Diagnostics report contained no results")
+	}
+
+	for _, conn := range report.MemdConns {
+		suite.Assert().NotEmpty(conn.RemoteAddr)
+		suite.Assert().Equal(EndpointStateConnected, conn.State)
+	}
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("TestAgentGroupWaitUntilReadyBucket"),
+		Value:          []byte(""),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Got error for Set: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 // These functions are likely temporary.
 
 type testManifestWithError struct {

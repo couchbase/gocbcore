@@ -116,6 +116,10 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && (suite.ClusterVersion.Equal(srvVer650DP) || !suite.ClusterVersion.Lower(srvVer700))
 	case TestFeatureGetMeta:
 		return !suite.IsMockServer()
+	case TestFeatureGCCCP:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
+	case TestFeaturePingServices:
+		return !suite.IsMockServer()
 	}
 
 	panic("found unsupported feature code")
@@ -160,6 +164,23 @@ func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBuc
 
 	cfg = rawCfg
 	return
+}
+
+func (suite *StandardTestSuite) makeAgentConfig(testConfig *TestConfig) AgentConfig {
+	config := AgentConfig{}
+	config.FromConnStr(testConfig.ConnStr)
+
+	config.UseMutationTokens = true
+	config.UseCollections = true
+	config.UseOutOfOrderResponses = true
+
+	config.Auth = testConfig.Authenticator
+
+	if testConfig.CAProvider != nil {
+		config.TLSRootCAProvider = testConfig.CAProvider
+	}
+
+	return config
 }
 
 func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) AgentGroupConfig {

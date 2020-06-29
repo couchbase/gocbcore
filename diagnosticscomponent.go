@@ -550,6 +550,8 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 		path = "/api/ping"
 	case CapiService:
 		path = "/"
+	case MgmtService:
+		path = ""
 	}
 
 	for {
@@ -565,6 +567,8 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 				epList = clientMux.ftsEpList
 			case CapiService:
 				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
+			case MgmtService:
+				epList = clientMux.mgmtEpList
 			}
 
 			connected := uint32(0)
@@ -693,6 +697,8 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 			go dc.checkHTTPReady(ctx, FtsService, interval, desiredState, op)
 		case CbasService:
 			go dc.checkHTTPReady(ctx, CbasService, interval, desiredState, op)
+		case MgmtService:
+			go dc.checkHTTPReady(ctx, MgmtService, interval, desiredState, op)
 		}
 	}
 
