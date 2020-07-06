@@ -278,28 +278,20 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.tracer,
 	)
 
-	// If a user connects on a non default http port then we won't translate the address into memd addresses.
-	// If this happens then we should instruct the poller controller to skip straight to http polling. The cccp poller
-	// will not see no pipelines as a reason to fallback, it will just keep looping until it finds pipelines.
-	var cccpPoller *cccpConfigController
-	if len(config.MemdAddrs) > 0 {
-		cccpPoller = newCCCPConfigController(
-			cccpPollerProperties{
-				confCccpMaxWait:    confCccpMaxWait,
-				confCccpPollPeriod: confCccpPollPeriod,
-			},
-			c.kvMux,
-			c.cfgManager,
-		)
-	}
-
-	if cccpPoller == nil && config.BucketName == "" {
+	if len(config.MemdAddrs) == 0 && config.BucketName == "" {
 		// The http poller can't run without a bucket. We don't trigger an error for this case
 		// because AgentGroup users who use memcached buckets on non-default ports will end up here.
 		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
 	} else {
 		c.pollerController = newPollerController(
-			cccpPoller,
+			newCCCPConfigController(
+				cccpPollerProperties{
+					confCccpMaxWait:    confCccpMaxWait,
+					confCccpPollPeriod: confCccpPollPeriod,
+				},
+				c.kvMux,
+				c.cfgManager,
+			),
 			newHTTPConfigController(
 				c.bucketName,
 				httpPollerProperties{
@@ -310,6 +302,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				c.httpMux,
 				c.cfgManager,
 			),
+			c.cfgManager,
 		)
 	}
 

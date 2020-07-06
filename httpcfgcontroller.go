@@ -78,6 +78,11 @@ func (hcc *httpConfigController) Stop() {
 	close(hcc.looperStopSig)
 }
 
+func (hcc *httpConfigController) Reset() {
+	hcc.looperStopSig = make(chan struct{})
+	hcc.looperDoneSig = make(chan struct{})
+}
+
 func (hcc *httpConfigController) DoLoop() {
 	waitPeriod := hcc.confHTTPRetryDelay
 	maxConnPeriod := hcc.confHTTPRedialPeriod
@@ -184,7 +189,7 @@ Looper:
 		case 0:
 			continue
 		case -1:
-			break
+			continue
 		}
 
 		logDebugf("Connected.")

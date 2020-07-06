@@ -12,18 +12,50 @@ type pollerController struct {
 
 	cccpPoller *cccpConfigController
 	httpPoller *httpConfigController
+	cfgMgr     configManager
 }
 
 type configPollerController interface {
 	Pause(paused bool)
 	Done() chan struct{}
 	Stop()
+	Reset()
 }
 
-func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfigController) *pollerController {
-	return &pollerController{
+func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfigController, cfgMgr configManager) *pollerController {
+	pc := &pollerController{
 		cccpPoller: cccpPoller,
 		httpPoller: httpPoller,
+		cfgMgr:     cfgMgr,
+	}
+	cfgMgr.AddConfigWatcher(pc)
+
+	return pc
+}
+
+// We listen out for the first config that comes in so that we (re)start the cccp if applicable.
+func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
+	if cfg.bktType == bktTypeCouchbase || cfg.bktType == bktTypeMemcached {
+		pc.cfgMgr.RemoveConfigWatcher(pc)
+	}
+
+	pc.controllerLock.Lock()
+	if cfg.bktType == bktTypeCouchbase && pc.activeController == pc.httpPoller {
+		logDebugf("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
+		pc.activeController = nil
+		pc.controllerLock.Unlock()
+		go func() {
+			pc.httpPoller.Stop()
+			pollerCh := pc.httpPoller.Done()
+			if pollerCh != nil {
+				<-pollerCh
+			}
+			pc.httpPoller.Reset()
+			pc.cccpPoller.Reset()
+			pc.Start()
+		}()
+	} else {
+		pc.controllerLock.Unlock()
 	}
 }
 
@@ -96,5 +128,6 @@ func (pc *pollerController) Done() chan struct{} {
 }
 
 func isPollingFallbackError(err error) bool {
-	return errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrUnsupportedOperation)
+	return errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrUnsupportedOperation) ||
+		errors.Is(err, errNoCCCPHosts)
 }

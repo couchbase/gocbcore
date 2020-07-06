@@ -308,6 +308,7 @@ var (
 	// errCircuitBreakerOpen is passed around internally to signal that an
 	// operation was cancelled due to the circuit breaker being open.
 	errCircuitBreakerOpen = errors.New("circuit breaker open")
+	errNoCCCPHosts        = errors.New("no cccp hosts available")
 )
 
 // This list contains protected versions of all the errors we throw

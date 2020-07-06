@@ -51,6 +51,11 @@ func (ccc *cccpConfigController) Done() chan struct{} {
 	return ccc.looperDoneSig
 }
 
+func (ccc *cccpConfigController) Reset() {
+	ccc.looperStopSig = make(chan struct{})
+	ccc.looperDoneSig = make(chan struct{})
+}
+
 func (ccc *cccpConfigController) DoLoop() error {
 	tickTime := ccc.confCccpPollPeriod
 	paused := false
@@ -86,8 +91,8 @@ Looper:
 
 		numNodes := iter.NumPipelines()
 		if numNodes == 0 {
-			logDebugf("CCCPPOLL: No nodes available to poll")
-			continue
+			logDebugf("CCCPPOLL: No nodes available to poll, return upstream")
+			return errNoCCCPHosts
 		}
 
 		if nodeIdx < 0 || nodeIdx > numNodes {
@@ -172,6 +177,17 @@ func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOu
 		return
 	case <-timeoutTmr.C:
 		ReleaseTimer(timeoutTmr, true)
+
+		// We've timed out so lets check underlying connections to see if they're responsible.
+		clients := pipeline.Clients()
+		for _, cli := range clients {
+			err := cli.Error()
+			if err != nil {
+				req.cancelWithCallback(err)
+				<-signal
+				return
+			}
+		}
 		req.cancelWithCallback(errAmbiguousTimeout)
 		<-signal
 		return

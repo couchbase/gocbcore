@@ -56,6 +56,12 @@ func (pipeline *memdPipeline) debugString() string {
 	return outStr
 }
 
+func (pipeline *memdPipeline) Clients() []*memdPipelineClient {
+	pipeline.clientsLock.Lock()
+	defer pipeline.clientsLock.Unlock()
+	return pipeline.clients
+}
+
 func (pipeline *memdPipeline) Address() string {
 	return pipeline.address
 }
