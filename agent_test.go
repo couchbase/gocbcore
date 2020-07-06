@@ -1175,7 +1175,7 @@ func (suite *StandardTestSuite) TestFlagsRoundTrip() {
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("flagskey"),
-		Value:          []byte(""),
+		Value:          []byte("{}"),
 		Flags:          0x99889988,
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
@@ -1544,7 +1544,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("TestAgentWaitUntilReadyBucket"),
-		Value:          []byte(""),
+		Value:          []byte("{}"),
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
@@ -1633,7 +1633,7 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("TestAgentGroupWaitUntilReadyBucket"),
-		Value:          []byte(""),
+		Value:          []byte("{}"),
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
