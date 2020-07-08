@@ -43,6 +43,7 @@ func (c *Conn) IsFeatureEnabled(feature HelloFeature) bool {
 // WritePacket writes a packet to the network.
 func (c *Conn) WritePacket(pkt *Packet) error {
 	encodedKey := pkt.Key
+	extras := pkt.Extras
 	if c.IsFeatureEnabled(FeatureCollections) {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
@@ -56,6 +57,12 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			collEncodedKey = AppendULEB128_32(collEncodedKey, pkt.CollectionID)
 			collEncodedKey = append(collEncodedKey, encodedKey...)
 			encodedKey = collEncodedKey
+		} else if pkt.Command == CmdGetRandom {
+			// GetRandom expects the cid to be in the extras
+			// GetRandom MUST not have any extras if not using collections so we're ok to just set it.
+			// It also doesn't expect the collection ID to be leb encoded.
+			extras = make([]byte, 4)
+			binary.BigEndian.PutUint32(extras, pkt.CollectionID)
 		} else {
 			if pkt.CollectionID > 0 {
 				return errors.New("cannot encode collection id with a non-collection command")
@@ -67,7 +74,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		}
 	}
 
-	extLen := len(pkt.Extras)
+	extLen := len(extras)
 	keyLen := len(encodedKey)
 	valLen := len(pkt.Value)
 
@@ -251,8 +258,8 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 	}
 
 	// Copy the extras into the body of the packet
-	copy(buffer[bodyPos:], pkt.Extras)
-	bodyPos += len(pkt.Extras)
+	copy(buffer[bodyPos:], extras)
+	bodyPos += len(extras)
 
 	// Copy the encoded key into the body of the packet
 	copy(buffer[bodyPos:], encodedKey)

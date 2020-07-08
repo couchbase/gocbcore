@@ -961,17 +961,20 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 
 	req := &memdQRequest{
 		Packet: memd.Packet{
-			Magic:    memd.CmdMagicReq,
-			Command:  memd.CmdGetRandom,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
+			Magic:        memd.CmdMagicReq,
+			Command:      memd.CmdGetRandom,
+			Datatype:     0,
+			Cas:          0,
+			Extras:       nil,
+			Key:          nil,
+			Value:        nil,
+			CollectionID: opts.CollectionID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
 		RetryStrategy:    opts.RetryStrategy,
+		CollectionName:   opts.CollectionName,
+		ScopeName:        opts.ScopeName,
 	}
 
 	op, err := crud.cidMgr.Dispatch(req)

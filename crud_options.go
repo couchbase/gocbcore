@@ -236,6 +236,10 @@ type GetRandomOptions struct {
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
 
+	CollectionName string
+	ScopeName      string
+	CollectionID   uint32
+
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }

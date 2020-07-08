@@ -1085,8 +1085,10 @@ func (suite *StandardTestSuite) TestRandomGet() {
 	suite.Require().Nil(err, err)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
-			Key:   []byte(k),
-			Value: []byte("Hello World!"),
+			Key:            []byte(k),
+			Value:          []byte("Hello World!"),
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -1097,7 +1099,10 @@ func (suite *StandardTestSuite) TestRandomGet() {
 		s.Wait(0)
 	}
 
-	s.PushOp(agent.GetRandom(GetRandomOptions{}, func(res *GetRandomResult, err error) {
+	s.PushOp(agent.GetRandom(GetRandomOptions{
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetRandomResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Get operation failed: %v", err)
