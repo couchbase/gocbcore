@@ -1538,22 +1538,17 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	}))
 	s.Wait(6)
 
-	report, err := agent.Diagnostics(DiagnosticsOptions{})
-	suite.Require().Nil(err, err)
-
-	suite.Assert().Greater(report.ConfigRev, int64(0))
-	suite.Assert().Equal(ClusterStateOnline, report.State)
-
-	if len(report.MemdConns) == 0 {
-		suite.T().Fatalf("Diagnostics report contained no results")
-	}
-
-	for _, conn := range report.MemdConns {
-		suite.Assert().NotEmpty(conn.RemoteAddr)
-		suite.Assert().Equal(EndpointStateConnected, conn.State)
-	}
-
-	// We can't run a set on a gcccp connection
+	s.PushOp(agent.Ping(PingOptions{
+		ServiceTypes: []ServiceType{N1qlService},
+		N1QLDeadline: time.Now().Add(5 * time.Second),
+	}, func(result *PingResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Ping failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
 }
 
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
@@ -1572,21 +1567,6 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 		})
 	}))
 	s.Wait(6)
-
-	report, err := agent.Diagnostics(DiagnosticsOptions{})
-	suite.Require().Nil(err, err)
-
-	suite.Assert().Greater(report.ConfigRev, int64(0))
-	suite.Assert().Equal(ClusterStateOnline, report.State)
-
-	if len(report.MemdConns) == 0 {
-		suite.T().Fatalf("Diagnostics report contained no results")
-	}
-
-	for _, conn := range report.MemdConns {
-		suite.Assert().NotEmpty(conn.RemoteAddr)
-		suite.Assert().Equal(EndpointStateConnected, conn.State)
-	}
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("TestAgentWaitUntilReadyBucket"),
@@ -1621,20 +1601,17 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
 	}))
 	s.Wait(6)
 
-	report, err := ag.Diagnostics(DiagnosticsOptions{})
-	suite.Require().Nil(err, err)
-
-	suite.Assert().Greater(report.ConfigRev, int64(0))
-	suite.Assert().Equal(ClusterStateOnline, report.State)
-
-	if len(report.MemdConns) == 0 {
-		suite.T().Fatalf("Diagnostics report contained no results")
-	}
-
-	for _, conn := range report.MemdConns {
-		suite.Assert().NotEmpty(conn.RemoteAddr)
-		suite.Assert().Equal(EndpointStateConnected, conn.State)
-	}
+	s.PushOp(ag.Ping(PingOptions{
+		ServiceTypes: []ServiceType{N1qlService},
+		N1QLDeadline: time.Now().Add(5 * time.Second),
+	}, func(result *PingResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Ping failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
 }
 
 // This test cannot run against mock as the mock does not respond with 200 status code for all of the endpoints.
@@ -1661,21 +1638,6 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 
 	agent := ag.GetAgent("default")
 	suite.Require().NotNil(agent)
-
-	report, err := agent.Diagnostics(DiagnosticsOptions{})
-	suite.Require().Nil(err, err)
-
-	suite.Assert().Greater(report.ConfigRev, int64(0))
-	suite.Assert().Equal(ClusterStateOnline, report.State)
-
-	if len(report.MemdConns) == 0 {
-		suite.T().Fatalf("Diagnostics report contained no results")
-	}
-
-	for _, conn := range report.MemdConns {
-		suite.Assert().NotEmpty(conn.RemoteAddr)
-		suite.Assert().Equal(EndpointStateConnected, conn.State)
-	}
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("TestAgentGroupWaitUntilReadyBucket"),
