@@ -230,6 +230,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 				},
 			)
 			if err != nil {
+				suite.T().Logf("Canceling due to failure sending set: %v", err)
 				cancel()
 				return
 			}
@@ -237,6 +238,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 			select {
 			case err := <-ch:
 				if err != nil {
+					suite.T().Logf("Canceling due to failure performing set: %v", err)
 					cancel()
 					return
 				}
@@ -262,6 +264,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 						},
 					)
 					if err != nil {
+						suite.T().Logf("Canceling due to failure sending delete: %v", err)
 						cancel()
 						return
 					}
@@ -269,6 +272,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					select {
 					case err := <-ch:
 						if err != nil {
+							suite.T().Logf("Canceling due to failure performing delete: %v", err)
 							cancel()
 							return
 						}
@@ -294,7 +298,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 
 	select {
 	case <-ctx.Done():
-		suite.T().Error("Failed to perform mutations")
+		suite.T().Fatalf("Failed to perform mutations due to %v", ctx.Err())
 	case <-wgCh:
 		cancel()
 		// Let any expirations do their thing
