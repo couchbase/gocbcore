@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -1556,14 +1558,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	s.Wait(0)
 }
 
-func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
-	cfg.BucketName = globalTestConfig.BucketName
-	agent, err := CreateAgent(&cfg)
-	suite.Require().Nil(err, err)
-	defer agent.Close()
-	s := suite.GetHarness()
-
+func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSubHarness, test string) {
 	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1574,7 +1569,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 	s.Wait(6)
 
 	s.PushOp(agent.Set(SetOptions{
-		Key:            []byte("TestAgentWaitUntilReadyBucket"),
+		Key:            []byte(test),
 		Value:          []byte("{}"),
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
@@ -1586,6 +1581,17 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 		})
 	}))
 	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentWaitUntilReadyBucket")
 }
 
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
@@ -1632,31 +1638,279 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 	err = ag.OpenBucket(globalTestConfig.BucketName)
 	suite.Require().Nil(err, err)
 
-	s.PushOp(ag.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+	agent := ag.GetAgent("default")
+	suite.Require().NotNil(agent)
+
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentGroupWaitUntilReadyBucket")
+}
+
+func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.HTTPAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port != "8091" {
+		suite.T().Skipf("Skipping test due to non default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{addr1}
+	cfg.MemdAddrs = []string{}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPort")
+}
+
+func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
+	suite.EnsureSupportsFeature(TestFeatureSsl)
+
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.HTTPAddrs[0]
+	parts := strings.Split(addr1, ":")
+	if parts[1] != "8091" {
+		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
+	}
+
+	cfg.HTTPAddrs = []string{parts[0] + ":" + "18091"}
+	cfg.MemdAddrs = []string{}
+	cfg.UseTLS = true
+	// SkipVerify
+	cfg.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPortSSL")
+}
+
+func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.HTTPAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port != "8091" {
+		suite.T().Skipf("Skipping test due to non default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{addr1}
+	cfg.MemdAddrs = []string{}
+	cfg.BucketName = "idontexist"
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	start := time.Now()
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{
+		RetryStrategy: newFailFastRetryStrategy(),
+	}, func(result *WaitUntilReadyResult, err error) {
 		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			if err == nil {
+				s.Fatalf("WaitUntilReady failed without error")
+			}
+			if !errors.Is(err, ErrAuthenticationFailure) {
+				s.Fatalf("WaitUntilReady should have failed with auth error but was %v", err)
+			}
+			if time.Since(start) > 5*time.Second {
+				s.Fatalf("WaitUntilReady should have failed before the timeout duration, was %s", time.Since(start))
 			}
 		})
 	}))
 	s.Wait(6)
+}
 
-	agent := ag.GetAgent("default")
-	suite.Require().NotNil(agent)
+func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
 
-	s.PushOp(agent.Set(SetOptions{
-		Key:            []byte("TestAgentGroupWaitUntilReadyBucket"),
-		Value:          []byte("{}"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-	}, func(res *StoreResult, err error) {
+	addr1 := cfg.HTTPAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port == "8091" {
+		suite.T().Skipf("Skipping test due to default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{addr1}
+	cfg.MemdAddrs = []string{}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyNonDefaultPort")
+}
+
+func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalidBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.HTTPAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port == "8091" {
+		suite.T().Skipf("Skipping test due to default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{addr1}
+	cfg.MemdAddrs = []string{}
+	cfg.BucketName = "idontexist"
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	start := time.Now()
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{
+		RetryStrategy: newFailFastRetryStrategy(),
+	}, func(result *WaitUntilReadyResult, err error) {
 		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("Got error for Set: %v", err)
+			if err == nil {
+				s.Fatalf("WaitUntilReady failed without error")
+			}
+			if !errors.Is(err, ErrAuthenticationFailure) {
+				s.Fatalf("WaitUntilReady should have failed with auth error but was %v", err)
+			}
+			if time.Since(start) > 5*time.Second {
+				s.Fatalf("WaitUntilReady should have failed before the timeout duration, was %s", time.Since(start))
 			}
 		})
 	}))
-	s.Wait(0)
+	s.Wait(6)
+}
+
+func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPort() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.MemdAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no Memd addresses")
+	}
+
+	addr1 := cfg.MemdAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port != "11210" {
+		suite.T().Skipf("Skipping test due to non default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{}
+	cfg.MemdAddrs = []string{addr1}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPort")
+}
+
+func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
+	suite.EnsureSupportsFeature(TestFeatureSsl)
+
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.MemdAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no memd addresses")
+	}
+
+	addr1 := cfg.MemdAddrs[0]
+	parts := strings.Split(addr1, ":")
+	if parts[1] != "11210" {
+		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
+	}
+
+	cfg.HTTPAddrs = []string{}
+	cfg.MemdAddrs = []string{parts[0] + ":11207"}
+	cfg.UseTLS = true
+	// SkipVerify
+	cfg.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPortSSL")
+}
+
+func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.MemdAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no memd addresses")
+	}
+
+	addr1 := cfg.MemdAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port == "8091" {
+		suite.T().Skipf("Skipping test due to default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{}
+	cfg.MemdAddrs = []string{addr1}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyNonDefaultPort")
+}
+
+func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.MemdAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no memd addresses")
+	}
+
+	addr1 := cfg.MemdAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port != "11210" {
+		suite.T().Skipf("Skipping test due to non default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{}
+	cfg.MemdAddrs = []string{addr1}
+	cfg.BucketName = "idontexist"
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	start := time.Now()
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{
+		RetryStrategy: newFailFastRetryStrategy(),
+	}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err == nil {
+				s.Fatalf("WaitUntilReady failed without error")
+			}
+			if !errors.Is(err, ErrAuthenticationFailure) {
+				s.Fatalf("WaitUntilReady should have failed with auth error but was %v", err)
+			}
+			if time.Since(start) > 5*time.Second {
+				s.Fatalf("WaitUntilReady should have failed before the timeout duration, was %s", time.Since(start))
+			}
+		})
+	}))
+	s.Wait(6)
 }
 
 // These functions are likely temporary.

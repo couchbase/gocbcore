@@ -293,7 +293,7 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		c.cfgManager,
 	)
 
-	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy())
+	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
 	c.dcp = newDcpComponent(c.kvMux, config.UseStreamID)
 
 	// Kick everything off.

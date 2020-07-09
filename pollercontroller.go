@@ -20,6 +20,7 @@ type configPollerController interface {
 	Done() chan struct{}
 	Stop()
 	Reset()
+	Error() error
 }
 
 func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfigController, cfgMgr configManager) *pollerController {
@@ -125,6 +126,23 @@ func (pc *pollerController) Done() chan struct{} {
 		return nil
 	}
 	return controller.Done()
+}
+
+type pollerErrorProvider interface {
+	PollerError() error
+}
+
+// If the underlying poller is currently in an error state then this will surface that error.
+func (pc *pollerController) PollerError() error {
+	pc.controllerLock.Lock()
+	controller := pc.activeController
+	pc.controllerLock.Unlock()
+
+	if controller == nil {
+		return nil
+	}
+
+	return controller.Error()
 }
 
 func isPollingFallbackError(err error) bool {

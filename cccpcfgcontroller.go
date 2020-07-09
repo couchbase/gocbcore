@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -19,6 +20,9 @@ type cccpConfigController struct {
 
 	looperStopSig chan struct{}
 	looperDoneSig chan struct{}
+
+	fetchErr error
+	errLock  sync.Mutex
 }
 
 func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *configManagementComponent) *cccpConfigController {
@@ -37,6 +41,18 @@ func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *c
 type cccpPollerProperties struct {
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
+}
+
+func (ccc *cccpConfigController) Error() error {
+	ccc.errLock.Lock()
+	defer ccc.errLock.Unlock()
+	return ccc.fetchErr
+}
+
+func (ccc *cccpConfigController) setError(err error) {
+	ccc.errLock.Lock()
+	ccc.fetchErr = err
+	ccc.errLock.Unlock()
 }
 
 func (ccc *cccpConfigController) Pause(paused bool) {
@@ -112,8 +128,11 @@ Looper:
 					foundErr = err
 					return true
 				}
+
+				ccc.setError(err)
 				return false
 			}
+			ccc.setError(nil)
 
 			logDebugf("CCCPPOLL: Got Block: %v", string(cccpBytes))
 

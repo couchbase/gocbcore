@@ -313,7 +313,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)
 	c.search = newSearchQueryComponent(c.http, c.tracer)
 	c.views = newViewQueryComponent(c.http, c.tracer)
-	c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy)
+	c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 
 	// Kick everything off.
 	cfg := &routeConfig{

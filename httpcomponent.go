@@ -258,6 +258,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
 		dSpan.Finish()
 		if err != nil {
+			logSchedf("Received HTTP Response for ID=%s, errored", req.UniqueID)
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation
 			// of the error message here for better UX.
 			if errors.Is(err, context.Canceled) {
@@ -337,6 +338,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 
 			continue
 		}
+		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
 
 		respOut := HTTPResponse{
 			Endpoint:   endpoint,

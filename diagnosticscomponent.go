@@ -16,21 +16,23 @@ import (
 )
 
 type diagnosticsComponent struct {
-	kvMux         *kvMux
-	httpMux       *httpMux
-	httpComponent *httpComponent
-	bucket        string
-	defaultRetry  RetryStrategy
+	kvMux               *kvMux
+	httpMux             *httpMux
+	httpComponent       *httpComponent
+	bucket              string
+	defaultRetry        RetryStrategy
+	pollerErrorProvider pollerErrorProvider
 }
 
 func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *httpComponent, bucket string,
-	defaultRetry RetryStrategy) *diagnosticsComponent {
+	defaultRetry RetryStrategy, pollerErrorProvider pollerErrorProvider) *diagnosticsComponent {
 	return &diagnosticsComponent{
-		kvMux:         kvMux,
-		httpMux:       httpMux,
-		bucket:        bucket,
-		httpComponent: httpComponent,
-		defaultRetry:  defaultRetry,
+		kvMux:               kvMux,
+		httpMux:             httpMux,
+		bucket:              bucket,
+		httpComponent:       httpComponent,
+		defaultRetry:        defaultRetry,
+		pollerErrorProvider: pollerErrorProvider,
 	}
 }
 
@@ -504,6 +506,16 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 
 				return false
 			})
+
+			// If there's no error appearing from the pipeline client then let's check the poller
+			if connectErr == nil && dc.pollerErrorProvider != nil {
+				pollerErr := dc.pollerErrorProvider.PollerError()
+
+				// We don't care about timeouts, they don't tell us anything we want to know.
+				if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+					connectErr = pollerErr
+				}
+			}
 		} else if revID > -1 {
 			expected := iter.NumPipelines()
 			connected := 0
@@ -532,6 +544,16 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 						// might be connected. If it's online then we can bail now as we'll never achieve that.
 						if desiredState == ClusterStateOnline {
 							return true
+						}
+					}
+
+					// If there's no error appearing from the pipeline client then let's check the poller
+					if connectErr == nil && dc.pollerErrorProvider != nil {
+						pollerErr := dc.pollerErrorProvider.PollerError()
+
+						// We don't care about timeouts, they don't tell us anything we want to know.
+						if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+							connectErr = pollerErr
 						}
 					}
 				}

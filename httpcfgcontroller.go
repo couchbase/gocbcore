@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type configStreamBlock struct {
@@ -43,6 +46,9 @@ type httpConfigController struct {
 
 	looperStopSig chan struct{}
 	looperDoneSig chan struct{}
+
+	fetchErr error
+	errLock  sync.Mutex
 }
 
 type httpPollerProperties struct {
@@ -66,8 +72,19 @@ func newHTTPConfigController(bucketName string, props httpPollerProperties, muxe
 	}
 }
 
-func (hcc *httpConfigController) Pause(paused bool) {
+func (hcc *httpConfigController) Error() error {
+	hcc.errLock.Lock()
+	defer hcc.errLock.Unlock()
+	return hcc.fetchErr
+}
 
+func (hcc *httpConfigController) setError(err error) {
+	hcc.errLock.Lock()
+	hcc.fetchErr = err
+	hcc.errLock.Unlock()
+}
+
+func (hcc *httpConfigController) Pause(paused bool) {
 }
 
 func (hcc *httpConfigController) Done() chan struct{} {
@@ -156,32 +173,40 @@ Looper:
 				Method:   "GET",
 				Path:     uri,
 				Endpoint: pickedSrv,
+				UniqueID: uuid.New().String(),
 			}
 
 			var err error
 			resp, err = hcc.httpComponent.DoInternalHTTPRequest(req, true)
 			if err != nil {
 				logDebugf("Failed to connect to host. %v", err)
+				hcc.setError(err)
 				return 0
 			}
 
 			if resp.StatusCode != 200 {
+				err := resp.Body.Close()
+				if err != nil {
+					logErrorf("Socket close failed handling status code != 200 (%s)", err)
+				}
 				if resp.StatusCode == 401 {
 					logDebugf("Failed to connect to host, bad auth.")
-					// firstCfgFn(nil, "", errAuthenticationFailure)
+					hcc.setError(errAuthenticationFailure)
 					return -1
 				} else if resp.StatusCode == 404 {
 					if is2x {
 						logDebugf("Failed to connect to host, bad bucket.")
-						// firstCfgFn(nil, "", errAuthenticationFailure)
+						hcc.setError(errAuthenticationFailure)
 						return -1
 					}
 
 					return doConfigRequest(true)
 				}
 				logDebugf("Failed to connect to host, unexpected status code: %v.", resp.StatusCode)
+				hcc.setError(errCliInternalError)
 				return 0
 			}
+			hcc.setError(nil)
 			return 1
 		}
 
