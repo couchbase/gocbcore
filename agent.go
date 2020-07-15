@@ -124,6 +124,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	disableDecompression := config.DisableDecompression
 	useCompression := config.UseCompression
 	useCollections := config.UseCollections
+	UseJSONHello := !config.DisableJSONHello
+	UseXErrorHello := !config.DisableXErrors
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	useDurations := config.UseDurations
@@ -239,6 +241,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				CompressionEnabled:    useCompression,
 				DurationsEnabled:      useDurations,
 				OutOfOrderEnabled:     useOutOfOrder,
+				JSONFeatureEnabled:    UseJSONHello,
+				XErrorFeatureEnabled:  UseXErrorHello,
 			},
 			Bucket:         c.bucketName,
 			UserAgent:      userAgent,

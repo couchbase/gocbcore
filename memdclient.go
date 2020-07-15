@@ -535,7 +535,14 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 	features = append(features, memd.FeatureSelectBucket)
 
 	// If the user wants to use KV Error maps, lets enable them
-	features = append(features, memd.FeatureXerror)
+	if props.XErrorFeatureEnabled {
+		features = append(features, memd.FeatureXerror)
+	}
+
+	// Indicate that we understand JSON
+	if props.JSONFeatureEnabled {
+		features = append(features, memd.FeatureJSON)
+	}
 
 	// If the user wants to use mutation tokens, lets enable them
 	if props.MutationTokensEnabled {
@@ -575,6 +582,8 @@ type helloProps struct {
 	CompressionEnabled    bool
 	DurationsEnabled      bool
 	OutOfOrderEnabled     bool
+	JSONFeatureEnabled    bool
+	XErrorFeatureEnabled  bool
 }
 
 type bootstrapProps struct {

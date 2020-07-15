@@ -42,6 +42,9 @@ type AgentConfig struct {
 	UseDurations           bool
 	DisableDecompression   bool
 	UseOutOfOrderResponses bool
+	DisableXErrors         bool
+
+	DisableJSONHello bool
 
 	UseCollections bool
 

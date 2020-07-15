@@ -26,6 +26,9 @@ type DCPAgentConfig struct {
 	UseCompression       bool
 	DisableDecompression bool
 
+	DisableJSONHello   bool
+	DisableXErrorHello bool
+
 	UseCollections bool
 
 	CompressionMinSize  int
