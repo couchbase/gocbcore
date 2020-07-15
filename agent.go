@@ -559,3 +559,9 @@ func (agent *Agent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOption
 func (agent *Agent) ConfigSnapshot() (*ConfigSnapshot, error) {
 	return agent.kvMux.ConfigSnapshot()
 }
+
+// BucketName returns the name of the bucket that the agent is using, if any.
+// Uncommitted: This API may change in the future.
+func (agent *Agent) BucketName() string {
+	return agent.bucketName
+}
