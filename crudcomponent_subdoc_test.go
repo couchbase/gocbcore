@@ -111,7 +111,7 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testXattrReorder"),
-		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\"}"),
+		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\" }"),
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
@@ -124,6 +124,7 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 	s.Wait(0)
 
 	// This should reorder the ops before sending to the server.
+	// We put the delete last to ensure that the xattr order is preserved.
 	mutateOps := []SubDocOp{
 		{
 			Op:    memd.SubDocOpDictSet,
@@ -139,9 +140,20 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 		},
 		{
 			Op:    memd.SubDocOpDictSet,
-			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagMkDirP,
+			Flags: memd.SubdocFlagXattrPath,
 			Path:  "xatest.ytest",
 			Value: []byte("\"test value2\""),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "xatest.ztest",
+			Value: []byte("\"test valuez\""),
+		},
+		{
+			Op:    memd.SubDocOpDelete,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "xatest.ztest",
 		},
 	}
 	s.PushOp(agent.MutateIn(MutateInOptions{
@@ -157,7 +169,7 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 			if res.Cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
 			}
-			if len(res.Ops) != 3 {
+			if len(res.Ops) != 5 {
 				s.Fatalf("MutateIn operation wrong count was %d", len(res.Ops))
 			}
 			if res.Ops[0].Err != nil {
@@ -168,6 +180,12 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 			}
 			if res.Ops[2].Err != nil {
 				s.Fatalf("MutateIn operation 3 failed: %v", res.Ops[2].Err)
+			}
+			if res.Ops[3].Err != nil {
+				s.Fatalf("MutateIn operation 4 failed: %v", res.Ops[2].Err)
+			}
+			if res.Ops[4].Err != nil {
+				s.Fatalf("MutateIn operation 5 failed: %v", res.Ops[2].Err)
 			}
 		})
 	}))
@@ -189,6 +207,11 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 			Flags: memd.SubdocFlagXattrPath,
 			Path:  "xatest.ytest",
 		},
+		{
+			Op:    memd.SubDocOpGet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "xatest.ztest",
+		},
 	}
 	s.PushOp(agent.LookupIn(LookupInOptions{
 		Key:            []byte("testXattrReorder"),
@@ -197,7 +220,7 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 		ScopeName:      suite.ScopeName,
 	}, func(res *LookupInResult, err error) {
 		s.Wrap(func() {
-			if len(res.Ops) != 3 {
+			if len(res.Ops) != 4 {
 				s.Fatalf("Lookup operation wrong count: %d", len(res.Ops))
 			}
 			if res.Ops[0].Err != nil {
@@ -208,6 +231,9 @@ func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
 			}
 			if res.Ops[2].Err != nil {
 				s.Fatalf("Lookup operation 3 failed: %v", res.Ops[2].Err)
+			}
+			if res.Ops[3].Err == nil {
+				s.Fatalf("Lookup operation 4 should have failed")
 			}
 
 			if !bytes.Equal(res.Ops[0].Value, []byte(`"test value"`)) {

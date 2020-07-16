@@ -12,16 +12,24 @@ type subdocOpList struct {
 	indexes []int
 }
 
-func (sol *subdocOpList) Prepend(op SubDocOp, index int) {
-	sol.ops = append([]SubDocOp{op}, sol.ops...)
-	sol.indexes = append([]int{index}, sol.indexes...)
-}
+func (sol *subdocOpList) Reorder(ops []SubDocOp) {
+	var xAttrOps []SubDocOp
+	var xAttrIndexes []int
+	var sops []SubDocOp
+	var opIndexes []int
+	for i, op := range ops {
+		if op.Flags&memd.SubdocFlagXattrPath != 0 {
+			xAttrOps = append(xAttrOps, op)
+			xAttrIndexes = append(xAttrIndexes, i)
+		} else {
+			sops = append(sops, op)
+			opIndexes = append(opIndexes, i)
+		}
+	}
 
-func (sol *subdocOpList) Append(op SubDocOp, index int) {
-	sol.ops = append(sol.ops, op)
-	sol.indexes = append(sol.indexes, index)
+	sol.ops = append(xAttrOps, sops...)
+	sol.indexes = append(xAttrIndexes, opIndexes...)
 }
-
 func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
 	tracer := crud.tracer.CreateOpTrace("LookupIn", opts.TraceContext)
 
@@ -74,13 +82,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		}, nil)
 	}
 
-	for i, op := range opts.Ops {
-		if op.Flags&memd.SubdocFlagXattrPath != 0 {
-			subdocs.Prepend(op, i)
-		} else {
-			subdocs.Append(op, i)
-		}
-	}
+	subdocs.Reorder(opts.Ops)
 
 	pathBytesList := make([][]byte, len(opts.Ops))
 	pathBytesTotal := 0
@@ -248,13 +250,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}
 	}
 
-	for i, op := range opts.Ops {
-		if op.Flags&memd.SubdocFlagXattrPath != 0 {
-			subdocs.Prepend(op, i)
-		} else {
-			subdocs.Append(op, i)
-		}
-	}
+	subdocs.Reorder(opts.Ops)
 
 	pathBytesList := make([][]byte, len(opts.Ops))
 	pathBytesTotal := 0
