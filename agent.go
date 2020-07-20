@@ -91,8 +91,13 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
 	}
 
+	httpIdleConnTimeout := 4500 * time.Millisecond
+	if config.HTTPIdleConnectionTimeout > 0 {
+		httpIdleConnTimeout = config.HTTPIdleConnectionTimeout
+	}
+
 	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
-		config.HTTPIdleConnectionTimeout, tlsConfig)
+		httpIdleConnTimeout, tlsConfig)
 
 	tracer := config.Tracer
 	if tracer == nil {
