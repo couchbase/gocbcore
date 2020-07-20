@@ -102,9 +102,9 @@ func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
 	client.dcpAckSize = bufferAckSize
 }
 
-func (client *memdClient) maybeSendDcpBufferAck(packetLen int, forceFlush bool) {
+func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 	client.dcpFlowRecv += packetLen
-	if (!forceFlush && client.dcpFlowRecv < client.dcpAckSize) || client.dcpFlowRecv == 0 {
+	if client.dcpFlowRecv < client.dcpAckSize {
 		return
 	}
 
@@ -320,9 +320,9 @@ func (client *memdClient) run() {
 			logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
 			client.resolveRequest(q.resp)
 
-			// See below for information on why this is here.
-			if !q.isInternal {
-				client.maybeSendDcpBufferAck(q.packetLen, false)
+			// See below for information on MB-26363 for why this is here.
+			if !q.isInternal && client.dcpAckSize > 0 {
+				client.maybeSendDcpBufferAck(q.packetLen)
 			}
 
 			return true
@@ -336,18 +336,6 @@ func (client *memdClient) run() {
 				}
 			case <-dcpKillSwitch:
 				close(dcpBufferQ)
-			default:
-				// if there is nothing to do in the queue, lets flush the ack
-				// count before we start waiting again...
-				client.maybeSendDcpBufferAck(0, true)
-				select {
-				case q, more := <-dcpBufferQ:
-					if !procDcpItem(q, more) {
-						return
-					}
-				case <-dcpKillSwitch:
-					close(dcpBufferQ)
-				}
 			}
 		}
 	}()
