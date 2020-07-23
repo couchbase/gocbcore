@@ -77,6 +77,9 @@ type AgentConfig struct {
 	UseZombieLogger        bool
 	ZombieLoggerInterval   time.Duration
 	ZombieLoggerSampleSize int
+
+	// AuthMechanisms is the list of mechanisms that the SDK can use to attempt authentication.
+	AuthMechanisms []AuthMechanism
 }
 
 func (config *AgentConfig) redacted() interface{} {

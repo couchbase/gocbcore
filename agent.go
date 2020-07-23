@@ -181,14 +181,25 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if c.defaultRetryStrategy == nil {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
-	authMechanisms := []AuthMechanism{
-		ScramSha512AuthMechanism,
-		ScramSha256AuthMechanism,
-		ScramSha1AuthMechanism}
 
-	// PLAIN authentication is only supported over TLS
-	if config.UseTLS {
-		authMechanisms = append(authMechanisms, PlainAuthMechanism)
+	authMechanisms := config.AuthMechanisms
+	if len(authMechanisms) == 0 {
+		if config.UseTLS {
+			authMechanisms = []AuthMechanism{PlainAuthMechanism}
+		} else {
+			// No user specified auth mechanisms so set our defaults.
+			authMechanisms = []AuthMechanism{
+				ScramSha512AuthMechanism,
+				ScramSha256AuthMechanism,
+				ScramSha1AuthMechanism}
+		}
+	} else if !config.UseTLS {
+		// The user has specified their own mechanisms and not using TLS so we check if they've set PLAIN.
+		for _, mech := range authMechanisms {
+			if mech == PlainAuthMechanism {
+				logWarnf("PLAIN sends credentials in plaintext, this will cause credential leakage on the network")
+			}
+		}
 	}
 
 	authHandler := buildAuthHandler(auth)
