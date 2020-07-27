@@ -839,6 +839,11 @@ func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan B
 			},
 			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 				if err != nil {
+					if errors.Is(err, ErrDocumentNotFound) {
+						// Bucket not found means that the user has priviledges to access the bucket but that the bucket
+						// is in some way not existing right now (e.g. in warmup).
+						err = errBucketNotFound
+					}
 					completedCh <- BytesAndError{
 						Err: err,
 					}

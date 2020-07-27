@@ -119,6 +119,11 @@ var (
 	// NoPipelineSnapshotRetryReason indicates that there was no pipeline snapshot available
 	NoPipelineSnapshotRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "NO_PIPELINE_SNAPSHOT"}
 
+	// BucketNotReadyReason indicates that the user has priviledges to access the bucket but the bucket doesn't exist
+	// or is in warm up.
+	// Uncommitted: This API may change in the future.
+	BucketNotReadyReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "BUCKET_NOT_FOUND"}
+
 	// ConnectionErrorRetryReason indicates that there were errors reported by underlying connections
 	ConnectionErrorRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CONNECTION_ERROR"}
 

@@ -594,7 +594,11 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 			}
 		} else {
 			var shouldRetry bool
-			shouldRetry, until = retryOrchMaybeRetry(op, ConnectionErrorRetryReason)
+			if errors.Is(connectErr, ErrBucketNotFound) {
+				shouldRetry, until = retryOrchMaybeRetry(op, BucketNotReadyReason)
+			} else {
+				shouldRetry, until = retryOrchMaybeRetry(op, ConnectionErrorRetryReason)
+			}
 			if !shouldRetry {
 				op.cancel(connectErr)
 				return
