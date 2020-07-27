@@ -269,17 +269,20 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
+			tracer.Finish()
 			cb(nil, err)
 			return
 		}
 
 		if len(resp.Extras) != 4 {
+			tracer.Finish()
 			cb(nil, errProtocol)
 			return
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
+		tracer.Finish()
 		cb(&GetReplicaResult{
 			Value:    resp.Value,
 			Flags:    flags,

@@ -127,6 +127,14 @@ func (suite *StandardTestSuite) TestBasicOps() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
+			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestCasMismatch() {
@@ -189,6 +197,15 @@ func (suite *StandardTestSuite) TestCasMismatch() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testCasMismatch")
+			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testCasMismatch")
+			suite.AssertOpSpan(nilParents[2], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testCasMismatch")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestGetReplica() {
@@ -243,6 +260,14 @@ func (suite *StandardTestSuite) TestGetReplica() {
 			suite.T().Fatalf("GetReplica could not locate key")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testReplica")
+			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testReplica")
+		}
 	}
 }
 
@@ -302,6 +327,14 @@ func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testDurableReplica")
+			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testDurableReplica")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
@@ -358,6 +391,14 @@ func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
 			suite.T().Fatalf("GetReplica could not locate key")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
+			suite.AssertOpSpan(nilParents[0], "Add", agent.BucketName(), memd.CmdAdd.Name(), 1, false, "testAddDurableReplica")
+			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testAddDurableReplica")
+		}
 	}
 }
 
@@ -435,6 +476,15 @@ func (suite *StandardTestSuite) TestReplaceDurableWriteGetReplica() {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 3) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testReplaceDurableReplica")
+			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testReplaceDurableReplica")
+			suite.AssertOpSpan(nilParents[2], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testReplaceDurableReplica")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
@@ -509,6 +559,15 @@ func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 3) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testDeleteDurableReplica")
+			suite.AssertOpSpan(nilParents[1], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testDeleteDurableReplica")
+			suite.AssertOpSpan(nilParents[2], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testDeleteDurableReplica")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestBasicReplace() {
@@ -543,6 +602,14 @@ func (suite *StandardTestSuite) TestBasicReplace() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testx")
+			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testx")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestBasicRemove() {
@@ -570,6 +637,14 @@ func (suite *StandardTestSuite) TestBasicRemove() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testy")
+			suite.AssertOpSpan(nilParents[1], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testy")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestBasicInsert() {
@@ -600,6 +675,14 @@ func (suite *StandardTestSuite) TestBasicInsert() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testz")
+			suite.AssertOpSpan(nilParents[1], "Add", agent.BucketName(), memd.CmdAdd.Name(), 1, false, "testz")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestBasicCounters() {
@@ -677,6 +760,16 @@ func (suite *StandardTestSuite) TestBasicCounters() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(4, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testCounters")
+			suite.AssertOpSpan(nilParents[1], "Increment", agent.BucketName(), memd.CmdIncrement.Name(), 1, false, "testCounters")
+			suite.AssertOpSpan(nilParents[2], "Increment", agent.BucketName(), memd.CmdIncrement.Name(), 1, false, "testCounters")
+			suite.AssertOpSpan(nilParents[3], "Decrement", agent.BucketName(), memd.CmdDecrement.Name(), 1, false, "testCounters")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestBasicAdjoins() {
@@ -747,6 +840,16 @@ func (suite *StandardTestSuite) TestBasicAdjoins() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(4, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testAdjoins")
+			suite.AssertOpSpan(nilParents[1], "Append", agent.BucketName(), memd.CmdAppend.Name(), 1, false, "testAdjoins")
+			suite.AssertOpSpan(nilParents[2], "Prepend", agent.BucketName(), memd.CmdPrepend.Name(), 1, false, "testAdjoins")
+			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testAdjoins")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestExpiry() {
@@ -782,6 +885,14 @@ func (suite *StandardTestSuite) TestExpiry() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testExpiry")
+			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testExpiry")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestTouch() {
@@ -845,6 +956,16 @@ func (suite *StandardTestSuite) TestTouch() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(4, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testTouch")
+			suite.AssertOpSpan(nilParents[1], "Touch", agent.BucketName(), memd.CmdTouch.Name(), 1, false, "testTouch")
+			suite.AssertOpSpan(nilParents[2], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testTouch")
+			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testTouch")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestGetAndTouch() {
@@ -908,6 +1029,16 @@ func (suite *StandardTestSuite) TestGetAndTouch() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(4, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testGetAndTouch")
+			suite.AssertOpSpan(nilParents[1], "GetAndTouch", agent.BucketName(), memd.CmdGAT.Name(), 1, false, "testGetAndTouch")
+			suite.AssertOpSpan(nilParents[2], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testGetAndTouch")
+			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testGetAndTouch")
+		}
+	}
 }
 
 // This test will lock the document for 1 second, it will then perform set requests for up to 2 seconds,
@@ -918,7 +1049,6 @@ func (suite *StandardTestSuite) TestRetrySet() {
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
-		Expiry:         1,
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
@@ -947,7 +1077,6 @@ func (suite *StandardTestSuite) TestRetrySet() {
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("testRetrySet"),
 		Value:          []byte("{}"),
-		Expiry:         1,
 		CollectionName: suite.CollectionName,
 		ScopeName:      suite.ScopeName,
 		RetryStrategy:  NewBestEffortRetryStrategy(nil),
@@ -959,6 +1088,15 @@ func (suite *StandardTestSuite) TestRetrySet() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testRetrySet")
+			suite.AssertOpSpan(nilParents[1], "GetAndLock", agent.BucketName(), memd.CmdGetLocked.Name(), 1, false, "testRetrySet")
+			suite.AssertOpSpan(nilParents[2], "Set", agent.BucketName(), memd.CmdGet.Name(), 1, true, "testRetrySet")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestObserve() {
@@ -992,6 +1130,14 @@ func (suite *StandardTestSuite) TestObserve() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testObserve")
+			suite.AssertOpSpan(nilParents[1], "Observe", agent.BucketName(), memd.CmdObserve.Name(), 1, false, "")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestObserveSeqNo() {
@@ -1078,6 +1224,16 @@ func (suite *StandardTestSuite) TestObserveSeqNo() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(4, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testObserve")
+			suite.AssertOpSpan(nilParents[1], "ObserveVb", agent.BucketName(), memd.CmdObserveSeqNo.Name(), 1, false, "")
+			suite.AssertOpSpan(nilParents[2], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testObserve")
+			suite.AssertOpSpan(nilParents[3], "ObserveVb", agent.BucketName(), memd.CmdObserveSeqNo.Name(), 1, false, "")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestRandomGet() {
@@ -1121,6 +1277,16 @@ func (suite *StandardTestSuite) TestRandomGet() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(len(distkeys)+1, len(nilParents)) {
+			for i, k := range distkeys {
+				suite.AssertOpSpan(nilParents[i], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, k)
+			}
+			suite.AssertOpSpan(nilParents[len(distkeys)], "GetRandom", agent.BucketName(), memd.CmdGetRandom.Name(), 1, false, "")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestStats() {
@@ -1154,6 +1320,32 @@ func (suite *StandardTestSuite) TestStats() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(1, len(nilParents)) {
+			p := agent.kvMux.NumPipelines()
+			suite.AssertTopLevelSpan(nilParents[0], "Stats", agent.BucketName())
+			spans := nilParents[0].Spans[memd.CmdStat.Name()]
+			if suite.Assert().Equal(p, len(spans)) {
+				for i := 0; i < len(spans); i++ {
+					span := spans[i]
+					suite.Assert().Equal(memd.CmdStat.Name(), span.Name)
+					suite.Assert().Equal(1, len(span.Tags))
+					suite.Assert().True(span.Finished)
+					suite.Assert().Equal(uint32(0), span.Tags["retry"])
+
+					netSpans := span.Spans["rpc"]
+					if suite.Assert().Equal(1, len(netSpans)) {
+						suite.Assert().Equal("rpc", netSpans[0].Name)
+						suite.Assert().Equal(1, len(netSpans[0].Tags))
+						suite.Assert().True(netSpans[0].Finished)
+						suite.Assert().Equal("client", netSpans[0].Tags["span.kind"])
+					}
+				}
+			}
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestGetHttpEps() {
@@ -1219,6 +1411,15 @@ func (suite *StandardTestSuite) TestMemcachedBucket() {
 
 	if !errors.Is(err, ErrFeatureNotAvailable) {
 		suite.T().Fatalf("Expected observe error for memcached bucket!")
+	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "key")
+			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "key")
+			suite.AssertOpSpan(nilParents[2], "Observe", agent.BucketName(), memd.CmdObserve.Name(), 0, false, "")
+		}
 	}
 }
 
@@ -1304,6 +1505,14 @@ func (suite *StandardTestSuite) TestMetaOps() {
 		})
 	}))
 	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
+			suite.AssertOpSpan(nilParents[1], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "test")
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestPing() {

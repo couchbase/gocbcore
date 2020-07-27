@@ -300,7 +300,18 @@ func (suite *StandardTestSuite) TestN1QL() {
 
 	suite.T().Run("setup", helper.testSetupN1ql)
 
+	suite.tracer.Reset()
+
 	suite.T().Run("Basic", helper.testN1QLBasic)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
+	}
 
 	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
@@ -327,7 +338,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: noopTracer{}})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -363,17 +374,26 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 	if !errors.Is(resErr, ErrRequestCanceled) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestN1QLTimeout() {
 	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
-	agent := suite.DefaultAgent()
+	ag := suite.AgentGroup()
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
-	_, err := agent.N1QLQuery(N1QLQueryOptions{
+	_, err := ag.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
@@ -403,6 +423,15 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 	if !errors.Is(resErr, ErrTimeout) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestN1QLPrepared() {
@@ -416,7 +445,18 @@ func (suite *StandardTestSuite) TestN1QLPrepared() {
 
 	suite.T().Run("setup", helper.testSetupN1ql)
 
+	suite.tracer.Reset()
+
 	suite.T().Run("Basic", helper.testN1QLPrepared)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
+	}
 
 	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
@@ -434,7 +474,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: noopTracer{}})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -470,17 +510,26 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 	if !errors.Is(resErr, ErrRequestCanceled) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
-	agent := suite.DefaultAgent()
+	ag := suite.AgentGroup()
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
-	_, err := agent.PreparedN1QLQuery(N1QLQueryOptions{
+	_, err := ag.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
@@ -509,6 +558,15 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 
 	if !errors.Is(resErr, ErrTimeout) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
+	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+			}
+		}
 	}
 }
 

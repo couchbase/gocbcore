@@ -92,7 +92,7 @@ func (nqh *analyticsTestHelper) testCleanup(t *testing.T) {
 }
 
 func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
-	agent := nqh.suite.DefaultAgent()
+	ag := nqh.suite.AgentGroup()
 
 	deadline := time.Now().Add(60000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
@@ -111,7 +111,7 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 
 		resCh := make(chan *AnalyticsRowReader)
 		errCh := make(chan error)
-		_, err = agent.AnalyticsQuery(AnalyticsQueryOptions{
+		_, err = ag.AnalyticsQuery(AnalyticsQueryOptions{
 			Payload:       payload,
 			RetryStrategy: nil,
 			Deadline:      iterDeadline,
@@ -206,7 +206,17 @@ func (suite *StandardTestSuite) TestAnalytics() {
 	}
 
 	if suite.T().Run("setup", helper.testSetup) {
+		suite.tracer.Reset()
 		suite.T().Run("Basic", helper.testBasic)
+
+		if suite.Assert().Contains(suite.tracer.Spans, nil) {
+			nilParents := suite.tracer.Spans[nil]
+			if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+				for i := 0; i < len(nilParents); i++ {
+					suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
+				}
+			}
+		}
 	}
 
 	suite.T().Run("cleanup", helper.testCleanup)
@@ -215,7 +225,7 @@ func (suite *StandardTestSuite) TestAnalytics() {
 func (suite *StandardTestSuite) TestAnalyticsCancel() {
 	suite.EnsureSupportsFeature(TestFeatureCbas)
 
-	agent, _ := suite.GetAgentAndHarness()
+	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
 	httpCpt := newHTTPComponent(
@@ -225,7 +235,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: noopTracer{}})
+	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: suite.tracer})
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
@@ -261,17 +271,26 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 	if !errors.Is(resErr, ErrRequestCanceled) {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
+			}
+		}
+	}
 }
 
 func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 	suite.EnsureSupportsFeature(TestFeatureCbas)
 
-	agent := suite.DefaultAgent()
+	ag := suite.AgentGroup()
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
-	_, err := agent.AnalyticsQuery(AnalyticsQueryOptions{
+	_, err := ag.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
 	}, func(reader *AnalyticsRowReader, err error) {
@@ -300,5 +319,14 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 
 	if !errors.Is(resErr, ErrTimeout) {
 		suite.T().Fatalf("Error should have been timeout but was %s", resErr)
+	}
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
+			for i := 0; i < len(nilParents); i++ {
+				suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
+			}
+		}
 	}
 }

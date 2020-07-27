@@ -16,6 +16,11 @@ type StandardTestSuite struct {
 	*TestConfig
 	agentGroup *AgentGroup
 	mockInst   *jcbmock.Mock
+	tracer     *testTracer
+}
+
+func (suite *StandardTestSuite) BeforeTest(suiteName, testName string) {
+	suite.tracer.Reset()
 }
 
 func (suite *StandardTestSuite) SetupSuite() {
@@ -49,6 +54,7 @@ func (suite *StandardTestSuite) SetupSuite() {
 	}
 
 	suite.TestConfig = globalTestConfig
+	suite.tracer = newTestTracer()
 	var err error
 	suite.agentGroup, err = suite.initAgentGroup(suite.makeAgentGroupConfig(globalTestConfig))
 	suite.Require().Nil(err, err)
@@ -56,9 +62,39 @@ func (suite *StandardTestSuite) SetupSuite() {
 	err = suite.agentGroup.OpenBucket(globalTestConfig.BucketName)
 	suite.Require().Nil(err, err)
 
+	// If we don't do a wait until ready then it can be difficult to verify tracing behavior on the
+	// first test that runs.
+	s := suite.GetHarness()
+	s.PushOp(suite.DefaultAgent().WaitUntilReady(
+		time.Now().Add(5*time.Second),
+		WaitUntilReadyOptions{},
+		func(result *WaitUntilReadyResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("WaitUntilReady operation failed: %v", err)
+				}
+			})
+		}),
+	)
+	s.Wait(0)
+
 	if suite.SupportsFeature(TestFeatureMemd) {
 		err = suite.agentGroup.OpenBucket(globalTestConfig.MemdBucketName)
 		suite.Require().Nil(err, err)
+
+		s := suite.GetHarness()
+		s.PushOp(suite.MemdAgent().WaitUntilReady(
+			time.Now().Add(5*time.Second),
+			WaitUntilReadyOptions{},
+			func(result *WaitUntilReadyResult, err error) {
+				s.Wrap(func() {
+					if err != nil {
+						s.Fatalf("WaitUntilReady operation failed: %v", err)
+					}
+				})
+			}),
+		)
+		s.Wait(0)
 	}
 }
 
@@ -194,6 +230,7 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	config.UseMutationTokens = true
 	config.UseCollections = true
 	config.UseOutOfOrderResponses = true
+	config.Tracer = suite.tracer
 
 	config.Auth = testConfig.Authenticator
 
