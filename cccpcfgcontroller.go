@@ -112,7 +112,7 @@ Looper:
 		}
 
 		if nodeIdx < 0 || nodeIdx > numNodes {
-			nodeIdx = rand.Intn(numNodes)
+			nodeIdx = rand.Intn(numNodes) // #nosec G404
 		}
 
 		var foundConfig *cfgBucket

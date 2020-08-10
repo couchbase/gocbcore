@@ -356,6 +356,7 @@ func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTL
 
 				return cert, nil
 			},
+			MinVersion: tls.VersionTLS12,
 		},
 		Provider: caProvider,
 	}

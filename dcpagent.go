@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -101,23 +100,7 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 
 	var tlsConfig *dynTLSConfig
 	if config.UseTLS {
-		tlsConfig = &dynTLSConfig{
-			BaseConfig: &tls.Config{
-				GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-					cert, err := config.Auth.Certificate(AuthCertRequest{})
-					if err != nil {
-						return nil, err
-					}
-
-					if cert == nil {
-						return &tls.Certificate{}, nil
-					}
-
-					return cert, nil
-				},
-			},
-			Provider: config.TLSRootCAProvider,
-		}
+		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
 	}
 
 	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
