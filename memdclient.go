@@ -567,23 +567,25 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 	}
 
 	// These flags are informational so don't actually enable anything
-	// but the enhanced durability flag tells us if the server supports
-	// the feature
 	features = append(features, memd.FeatureAltRequests)
-	features = append(features, memd.FeatureSyncReplication)
 	features = append(features, memd.FeatureCreateAsDeleted)
+
+	if props.SyncReplicationEnabled {
+		features = append(features, memd.FeatureSyncReplication)
+	}
 
 	return features
 }
 
 type helloProps struct {
-	MutationTokensEnabled bool
-	CollectionsEnabled    bool
-	CompressionEnabled    bool
-	DurationsEnabled      bool
-	OutOfOrderEnabled     bool
-	JSONFeatureEnabled    bool
-	XErrorFeatureEnabled  bool
+	MutationTokensEnabled  bool
+	CollectionsEnabled     bool
+	CompressionEnabled     bool
+	DurationsEnabled       bool
+	OutOfOrderEnabled      bool
+	JSONFeatureEnabled     bool
+	XErrorFeatureEnabled   bool
+	SyncReplicationEnabled bool
 }
 
 type bootstrapProps struct {

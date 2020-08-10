@@ -126,8 +126,9 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	disableDecompression := config.DisableDecompression
 	useCompression := config.UseCompression
 	useCollections := config.UseCollections
-	UseJSONHello := !config.DisableJSONHello
-	UseXErrorHello := !config.DisableXErrorHello
+	useJSONHello := !config.DisableJSONHello
+	useXErrorHello := !config.DisableXErrorHello
+	useSyncReplicationHello := !config.DisableSyncReplicationHello
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 
@@ -219,10 +220,11 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
-				CollectionsEnabled:   useCollections,
-				CompressionEnabled:   useCompression,
-				JSONFeatureEnabled:   UseJSONHello,
-				XErrorFeatureEnabled: UseXErrorHello,
+				CollectionsEnabled:     useCollections,
+				CompressionEnabled:     useCompression,
+				JSONFeatureEnabled:     useJSONHello,
+				XErrorFeatureEnabled:   useXErrorHello,
+				SyncReplicationEnabled: useSyncReplicationHello,
 			},
 			Bucket:         c.bucketName,
 			UserAgent:      userAgent,

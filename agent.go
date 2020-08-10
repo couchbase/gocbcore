@@ -124,8 +124,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	disableDecompression := config.DisableDecompression
 	useCompression := config.UseCompression
 	useCollections := config.UseCollections
-	UseJSONHello := !config.DisableJSONHello
-	UseXErrorHello := !config.DisableXErrors
+	useJSONHello := !config.DisableJSONHello
+	useXErrorHello := !config.DisableXErrors
+	useSyncReplicationHello := !config.DisableSyncReplicationHello
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	useDurations := config.UseDurations
@@ -236,13 +237,14 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
-				CollectionsEnabled:    useCollections,
-				MutationTokensEnabled: useMutationTokens,
-				CompressionEnabled:    useCompression,
-				DurationsEnabled:      useDurations,
-				OutOfOrderEnabled:     useOutOfOrder,
-				JSONFeatureEnabled:    UseJSONHello,
-				XErrorFeatureEnabled:  UseXErrorHello,
+				CollectionsEnabled:     useCollections,
+				MutationTokensEnabled:  useMutationTokens,
+				CompressionEnabled:     useCompression,
+				DurationsEnabled:       useDurations,
+				OutOfOrderEnabled:      useOutOfOrder,
+				JSONFeatureEnabled:     useJSONHello,
+				XErrorFeatureEnabled:   useXErrorHello,
+				SyncReplicationEnabled: useSyncReplicationHello,
 			},
 			Bucket:         c.bucketName,
 			UserAgent:      userAgent,

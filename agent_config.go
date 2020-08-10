@@ -44,7 +44,8 @@ type AgentConfig struct {
 	UseOutOfOrderResponses bool
 	DisableXErrors         bool
 
-	DisableJSONHello bool
+	DisableJSONHello            bool
+	DisableSyncReplicationHello bool
 
 	UseCollections bool
 
