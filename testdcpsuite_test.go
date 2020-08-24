@@ -217,7 +217,8 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 		}
 
 		go func(ex uint32, id int) {
-			ch := make(chan error)
+			defer wg.Done()
+			ch := make(chan error, 1)
 			op, err := suite.opAgent.Set(
 				SetOptions{
 					Key:            []byte(fmt.Sprintf("key-%d", id)),
@@ -253,7 +254,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					lock.Lock()
 					deletionKeys = append(deletionKeys, fmt.Sprintf("key-%d", id))
 					lock.Unlock()
-					ch = make(chan error)
+					ch = make(chan error, 1)
 					op, err := suite.opAgent.Delete(
 						DeleteOptions{
 							Key:            []byte(fmt.Sprintf("key-%d", id)),
@@ -286,7 +287,6 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					lock.Unlock()
 				}
 			}
-			wg.Done()
 		}(expiry, i)
 	}
 
@@ -388,7 +388,7 @@ func (suite *DCPTestSuite) runDCPStream() int {
 	//Start streaming from all VBs from the latest snapshot, until the current seqno
 	for _, entry := range seqnos {
 		go func(en VbSeqNoEntry) {
-			ch := make(chan error)
+			ch := make(chan error, 1)
 			suite.so.lock.Lock()
 			snapshot := suite.so.snapshots[en.VbID]
 			suite.so.lock.Unlock()
@@ -622,16 +622,16 @@ func (suite *DCPTestSuite) TestCollectionsDrop() {
 func (suite *DCPTestSuite) TestMutationsCollection() {
 	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	//Make scopes
+	// Make scopes
 	sPrefix := "dcp_scope_mut"
 	cPrefix := "dcp_collection_mut"
 	scopes := suite.makeScopes(suite.NumScopes, sPrefix, suite.BucketName, suite.opAgent)
 
-	//Make NumCollections per scope
+	// Make NumCollections per scope
 	pScopes := suite.getPrunedScopeManifests(sPrefix, scopes)
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, cPrefix, pScopes, suite.BucketName, suite.opAgent)
 	suite.getPrunedScopeManifests(sPrefix, lastScopeManifest)
-	time.Sleep(5 * time.Second) //Needed to ensure collection ready before performing mutations.
+	time.Sleep(5 * time.Second) // Needed to ensure collection ready before performing mutations.
 	mutations, deletionKeys := suite.runMutations(cPrefix+"0", sPrefix+"0")
 
 	suite.runDCPStream()
