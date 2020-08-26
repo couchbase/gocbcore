@@ -183,9 +183,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confHTTPRetryDelay = config.HTTPRetryDelay
 	}
 
-	confHTTPRedialPeriod := 10 * time.Second
-	if config.HTTPRedialPeriod > 0 {
-		confHTTPRedialPeriod = config.HTTPRedialPeriod
+	if valStr, ok := fetchOption("network"); ok {
+		config.NetworkType = valStr
 	}
 
 	confCccpMaxWait := 3 * time.Second
