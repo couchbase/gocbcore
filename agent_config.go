@@ -213,10 +213,6 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("network"); ok {
-		if valStr == "default" {
-			valStr = ""
-		}
-
 		config.NetworkType = valStr
 	}
 
