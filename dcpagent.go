@@ -28,99 +28,9 @@ type DCPAgent struct {
 
 // CreateDcpAgent creates an agent for performing DCP operations.
 func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd.DcpOpenFlag) (*DCPAgent, error) {
-	// We wrap the authorization system to force DCP channel opening
-	//   as part of the "initialization" for any servers.
-	initFn := func(client *memdClient, deadline time.Time) error {
-		sclient := &syncClient{client: client}
-		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
-			return err
-		}
-		if err := sclient.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
-			return err
-		}
-		var priority string
-		switch config.AgentPriority {
-		case DcpAgentPriorityLow:
-			priority = "low"
-		case DcpAgentPriorityMed:
-			priority = "medium"
-		case DcpAgentPriorityHigh:
-			priority = "high"
-		}
-		if err := sclient.ExecDcpControl("set_priority", priority, deadline); err != nil {
-			return err
-		}
-
-		if config.UseExpiryOpcode {
-			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
-				return err
-			}
-		}
-
-		if config.UseStreamID {
-			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
-				return err
-			}
-		}
-
-		if config.UseOSOBackfill {
-			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
-				return err
-			}
-		}
-
-		// If the user doesn't explicitly set the backfill order, the DCP control flag will not be sent to the cluster
-		// and the default will implicitly be used (which is 'round-robin').
-		var backfillOrder string
-		switch config.BackfillOrder {
-		case DCPBackfillOrderRoundRobin:
-			backfillOrder = "round-robin"
-		case DCPBackfillOrderSequential:
-			backfillOrder = "sequential"
-		}
-
-		if backfillOrder != "" {
-			if err := sclient.ExecDcpControl("backfill_order", backfillOrder, deadline); err != nil {
-				return err
-			}
-		}
-
-		if err := sclient.ExecEnableDcpClientEnd(deadline); err != nil {
-			return err
-		}
-		return sclient.ExecEnableDcpBufferAck(8*1024*1024, deadline)
-	}
-
-	return createDCPAgent(config, initFn)
-}
-
-func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new dcp agent: %+v", config)
 
-	var tlsConfig *dynTLSConfig
-	if config.UseTLS {
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
-	}
-
-	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
-		config.HTTPIdleConnectionTimeout, tlsConfig)
-
-	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false)
-
-	c := &DCPAgent{
-		clientID:   formatCbUID(randomCbUID()),
-		bucketName: config.BucketName,
-		tlsConfig:  tlsConfig,
-		initFn:     initFn,
-		tracer:     tracerCmpt,
-
-		errMap: newErrMapManager(config.BucketName),
-	}
-
-	circuitBreakerConfig := CircuitBreakerConfig{
-		Enabled: false,
-	}
 	auth := config.Auth
 	userAgent := config.UserAgent
 	disableDecompression := config.DisableDecompression
@@ -131,6 +41,8 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	useSyncReplicationHello := !config.DisableSyncReplicationHello
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
+	dcpBackfillOrderStr := ""
+	dcpPriorityStr := ""
 
 	kvConnectTimeout := 7000 * time.Millisecond
 	if config.KVConnectTimeout > 0 {
@@ -178,6 +90,25 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 			compressionMinRatio = 1.0
 		}
 	}
+
+	switch config.AgentPriority {
+	case DcpAgentPriorityLow:
+		dcpPriorityStr = "low"
+	case DcpAgentPriorityMed:
+		dcpPriorityStr = "medium"
+	case DcpAgentPriorityHigh:
+		dcpPriorityStr = "high"
+	}
+
+	// If the user doesn't explicitly set the backfill order, the DCP control flag will not be sent to the cluster
+	// and the default will implicitly be used (which is 'round-robin').
+	switch config.BackfillOrder {
+	case DCPBackfillOrderRoundRobin:
+		dcpBackfillOrderStr = "round-robin"
+	case DCPBackfillOrderSequential:
+		dcpBackfillOrderStr = "sequential"
+	}
+
 	authMechanisms := []AuthMechanism{
 		ScramSha512AuthMechanism,
 		ScramSha256AuthMechanism,
@@ -186,6 +117,79 @@ func createDCPAgent(config *DCPAgentConfig, initFn memdInitFunc) (*DCPAgent, err
 	// PLAIN authentication is only supported over TLS
 	if config.UseTLS {
 		authMechanisms = append(authMechanisms, PlainAuthMechanism)
+	}
+
+	var tlsConfig *dynTLSConfig
+	if config.UseTLS {
+		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+	}
+
+	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
+		config.HTTPIdleConnectionTimeout, tlsConfig)
+
+	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false)
+
+	// We wrap the authorization system to force DCP channel opening
+	//   as part of the "initialization" for any servers.
+	initFn := func(client *memdClient, deadline time.Time) error {
+		sclient := &syncClient{client: client}
+		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
+			return err
+		}
+
+		if err := sclient.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
+			return err
+		}
+
+		if dcpPriorityStr != "" {
+			if err := sclient.ExecDcpControl("set_priority", dcpPriorityStr, deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.UseExpiryOpcode {
+			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.UseStreamID {
+			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.UseOSOBackfill {
+			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if dcpBackfillOrderStr != "" {
+			if err := sclient.ExecDcpControl("backfill_order", dcpBackfillOrderStr, deadline); err != nil {
+				return err
+			}
+		}
+
+		if err := sclient.ExecEnableDcpBufferAck(8*1024*1024, deadline); err != nil {
+			return err
+		}
+
+		return sclient.ExecEnableDcpClientEnd(deadline)
+	}
+
+	c := &DCPAgent{
+		clientID:   formatCbUID(randomCbUID()),
+		bucketName: config.BucketName,
+		tlsConfig:  tlsConfig,
+		initFn:     initFn,
+		tracer:     tracerCmpt,
+
+		errMap: newErrMapManager(config.BucketName),
+	}
+
+	circuitBreakerConfig := CircuitBreakerConfig{
+		Enabled: false,
 	}
 
 	authHandler := buildAuthHandler(auth)
