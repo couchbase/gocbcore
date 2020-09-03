@@ -50,6 +50,7 @@ type memdClient struct {
 	tracer                *tracerComponent
 	zombieLogger          *zombieLoggerComponent
 
+	dcpQueueSize         int
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
@@ -64,6 +65,7 @@ type dcpBuffer struct {
 type memdClientProps struct {
 	ClientID string
 
+	DCPQueueSize         int
 	CompressionMinSize   int
 	CompressionMinRatio  float64
 	DisableDecompression bool
@@ -79,6 +81,7 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		zombieLogger:   zombieLogger,
 		conn:           conn,
 
+		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinRatio:  props.CompressionMinRatio,
 		compressionMinSize:   props.CompressionMinSize,
 		disableDecompression: props.DisableDecompression,
@@ -307,7 +310,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 }
 
 func (client *memdClient) run() {
-	dcpBufferQ := make(chan *dcpBuffer)
+	dcpBufferQ := make(chan *dcpBuffer, client.dcpQueueSize)
 	dcpKillSwitch := make(chan bool)
 	dcpKillNotify := make(chan bool)
 	go func() {

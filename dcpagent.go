@@ -39,6 +39,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	useJSONHello := !config.DisableJSONHello
 	useXErrorHello := !config.DisableXErrorHello
 	useSyncReplicationHello := !config.DisableSyncReplicationHello
+	dcpBufferSize := 8 * 1024 * 1024
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	dcpBackfillOrderStr := ""
@@ -90,6 +91,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			compressionMinRatio = 1.0
 		}
 	}
+
+	if config.DCPBufferSize > 0 {
+		dcpBufferSize = config.DCPBufferSize
+	}
+	dcpQueueSize := (dcpBufferSize + 23) / 24
 
 	switch config.AgentPriority {
 	case DcpAgentPriorityLow:
@@ -171,7 +177,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			}
 		}
 
-		if err := sclient.ExecEnableDcpBufferAck(8*1024*1024, deadline); err != nil {
+		if err := sclient.ExecEnableDcpBufferAck(dcpBufferSize, deadline); err != nil {
 			return err
 		}
 
@@ -218,6 +224,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			KVConnectTimeout:     kvConnectTimeout,
 			ClientID:             c.clientID,
 			TLSConfig:            c.tlsConfig,
+			DCPQueueSize:         dcpQueueSize,
 			CompressionMinSize:   compressionMinSize,
 			CompressionMinRatio:  compressionMinRatio,
 			DisableDecompression: disableDecompression,

@@ -13,6 +13,7 @@ type memdClientDialerComponent struct {
 	breakerCfg        CircuitBreakerConfig
 	tlsConfig         *dynTLSConfig
 
+	dcpQueueSize         int
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
@@ -32,6 +33,7 @@ type memdClientDialerProps struct {
 	ServerWaitTimeout    time.Duration
 	ClientID             string
 	TLSConfig            *dynTLSConfig
+	DCPQueueSize         int
 	CompressionMinSize   int
 	CompressionMinRatio  float64
 	DisableDecompression bool
@@ -52,6 +54,7 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		bootstrapProps: bSettings,
 		bootstrapCB:    bootstrapCB,
 
+		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinSize:   props.CompressionMinSize,
 		compressionMinRatio:  props.CompressionMinRatio,
 		disableDecompression: props.DisableDecompression,
@@ -119,6 +122,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(address string, deadline ti
 	client := newMemdClient(
 		memdClientProps{
 			ClientID:             mcc.clientID,
+			DCPQueueSize:         mcc.dcpQueueSize,
 			DisableDecompression: mcc.disableDecompression,
 			CompressionMinRatio:  mcc.compressionMinRatio,
 			CompressionMinSize:   mcc.compressionMinSize,

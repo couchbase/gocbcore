@@ -54,6 +54,7 @@ type DCPAgentConfig struct {
 	UseStreamID     bool
 	UseOSOBackfill  bool
 	BackfillOrder   DCPBackfillOrder
+	DCPBufferSize   int
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {
@@ -298,6 +299,15 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 			return fmt.Errorf("dcp_priority must be one of low, medium or high")
 		}
 		config.AgentPriority = priority
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("dcp_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("dcp buffer size option must be a number")
+		}
+		config.DCPBufferSize = int(val)
 	}
 
 	// This option is experimental
