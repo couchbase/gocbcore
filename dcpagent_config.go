@@ -186,10 +186,6 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 	}
 
 	if valStr, ok := fetchOption("network"); ok {
-		if valStr == "default" {
-			valStr = ""
-		}
-
 		config.NetworkType = valStr
 	}
 

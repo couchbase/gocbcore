@@ -166,6 +166,11 @@ func (suite *StandardTestSuite) TestAgentConfig_Network() {
 			connStr:  "couchbase://10.112.192.101?network=external",
 			expected: "external",
 		},
+		{
+			name:     "default",
+			connStr:  "couchbase://10.112.192.101?network=default",
+			expected: "default",
+		},
 	}
 	for _, tt := range tests {
 		suite.T().Run(tt.name, func(t *testing.T) {
