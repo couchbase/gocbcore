@@ -68,8 +68,10 @@ type Agent struct {
 	zombieOps       []*zombieLogEntry
 	useZombieLogger uint32
 
-	dcpPriority  DcpAgentPriority
-	useDcpExpiry bool
+	dcpPriority   DcpAgentPriority
+	useDcpExpiry  bool
+	dcpBufferSize int
+	dcpQueueSize  int
 }
 
 // !!!!UNSURE WHY THESE EXIST!!!!
@@ -90,12 +92,155 @@ func (agent *Agent) HTTPClient() *http.Client {
 	return agent.http.cli
 }
 
-// AuthFunc is invoked by the agent to authenticate a client. This function returns two channels to allow for for multi-stage
-// authentication processes (such as SCRAM). The continue callback should be called when further asynchronous bootstrapping
-// requests (such as select bucket) can be sent. The completed callback should be called when authentication is completed,
-// or failed. It should contain any error that occurred. If completed is called before continue then continue will be called
-// first internally, the success value will be determined by whether or not an error is present.
-type AuthFunc func(client AuthClient, deadline time.Time, continueCb func(), completedCb func(error)) error
+// AuthFunc is invoked by the agent to authenticate a client.
+type AuthFunc func(client AuthClient, deadline time.Time) error
+
+// AgentConfig specifies the configuration options for creation of an Agent.
+type AgentConfig struct {
+	UserString           string
+	MemdAddrs            []string
+	HttpAddrs            []string
+	TlsConfig            *tls.Config
+	BucketName           string
+	NetworkType          string
+	AuthHandler          AuthFunc
+	Auth                 AuthProvider
+	UseMutationTokens    bool
+	UseKvErrorMaps       bool
+	UseEnhancedErrors    bool
+	UseCompression       bool
+	UseDurations         bool
+	DisableDecompression bool
+
+	CompressionMinSize  int
+	CompressionMinRatio float64
+
+	HttpRedialPeriod time.Duration
+	HttpRetryDelay   time.Duration
+	CccpMaxWait      time.Duration
+	CccpPollPeriod   time.Duration
+
+	ConnectTimeout       time.Duration
+	ServerConnectTimeout time.Duration
+	NmvRetryDelay        time.Duration
+	KvPoolSize           int
+	MaxQueueSize         int
+
+	HttpMaxIdleConns        int
+	HttpMaxIdleConnsPerHost int
+	HttpIdleConnTimeout     time.Duration
+
+	Tracer                 opentracing.Tracer
+	NoRootTraceSpans       bool
+	UseZombieLogger        bool
+	ZombieLoggerInterval   time.Duration
+	ZombieLoggerSampleSize int
+
+	DcpAgentPriority DcpAgentPriority
+	UseDcpExpiry     bool
+	DcpBufferSize    int
+
+	// Username specifies the username to use when connecting.
+	// DEPRECATED
+	Username string
+
+	// Password specifies the password to use when connecting.
+	// DEPRECATED
+	Password string
+}
+
+// FromConnStr populates the AgentConfig with information from a
+// Couchbase Connection String.
+// Supported options are:
+//   cacertpath (string) - Path to the CA certificate
+//   certpath (string) - Path to your authentication certificate
+//   keypath (string) - Path to your authentication key
+//   config_total_timeout (int) - Maximum period to attempt to connect to cluster in ms.
+//   config_node_timeout (int) - Maximum period to attempt to connect to a node in ms.
+//   http_redial_period (int) - Maximum period to keep HTTP config connections open in ms.
+//   http_retry_delay (int) - Period to wait between retrying nodes for HTTP config in ms.
+//   config_poll_floor_interval (int) - Minimum time to wait between fetching configs via CCCP in ms.
+//   config_poll_interval (int) - Period to wait between CCCP config polling in ms.
+//   kv_pool_size (int) - The number of connections to establish per node.
+//   max_queue_size (int) - The maximum size of the operation queues per node.
+//   use_kverrmaps (bool) - Whether to enable error maps from the server.
+//   use_enhanced_errors (bool) - Whether to enable enhanced error information.
+//   fetch_mutation_tokens (bool) - Whether to fetch mutation tokens for operations.
+//   compression (bool) - Whether to enable network-wise compression of documents.
+//   compression_min_size (int) - The minimal size of the document to consider compression.
+//   compression_min_ratio (float64) - The minimal compress ratio (compressed / original) for the document to be sent compressed.
+//   server_duration (bool) - Whether to enable fetching server operation durations.
+//   http_max_idle_conns (int) - Maximum number of idle http connections in the pool.
+//   http_max_idle_conns_per_host (int) - Maximum number of idle http connections in the pool per host.
+//   http_idle_conn_timeout (int) - Maximum length of time for an idle connection to stay in the pool in ms.
+//   network (string) - The network type to use
+func (config *AgentConfig) FromConnStr(connStr string) error {
+	baseSpec, err := gocbconnstr.Parse(connStr)
+	if err != nil {
+		return err
+	}
+
+	spec, err := gocbconnstr.Resolve(baseSpec)
+	if err != nil {
+		return err
+	}
+
+	fetchOption := func(name string) (string, bool) {
+		optValue := spec.Options[name]
+		if len(optValue) == 0 {
+			return "", false
+		}
+		return optValue[len(optValue)-1], true
+	}
+
+	// Grab the resolved hostnames into a set of string arrays
+	var httpHosts []string
+	for _, specHost := range spec.HttpHosts {
+		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	var memdHosts []string
+	for _, specHost := range spec.MemdHosts {
+		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
+	switch val, _ := fetchOption("bootstrap_on"); val {
+	case "http":
+		memdHosts = nil
+		if len(httpHosts) == 0 {
+			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
+		}
+	case "cccp":
+		httpHosts = nil
+		if len(memdHosts) == 0 {
+			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
+		}
+	case "both":
+	case "":
+		// Do nothing
+		break
+	default:
+		return errors.New("bootstrap_on={http,cccp,both}")
+	}
+	config.MemdAddrs = memdHosts
+	config.HttpAddrs = httpHosts
+
+	var tlsConfig *tls.Config
+	if spec.UseSsl {
+		var certpath string
+		var keypath string
+		var cacertpaths []string
+
+		if len(spec.Options["cacertpath"]) > 0 || len(spec.Options["keypath"]) > 0 {
+			cacertpaths = spec.Options["cacertpath"]
+			certpath, _ = fetchOption("certpath")
+			keypath, _ = fetchOption("keypath")
+		} else {
+			cacertpaths = spec.Options["certpath"]
+		}
+
+		tlsConfig = &tls.Config{}
 
 // authFunc wraps AuthFunc to provide a better to the user.
 type authFunc func() (completedCh chan BytesAndError, continueCh chan bool, err error)
@@ -197,8 +342,37 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confCccpPollPeriod = config.CccpPollPeriod
 	}
 
-	if config.CompressionMinSize > 0 {
-		compressionMinSize = config.CompressionMinSize
+	if valStr, ok := fetchOption("dcp_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("dcp buffer size option must be a number")
+		}
+		config.DcpBufferSize = int(val)
+	}
+
+	return nil
+}
+
+func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFunc {
+	return func(client AuthClient, deadline time.Time) error {
+		creds, err := getKvAuthCreds(authProvider, client.Address())
+		if err != nil {
+			return err
+		}
+
+		if creds.Username != "" || creds.Password != "" {
+			if err := SaslAuthPlain(creds.Username, creds.Password, client, deadline); err != nil {
+				return err
+			}
+		}
+
+		if client.SupportsFeature(FeatureSelectBucket) {
+			if err := client.ExecSelectBucket([]byte(bucketName), deadline); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 	if config.CompressionMinRatio > 0 {
 		compressionMinRatio = config.CompressionMinRatio
@@ -231,7 +405,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
 			return err
 		}
-		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
+		return client.ExecEnableDcpBufferAck(agent.dcpBufferSize, deadline)
 	}
 
 	return createAgent(config, initFn)
@@ -314,6 +488,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		dcpPriority:          config.DcpAgentPriority,
 		disableDecompression: config.DisableDecompression,
 		useDcpExpiry:         config.UseDcpExpiry,
+		dcpBufferSize:        8 * 1024 * 1024,
 	}
 
 	connectTimeout := 60000 * time.Millisecond
@@ -329,6 +504,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
 		}
 	}
+	if config.DcpBufferSize > 0 {
+		c.dcpBufferSize = config.DcpBufferSize
+	}
+	c.dcpQueueSize = (c.dcpBufferSize + 23) / 24
 
 	if config.UseZombieLogger {
 		// We setup the zombie logger after connecting so that we don't end up leaking the logging goroutine.

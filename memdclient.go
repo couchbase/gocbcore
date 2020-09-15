@@ -285,7 +285,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 }
 
 func (client *memdClient) run() {
-	dcpBufferQ := make(chan *dcpBuffer, client.dcpQueueSize)
+	dcpBufferQ := make(chan *memdQResponse, client.parent.dcpQueueSize)
 	dcpKillSwitch := make(chan bool)
 	dcpKillNotify := make(chan bool)
 	go func() {
