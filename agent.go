@@ -73,8 +73,10 @@ type Agent struct {
 	zombieOps       []*zombieLogEntry
 	useZombieLogger uint32
 
-	dcpPriority  DcpAgentPriority
-	useDcpExpiry bool
+	dcpPriority   DcpAgentPriority
+	useDcpExpiry  bool
+	dcpBufferSize int
+	dcpQueueSize  int
 }
 
 // ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
@@ -144,6 +146,7 @@ type AgentConfig struct {
 
 	DcpAgentPriority DcpAgentPriority
 	UseDcpExpiry     bool
+	DcpBufferSize    int
 
 	// Username specifies the username to use when connecting.
 	// DEPRECATED
@@ -501,6 +504,14 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		config.UseDcpExpiry = val
 	}
 
+	if valStr, ok := fetchOption("dcp_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("dcp buffer size option must be a number")
+		}
+		config.DcpBufferSize = int(val)
+	}
+
 	return nil
 }
 
@@ -595,7 +606,7 @@ func CreateDcpAgent(configIn *AgentConfig, dcpStreamName string, openFlags DcpOp
 		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
 			return err
 		}
-		return client.ExecEnableDcpBufferAck(8*1024*1024, deadline)
+		return client.ExecEnableDcpBufferAck(agent.dcpBufferSize, deadline)
 	}
 
 	return createAgent(config, initFn)
@@ -678,6 +689,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		dcpPriority:          config.DcpAgentPriority,
 		disableDecompression: config.DisableDecompression,
 		useDcpExpiry:         config.UseDcpExpiry,
+		dcpBufferSize:        8 * 1024 * 1024,
 	}
 
 	connectTimeout := 60000 * time.Millisecond
@@ -718,6 +730,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			c.compressionMinRatio = 1.0
 		}
 	}
+	if config.DcpBufferSize > 0 {
+		c.dcpBufferSize = config.DcpBufferSize
+	}
+	c.dcpQueueSize = (c.dcpBufferSize + 23) / 24
 
 	deadline := time.Now().Add(connectTimeout)
 	if err := c.connect(config.MemdAddrs, config.HttpAddrs, deadline); err != nil {
