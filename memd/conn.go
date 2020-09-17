@@ -11,8 +11,9 @@ import (
 type Conn struct {
 	stream io.ReadWriter
 
-	headerBuf       []byte
-	enabledFeatures map[HelloFeature]bool
+	headerBuf          []byte
+	enabledFeatures    map[HelloFeature]bool
+	collectionsEnabled bool
 }
 
 // NewConn creates a new connection object which can be used to perform
@@ -28,6 +29,10 @@ func NewConn(stream io.ReadWriter) *Conn {
 // EnableFeature enables a particular feature on this connection.
 func (c *Conn) EnableFeature(feature HelloFeature) {
 	c.enabledFeatures[feature] = true
+
+	if feature == FeatureCollections {
+		c.collectionsEnabled = true
+	}
 }
 
 // IsFeatureEnabled indicates whether a particular feature is enabled
@@ -44,7 +49,7 @@ func (c *Conn) IsFeatureEnabled(feature HelloFeature) bool {
 func (c *Conn) WritePacket(pkt *Packet) error {
 	encodedKey := pkt.Key
 	extras := pkt.Extras
-	if c.IsFeatureEnabled(FeatureCollections) {
+	if c.collectionsEnabled {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
 			// enabled, we don't currently implement that operation for simplicity, as the key is
@@ -420,7 +425,7 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 
 	keyVal := bodyBuf[bodyPos : bodyPos+keyLen]
 	bodyPos += keyLen
-	if c.IsFeatureEnabled(FeatureCollections) {
+	if c.collectionsEnabled {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
 			// enabled, we don't currently implement that operation for simplicity, as the key is
