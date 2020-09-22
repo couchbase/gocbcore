@@ -693,9 +693,22 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
 			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-			// If there's an auth failure or there was only 1 mechanism to use then fail.
-			if len(authMechanisms) == 1 || errors.Is(authResp.Err, ErrAuthenticationFailure) {
-				return authResp.Err
+			if errors.Is(authResp.Err, ErrAuthenticationFailure) {
+				// If there's only one auth mechanism then we can just fail.
+				if len(authMechanisms) == 1 {
+					return authResp.Err
+				}
+				// If the server supports the mechanism we've tried then this auth error can't be due to an unsupported
+				// mechanism.
+				for _, mech := range serverAuthMechanisms {
+					if mech == authMechanisms[0] {
+						return authResp.Err
+					}
+				}
+
+				// If we've got here then the auth mechanism we tried is unsupported so let's keep trying with the next
+				// supported mechanism.
+				logDebugf("Unsupported authentication mechanism, will attempt to find next supported mechanism")
 			}
 
 			for {
@@ -707,6 +720,7 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 					return authResp.Err
 				}
 
+				logDebugf("Retrying authentication with found supported mechanism: %s", mech)
 				nextAuthFunc := settings.AuthHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
