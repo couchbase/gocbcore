@@ -24,6 +24,7 @@ type dispatcher interface {
 	CollectionsEnabled() bool
 	SupportsCollections() bool
 	SetPostCompleteErrorHandler(handler postCompleteErrorHandler)
+	PipelineSnapshot() (*pipelineSnapshot, error)
 }
 
 type kvMux struct {

@@ -69,6 +69,29 @@ func (_m *mockDispatcher) DispatchDirectToAddress(req *memdQRequest, pipeline *m
 	return r0, r1
 }
 
+// PipelineSnapshot provides a mock function with given fields:
+func (_m *mockDispatcher) PipelineSnapshot() (*pipelineSnapshot, error) {
+	ret := _m.Called()
+
+	var r0 *pipelineSnapshot
+	if rf, ok := ret.Get(0).(func() *pipelineSnapshot); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*pipelineSnapshot)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // RequeueDirect provides a mock function with given fields: req, isRetry
 func (_m *mockDispatcher) RequeueDirect(req *memdQRequest, isRetry bool) {
 	_m.Called(req, isRetry)

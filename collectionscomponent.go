@@ -140,6 +140,78 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 	return cidMgr.dispatcher.DispatchDirect(req)
 }
 
+func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollectionManifestsOptions, cb GetAllCollectionManifestsCallback) (PendingOp, error) {
+	tracer := cidMgr.tracer.CreateOpTrace("GetAllCollectionManifests", opts.TraceContext)
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = cidMgr.defaultRetryStrategy
+	}
+
+	iter, err := cidMgr.dispatcher.PipelineSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
+	manifests := make(map[string]SingleServerManifestResult)
+	manifestsLock := sync.Mutex{}
+
+	op := &multiPendingOp{
+		isIdempotent: true,
+	}
+
+	opCompleteLocked := func() {
+		completed := op.IncrementCompletedOps()
+		if iter.NumPipelines()-int(completed) == 0 {
+			tracer.Finish()
+			cb(&GetAllCollectionManifestsResult{Manifests: manifests}, nil)
+		}
+	}
+
+	iter.Iterate(0, func(pipeline *memdPipeline) bool {
+		handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+			manifestsLock.Lock()
+			defer manifestsLock.Unlock()
+
+			res := SingleServerManifestResult{
+				Error: err,
+			}
+
+			if resp != nil {
+				res.Manifest = resp.Value
+			}
+
+			manifests[pipeline.address] = res
+			opCompleteLocked()
+		}
+
+		req := &memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdCollectionsGetManifest,
+			},
+			Callback:         handler,
+			RetryStrategy:    opts.RetryStrategy,
+			RootTraceContext: opts.TraceContext,
+		}
+
+		curOp, err := cidMgr.dispatcher.DispatchDirectToAddress(req, pipeline)
+		if err == nil {
+			op.ops = append(op.ops, curOp)
+			return false
+		}
+
+		manifestsLock.Lock()
+		defer manifestsLock.Unlock()
+
+		manifests[pipeline.address] = SingleServerManifestResult{Error: err}
+		opCompleteLocked()
+
+		return false
+	})
+
+	return op, nil
+}
+
 // GetCollectionID does not trigger retries on unknown collection. This is because the request sets the scope and collection
 // name in the key rather than in the corresponding fields.
 func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions,
