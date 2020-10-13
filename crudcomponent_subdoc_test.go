@@ -2,6 +2,8 @@ package gocbcore
 
 import (
 	"bytes"
+	"encoding/json"
+
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
@@ -333,4 +335,101 @@ func (suite *StandardTestSuite) TestTombstones() {
 		})
 	}))
 	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestReplaceBodyWithXattr() {
+	suite.EnsureSupportsFeature(TestFeatureReplaceBodyWithXattr)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testReplaceBodyWithXattr"),
+		Value:          []byte("{\"mybody\":\"isnotxattrs\"}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key: []byte("testReplaceBodyWithXattr"),
+		Ops: []SubDocOp{
+			{
+				Op:    memd.SubDocOpDictSet,
+				Path:  "mybodyafterward",
+				Value: []byte("{\"mybody\":\"willbethexattrafterwardthough\"}"),
+				Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagMkDirP,
+			},
+		},
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("MutateIn operation failed %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key: []byte("testReplaceBodyWithXattr"),
+		Ops: []SubDocOp{
+			{
+				Op:    memd.SubDocOpReplaceBodyWithXattr,
+				Path:  "mybodyafterward",
+				Flags: memd.SubdocFlagXattrPath,
+			},
+		},
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("MutateIn operation failed %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Get(GetOptions{
+		Key:            []byte("testReplaceBodyWithXattr"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Get operation failed %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+
+			var body map[string]string
+			err = json.Unmarshal(res.Value, &body)
+			if err != nil {
+				s.Fatalf("Unmarshal failed %v", err)
+			}
+
+			if len(body) != 1 {
+				s.Fatalf("Expected body contain one key, was %v", body)
+			}
+
+			val, ok := body["mybody"]
+			if !ok {
+				s.Fatalf("Expected body contain mybody, was %v", body)
+			}
+
+			if val != "willbethexattrafterwardthough" {
+				s.Fatalf("Expected mybody value to be willbethexattrafterwardthough was %v", val)
+			}
+		})
+	}))
+	s.Wait(0)
+
 }

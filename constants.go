@@ -50,20 +50,12 @@ const (
 	DcpAgentPriorityHigh = DcpAgentPriority(2)
 )
 
-type durabilityLevelStatus uint32
+type bucketCapabilityStatus uint32
 
 const (
-	durabilityLevelStatusUnknown     = durabilityLevelStatus(0x00)
-	durabilityLevelStatusSupported   = durabilityLevelStatus(0x01)
-	durabilityLevelStatusUnsupported = durabilityLevelStatus(0x02)
-)
-
-type createAsDeletedStatus uint32
-
-const (
-	createAsDeletedStatusUnknown     = createAsDeletedStatus(0x00)
-	createAsDeletedStatusSupported   = createAsDeletedStatus(0x01)
-	createAsDeletedStatusUnsupported = createAsDeletedStatus(0x02)
+	bucketCapabilityStatusUnknown     bucketCapabilityStatus = 0x00
+	bucketCapabilityStatusSupported   bucketCapabilityStatus = 0x01
+	bucketCapabilityStatusUnsupported bucketCapabilityStatus = 0x02
 )
 
 // ClusterCapability represents a capability that the cluster supports

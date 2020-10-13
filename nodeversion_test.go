@@ -25,7 +25,7 @@ const (
 
 func (v NodeVersion) Equal(ov NodeVersion) bool {
 	if v.Major == ov.Major && v.Minor == ov.Minor &&
-		v.Patch == ov.Patch && v.Edition == ov.Edition && v.Modifier == ov.Modifier {
+		v.Patch == ov.Patch && v.Build == ov.Build && v.Edition == ov.Edition && v.Modifier == ov.Modifier {
 		return true
 	}
 	return false

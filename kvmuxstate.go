@@ -15,9 +15,10 @@ type kvMuxState struct {
 	uuid         string
 	revID        int64
 
-	durabilityLevelStatus durabilityLevelStatus
-	createAsDeletedStatus createAsDeletedStatus
-	collectionsSupported  bool
+	durabilityLevelStatus      bucketCapabilityStatus
+	createAsDeletedStatus      bucketCapabilityStatus
+	replaceBodyWithXattrStatus bucketCapabilityStatus
+	collectionsSupported       bool
 }
 
 func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
@@ -32,8 +33,9 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		uuid:         cfg.uuid,
 		revID:        cfg.revID,
 
-		durabilityLevelStatus: durabilityLevelStatusUnknown,
-		createAsDeletedStatus: createAsDeletedStatusUnknown,
+		durabilityLevelStatus:      bucketCapabilityStatusUnknown,
+		createAsDeletedStatus:      bucketCapabilityStatusUnknown,
+		replaceBodyWithXattrStatus: bucketCapabilityStatusUnknown,
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
 	}
@@ -41,15 +43,21 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 	// We setup with a fake config, this means that durability support is still unknown.
 	if cfg.revID > -1 {
 		if cfg.ContainsBucketCapability("durableWrite") {
-			mux.durabilityLevelStatus = durabilityLevelStatusSupported
+			mux.durabilityLevelStatus = bucketCapabilityStatusSupported
 		} else {
-			mux.durabilityLevelStatus = durabilityLevelStatusUnsupported
+			mux.durabilityLevelStatus = bucketCapabilityStatusUnsupported
 		}
 
 		if cfg.ContainsBucketCapability("tombstonedUserXAttrs") {
-			mux.createAsDeletedStatus = createAsDeletedStatusSupported
+			mux.createAsDeletedStatus = bucketCapabilityStatusSupported
 		} else {
-			mux.createAsDeletedStatus = createAsDeletedStatusUnsupported
+			mux.createAsDeletedStatus = bucketCapabilityStatusUnsupported
+		}
+
+		if cfg.ContainsBucketCapability("subdoc.ReplaceBodyWithXattr") {
+			mux.replaceBodyWithXattrStatus = bucketCapabilityStatusSupported
+		} else {
+			mux.replaceBodyWithXattrStatus = bucketCapabilityStatusUnsupported
 		}
 	}
 

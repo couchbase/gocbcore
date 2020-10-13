@@ -572,6 +572,7 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 	// These flags are informational so don't actually enable anything
 	features = append(features, memd.FeatureAltRequests)
 	features = append(features, memd.FeatureCreateAsDeleted)
+	features = append(features, memd.FeatureReplaceBodyWithXattr)
 
 	if props.SyncReplicationEnabled {
 		features = append(features, memd.FeatureSyncReplication)

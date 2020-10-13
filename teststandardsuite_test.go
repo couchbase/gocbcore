@@ -160,6 +160,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeatureCreateDeleted:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer660)
+	case TestFeatureReplaceBodyWithXattr:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer7003618)
 	}
 
 	panic("found unsupported feature code")

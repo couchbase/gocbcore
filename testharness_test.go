@@ -15,38 +15,40 @@ import (
 )
 
 var (
-	srvVer450   = NodeVersion{4, 5, 0, 0, 0, ""}
-	srvVer551   = NodeVersion{5, 5, 1, 0, 0, ""}
-	srvVer552   = NodeVersion{5, 5, 2, 0, 0, ""}
-	srvVer553   = NodeVersion{5, 5, 3, 0, 0, ""}
-	srvVer600   = NodeVersion{6, 0, 0, 0, 0, ""}
-	srvVer650   = NodeVersion{6, 5, 0, 0, 0, ""}
-	srvVer650DP = NodeVersion{6, 5, 0, 0, 0, "dp"}
-	srvVer660   = NodeVersion{6, 6, 0, 0, 0, ""}
-	srvVer700   = NodeVersion{7, 0, 0, 0, 0, ""}
-	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
+	srvVer450     = NodeVersion{4, 5, 0, 0, 0, ""}
+	srvVer551     = NodeVersion{5, 5, 1, 0, 0, ""}
+	srvVer552     = NodeVersion{5, 5, 2, 0, 0, ""}
+	srvVer553     = NodeVersion{5, 5, 3, 0, 0, ""}
+	srvVer600     = NodeVersion{6, 0, 0, 0, 0, ""}
+	srvVer650     = NodeVersion{6, 5, 0, 0, 0, ""}
+	srvVer650DP   = NodeVersion{6, 5, 0, 0, 0, "dp"}
+	srvVer660     = NodeVersion{6, 6, 0, 0, 0, ""}
+	srvVer700     = NodeVersion{7, 0, 0, 0, 0, ""}
+	srvVer7003618 = NodeVersion{7, 0, 0, 3618, 0, ""}
+	mockVer156    = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
 type TestFeatureCode string
 
 var (
-	TestFeatureReplicas           = TestFeatureCode("replicas")
-	TestFeatureSsl                = TestFeatureCode("ssl")
-	TestFeatureViews              = TestFeatureCode("views")
-	TestFeatureN1ql               = TestFeatureCode("n1ql")
-	TestFeatureCbas               = TestFeatureCode("cbas")
-	TestFeatureFts                = TestFeatureCode("fts")
-	TestFeatureAdjoin             = TestFeatureCode("adjoin")
-	TestFeatureErrMap             = TestFeatureCode("errmap")
-	TestFeatureCollections        = TestFeatureCode("collections")
-	TestFeatureDCPExpiry          = TestFeatureCode("dcpexpiry")
-	TestFeatureDCPDeleteTimes     = TestFeatureCode("dcpdeletetimes")
-	TestFeatureMemd               = TestFeatureCode("memd")
-	TestFeatureGetMeta            = TestFeatureCode("getmeta")
-	TestFeatureGCCCP              = TestFeatureCode("gcccp")
-	TestFeaturePingServices       = TestFeatureCode("pingservices")
-	TestFeatureEnhancedDurability = TestFeatureCode("durability")
-	TestFeatureCreateDeleted      = TestFeatureCode("createasdeleted")
+	TestFeatureReplicas             = TestFeatureCode("replicas")
+	TestFeatureSsl                  = TestFeatureCode("ssl")
+	TestFeatureViews                = TestFeatureCode("views")
+	TestFeatureN1ql                 = TestFeatureCode("n1ql")
+	TestFeatureCbas                 = TestFeatureCode("cbas")
+	TestFeatureFts                  = TestFeatureCode("fts")
+	TestFeatureAdjoin               = TestFeatureCode("adjoin")
+	TestFeatureErrMap               = TestFeatureCode("errmap")
+	TestFeatureCollections          = TestFeatureCode("collections")
+	TestFeatureDCPExpiry            = TestFeatureCode("dcpexpiry")
+	TestFeatureDCPDeleteTimes       = TestFeatureCode("dcpdeletetimes")
+	TestFeatureMemd                 = TestFeatureCode("memd")
+	TestFeatureGetMeta              = TestFeatureCode("getmeta")
+	TestFeatureGCCCP                = TestFeatureCode("gcccp")
+	TestFeaturePingServices         = TestFeatureCode("pingservices")
+	TestFeatureEnhancedDurability   = TestFeatureCode("durability")
+	TestFeatureCreateDeleted        = TestFeatureCode("createasdeleted")
+	TestFeatureReplaceBodyWithXattr = TestFeatureCode("replacebodywithxattr")
 )
 
 type TestFeatureFlag struct {
