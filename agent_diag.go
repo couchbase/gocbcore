@@ -83,7 +83,7 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 
 	kvHandler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		serverAddress := ""
-		if resp != nil{
+		if resp != nil {
 			serverAddress = resp.sourceAddr
 		}
 
