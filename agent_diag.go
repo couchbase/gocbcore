@@ -82,7 +82,10 @@ func (agent *Agent) PingKvEx(opts PingKvOptions, cb PingKvExCallback) (PendingOp
 	pingStartTime := time.Now()
 
 	kvHandler := func(resp *memdQResponse, req *memdQRequest, err error) {
-		serverAddress := resp.sourceAddr
+		serverAddress := ""
+		if resp != nil {
+			serverAddress = resp.sourceAddr
+		}
 
 		pingLatency := time.Now().Sub(pingStartTime)
 
