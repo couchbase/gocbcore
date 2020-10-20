@@ -1687,8 +1687,35 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	}
 }
 
+<<<<<<< HEAD
 func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses_without_ports.json")
+=======
+func TestAlternateAddressesExternalConfigNoPorts(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses_without_ports.json")
+
+	initialNetworkType := globalAgent.networkType
+	globalAgent.networkType = "external"
+	cfg := globalAgent.buildFirstRouteConfig(cfgBk, "192.168.132.234:32799")
+
+	if globalAgent.networkType != "external" {
+		t.Fatalf("Expected agent networkType to be external, was %s", globalAgent.networkType)
+	}
+
+	for i, server := range cfg.kvServerList {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server != cfgBkServer {
+			t.Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		}
+	}
+	globalAgent.networkType = initialNetworkType
+}
+
+func TestAlternateAddressesInvalidConfig(t *testing.T) {
+	cfgBk := loadConfigFromFile(t, "testdata/bucket_config_with_external_addresses.json")
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
@@ -2314,6 +2341,36 @@ func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool
 
 	}
 
+	if *dcpBucketName != "" && globalAgent.SupportsFeature(TestDCPFeature) {
+		dcpAgentConfig := &AgentConfig{}
+		*dcpAgentConfig = *agentConfig
+		dcpAgentConfig.BucketName = *dcpBucketName
+
+		if globalAgent.SupportsFeature(TestDCPExpiryFeature) {
+			dcpAgentConfig.UseDcpExpiry = true
+		}
+
+		dcpAgent, err := CreateDcpAgent(dcpAgentConfig, "dcp-stream", DcpOpenFlagProducer)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPAgent = &testNode{
+			Agent:   dcpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+		dcpOpAgent, err := CreateAgent(dcpAgentConfig)
+		if err != nil {
+			panic("Failed to connect to server")
+		}
+		globalDCPOpAgent = &testNode{
+			Agent:   dcpOpAgent,
+			Mock:    mock,
+			Version: nodeVersion,
+		}
+
+	}
+
 	result := m.Run()
 
 func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
@@ -2351,6 +2408,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
+<<<<<<< HEAD
 	var resp *HTTPResponse
 	select {
 	case respErr := <-errCh:
@@ -2398,6 +2456,20 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		}
 	}
 
+=======
+	if globalDCPAgent != nil {
+		err = globalDCPAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp agent: %s", err))
+		}
+
+		err = globalDCPOpAgent.Close()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to shut down global dcp op agent: %s", err))
+		}
+	}
+
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 	if logger != nil {
 		log.Printf("Log Messages Emitted:")
 		var preLogTotal uint64

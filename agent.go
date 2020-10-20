@@ -347,6 +347,47 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		if err != nil {
 			return fmt.Errorf("dcp buffer size option must be a number")
 		}
+<<<<<<< HEAD
+		config.DcpBufferSize = int(val)
+=======
+		config.ZombieLoggerSampleSize = int(val)
+	}
+
+	if valStr, ok := fetchOption("network"); ok {
+		config.NetworkType = valStr
+	}
+
+	if valStr, ok := fetchOption("dcp_priority"); ok {
+		var priority DcpAgentPriority
+		switch valStr {
+		case "":
+			priority = DcpAgentPriorityLow
+		case "low":
+			priority = DcpAgentPriorityLow
+		case "medium":
+			priority = DcpAgentPriorityMed
+		case "high":
+			priority = DcpAgentPriorityHigh
+		default:
+			return fmt.Errorf("dcp_priority must be one of low, medium or high")
+		}
+		config.DcpAgentPriority = priority
+	}
+
+	if valStr, ok := fetchOption("enable_expiry_opcode"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("enable_expiry_opcode option must be a boolean")
+		}
+		config.UseDcpExpiry = val
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
+	}
+
+	if valStr, ok := fetchOption("dcp_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("dcp buffer size option must be a number")
+		}
 		config.DcpBufferSize = int(val)
 	}
 
@@ -405,6 +446,17 @@ func makeDefaultAuthHandler(authProvider AuthProvider, bucketName string) AuthFu
 		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
 			return err
 		}
+<<<<<<< HEAD
+=======
+		if agent.useDcpExpiry {
+			if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+				return err
+			}
+		}
+		if err := client.ExecEnableDcpClientEnd(deadline); err != nil {
+			return err
+		}
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 		return client.ExecEnableDcpBufferAck(agent.dcpBufferSize, deadline)
 	}
 
@@ -506,6 +558,15 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 	if config.DcpBufferSize > 0 {
 		c.dcpBufferSize = config.DcpBufferSize
+<<<<<<< HEAD
+=======
+	}
+	c.dcpQueueSize = (c.dcpBufferSize + 23) / 24
+
+	deadline := time.Now().Add(connectTimeout)
+	if err := c.connect(config.MemdAddrs, config.HttpAddrs, deadline); err != nil {
+		return nil, err
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 	}
 	c.dcpQueueSize = (c.dcpBufferSize + 23) / 24
 

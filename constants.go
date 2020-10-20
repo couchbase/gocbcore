@@ -313,6 +313,208 @@ const (
 	bktTypeMemcached            = iota
 )
 
+<<<<<<< HEAD
+=======
+// VbucketState represents the state of a particular vbucket on a particular server.
+type VbucketState uint32
+
+const (
+	// VbucketStateActive indicates the vbucket is active on this server
+	VbucketStateActive = VbucketState(0x01)
+
+	// VbucketStateReplica indicates the vbucket is a replica on this server
+	VbucketStateReplica = VbucketState(0x02)
+
+	// VbucketStatePending indicates the vbucket is preparing to become active on this server.
+	VbucketStatePending = VbucketState(0x03)
+
+	// VbucketStateDead indicates the vbucket is no longer valid on this server.
+	VbucketStateDead = VbucketState(0x04)
+)
+
+// SetMetaOption represents possible option values for a SetMeta operation.
+type SetMetaOption uint32
+
+const (
+	// ForceMetaOp disables conflict resolution for the document and allows the
+	// operation to be applied to an active, pending, or replica vbucket.
+	ForceMetaOp = SetMetaOption(0x01)
+
+	// UseLwwConflictResolution switches to Last-Write-Wins conflict resolution
+	// for the document.
+	UseLwwConflictResolution = SetMetaOption(0x02)
+
+	// RegenerateCas causes the server to invalidate the current CAS value for
+	// a document, and to generate a new one.
+	RegenerateCas = SetMetaOption(0x04)
+
+	// SkipConflictResolution disables conflict resolution for the document.
+	SkipConflictResolution = SetMetaOption(0x08)
+
+	// IsExpiration indicates that the message is for an expired document.
+	IsExpiration = SetMetaOption(0x10)
+)
+
+// KeyState represents the various storage states of a key on the server.
+type KeyState uint8
+
+const (
+	// KeyStateNotPersisted indicates the key is in memory, but not yet written to disk.
+	KeyStateNotPersisted = KeyState(0x00)
+
+	// KeyStatePersisted indicates that the key has been written to disk.
+	KeyStatePersisted = KeyState(0x01)
+
+	// KeyStateNotFound indicates that the key is not found in memory or on disk.
+	KeyStateNotFound = KeyState(0x80)
+
+	// KeyStateDeleted indicates that the key has been written to disk as deleted.
+	KeyStateDeleted = KeyState(0x81)
+)
+
+// SubDocOpType specifies the type of a sub-document operation.
+type SubDocOpType uint8
+
+const (
+	// SubDocOpGet indicates the operation is a sub-document `Get` operation.
+	SubDocOpGet = SubDocOpType(cmdSubDocGet)
+
+	// SubDocOpExists indicates the operation is a sub-document `Exists` operation.
+	SubDocOpExists = SubDocOpType(cmdSubDocExists)
+
+	// SubDocOpGetCount indicates the operation is a sub-document `GetCount` operation.
+	SubDocOpGetCount = SubDocOpType(cmdSubDocGetCount)
+
+	// SubDocOpDictAdd indicates the operation is a sub-document `Add` operation.
+	SubDocOpDictAdd = SubDocOpType(cmdSubDocDictAdd)
+
+	// SubDocOpDictSet indicates the operation is a sub-document `Set` operation.
+	SubDocOpDictSet = SubDocOpType(cmdSubDocDictSet)
+
+	// SubDocOpDelete indicates the operation is a sub-document `Remove` operation.
+	SubDocOpDelete = SubDocOpType(cmdSubDocDelete)
+
+	// SubDocOpReplace indicates the operation is a sub-document `Replace` operation.
+	SubDocOpReplace = SubDocOpType(cmdSubDocReplace)
+
+	// SubDocOpArrayPushLast indicates the operation is a sub-document `ArrayPushLast` operation.
+	SubDocOpArrayPushLast = SubDocOpType(cmdSubDocArrayPushLast)
+
+	// SubDocOpArrayPushFirst indicates the operation is a sub-document `ArrayPushFirst` operation.
+	SubDocOpArrayPushFirst = SubDocOpType(cmdSubDocArrayPushFirst)
+
+	// SubDocOpArrayInsert indicates the operation is a sub-document `ArrayInsert` operation.
+	SubDocOpArrayInsert = SubDocOpType(cmdSubDocArrayInsert)
+
+	// SubDocOpArrayAddUnique indicates the operation is a sub-document `ArrayAddUnique` operation.
+	SubDocOpArrayAddUnique = SubDocOpType(cmdSubDocArrayAddUnique)
+
+	// SubDocOpCounter indicates the operation is a sub-document `Counter` operation.
+	SubDocOpCounter = SubDocOpType(cmdSubDocCounter)
+
+	// SubDocOpGetDoc represents a full document retrieval, for use with extended attribute ops.
+	SubDocOpGetDoc = SubDocOpType(cmdGet)
+
+	// SubDocOpSetDoc represents a full document set, for use with extended attribute ops.
+	SubDocOpSetDoc = SubDocOpType(cmdSet)
+
+	// SubDocOpAddDoc represents a full document add, for use with extended attribute ops.
+	SubDocOpAddDoc = SubDocOpType(cmdAdd)
+
+	// SubDocOpDeleteDoc represents a full document delete, for use with extended attribute ops.
+	SubDocOpDeleteDoc = SubDocOpType(cmdDelete)
+)
+
+// DcpOpenFlag specifies flags for DCP connections configured when the stream is opened.
+type DcpOpenFlag uint32
+
+const (
+	// DcpOpenFlagProducer indicates this connection wants the other end to be a producer.
+	DcpOpenFlagProducer = DcpOpenFlag(0x01)
+
+	// DcpOpenFlagNotifier indicates this connection wants the other end to be a notifier.
+	DcpOpenFlagNotifier = DcpOpenFlag(0x02)
+
+	// DcpOpenFlagIncludeXattrs indicates the client wishes to receive extended attributes.
+	DcpOpenFlagIncludeXattrs = DcpOpenFlag(0x04)
+
+	// DcpOpenFlagNoValue indicates the client does not wish to receive mutation values.
+	DcpOpenFlagNoValue = DcpOpenFlag(0x08)
+)
+
+// DcpStreamAddFlag specifies flags for DCP streams configured when the stream is opened.
+type DcpStreamAddFlag uint32
+
+const (
+	//DcpStreamAddFlagDiskOnly indicates that stream should only send items if they are on disk
+	DcpStreamAddFlagDiskOnly = DcpStreamAddFlag(0x02)
+
+	// DcpStreamAddFlagLatest indicates this stream wants to get data up to the latest seqno.
+	DcpStreamAddFlagLatest = DcpStreamAddFlag(0x04)
+
+	// DcpStreamAddFlagActiveOnly indicates this stream should only connect to an active vbucket.
+	DcpStreamAddFlagActiveOnly = DcpStreamAddFlag(0x10)
+
+	// DcpStreamAddFlagStrictVBUUID indicates the vbuuid must match unless the start seqno
+	// is 0 and the vbuuid is also 0.
+	DcpStreamAddFlagStrictVBUUID = DcpStreamAddFlag(0x20)
+)
+
+// DatatypeFlag specifies data flags for the value of a document.
+type DatatypeFlag uint8
+
+const (
+	// DatatypeFlagJson indicates the server believes the value payload to be JSON.
+	DatatypeFlagJson = DatatypeFlag(0x01)
+
+	// DatatypeFlagCompressed indicates the value payload is compressed.
+	DatatypeFlagCompressed = DatatypeFlag(0x02)
+
+	// DatatypeFlagXattrs indicates the inclusion of xattr data in the value payload.
+	DatatypeFlagXattrs = DatatypeFlag(0x04)
+)
+
+// SubdocFlag specifies flags for a sub-document operation.
+type SubdocFlag uint8
+
+const (
+	// SubdocFlagNone indicates no special treatment for this operation.
+	SubdocFlagNone = SubdocFlag(0x00)
+
+	// SubdocFlagMkDirP indicates that the path should be created if it does not already exist.
+	SubdocFlagMkDirP = SubdocFlag(0x01)
+
+	// 0x02 is unused, formally SubdocFlagMkDoc
+
+	// SubdocFlagXattrPath indicates that the path refers to an Xattr rather than the document body.
+	SubdocFlagXattrPath = SubdocFlag(0x04)
+
+	// 0x08 is unused, formally SubdocFlagAccessDeleted
+
+	// SubdocFlagExpandMacros indicates that the value portion of any sub-document mutations
+	// should be expanded if they contain macros such as ${Mutation.CAS}.
+	SubdocFlagExpandMacros = SubdocFlag(0x10)
+)
+
+// SubdocDocFlag specifies document-level flags for a sub-document operation.
+type SubdocDocFlag uint8
+
+const (
+	// SubdocDocFlagNone indicates no special treatment for this operation.
+	SubdocDocFlagNone = SubdocDocFlag(0x00)
+
+	// SubdocDocFlagMkDoc indicates that the document should be created if it does not already exist.
+	SubdocDocFlagMkDoc = SubdocDocFlag(0x01)
+
+	// SubdocDocFlagReplaceDoc indices that this operation should be a replace rather than upsert.
+	SubdocDocFlagReplaceDoc = SubdocDocFlag(0x02)
+
+	// SubdocDocFlagAccessDeleted indicates that you wish to receive soft-deleted documents.
+	// Internal: This should never be used and is not supported.
+	SubdocDocFlagAccessDeleted = SubdocDocFlag(0x04)
+)
+
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 // ServiceType specifies a particular Couchbase service type.
 type ServiceType int
 

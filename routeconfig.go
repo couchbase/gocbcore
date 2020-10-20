@@ -89,9 +89,50 @@ func (config *routeConfig) IsValid() bool {
 	}
 }
 
+<<<<<<< HEAD
 func (config *routeConfig) IsGCCCPConfig() bool {
 	return config.bktType == bktTypeNone
 }
+=======
+func buildRouteConfig(bk *cfgBucket, useSsl bool, networkType string, firstConnect bool) *routeConfig {
+	var kvServerList []string
+	var capiEpList []string
+	var mgmtEpList []string
+	var n1qlEpList []string
+	var ftsEpList []string
+	var cbasEpList []string
+	var bktType bucketType
+
+	switch bk.NodeLocator {
+	case "ketama":
+		bktType = bktTypeMemcached
+	case "vbucket":
+		bktType = bktTypeCouchbase
+	default:
+		logDebugf("Invalid nodeLocator %s", bk.NodeLocator)
+		bktType = bktTypeInvalid
+	}
+
+	if bk.NodesExt != nil {
+		lenNodes := len(bk.Nodes)
+		for i, node := range bk.NodesExt {
+			hostname := node.Hostname
+			ports := node.Services
+
+			if networkType != "default" {
+				if altAddr, ok := node.AltAddresses[networkType]; ok {
+					hostname = altAddr.Hostname
+					if altAddr.Ports != nil {
+						ports = *altAddr.Ports
+					}
+				} else {
+					if !firstConnect {
+						logDebugf("Invalid config network type %s", networkType)
+					}
+					continue
+				}
+			}
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 
 func (config *routeConfig) ContainsClusterCapability(version int, category, capability string) bool {
 	caps := config.clusterCapabilities

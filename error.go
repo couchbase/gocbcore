@@ -67,6 +67,9 @@ var (
 	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
 	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
 
+	// ErrUnsupportedStatsTarget occurs when a stats operation is performed with an unsupported Target.
+	ErrUnsupportedStatsTarget = errors.New("Must specify a supported StatsTarget.")
+
 	// ErrShutdown occurs when operations are performed on a previously closed Agent.
 	ErrShutdown = errors.New("connection shut down")
 

@@ -170,6 +170,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 				}
 			}
 
+<<<<<<< HEAD
 			// Send this request upwards to be processed by the higher level processor
 			shortCircuited, routeErr := client.postErrHandler(nil, req, err)
 			if !shortCircuited {
@@ -177,6 +178,10 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 				req.tryCallback(nil, routeErr)
 				break
 			}
+=======
+			// We need to alert the caller that there was a network error
+			req.tryCallback(nil, ErrNetwork)
+>>>>>>> abe1401414f3433231fa0fc7932052b1b3b8b5b8
 
 			// Stop looping
 			break
@@ -257,6 +262,8 @@ func (pipecli *memdPipelineClient) Close() error {
 	// Lets wait till the ioLoop has shut everything down before returning.
 	<-pipecli.closedSig
 	atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnected))
+
+	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 
 	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 
