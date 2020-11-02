@@ -3,13 +3,12 @@ package gocbcore
 import (
 	"container/list"
 	"errors"
+	"github.com/couchbase/gocbcore/v9/memd"
 	"io"
 	"sort"
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 type kvFeatureVerifier interface {
@@ -432,60 +431,63 @@ func (mux *kvMux) Close() error {
 	return muxErr
 }
 
-func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
+func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, originalErr error) (bool, error) {
 	// If there is no error, we should return immediately
-	if err == nil {
+	if originalErr == nil {
 		return false, nil
 	}
 
 	// If this operation has been cancelled, we just fail immediately.
-	if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrTimeout) {
-		return false, err
+	if errors.Is(originalErr, ErrRequestCanceled) || errors.Is(originalErr, ErrTimeout) {
+		return false, originalErr
 	}
 
-	err = translateMemdError(err, req)
+	err := translateMemdError(originalErr, req)
 
-	// Handle potentially retrying the operation
-	if errors.Is(err, ErrNotMyVBucket) {
-		if mux.handleNotMyVbucket(resp, req) {
-			return true, nil
+	if err == originalErr {
+		// We don't know anything about this error so send it to the error map
+		if resp != nil && resp.Magic == memd.CmdMagicRes {
+			shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
+			if shouldRetry {
+				if mux.waitAndRetryOperation(req, KVErrMapRetryReason) {
+					return true, nil
+				}
+			}
 		}
-	} else if errors.Is(err, ErrDocumentLocked) {
-		if mux.waitAndRetryOperation(req, KVLockedRetryReason) {
-			return true, nil
-		}
-	} else if errors.Is(err, ErrTemporaryFailure) {
-		if mux.waitAndRetryOperation(req, KVTemporaryFailureRetryReason) {
-			return true, nil
-		}
-	} else if errors.Is(err, ErrDurableWriteInProgress) {
-		if mux.waitAndRetryOperation(req, KVSyncWriteInProgressRetryReason) {
-			return true, nil
-		}
-	} else if errors.Is(err, ErrDurableWriteReCommitInProgress) {
-		if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
-			return true, nil
-		}
-	} else if errors.Is(err, io.EOF) {
-		if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
-			return true, nil
-		}
-	} else if errors.Is(err, io.ErrShortWrite) {
-		// This is a special case where the write has failed on the underlying connection and not all of the bytes
-		// were written to the network.
-		if mux.waitAndRetryOperation(req, MemdWriteFailure) {
-			return true, nil
-		}
-
-	}
-
-	if resp != nil && resp.Magic == memd.CmdMagicRes {
-		shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
-		if shouldRetry {
-			if mux.waitAndRetryOperation(req, KVErrMapRetryReason) {
+	} else {
+		// Handle potentially retrying the operation
+		if errors.Is(err, ErrNotMyVBucket) {
+			if mux.handleNotMyVbucket(resp, req) {
+				return true, nil
+			}
+		} else if errors.Is(err, ErrDocumentLocked) {
+			if mux.waitAndRetryOperation(req, KVLockedRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, ErrTemporaryFailure) {
+			if mux.waitAndRetryOperation(req, KVTemporaryFailureRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, ErrDurableWriteInProgress) {
+			if mux.waitAndRetryOperation(req, KVSyncWriteInProgressRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, ErrDurableWriteReCommitInProgress) {
+			if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, io.EOF) {
+			if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, io.ErrShortWrite) {
+			// This is a special case where the write has failed on the underlying connection and not all of the bytes
+			// were written to the network.
+			if mux.waitAndRetryOperation(req, MemdWriteFailure) {
 				return true, nil
 			}
 		}
+		// If an error isn't in this list then we know what this error is but we don't support retries for it.
 	}
 
 	err = mux.errMapMgr.EnhanceKvError(err, resp, req)
