@@ -60,6 +60,7 @@ func serializeError(err error) string {
 type KeyValueError struct {
 	InnerError         error           `json:"-"`
 	StatusCode         memd.StatusCode `json:"status_code,omitempty"`
+	DocumentKey        string          `json:"document_key,omitempty"`
 	BucketName         string          `json:"bucket,omitempty"`
 	ScopeName          string          `json:"scope,omitempty"`
 	CollectionName     string          `json:"collection,omitempty"`
