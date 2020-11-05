@@ -216,8 +216,14 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 			expirationsLeft--
 		}
 
-		go func(ex uint32, id int) {
-			defer wg.Done()
+		var doMutation func(ex uint32, id int)
+		doMutation = func(ex uint32, id int) {
+			var success bool
+			defer func() {
+				if success {
+					wg.Done()
+				}
+			}()
 			ch := make(chan error, 1)
 			op, err := suite.opAgent.Set(
 				SetOptions{
@@ -226,21 +232,22 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					Expiry:         ex,
 					ScopeName:      scope,
 					CollectionName: collection,
+					Deadline:       time.Now().Add(1000 * time.Millisecond),
 				}, func(result *StoreResult, err error) {
 					ch <- err
 				},
 			)
 			if err != nil {
-				suite.T().Logf("Canceling due to failure sending set: %v", err)
-				cancel()
+				suite.T().Logf("Retrying due to failure sending set: %v", err)
+				doMutation(ex, id)
 				return
 			}
 
 			select {
 			case err := <-ch:
 				if err != nil {
-					suite.T().Logf("Canceling due to failure performing set: %v", err)
-					cancel()
+					suite.T().Logf("Retrying due to failure performing set: %v", err)
+					doMutation(ex, id)
 					return
 				}
 			case <-ctx.Done():
@@ -248,7 +255,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 				return
 			}
 
-			if expiry == 0 {
+			if ex == 0 {
 				dLeft := atomic.AddInt32(&deletionsLeft, -1)
 				if dLeft >= 0 {
 					lock.Lock()
@@ -260,21 +267,22 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 							Key:            []byte(fmt.Sprintf("key-%d", id)),
 							CollectionName: collection,
 							ScopeName:      scope,
+							Deadline:       time.Now().Add(2500 * time.Millisecond),
 						}, func(result *DeleteResult, err error) {
 							ch <- err
 						},
 					)
 					if err != nil {
-						suite.T().Logf("Canceling due to failure sending delete: %v", err)
-						cancel()
+						suite.T().Logf("Retrying due to failure sending delete: %v", err)
+						doMutation(ex, id)
 						return
 					}
 
 					select {
 					case err := <-ch:
 						if err != nil {
-							suite.T().Logf("Canceling due to failure performing delete: %v", err)
-							cancel()
+							suite.T().Logf("Retrying due to failure performing delete: %v", err)
+							doMutation(ex, id)
 							return
 						}
 					case <-ctx.Done():
@@ -287,7 +295,10 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 					lock.Unlock()
 				}
 			}
-		}(expiry, i)
+			success = true
+		}
+
+		go doMutation(expiry, i)
 	}
 
 	wgCh := make(chan struct{}, 1)
@@ -371,8 +382,6 @@ func (suite *DCPTestSuite) runDCPStream() int {
 	suite.so.newCounter()
 	seqnos, err := suite.getCurrentSeqNos()
 	suite.Require().Nil(err, err)
-
-	suite.T().Logf("Running to seqno map: %v", seqnos)
 
 	suite.so.endWg.Add(len(seqnos))
 
@@ -522,7 +531,7 @@ func (suite *DCPTestSuite) TestScopesDrops() {
 
 	//Make scopes
 	prefix := "dcp_scope_sdrops"
-	scopes := suite.makeScopes(suite.NumCollections, prefix, suite.BucketName, suite.opAgent)
+	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
 	//Drop all scopes created in this test
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
@@ -530,10 +539,16 @@ func (suite *DCPTestSuite) TestScopesDrops() {
 
 	nVB := suite.runDCPStream()
 
-	suite.Assert().Equal(suite.NumCollections, len(suite.so.counter.scopesDeleted))
+	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopesDeleted)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+		dumpManifest(suite.opAgent, suite.T())
+	}
 
 	for _, val := range pScopes {
-		suite.Assert().Equal(nVB, suite.so.counter.scopesDeleted[strconv.Itoa(int(val.UID))], fmt.Sprintf("For scope %s", val.Name))
+		if !suite.Assert().Equal(nVB, suite.so.counter.scopesDeleted[strconv.Itoa(int(val.UID))], fmt.Sprintf("For scope %s", val.Name)) {
+			suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+			dumpManifest(suite.opAgent, suite.T())
+		}
 	}
 
 }
@@ -552,13 +567,22 @@ func (suite *DCPTestSuite) TestCollectionsBasic() {
 
 	nVB := suite.runDCPStream()
 
-	suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes))
-	suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collections))
+	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopes, suite.so.counter.collections)
+		dumpManifest(suite.opAgent, suite.T())
+	}
+	if !suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collections)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopes, suite.so.counter.collections)
+		dumpManifest(suite.opAgent, suite.T())
+	}
 
 	for _, val := range pScopes {
 		suite.Assert().Equal(nVB, suite.so.counter.scopes[val.Name])
 		for _, c := range val.Collections {
-			suite.Assert().Equal(nVB, suite.so.counter.collections[strconv.Itoa(int(val.UID))+"."+c.Name])
+			if !suite.Assert().Equal(nVB, suite.so.counter.collections[strconv.Itoa(int(val.UID))+"."+c.Name]) {
+				suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopes, suite.so.counter.collections)
+				dumpManifest(suite.opAgent, suite.T())
+			}
 		}
 	}
 }
@@ -580,13 +604,23 @@ func (suite *DCPTestSuite) TestCollectionsScopeDrop() {
 
 	nVB := suite.runDCPStream()
 
-	suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopesDeleted))
-	suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collectionsDeleted))
+	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopesDeleted)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+		dumpManifest(suite.opAgent, suite.T())
+	}
+
+	if !suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collectionsDeleted)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+		dumpManifest(suite.opAgent, suite.T())
+	}
 
 	for _, s := range pScopes {
 		suite.Assert().Equal(nVB, suite.so.counter.scopesDeleted[strconv.Itoa(int(s.UID))], fmt.Sprintf("For scope %s", s.Name))
 		for _, c := range s.Collections {
-			suite.Assert().Equal(nVB, suite.so.counter.collectionsDeleted[strconv.Itoa(int(s.UID))+"."+strconv.Itoa(int(c.UID))])
+			if !suite.Assert().Equal(nVB, suite.so.counter.collectionsDeleted[strconv.Itoa(int(s.UID))+"."+strconv.Itoa(int(c.UID))]) {
+				suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+				dumpManifest(suite.opAgent, suite.T())
+			}
 		}
 	}
 }
@@ -608,13 +642,23 @@ func (suite *DCPTestSuite) TestCollectionsDrop() {
 
 	nVB := suite.runDCPStream()
 
-	suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes))
-	suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collectionsDeleted))
+	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+		dumpManifest(suite.opAgent, suite.T())
+	}
+
+	if !suite.Assert().Equal(suite.NumCollections*suite.NumScopes, len(suite.so.counter.collectionsDeleted)) {
+		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+		dumpManifest(suite.opAgent, suite.T())
+	}
 
 	for _, s := range pScopes {
 		suite.Assert().Equal(nVB, suite.so.counter.scopes[s.Name])
 		for _, c := range s.Collections {
-			suite.Assert().Equal(nVB, suite.so.counter.collectionsDeleted[strconv.Itoa(int(s.UID))+"."+strconv.Itoa(int(c.UID))])
+			if !suite.Assert().Equal(nVB, suite.so.counter.collectionsDeleted[strconv.Itoa(int(s.UID))+"."+strconv.Itoa(int(c.UID))]) {
+				suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
+				dumpManifest(suite.opAgent, suite.T())
+			}
 		}
 	}
 }

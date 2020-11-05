@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/couchbase/gocbcore/v9/memd"
@@ -2519,4 +2520,30 @@ func waitForManifest(agent *Agent, manifestID uint64, manifestCh chan testManife
 		<-setCh
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func dumpManifest(agent *Agent, t *testing.T) {
+	waitCh := make(chan struct{}, 1)
+	_, err := agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(result *GetCollectionManifestResult, err error) {
+		if err != nil {
+			t.Logf("Failed to Get Collection Manifest: %v", err)
+			return
+		}
+
+		var manifest Manifest
+		err = json.Unmarshal(result.Manifest, &manifest)
+		if err != nil {
+			t.Logf("Failed to unmarshal manifest: %v", err)
+			return
+		}
+
+		t.Logf("Manifest: %+v", manifest)
+
+		waitCh <- struct{}{}
+	})
+	if err != nil {
+		t.Logf("Failed to send GetCollectionManifest: %v", err)
+		return
+	}
+	<-waitCh
 }
