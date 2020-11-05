@@ -870,7 +870,7 @@ func (suite *StandardTestSuite) TestExpiry() {
 	}))
 	s.Wait(0)
 
-	suite.TimeTravel(2000 * time.Millisecond)
+	suite.TimeTravel(3000 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testExpiry"),
