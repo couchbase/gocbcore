@@ -942,7 +942,7 @@ func (suite *StandardTestSuite) TestTouch() {
 	}))
 	s.Wait(0)
 
-	suite.TimeTravel(2500 * time.Millisecond)
+	suite.TimeTravel(3500 * time.Millisecond)
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("testTouch"),
