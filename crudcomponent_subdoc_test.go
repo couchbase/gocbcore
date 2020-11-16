@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"bytes"
-	"errors"
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
@@ -330,69 +329,6 @@ func (suite *StandardTestSuite) TestTombstones() {
 		s.Wrap(func() {
 			if err == nil {
 				s.Fatalf("Get operation should have failed")
-			}
-		})
-	}))
-	s.Wait(0)
-}
-
-func (suite *StandardTestSuite) TestSubdocCasMismatch() {
-	agent, s := suite.GetAgentAndHarness()
-
-	s.PushOp(agent.Set(SetOptions{
-		Key:            []byte("testSubdocCasMismatch"),
-		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\" }"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-	}, func(res *StoreResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("Set operation failed: %v", err)
-			}
-		})
-	}))
-	s.Wait(0)
-
-	s.PushOp(agent.MutateIn(MutateInOptions{
-		Key: []byte("testSubdocCasMismatch"),
-		Ops: []SubDocOp{
-			{
-				Op:    memd.SubDocOpDictSet,
-				Flags: memd.SubdocFlagNone,
-				Path:  "x",
-				Value: []byte("\"x value\""),
-			},
-		},
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-		Cas:            1234,
-	}, func(res *MutateInResult, err error) {
-		s.Wrap(func() {
-			if !errors.Is(err, ErrCasMismatch) {
-				s.Fatalf("Mutate operation should have failed with Cas Mismatch but was: %v", err)
-			}
-		})
-	}))
-	s.Wait(0)
-
-	// With Add flag
-	s.PushOp(agent.MutateIn(MutateInOptions{
-		Key: []byte("testSubdocCasMismatch"),
-		Ops: []SubDocOp{
-			{
-				Op:    memd.SubDocOpDictSet,
-				Flags: memd.SubdocFlagNone,
-				Path:  "x",
-				Value: []byte("\"x value\""),
-			},
-		},
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-		Flags:          memd.SubdocDocFlagAddDoc,
-	}, func(res *MutateInResult, err error) {
-		s.Wrap(func() {
-			if !errors.Is(err, ErrDocumentExists) {
-				s.Fatalf("Mutate operation should have failed with Exists but was: %v", err)
 			}
 		})
 	}))
