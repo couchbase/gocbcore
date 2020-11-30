@@ -1,7 +1,9 @@
 package gocbcore
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/couchbase/gocbcore/v9/memd"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -162,6 +164,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer660)
 	case TestFeatureReplaceBodyWithXattr:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer7003618)
+	case TestFeatureExpandMacros:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer450)
 	}
 
 	panic("found unsupported feature code")
@@ -266,6 +270,100 @@ func (suite *StandardTestSuite) tryAtMost(times int, interval time.Duration, fn 
 		}
 		time.Sleep(interval)
 	}
+}
+
+func (suite *StandardTestSuite) mustMarshal(content interface{}) []byte {
+	b, err := json.Marshal(content)
+	suite.Require().Nil(err, err)
+
+	return b
+}
+
+func (suite *StandardTestSuite) mustSetDoc(agent *Agent, s *TestSubHarness, key []byte, content interface{}) (casOut Cas) {
+	s.PushOp(agent.Set(SetOptions{
+		Key:            key,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Value:          suite.mustMarshal(content),
+	}, func(result *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Expected error to be nil but was %v", err)
+			}
+
+			if result.Cas == 0 {
+				s.Fatalf("Expected cas to be non 0")
+			}
+
+			casOut = result.Cas
+		})
+	}))
+	s.Wait(0)
+
+	return
+}
+
+func (suite *StandardTestSuite) mustGetDoc(agent *Agent, s *TestSubHarness, key []byte) (valOut []byte, casOut Cas) {
+	s.PushOp(agent.Get(GetOptions{
+		Key:            key,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(result *GetResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Expected error to be nil but was %v", err)
+			}
+
+			valOut = result.Value
+			casOut = result.Cas
+		})
+	}))
+	s.Wait(0)
+
+	return
+}
+
+func (suite *StandardTestSuite) lookupDoc(agent *Agent, s *TestSubHarness, ops []SubDocOp,
+	key []byte) (valOut *LookupInResult, errOut error) {
+	s.PushOp(agent.LookupIn(LookupInOptions{
+		Key:            key,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Ops:            ops,
+	}, func(result *LookupInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Expected error to be nil but was %v", err)
+			}
+
+			valOut = result
+		})
+	}))
+	s.Wait(0)
+
+	return
+}
+
+func (suite *StandardTestSuite) mutateIn(agent *Agent, s *TestSubHarness, ops []SubDocOp, key []byte,
+	cas Cas, flags memd.SubdocDocFlag) (casOut Cas, errOut error) {
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key:            key,
+		Cas:            cas,
+		Ops:            ops,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Flags:          flags,
+	}, func(result *MutateInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				errOut = err
+				return
+			}
+			casOut = result.Cas
+		})
+	}))
+	s.Wait(0)
+	return
 }
 
 func TestStandardSuite(t *testing.T) {

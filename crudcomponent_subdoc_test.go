@@ -3,8 +3,10 @@ package gocbcore
 import (
 	"bytes"
 	"encoding/json"
-
+	"errors"
 	"github.com/couchbase/gocbcore/v9/memd"
+	"strconv"
+	"strings"
 )
 
 func (suite *StandardTestSuite) TestSubdocXattrs() {
@@ -431,5 +433,904 @@ func (suite *StandardTestSuite) TestReplaceBodyWithXattr() {
 		})
 	}))
 	s.Wait(0)
+}
 
+func (suite *StandardTestSuite) TestMutateInNoOps() {
+	agent := suite.DefaultAgent()
+
+	_, err := agent.MutateIn(MutateInOptions{
+		Key: []byte("TestMutateInNoOps"),
+	}, func(result *MutateInResult, err error) {
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		suite.T().Fatalf("Expected invalid argument error but was %v", err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInInsertString() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinInsertString")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{})
+
+	expectedVal := suite.mustMarshal("bar2")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictAdd,
+			Path:  "foo2",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	suite.Require().Contains(target, "foo2")
+	if !bytes.Equal(expectedVal, target["foo2"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(target["foo2"]), string(val))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInRemove() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinRemove")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:   memd.SubDocOpDelete,
+			Path: "foo",
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	suite.Require().NotContains(target, "foo2")
+}
+
+func (suite *StandardTestSuite) TestMutateInInsertStringExists() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinInsertStringExists")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	expectedVal := suite.mustMarshal("bar2")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictAdd,
+			Path:  "foo",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathExists) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathExists, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInReplaceString() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinReplaceString")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	expectedVal := suite.mustMarshal("bar2")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpReplace,
+			Path:  "foo",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(target["foo2"]), string(val))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInReplaceFullDoc() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinReplaceFullDoc")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	expectedVal := suite.mustMarshal(map[string]interface{}{
+		"foo2": "bar2",
+	})
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpSetDoc,
+			Path:  "",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+
+	if !bytes.Equal(expectedVal, val) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(val))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInReplaceStringDoesntExist() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinReplaceStringDoesntExist")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{})
+
+	expectedVal := suite.mustMarshal("bar2")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpReplace,
+			Path:  "foo",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathNotFound) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInSetString() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinSetString")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	expectedVal := suite.mustMarshal("bar2")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(target["foo2"]), string(val))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInSetStringDoesNotExist() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinSetStringDoesNotExist")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{})
+
+	expectedVal := suite.mustMarshal("bar")
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Value: expectedVal,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(target["foo2"]), string(val))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAppend() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAppend")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": []string{"hello"},
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayPushLast,
+			Path:  "foo",
+			Value: suite.mustMarshal("world"),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	expectedVal := suite.mustMarshal([]string{"hello", "world"})
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(target["foo"]))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAddUnique() {
+	if suite.IsMockServer() {
+		suite.T().Skip("Test skipped due to mock bug")
+	}
+
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAddUnique")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": []string{"hello", "world"},
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayAddUnique,
+			Path:  "foo",
+			Value: suite.mustMarshal("cruel"),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	expectedVal := suite.mustMarshal([]string{"hello", "world", "cruel"})
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(target["foo"]))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAddUniqueAlreadyExists() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAddUniqueAlreadyExist")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": []string{"hello", "world", "cruel"},
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayAddUnique,
+			Path:  "foo",
+			Value: suite.mustMarshal("cruel"),
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathExists) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInCounterIncrement() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinCounterIncrement")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": 10,
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpCounter,
+			Path:  "foo",
+			Value: suite.mustMarshal(5),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	expectedVal := suite.mustMarshal(15)
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(target["foo"]))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInCounterDecrement() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinCounterDecrement")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": 10,
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpCounter,
+			Path:  "foo",
+			Value: suite.mustMarshal(-5),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, _ := suite.mustGetDoc(agent, s, key)
+	var target map[string]json.RawMessage
+	err = json.Unmarshal(val, &target)
+	suite.Require().Nil(err)
+
+	expectedVal := suite.mustMarshal(5)
+	suite.Require().Contains(target, "foo")
+	if !bytes.Equal(expectedVal, target["foo"]) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(target["foo"]))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInRemoveXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinRemoveXAttr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: []byte("\"bar\""),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDelete,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	if !errors.Is(val.Ops[0].Err, ErrPathNotFound) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInRemoveXattrDoesNotExist() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinRemoveXAttrNotExist")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDelete,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathNotFound) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInInsertXattrExists() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinInsertXAttrExists")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: []byte("\"bar\""),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictAdd,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: []byte("\"bar\""),
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathExists) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathExists, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInReplaceXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinReplaceXAttr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: []byte("\"bar\""),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpReplace,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+			Value: []byte("\"bar2\""),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	res, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	if !bytes.Equal([]byte("\"bar2\""), res.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", "\"bar2\"", string(res.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInReplaceXattrNotExist() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinReplaceXAttrNotExist")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpReplace,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+			Value: []byte("\"bar2\""),
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathNotFound) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInSetXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinSetXattr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: []byte("\"bar\""),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+			Value: []byte("\"bar2\""),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	res, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	if !bytes.Equal([]byte("\"bar2\""), res.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", "\"bar2\"", string(res.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInSetXattrNotExist() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinSetXAttrNotExist")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+	suite.Require().Nil(err, err)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+			Value: []byte("\"bar2\""),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	res, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	if !bytes.Equal([]byte("\"bar2\""), res.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", "\"bar2\"", string(res.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAppendXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAppendXattr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal([]string{"hello"}),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayPushLast,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal("world"),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	expectedVal := suite.mustMarshal([]string{"hello", "world"})
+	if !bytes.Equal(expectedVal, val.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(val.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAddUniqueXattr() {
+	if suite.IsMockServer() {
+		suite.T().Skip("Test skipped due to mock bug")
+	}
+
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAddUniqueXattr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal([]string{"hello", "world"}),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayAddUnique,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal("cruel"),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	expectedVal := suite.mustMarshal([]string{"hello", "world", "cruel"})
+	if !bytes.Equal(expectedVal, val.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(val.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInArrayAddUniqueAlreadyExistsXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinArrayAddUniqueAlreadyExistXattr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal([]string{"hello", "world", "cruel"}),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpArrayAddUnique,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal("cruel"),
+		},
+	}, key, cas, 0)
+	if !errors.Is(err, ErrPathExists) {
+		suite.T().Fatalf("Expected error to be %v but was %v", ErrPathNotFound, err)
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInCounterIncrementXattr() {
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinCounterIncrementXattr")
+	cas, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal(10),
+		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Flags: memd.SubdocFlagNone,
+			Path:  "x",
+			Value: []byte("\"x value\""),
+		},
+	}, key, 0, memd.SubdocDocFlagMkDoc)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpCounter,
+			Flags: memd.SubdocFlagXattrPath,
+			Path:  "foo",
+			Value: suite.mustMarshal(5),
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	expectedVal := suite.mustMarshal(15)
+	if !bytes.Equal(expectedVal, val.Ops[0].Value) {
+		suite.T().Fatalf("Expected value to be %v but was %v", string(expectedVal), string(val.Ops[0].Value))
+	}
+}
+
+func (suite *StandardTestSuite) TestMutateInExpandMacroCas() {
+	suite.EnsureSupportsFeature(TestFeatureExpandMacros)
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinExpandMacroCas")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Value: suite.mustMarshal("${Mutation.CAS}"),
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "foo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	var resultCas string
+	err = json.Unmarshal(val.Ops[0].Value, &resultCas)
+	suite.Require().Nil(err, err)
+
+	// We should improve this to check the actual cas value.
+	suite.Require().NotEqual("${Mutation.CAS}", resultCas)
+}
+
+func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
+	suite.EnsureSupportsFeature(TestFeatureExpandMacros)
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinExpandMacroCRC32")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "xfoo",
+			Value: suite.mustMarshal("${Mutation.value_crc32c}"),
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "xfoo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "$document",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Nil(val.Ops[0].Err, val.Ops[0].Err)
+	suite.Require().Nil(val.Ops[1].Err, val.Ops[1].Err)
+
+	var resultCRC string
+	err = json.Unmarshal(val.Ops[0].Value, &resultCRC)
+	suite.Require().Nil(err, err)
+
+	// We pull the actual crc value from the doc metadata.
+	crcStruct := struct {
+		CRC32 string `json:"value_crc32c,omitempty"`
+	}{}
+	err = json.Unmarshal(val.Ops[1].Value, &crcStruct)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Equal(crcStruct.CRC32, resultCRC)
+}
+
+func (suite *StandardTestSuite) TestMutateInExpandMacroSeqNo() {
+	suite.EnsureSupportsFeature(TestFeatureExpandMacros)
+	agent, s := suite.GetAgentAndHarness()
+	key := []byte("mutateinExpandMacroSeqNo")
+	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	_, err := suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "xfoo",
+			Value: suite.mustMarshal("${Mutation.seqno}"),
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+		},
+	}, key, cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err := suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "xfoo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Nil(val.Ops[0].Err, val.Ops[0].Err)
+
+	var seqno string
+	err = json.Unmarshal(val.Ops[0].Value, &seqno)
+	suite.Require().Nil(err, err)
+
+	suite.Require().NotZero(seqno)
+
+	_, err = suite.mutateIn(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "xfoo",
+			Value: suite.mustMarshal("${Mutation.seqno}"),
+			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+		},
+	}, key, val.Cas, 0)
+	suite.Require().Nil(err, err)
+
+	val, err = suite.lookupDoc(agent, s, []SubDocOp{
+		{
+			Op:    memd.SubDocOpGet,
+			Path:  "xfoo",
+			Flags: memd.SubdocFlagXattrPath,
+		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Nil(val.Ops[0].Err, val.Ops[0].Err)
+
+	var seqno2 string
+	err = json.Unmarshal(val.Ops[0].Value, &seqno2)
+	suite.Require().Nil(err, err)
+
+	suite.Require().NotZero(seqno2)
+
+	// We test that performing 2 mutations creates a sequential sequence number.
+	seqnoInt, err := strconv.ParseInt(strings.Replace(seqno, "0x", "", -1), 16, 64)
+	suite.Require().Nil(err, err)
+
+	seqno2Int, err := strconv.ParseInt(strings.Replace(seqno2, "0x", "", -1), 16, 64)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Greater(seqno2Int, seqnoInt)
 }

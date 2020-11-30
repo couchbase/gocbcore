@@ -169,6 +169,10 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 }
 
 func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (PendingOp, error) {
+	if len(opts.Ops) == 0 {
+		return nil, wrapError(errInvalidArgument, "at least one op must be present")
+	}
+
 	tracer := crud.tracer.CreateOpTrace("MutateIn", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
