@@ -43,17 +43,6 @@ type Agent struct {
 	zombieLogger *zombieLoggerComponent
 }
 
-// !!!!UNSURE WHY THESE EXIST!!!!
-// ServerConnectTimeout gets the timeout for each server connection, including all authentication steps.
-// func (agent *Agent) ServerConnectTimeout() time.Duration {
-// 	return agent.kvConnectTimeout
-// }
-//
-// // SetServerConnectTimeout sets the timeout for each server connection.
-// func (agent *Agent) SetServerConnectTimeout(timeout time.Duration) {
-// 	agent.kvConnectTimeout = timeout
-// }
-
 // HTTPClient returns a pre-configured HTTP Client for communicating with
 // Couchbase Server.  You must still specify authentication information
 // for any dispatched requests.
