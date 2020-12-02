@@ -293,6 +293,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		// The http poller can't run without a bucket. We don't trigger an error for this case
 		// because AgentGroup users who use memcached buckets on non-default ports will end up here.
 		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
+		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, nil)
 	} else {
 		c.pollerController = newPollerController(
 			newCCCPConfigController(
@@ -315,6 +316,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			),
 			c.cfgManager,
 		)
+		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 	}
 
 	c.observe = newObserveComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.kvMux)
@@ -324,7 +326,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)
 	c.search = newSearchQueryComponent(c.http, c.tracer)
 	c.views = newViewQueryComponent(c.http, c.tracer)
-	c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 
 	// Kick everything off.
 	cfg := &routeConfig{

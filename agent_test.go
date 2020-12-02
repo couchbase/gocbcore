@@ -1969,6 +1969,35 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
 	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyNonDefaultPort")
 }
 
+func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.HTTPAddrs[0]
+	port := strings.Split(addr1, ":")[1]
+	if port == "8091" {
+		suite.T().Skipf("Skipping test due to default port %s", port)
+	}
+
+	cfg.HTTPAddrs = []string{addr1}
+	cfg.MemdAddrs = []string{}
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if !errors.Is(err, ErrTimeout) {
+				s.Fatalf("WaitUntilReady should have timed out but didn't with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+}
+
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalidBucket() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
 	if len(cfg.HTTPAddrs) == 0 {
