@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+
 	"github.com/couchbase/gocbcore/v9/memd"
 	"strconv"
 	"strings"
@@ -1364,6 +1365,7 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 			if err != nil {
 				s.Fatalf("Set operation failed: %v", err)
 			}
+
 			if res.Cas == Cas(0) {
 				s.Fatalf("Invalid cas received")
 			}
@@ -1429,4 +1431,64 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 	suite.VerifyKVMetrics(memd.CmdSet, 1, false)
 	suite.VerifyKVMetrics(memd.CmdSubDocMultiMutation, 1, false)
 	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
+}
+
+func (suite *StandardTestSuite) TestSubdocCasMismatch() {
+	agent, s := suite.GetAgentAndHarness()
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testSubdocCasMismatch"),
+		Value:          []byte("{\"x\":\"xattrs\", \"y\":\"yattrs\" }"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key: []byte("testSubdocCasMismatch"),
+		Ops: []SubDocOp{
+			{
+				Op:    memd.SubDocOpDictSet,
+				Flags: memd.SubdocFlagNone,
+				Path:  "x",
+				Value: []byte("\"x value\""),
+			},
+		},
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Cas:            1234,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if !errors.Is(err, ErrCasMismatch) {
+				s.Fatalf("Mutate operation should have failed with Cas Mismatch but was: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+	// With Add flag
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key: []byte("testSubdocCasMismatch"),
+		Ops: []SubDocOp{
+			{
+				Op:    memd.SubDocOpDictSet,
+				Flags: memd.SubdocFlagNone,
+				Path:  "x",
+				Value: []byte("\"x value\""),
+			},
+		},
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Flags:          memd.SubdocDocFlagAddDoc,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if !errors.Is(err, ErrDocumentExists) {
+				s.Fatalf("Mutate operation should have failed with Exists but was: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
 }
