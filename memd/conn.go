@@ -108,6 +108,14 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 	if pkt.ServerDurationFrame != nil {
 		framesLen += 3
 	}
+	if pkt.UserImpersonationFrame != nil {
+		userLen := len(pkt.UserImpersonationFrame.User)
+		if userLen < 15 {
+			framesLen += 1 + userLen
+		} else {
+			framesLen += 2 + userLen
+		}
+	}
 
 	// We automatically upgrade a packet from normal Req or Res magic into
 	// the frame variant depending on the usage of them.
@@ -256,6 +264,24 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		buffer[bodyPos+0] = makeFrameHeader(frameTypeResSrvDuration, 2)
 		binary.BigEndian.PutUint16(buffer[bodyPos+1:], serverDurationEnc)
 		bodyPos += 3
+	}
+
+	if pkt.UserImpersonationFrame != nil {
+		if pkt.Magic != CmdMagicReq {
+			return errors.New("cannot use user impersonation frame in non-request packets")
+		}
+
+		userCtxLen := len(pkt.UserImpersonationFrame.User)
+		if userCtxLen < 15 {
+			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqUserImpersonation, uint8(userCtxLen))
+			copy(buffer[bodyPos+1:], pkt.UserImpersonationFrame.User)
+			bodyPos += 1 + userCtxLen
+		} else {
+			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqUserImpersonation, 15)
+			buffer[bodyPos+1] = uint8(userCtxLen - 15)
+			copy(buffer[bodyPos+2:], pkt.UserImpersonationFrame.User)
+			bodyPos += 2 + userCtxLen
+		}
 	}
 
 	if len(pkt.UnsupportedFrames) > 0 {

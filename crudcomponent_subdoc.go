@@ -114,6 +114,13 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		valueIter += 4 + pathBytesLen
 	}
 
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: opts.User,
+		}
+	}
+
 	var extraBuf []byte
 	if opts.Flags != 0 {
 		extraBuf = append(extraBuf, uint8(opts.Flags))
@@ -125,14 +132,15 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 
 	req := &memdQRequest{
 		Packet: memd.Packet{
-			Magic:        memd.CmdMagicReq,
-			Command:      memd.CmdSubDocMultiLookup,
-			Datatype:     0,
-			Cas:          0,
-			Extras:       extraBuf,
-			Key:          opts.Key,
-			Value:        valueBuf,
-			CollectionID: opts.CollectionID,
+			Magic:                  memd.CmdMagicReq,
+			Command:                memd.CmdSubDocMultiLookup,
+			Datatype:               0,
+			Cas:                    0,
+			Extras:                 extraBuf,
+			Key:                    opts.Key,
+			Value:                  valueBuf,
+			CollectionID:           opts.CollectionID,
+			UserImpersonationFrame: userFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -246,6 +254,13 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}
 	}
 
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: opts.User,
+		}
+	}
+
 	if opts.Flags&memd.SubdocDocFlagCreateAsDeleted != 0 {
 		// We can get here before support status is actually known, we'll send the request unless we know for a fact
 		// that this is unsupported.
@@ -327,6 +342,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			DurabilityLevelFrame:   duraLevelFrame,
 			DurabilityTimeoutFrame: duraTimeoutFrame,
 			CollectionID:           opts.CollectionID,
+			UserImpersonationFrame: userFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

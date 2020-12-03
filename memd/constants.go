@@ -25,11 +25,12 @@ const (
 type frameType uint8
 
 const (
-	frameTypeReqBarrier        = frameType(0)
-	frameTypeReqSyncDurability = frameType(1)
-	frameTypeReqStreamID       = frameType(2)
-	frameTypeReqOpenTracing    = frameType(3)
-	frameTypeResSrvDuration    = frameType(0)
+	frameTypeReqBarrier           = frameType(0)
+	frameTypeReqSyncDurability    = frameType(1)
+	frameTypeReqStreamID          = frameType(2)
+	frameTypeReqOpenTracing       = frameType(3)
+	frameTypeReqUserImpersonation = frameType(4)
+	frameTypeResSrvDuration       = frameType(0)
 )
 
 // HelloFeature represents a feature code included in a memcached

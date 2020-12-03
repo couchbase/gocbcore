@@ -69,6 +69,13 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 		}
 	}
 
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: opts.User,
+		}
+	}
+
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = sc.defaultRetryStrategy
 	}
@@ -132,12 +139,13 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 
 		req := &memdQRequest{
 			Packet: memd.Packet{
-				Magic:    memd.CmdMagicReq,
-				Command:  memd.CmdStat,
-				Datatype: 0,
-				Cas:      0,
-				Key:      []byte(opts.Key),
-				Value:    nil,
+				Magic:                  memd.CmdMagicReq,
+				Command:                memd.CmdStat,
+				Datatype:               0,
+				Cas:                    0,
+				Key:                    []byte(opts.Key),
+				Value:                  nil,
+				UserImpersonationFrame: userFrame,
 			},
 			Persistent:       true,
 			Callback:         handler,
@@ -210,6 +218,9 @@ type StatsOptions struct {
 	Target        StatsTarget
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Internal: This should never be used and is not supported.
+	User []byte
 
 	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
