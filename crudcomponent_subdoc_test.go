@@ -1232,12 +1232,19 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 	}, key, cas, 0)
 	suite.Require().Nil(err, err)
 
+	// We need to do 2 ops because older server versions only allow a single xattr lookup.
 	val, err := suite.lookupDoc(agent, s, []SubDocOp{
 		{
 			Op:    memd.SubDocOpGet,
 			Path:  "xfoo",
 			Flags: memd.SubdocFlagXattrPath,
 		},
+	}, key)
+	suite.Require().Nil(err, err)
+
+	suite.Require().Nil(val.Ops[0].Err, val.Ops[0].Err)
+
+	documentVal, err := suite.lookupDoc(agent, s, []SubDocOp{
 		{
 			Op:    memd.SubDocOpGet,
 			Path:  "$document",
@@ -1246,8 +1253,7 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 	}, key)
 	suite.Require().Nil(err, err)
 
-	suite.Require().Nil(val.Ops[0].Err, val.Ops[0].Err)
-	suite.Require().Nil(val.Ops[1].Err, val.Ops[1].Err)
+	suite.Require().Nil(documentVal.Ops[0].Err, documentVal.Ops[0].Err)
 
 	var resultCRC string
 	err = json.Unmarshal(val.Ops[0].Value, &resultCRC)
@@ -1257,7 +1263,7 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 	crcStruct := struct {
 		CRC32 string `json:"value_crc32c,omitempty"`
 	}{}
-	err = json.Unmarshal(val.Ops[1].Value, &crcStruct)
+	err = json.Unmarshal(documentVal.Ops[0].Value, &crcStruct)
 	suite.Require().Nil(err, err)
 
 	suite.Require().Equal(crcStruct.CRC32, resultCRC)
