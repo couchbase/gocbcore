@@ -147,5 +147,5 @@ func (pc *pollerController) PollerError() error {
 
 func isPollingFallbackError(err error) bool {
 	return errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrUnsupportedOperation) ||
-		errors.Is(err, errNoCCCPHosts)
+		errors.Is(err, errNoCCCPHosts) || errors.Is(err, ErrBucketNotFound)
 }
