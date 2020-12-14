@@ -54,6 +54,8 @@ type memdClient struct {
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
+
+	cancelBootstrapSig <-chan struct{}
 }
 
 type dcpBuffer struct {
@@ -603,13 +605,14 @@ type bootstrapProps struct {
 
 type memdInitFunc func(*memdClient, time.Time) error
 
-func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
+func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
 	logDebugf("Fetching cluster client data")
 
 	bucket := settings.Bucket
 	features := client.helloFeatures(settings.HelloProps)
 	clientInfoStr := clientInfoString(client.connID, settings.UserAgent)
 	authMechanisms := settings.AuthMechanisms
+	client.cancelBootstrapSig = cancelSig
 
 	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
@@ -627,7 +630,7 @@ func (client *memdClient) Bootstrap(settings bootstrapProps, deadline time.Time,
 	firstAuthMethod := settings.AuthHandler(client, deadline, authMechanisms[0])
 	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 	if firstAuthMethod != nil {
-		listMechsCh = make(chan SaslListMechsCompleted)
+		listMechsCh = make(chan SaslListMechsCompleted, 1)
 		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
 				logDebugf("Failed to fetch list auth mechs (%v)", err)
@@ -968,7 +971,7 @@ func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeatur
 		featureBytes = appendFeatureCode(featureBytes, feature)
 	}
 
-	completedCh := make(chan ExecHelloResponse)
+	completedCh := make(chan ExecHelloResponse, 1)
 	err := client.doBootstrapRequest(
 		&memdQRequest{
 			Packet: memd.Packet{
@@ -1007,6 +1010,14 @@ func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeatur
 }
 
 func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Time) error {
+	origCb := req.Callback
+	doneCh := make(chan struct{})
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		close(doneCh)
+		origCb(resp, req, err)
+	}
+
+	req.Callback = handler
 	start := time.Now()
 	req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
 		connInfo := req.ConnectionInfo()
@@ -1023,6 +1034,18 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 			LastConnectionID:   connInfo.lastConnectionID,
 		})
 	}))
+
+	go func() {
+		select {
+		case <-doneCh:
+			return
+		case <-client.cancelBootstrapSig:
+			logDebugf("Bootstrap cancellation request received")
+			req.Cancel()
+			<-doneCh
+			return
+		}
+	}()
 
 	err := client.SendRequest(req)
 	if err != nil {

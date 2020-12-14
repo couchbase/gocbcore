@@ -541,8 +541,8 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 	for i, hostPort := range cfg.kvServerList {
 		hostPort := hostPort
 
-		getCurClientFn := func() (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(hostPort, mux.handleOpRoutingResp)
+		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
+			return mux.dialer.SlowDialMemdClient(cancelSig, hostPort, mux.handleOpRoutingResp)
 		}
 		pipeline := newPipeline(hostPort, poolSize, mux.queueSize, getCurClientFn)
 

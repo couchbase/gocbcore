@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"crypto/tls"
 	"sync"
 	"time"
@@ -67,7 +68,8 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 	}
 }
 
-func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address string,
+	postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
 	mcc.serverFailuresLock.Lock()
 	failureTime := mcc.serverFailures[address]
 	mcc.serverFailuresLock.Unlock()
@@ -75,12 +77,16 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCom
 	if !failureTime.IsZero() {
 		waitedTime := time.Since(failureTime)
 		if waitedTime < mcc.serverWaitTimeout {
-			time.Sleep(mcc.serverWaitTimeout - waitedTime)
+			select {
+			case <-cancelSig:
+				return nil, errRequestCanceled
+			case <-time.After(mcc.serverWaitTimeout - waitedTime):
+			}
 		}
 	}
 
 	deadline := time.Now().Add(mcc.kvConnectTimeout)
-	client, err := mcc.dialMemdClient(address, deadline, postCompleteHandler)
+	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler)
 	if err != nil {
 		mcc.serverFailuresLock.Lock()
 		mcc.serverFailures[address] = time.Now()
@@ -89,7 +95,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCom
 		return nil, err
 	}
 
-	err = client.Bootstrap(mcc.bootstrapProps, deadline, mcc.bootstrapCB)
+	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, mcc.bootstrapCB)
 	if err != nil {
 		closeErr := client.Close()
 		if closeErr != nil {
@@ -107,7 +113,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCom
 	return client, nil
 }
 
-func (mcc *memdClientDialerComponent) dialMemdClient(address string, deadline time.Time,
+func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, address string, deadline time.Time,
 	postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
@@ -121,7 +127,18 @@ func (mcc *memdClientDialerComponent) dialMemdClient(address string, deadline ti
 		tlsConfig = srvTLSConfig
 	}
 
-	conn, err := dialMemdConn(address, tlsConfig, deadline)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-cancelSig:
+			cancel()
+		}
+	}()
+
+	conn, err := dialMemdConn(ctx, address, tlsConfig, deadline)
+	cancel()
 	if err != nil {
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
