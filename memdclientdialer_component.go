@@ -24,8 +24,9 @@ type memdClientDialerComponent struct {
 	tracer       *tracerComponent
 	zombieLogger *zombieLoggerComponent
 
-	bootstrapProps bootstrapProps
-	bootstrapCB    memdInitFunc
+	bootstrapProps       bootstrapProps
+	bootstrapCB          memdInitFunc
+	bootstrapFailHandler memdBoostrapFailHandler
 }
 
 type memdClientDialerProps struct {
@@ -39,8 +40,12 @@ type memdClientDialerProps struct {
 	DisableDecompression bool
 }
 
+type memdBoostrapFailHandler interface {
+	onBootstrapFail(error)
+}
+
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapCB memdInitFunc) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapCB memdInitFunc, failCB memdBoostrapFailHandler) *memdClientDialerComponent {
 	return &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
@@ -51,8 +56,9 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		tracer:            tracer,
 		serverFailures:    make(map[string]time.Time),
 
-		bootstrapProps: bSettings,
-		bootstrapCB:    bootstrapCB,
+		bootstrapProps:       bSettings,
+		bootstrapCB:          bootstrapCB,
+		bootstrapFailHandler: failCB,
 
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinSize:   props.CompressionMinSize,
@@ -92,6 +98,8 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(address string, postCom
 		mcc.serverFailuresLock.Lock()
 		mcc.serverFailures[address] = time.Now()
 		mcc.serverFailuresLock.Unlock()
+
+		mcc.bootstrapFailHandler.onBootstrapFail(err)
 
 		return nil, err
 	}

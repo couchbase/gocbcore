@@ -210,5 +210,11 @@ func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOu
 		req.cancelWithCallback(errAmbiguousTimeout)
 		<-signal
 		return
+	case <-ccc.looperStopSig:
+		ReleaseTimer(timeoutTmr, false)
+		req.cancelWithCallback(errAmbiguousTimeout)
+		<-signal
+		return
+
 	}
 }

@@ -247,6 +247,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		nil,
 		c.tracer,
 		initFn,
+		c,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -369,4 +370,11 @@ func (agent *DCPAgent) HasCollectionsSupport() bool {
 // ConfigSnapshot returns a snapshot of the underlying configuration currently in use.
 func (agent *DCPAgent) ConfigSnapshot() (*ConfigSnapshot, error) {
 	return agent.kvMux.ConfigSnapshot()
+}
+
+func (agent *DCPAgent) onBootstrapFail(err error) {
+	// If this error is a legitimate fallback reason then we should immediately start the http poller.
+	if agent.pollerController != nil && isPollingFallbackError(err) {
+		agent.pollerController.ForceHTTPPoller()
+	}
 }

@@ -256,6 +256,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.zombieLogger,
 		c.tracer,
 		initFn,
+		c,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -577,4 +578,11 @@ func (agent *Agent) ConfigSnapshot() (*ConfigSnapshot, error) {
 // Uncommitted: This API may change in the future.
 func (agent *Agent) BucketName() string {
 	return agent.bucketName
+}
+
+func (agent *Agent) onBootstrapFail(err error) {
+	// If this error is a legitimate fallback reason then we should immediately start the http poller.
+	if agent.pollerController != nil && isPollingFallbackError(err) {
+		agent.pollerController.ForceHTTPPoller()
+	}
 }
