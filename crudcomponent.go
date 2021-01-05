@@ -12,11 +12,11 @@ type crudComponent struct {
 	defaultRetryStrategy RetryStrategy
 	tracer               *tracerComponent
 	errMapManager        *errMapComponent
-	featureVerifier      kvFeatureVerifier
+	featureVerifier      bucketCapabilityVerifier
 }
 
 func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
-	errMapManager *errMapComponent, featureVerifier kvFeatureVerifier) *crudComponent {
+	errMapManager *errMapComponent, featureVerifier bucketCapabilityVerifier) *crudComponent {
 	return &crudComponent{
 		cidMgr:               cidMgr,
 		defaultRetryStrategy: defaultRetryStrategy,
@@ -565,7 +565,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasDurabilityLevelStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -662,7 +662,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasDurabilityLevelStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -806,7 +806,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasDurabilityLevelStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -924,7 +924,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasDurabilityLevelStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{

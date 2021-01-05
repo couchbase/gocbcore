@@ -11,10 +11,8 @@ import (
 	"unsafe"
 )
 
-type kvFeatureVerifier interface {
-	HasDurabilityLevelStatus(status bucketCapabilityStatus) bool
-	HasCreateAsDeletedStatus(status bucketCapabilityStatus) bool
-	HasReplaceBodyWithXattrStatus(status bucketCapabilityStatus) bool
+type bucketCapabilityVerifier interface {
+	HasBucketCapabilityStatus(cap BucketCapability, status BucketCapabilityStatus) bool
 }
 
 type dispatcher interface {
@@ -222,31 +220,13 @@ func (mux *kvMux) SupportsCollections() bool {
 	return clientMux.collectionsSupported
 }
 
-func (mux *kvMux) HasDurabilityLevelStatus(status bucketCapabilityStatus) bool {
+func (mux *kvMux) HasBucketCapabilityStatus(cap BucketCapability, status BucketCapabilityStatus) bool {
 	clientMux := mux.getState()
 	if clientMux == nil {
-		return false
+		return status == BucketCapabilityStatusUnknown
 	}
 
-	return clientMux.durabilityLevelStatus == status
-}
-
-func (mux *kvMux) HasCreateAsDeletedStatus(status bucketCapabilityStatus) bool {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return false
-	}
-
-	return clientMux.createAsDeletedStatus == status
-}
-
-func (mux *kvMux) HasReplaceBodyWithXattrStatus(status bucketCapabilityStatus) bool {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return false
-	}
-
-	return clientMux.replaceBodyWithXattrStatus == status
+	return clientMux.HasBucketCapabilityStatus(cap, status)
 }
 
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {

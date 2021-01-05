@@ -243,7 +243,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasDurabilityLevelStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -264,7 +264,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	if opts.Flags&memd.SubdocDocFlagCreateAsDeleted != 0 {
 		// We can get here before support status is actually known, we'll send the request unless we know for a fact
 		// that this is unsupported.
-		if crud.featureVerifier.HasCreateAsDeletedStatus(bucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityCreateAsDeleted, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 	}
@@ -298,7 +298,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		if op.Op == memd.SubDocOpReplaceBodyWithXattr {
 			// We can get here before support status is actually known, we'll send the request unless we know for a fact
 			// that this is unsupported.
-			if crud.featureVerifier.HasReplaceBodyWithXattrStatus(bucketCapabilityStatusUnsupported) {
+			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported) {
 				return nil, errFeatureNotAvailable
 			}
 		}

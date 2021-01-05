@@ -50,12 +50,20 @@ const (
 	DcpAgentPriorityHigh = DcpAgentPriority(2)
 )
 
-type bucketCapabilityStatus uint32
+type BucketCapability uint32
 
 const (
-	bucketCapabilityStatusUnknown     bucketCapabilityStatus = 0x00
-	bucketCapabilityStatusSupported   bucketCapabilityStatus = 0x01
-	bucketCapabilityStatusUnsupported bucketCapabilityStatus = 0x02
+	BucketCapabilityDurableWrites        BucketCapability = 0x00
+	BucketCapabilityCreateAsDeleted      BucketCapability = 0x01
+	BucketCapabilityReplaceBodyWithXattr BucketCapability = 0x02
+)
+
+type BucketCapabilityStatus uint32
+
+const (
+	BucketCapabilityStatusUnknown     BucketCapabilityStatus = 0x00
+	BucketCapabilityStatusSupported   BucketCapabilityStatus = 0x01
+	BucketCapabilityStatusUnsupported BucketCapabilityStatus = 0x02
 )
 
 // ClusterCapability represents a capability that the cluster supports
