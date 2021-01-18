@@ -15,17 +15,16 @@ import (
 )
 
 var (
-	srvVer450     = NodeVersion{4, 5, 0, 0, 0, ""}
-	srvVer551     = NodeVersion{5, 5, 1, 0, 0, ""}
-	srvVer552     = NodeVersion{5, 5, 2, 0, 0, ""}
-	srvVer553     = NodeVersion{5, 5, 3, 0, 0, ""}
-	srvVer600     = NodeVersion{6, 0, 0, 0, 0, ""}
-	srvVer650     = NodeVersion{6, 5, 0, 0, 0, ""}
-	srvVer650DP   = NodeVersion{6, 5, 0, 0, 0, "dp"}
-	srvVer660     = NodeVersion{6, 6, 0, 0, 0, ""}
-	srvVer700     = NodeVersion{7, 0, 0, 0, 0, ""}
-	srvVer7003618 = NodeVersion{7, 0, 0, 3618, 0, ""}
-	mockVer156    = NodeVersion{1, 5, 6, 0, 0, ""}
+	srvVer450   = NodeVersion{4, 5, 0, 0, 0, ""}
+	srvVer551   = NodeVersion{5, 5, 1, 0, 0, ""}
+	srvVer552   = NodeVersion{5, 5, 2, 0, 0, ""}
+	srvVer553   = NodeVersion{5, 5, 3, 0, 0, ""}
+	srvVer600   = NodeVersion{6, 0, 0, 0, 0, ""}
+	srvVer650   = NodeVersion{6, 5, 0, 0, 0, ""}
+	srvVer650DP = NodeVersion{6, 5, 0, 0, 0, "dp"}
+	srvVer660   = NodeVersion{6, 6, 0, 0, 0, ""}
+	srvVer700   = NodeVersion{7, 0, 0, 0, 0, ""}
+	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
 type TestFeatureCode string

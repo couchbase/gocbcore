@@ -163,7 +163,7 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureCreateDeleted:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer660)
 	case TestFeatureReplaceBodyWithXattr:
-		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer7003618)
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureExpandMacros:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer450)
 	}
