@@ -110,9 +110,9 @@ func (suite *StandardTestSuite) TestSubdocXattrs() {
 	}))
 	s.Wait(0)
 
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("MutateIn", 1, false, false)
-	suite.VerifyKVMetrics("LookupIn", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "MutateIn", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "LookupIn", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
@@ -1235,6 +1235,11 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 			Value: suite.mustMarshal("${Mutation.value_crc32c}"),
 			Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
 		},
+		{
+			Op:    memd.SubDocOpDictSet,
+			Path:  "foo",
+			Value: suite.mustMarshal("value"),
+		},
 	}, key, cas, 0)
 	suite.Require().Nil(err, err)
 
@@ -1244,6 +1249,10 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 			Op:    memd.SubDocOpGet,
 			Path:  "xfoo",
 			Flags: memd.SubdocFlagXattrPath,
+		},
+		{
+			Op:   memd.SubDocOpGet,
+			Path: "foo",
 		},
 	}, key)
 	suite.Require().Nil(err, err)
@@ -1277,6 +1286,7 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroCRC32() {
 
 func (suite *StandardTestSuite) TestMutateInExpandMacroSeqNo() {
 	suite.EnsureSupportsFeature(TestFeatureExpandMacros)
+	suite.EnsureSupportsFeature(TestFeatureExpandMacrosSeqNo)
 	agent, s := suite.GetAgentAndHarness()
 	key := []byte("mutateinExpandMacroSeqNo")
 	cas := suite.mustSetDoc(agent, s, key, map[string]interface{}{
@@ -1428,9 +1438,10 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testmutateinpreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("MutateIn", 1, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "MutateIn", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestSubdocCasMismatch() {

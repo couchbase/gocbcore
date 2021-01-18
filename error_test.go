@@ -2,10 +2,7 @@ package gocbcore
 
 import (
 	"errors"
-
 	"github.com/couchbase/gocbcore/v10/memd"
-
-	"github.com/couchbase/gocbcore/v10/jcbmock"
 )
 
 func (suite *StandardTestSuite) TestEnhancedErrors() {
@@ -39,19 +36,19 @@ func (suite *StandardTestSuite) TestEnhancedErrors() {
 func (suite *StandardTestSuite) TestEnhancedErrorOp() {
 	suite.EnsureSupportsFeature(TestFeatureErrMap)
 
-	agent, h := suite.GetAgentAndHarness()
 	if !suite.IsMockServer() {
 		suite.T().Skipf("only supported when testing against mock server")
 	}
 
-	suite.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
-		"enabled": true,
-		"bucket":  suite.BucketName,
-	}))
+	spec := suite.StartTest(TestNameExtendedError)
+	h := suite.GetHarness()
+	agent := spec.Agent
 
 	h.PushOp(agent.GetAndLock(GetAndLockOptions{
-		Key:      []byte("testEnhancedErrs"),
-		LockTime: 10,
+		Key:            []byte("testEnhancedErrs"),
+		LockTime:       10,
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *GetAndLockResult, err error) {
 		h.Wrap(func() {
 			typedErr, ok := err.(*KeyValueError)
@@ -82,8 +79,5 @@ func (suite *StandardTestSuite) TestEnhancedErrorOp() {
 	}))
 	h.Wait(0)
 
-	suite.mockInst.Control(jcbmock.NewCommand("SET_ENHANCED_ERRORS", map[string]interface{}{
-		"enabled": false,
-		"bucket":  suite.BucketName,
-	}))
+	suite.EndTest(spec)
 }

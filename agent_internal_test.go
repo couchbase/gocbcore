@@ -3,21 +3,10 @@ package gocbcore
 func (suite *StandardTestSuite) TestInternalBucketCapabilityStatus() {
 	internal := suite.DefaultAgent().Internal()
 
-	if suite.SupportsFeature(TestFeatureReplaceBodyWithXattr) {
-		suite.Assert().Equal(BucketCapabilityStatusSupported, internal.BucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr))
-	} else {
-		suite.Assert().Equal(BucketCapabilityStatusUnsupported, internal.BucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr))
-	}
+	agent := suite.DefaultAgent()
+	state := agent.kvMux.getState()
 
-	if suite.SupportsFeature(TestFeatureCreateDeleted) {
-		suite.Assert().Equal(BucketCapabilityStatusSupported, internal.BucketCapabilityStatus(BucketCapabilityCreateAsDeleted))
-	} else {
-		suite.Assert().Equal(BucketCapabilityStatusUnsupported, internal.BucketCapabilityStatus(BucketCapabilityCreateAsDeleted))
-	}
-
-	if suite.SupportsFeature(TestFeatureEnhancedDurability) {
-		suite.Assert().Equal(BucketCapabilityStatusSupported, internal.BucketCapabilityStatus(BucketCapabilityDurableWrites))
-	} else {
-		suite.Assert().Equal(BucketCapabilityStatusUnsupported, internal.BucketCapabilityStatus(BucketCapabilityDurableWrites))
-	}
+	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityReplaceBodyWithXattr], internal.BucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr))
+	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityCreateAsDeleted], internal.BucketCapabilityStatus(BucketCapabilityCreateAsDeleted))
+	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityDurableWrites], internal.BucketCapabilityStatus(BucketCapabilityDurableWrites))
 }

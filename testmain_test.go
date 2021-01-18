@@ -99,7 +99,7 @@ func TestMain(m *testing.M) {
 		"The username to use to authenticate when using a real server")
 	password := envFlagString("GCBPASS", "pass", "",
 		"The password to use to authenticate when using a real server")
-	clusterVersionStr := envFlagString("GCBCVER", "cluster-version", "6.5.0",
+	clusterVersionStr := envFlagString("GCBCVER", "cluster-version", "7.0.0",
 		"The server version being tested against (major.minor.patch.build_edition)")
 	featuresToTest := envFlagString("GCBFEAT", "features", "",
 		"The features that should be tested")
@@ -121,6 +121,8 @@ func TestMain(m *testing.M) {
 		"The number of scopes to create")
 	numCollections := envFlagInt("GCBDCPCOLLECTIONS", "dcp-num-colletions", 5,
 		"The number of collections to create, per scope")
+	mockPath := envFlagString("GCBMOCKPATH", "mock-path", "",
+		"Path to the mock, if not using a downloaded build")
 	flag.Parse()
 
 	clusterVersion, err := nodeVersionFromString(*clusterVersionStr)
@@ -170,6 +172,7 @@ func TestMain(m *testing.M) {
 			CAProvider:     caProvider,
 			ClusterVersion: clusterVersion,
 			FeatureFlags:   featureFlags,
+			MockPath:       *mockPath,
 		}
 	} else if *testSuite == 2 {
 		globalDCPTestConfig = &DCPTestConfig{

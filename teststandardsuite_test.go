@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v10/jcbmock"
+	cavescli "github.com/couchbaselabs/gocaves/client"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -20,7 +22,8 @@ type StandardTestSuite struct {
 
 	*TestConfig
 	agentGroup *AgentGroup
-	mockInst   *jcbmock.Mock
+	mockInst   *cavescli.Client
+	runID      string
 	tracer     *testTracer
 	meter      *testMeter
 }
@@ -32,26 +35,22 @@ func (suite *StandardTestSuite) BeforeTest(suiteName, testName string) {
 
 func (suite *StandardTestSuite) SetupSuite() {
 	if globalTestConfig.ConnStr == "" {
-		mpath, err := jcbmock.GetMockPath()
-		suite.Require().Nil(err)
+		m, err := cavescli.NewClient(cavescli.NewClientOptions{
+			Version: "v0.0.1-53",
+		})
+		if err != nil {
+			panic(err)
+		}
 
-		mock, err := jcbmock.NewMock(mpath, 4, 1, 64, []jcbmock.BucketSpec{
-			{Name: "default", Type: jcbmock.BCouchbase},
-			{Name: "memd", Type: jcbmock.BMemcached},
-		}...)
-		suite.Require().Nil(err)
+		suite.mockInst = m
+		suite.runID = uuid.New().String()
 
-		mock.Control(jcbmock.NewCommand(jcbmock.CSetCCCP,
-			map[string]interface{}{"enabled": "true"}))
-		mock.Control(jcbmock.NewCommand(jcbmock.CSetSASLMechanisms,
-			map[string]interface{}{"mechs": []string{"SCRAM-SHA512"}}))
+		connstr, err := m.StartTesting(suite.runID, "gocbcore-"+Version())
+		if err != nil {
+			panic(err)
+		}
 
-		suite.mockInst = mock
-
-		// Unfortunately we have to use http with the mock. Config polling has to be done over HTTP for memcached
-		// buckets and if we use a non-default port with the couchbase protocol then we won't automatically
-		// translate over the http address(es) and so we can never fetch the cluster config for the memd bucket.
-		globalTestConfig.ConnStr = fmt.Sprintf("http://127.0.0.1:%d", mock.EntryPort)
+		globalTestConfig.ConnStr = connstr
 		globalTestConfig.BucketName = "default"
 		globalTestConfig.MemdBucketName = "memd"
 		globalTestConfig.Authenticator = &PasswordAuthProvider{
@@ -89,34 +88,30 @@ func (suite *StandardTestSuite) SetupSuite() {
 		}),
 	)
 	s.Wait(0)
-
-	if suite.SupportsFeature(TestFeatureMemd) {
-		err = suite.agentGroup.OpenBucket(globalTestConfig.MemdBucketName)
-		suite.Require().Nil(err, err)
-
-		s := suite.GetHarness()
-		s.PushOp(suite.MemdAgent().WaitUntilReady(
-			time.Now().Add(5*time.Second),
-			WaitUntilReadyOptions{},
-			func(result *WaitUntilReadyResult, err error) {
-				s.Wrap(func() {
-					if err != nil {
-						s.Fatalf("WaitUntilReady operation failed: %v", err)
-					}
-				})
-			}),
-		)
-		s.Wait(0)
-	}
 }
 
 func (suite *StandardTestSuite) TearDownSuite() {
 	err := suite.agentGroup.Close()
 	suite.Require().Nil(err, err)
+
+	if suite.mockInst != nil {
+		_, err := suite.mockInst.EndTesting(suite.runID)
+		if err != nil {
+			log.Printf("Failed to end testing: %v", err)
+		}
+		err = suite.mockInst.Shutdown()
+		suite.Require().Nil(err, err)
+	}
 }
 
 func (suite *StandardTestSuite) TimeTravel(waitDura time.Duration) {
-	TimeTravel(waitDura, suite.mockInst)
+	if suite.mockInst == nil {
+		time.Sleep(waitDura)
+		return
+	}
+
+	err := suite.mockInst.TimeTravelRun(suite.runID, waitDura)
+	suite.Require().Nil(err, err)
 }
 
 func (suite *StandardTestSuite) IsMockServer() bool {
@@ -171,10 +166,12 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureEnhancedDurability:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeatureCreateDeleted:
-		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer660)
+		return !suite.ClusterVersion.Lower(srvVer660)
 	case TestFeatureReplaceBodyWithXattr:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureExpandMacros:
+		return !suite.ClusterVersion.Lower(srvVer450)
+	case TestFeatureExpandMacrosSeqNo:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer450)
 	case TestFeaturePreserveExpiry:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
@@ -187,10 +184,6 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 
 func (suite *StandardTestSuite) DefaultAgent() *Agent {
 	return suite.agentGroup.GetAgent(globalTestConfig.BucketName)
-}
-
-func (suite *StandardTestSuite) MemdAgent() *Agent {
-	return suite.agentGroup.GetAgent(globalTestConfig.MemdBucketName)
 }
 
 func (suite *StandardTestSuite) AgentGroup() *AgentGroup {
@@ -210,6 +203,64 @@ func (suite *StandardTestSuite) EnsureSupportsFeature(feature TestFeatureCode) {
 	if !suite.SupportsFeature(feature) {
 		suite.T().Skipf("Skipping test due to disabled feature code: %s", feature)
 	}
+}
+
+type TestSpec struct {
+	Agent      *Agent
+	Collection string
+	Scope      string
+	Tracer     *testTracer
+	Meter      *testMeter
+}
+
+func (suite *StandardTestSuite) StartTest(name TestName) TestSpec {
+	spec, err := suite.mockInst.StartTest(suite.runID, string(name))
+	suite.Require().Nil(err)
+
+	if spec.ConnStr == "" {
+		return TestSpec{
+			Agent:      suite.DefaultAgent(),
+			Collection: globalTestConfig.CollectionName,
+			Scope:      globalTestConfig.ScopeName,
+			Tracer:     suite.tracer,
+			Meter:      suite.meter,
+		}
+	}
+
+	baseCfg := globalTestConfig.Clone()
+	baseCfg.ConnStr = spec.ConnStr
+
+	tracer := newTestTracer()
+	meter := newTestMeter()
+
+	cfg := suite.makeAgentConfig(baseCfg)
+	cfg.BucketName = spec.BucketName
+	cfg.TracerConfig.Tracer = tracer
+	cfg.MeterConfig.Meter = meter
+
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+
+	return TestSpec{
+		Agent:      agent,
+		Scope:      spec.ScopeName,
+		Collection: spec.CollectionName,
+		Tracer:     tracer,
+		Meter:      meter,
+	}
+}
+
+func (suite *StandardTestSuite) EndTest(spec TestSpec) {
+	agent := spec.Agent
+	if agent == suite.DefaultAgent() {
+		return
+	}
+
+	err := agent.Close()
+	suite.Assert().Nil(err, err)
+
+	err = suite.mockInst.EndTest(suite.runID)
+	suite.Require().Nil(err, err)
 }
 
 func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBucket) {
@@ -454,14 +505,14 @@ func (suite *StandardTestSuite) CreateNSAgentConfig() (*AgentConfig, string) {
 	return config, seedAddr
 }
 
-func (suite *StandardTestSuite) VerifyKVMetrics(operation string, num int, atLeastNum bool, zeroLenAllowed bool) {
-	suite.VerifyMetrics(makeMetricsKey("kv", operation), num, atLeastNum, zeroLenAllowed)
+func (suite *StandardTestSuite) VerifyKVMetrics(meter *testMeter, operation string, num int, atLeastNum bool, zeroLenAllowed bool) {
+	suite.VerifyMetrics(meter, makeMetricsKey("kv", operation), num, atLeastNum, zeroLenAllowed)
 }
 
-func (suite *StandardTestSuite) VerifyMetrics(key string, num int, atLeastNum bool, zeroLenAllowed bool) {
-	suite.meter.lock.Lock()
-	defer suite.meter.lock.Unlock()
-	recorders := suite.meter.recorders
+func (suite *StandardTestSuite) VerifyMetrics(meter *testMeter, key string, num int, atLeastNum bool, zeroLenAllowed bool) {
+	meter.lock.Lock()
+	defer meter.lock.Unlock()
+	recorders := meter.recorders
 	if suite.Assert().Contains(recorders, key) {
 		if atLeastNum {
 			suite.Assert().GreaterOrEqual(len(recorders[key].values), num)

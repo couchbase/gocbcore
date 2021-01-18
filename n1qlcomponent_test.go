@@ -315,7 +315,8 @@ func (suite *StandardTestSuite) TestN1QL() {
 			}
 		}
 	}
-	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true, false)
+
+	suite.VerifyMetrics(suite.meter, "n1ql:N1QLQuery", 1, true, false)
 
 	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
@@ -386,7 +387,8 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 			}
 		}
 	}
-	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true, false)
+
+	suite.VerifyMetrics(suite.meter, "n1ql:N1QLQuery", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestN1QLTimeout() {
@@ -436,7 +438,8 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 			}
 		}
 	}
-	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true, false)
+
+	suite.VerifyMetrics(suite.meter, "n1ql:N1QLQuery", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestN1QLPrepared() {
@@ -523,7 +526,8 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 			}
 		}
 	}
-	suite.VerifyMetrics("n1ql:PreparedN1QLQuery", 1, true, false)
+
+	suite.VerifyMetrics(suite.meter, "n1ql:PreparedN1QLQuery", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
@@ -573,7 +577,8 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 			}
 		}
 	}
-	suite.VerifyMetrics("n1ql:PreparedN1QLQuery", 1, true, false)
+
+	suite.VerifyMetrics(suite.meter, "n1ql:PreparedN1QLQuery", 1, true, false)
 }
 
 // TestN1QLErrorsAndResults tests the case where we receive both errors and results from the server meaning

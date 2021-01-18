@@ -218,7 +218,8 @@ func (suite *StandardTestSuite) TestAnalytics() {
 				}
 			}
 		}
-		suite.VerifyMetrics("cbas:AnalyticsQuery", 1, true, false)
+
+		suite.VerifyMetrics(suite.meter, "cbas:AnalyticsQuery", 1, true, false)
 	}
 
 	suite.T().Run("cleanup", helper.testCleanup)
@@ -281,7 +282,8 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 			}
 		}
 	}
-	suite.VerifyMetrics("cbas:AnalyticsQuery", 1, false, false)
+
+	suite.VerifyMetrics(suite.meter, "cbas:AnalyticsQuery", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestAnalyticsTimeout() {
@@ -331,5 +333,6 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 			}
 		}
 	}
-	suite.VerifyMetrics("cbas:AnalyticsQuery", 1, false, false)
+
+	suite.VerifyMetrics(suite.meter, "cbas:AnalyticsQuery", 1, false, false)
 }

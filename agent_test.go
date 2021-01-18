@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -163,8 +164,9 @@ func (suite *StandardTestSuite) TestPreserveExpirySet() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testsetpreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 2, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 2, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestPreserveExpiryReplace() {
@@ -239,9 +241,10 @@ func (suite *StandardTestSuite) TestPreserveExpiryReplace() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testreplacepreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Replace", 1, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Replace", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestPreserveExpiryAppend() {
@@ -316,9 +319,10 @@ func (suite *StandardTestSuite) TestPreserveExpiryAppend() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testappendpreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Append", 1, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Append", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestPreserveExpiryIncrement() {
@@ -394,8 +398,9 @@ func (suite *StandardTestSuite) TestPreserveExpiryIncrement() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testincrementpreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Increment", 2, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Increment", 2, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicOps() {
@@ -443,8 +448,9 @@ func (suite *StandardTestSuite) TestBasicOps() {
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Get", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestCasMismatch() {
@@ -516,8 +522,9 @@ func (suite *StandardTestSuite) TestCasMismatch() {
 			suite.AssertOpSpan(nilParents[2], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testCasMismatch")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Replace", 2, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Replace", 2, false, false)
 }
 
 func (suite *StandardTestSuite) TestGetReplica() {
@@ -581,8 +588,9 @@ func (suite *StandardTestSuite) TestGetReplica() {
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testReplica")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("GetOneReplica", 1, true, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
@@ -649,8 +657,9 @@ func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testDurableReplica")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("GetOneReplica", 1, true, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
@@ -716,8 +725,9 @@ func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testAddDurableReplica")
 		}
 	}
-	suite.VerifyKVMetrics("Add", 1, false, false)
-	suite.VerifyKVMetrics("GetOneReplica", 1, true, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Add", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestReplaceDurableWriteGetReplica() {
@@ -803,9 +813,10 @@ func (suite *StandardTestSuite) TestReplaceDurableWriteGetReplica() {
 			suite.AssertOpSpan(nilParents[2], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testReplaceDurableReplica")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Replace", 1, false, false)
-	suite.VerifyKVMetrics("GetOneReplica", 1, true, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Replace", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
@@ -889,9 +900,10 @@ func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
 			suite.AssertOpSpan(nilParents[2], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testDeleteDurableReplica")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Delete", 1, false, false)
-	suite.VerifyKVMetrics("GetOneReplica", 1, true, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
 func (suite *StandardTestSuite) TestBasicReplace() {
@@ -934,8 +946,9 @@ func (suite *StandardTestSuite) TestBasicReplace() {
 			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testx")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Replace", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Replace", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicRemove() {
@@ -971,8 +984,9 @@ func (suite *StandardTestSuite) TestBasicRemove() {
 			suite.AssertOpSpan(nilParents[1], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testy")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Delete", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicInsert() {
@@ -1011,8 +1025,76 @@ func (suite *StandardTestSuite) TestBasicInsert() {
 			suite.AssertOpSpan(nilParents[1], "Add", agent.BucketName(), memd.CmdAdd.Name(), 1, false, "testz")
 		}
 	}
-	suite.VerifyKVMetrics("Delete", 1, false, false)
-	suite.VerifyKVMetrics("Add", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Add", 1, false, false)
+}
+
+func (suite *StandardTestSuite) TestBasicSetGet() {
+	agent, s := suite.GetAgentAndHarness()
+
+	s.PushOp(agent.Delete(DeleteOptions{
+		Key:            []byte("test-doc"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *DeleteResult, err error) {
+		s.Continue()
+	}))
+	s.Wait(0)
+
+	_, err := suite.mockInst.StartTest(suite.runID, "kv/crud/SetGet")
+	suite.Require().Nil(err, err)
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("test-doc"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Get(GetOptions{
+		Key:            []byte("test-doc"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Get operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			if !bytes.Equal([]byte("{}"), res.Value) {
+				s.Fatalf("Value did not match")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	err = suite.mockInst.EndTest(suite.runID)
+	suite.Require().Nil(err, err)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "test-doc")
+			suite.AssertOpSpan(nilParents[1], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test-doc")
+			suite.AssertOpSpan(nilParents[2], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test-doc")
+		}
+	}
+	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicCounters() {
@@ -1100,9 +1182,10 @@ func (suite *StandardTestSuite) TestBasicCounters() {
 			suite.AssertOpSpan(nilParents[3], "Decrement", agent.BucketName(), memd.CmdDecrement.Name(), 1, false, "testCounters")
 		}
 	}
-	suite.VerifyKVMetrics("Delete", 1, false, false)
-	suite.VerifyKVMetrics("Increment", 2, false, false)
-	suite.VerifyKVMetrics("Decrement", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Increment", 2, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Decrement", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicAdjoins() {
@@ -1183,10 +1266,11 @@ func (suite *StandardTestSuite) TestBasicAdjoins() {
 			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testAdjoins")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Append", 1, false, false)
-	suite.VerifyKVMetrics("Prepend", 1, false, false)
-	suite.VerifyKVMetrics("Get", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Append", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Prepend", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestExpiry() {
@@ -1230,8 +1314,9 @@ func (suite *StandardTestSuite) TestExpiry() {
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Get", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestTouch() {
@@ -1305,9 +1390,10 @@ func (suite *StandardTestSuite) TestTouch() {
 			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testTouch")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Touch", 1, false, false)
-	suite.VerifyKVMetrics("Get", 2, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Touch", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 2, false, false)
 }
 
 func (suite *StandardTestSuite) TestGetAndTouch() {
@@ -1381,9 +1467,10 @@ func (suite *StandardTestSuite) TestGetAndTouch() {
 			suite.AssertOpSpan(nilParents[3], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testGetAndTouch")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("GetAndTouch", 1, false, false)
-	suite.VerifyKVMetrics("Get", 2, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetAndTouch", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Get", 2, false, false)
 }
 
 // This test will lock the document for 1 second, it will then perform set requests for up to 2 seconds,
@@ -1442,8 +1529,9 @@ func (suite *StandardTestSuite) TestRetrySet() {
 			suite.AssertOpSpan(nilParents[2], "Set", agent.BucketName(), memd.CmdGet.Name(), 1, true, "testRetrySet")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 2, false, false)
-	suite.VerifyKVMetrics("GetAndLock", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 2, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetAndLock", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestObserve() {
@@ -1485,8 +1573,9 @@ func (suite *StandardTestSuite) TestObserve() {
 			suite.AssertOpSpan(nilParents[1], "Observe", agent.BucketName(), memd.CmdObserve.Name(), 1, false, "")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Observe", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "Observe", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestObserveSeqNo() {
@@ -1583,8 +1672,9 @@ func (suite *StandardTestSuite) TestObserveSeqNo() {
 			suite.AssertOpSpan(nilParents[3], "ObserveVb", agent.BucketName(), memd.CmdObserveSeqNo.Name(), 1, false, "")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 2, false, false)
-	suite.VerifyKVMetrics("ObserveVb", 2, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 2, false, false)
+	suite.VerifyKVMetrics(suite.meter, "ObserveVb", 2, false, false)
 }
 
 func (suite *StandardTestSuite) TestRandomGet() {
@@ -1638,8 +1728,9 @@ func (suite *StandardTestSuite) TestRandomGet() {
 			suite.AssertOpSpan(nilParents[len(distkeys)], "GetRandom", agent.BucketName(), memd.CmdGetRandom.Name(), 1, false, "")
 		}
 	}
-	suite.VerifyKVMetrics("Set", len(distkeys), false, false)
-	suite.VerifyKVMetrics("GetRandom", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", len(distkeys), false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetRandom", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestStats() {
@@ -1720,12 +1811,25 @@ func (suite *StandardTestSuite) TestGetHttpEps() {
 func (suite *StandardTestSuite) TestMemcachedBucket() {
 	suite.EnsureSupportsFeature(TestFeatureMemd)
 
+	spec := suite.StartTest(TestNameMemcachedBasic)
+	defer suite.EndTest(spec)
 	s := suite.GetHarness()
-	agent := suite.MemdAgent()
+	agent := spec.Agent
+
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
 
 	s.PushOp(agent.Set(SetOptions{
-		Key:   []byte("key"),
-		Value: []byte("value"),
+		Key:            []byte("test-doc"),
+		Value:          []byte("value"),
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1736,7 +1840,9 @@ func (suite *StandardTestSuite) TestMemcachedBucket() {
 	s.Wait(0)
 
 	s.PushOp(agent.Get(GetOptions{
-		Key: []byte("key"),
+		Key:            []byte("test-doc"),
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1751,7 +1857,9 @@ func (suite *StandardTestSuite) TestMemcachedBucket() {
 
 	// Try to perform Observe: should fail since this isn't supported on Memcached buckets
 	_, err := agent.Observe(ObserveOptions{
-		Key: []byte("key"),
+		Key:            []byte("key"),
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *ObserveResult, err error) {
 		s.Wrap(func() {
 			s.Fatalf("Scheduling should fail on memcached buckets!")
@@ -1762,17 +1870,18 @@ func (suite *StandardTestSuite) TestMemcachedBucket() {
 		suite.T().Fatalf("Expected observe error for memcached bucket!")
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	if suite.Assert().Contains(spec.Tracer.Spans, nil) {
+		nilParents := spec.Tracer.Spans[nil]
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "key")
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "key")
 			suite.AssertOpSpan(nilParents[2], "Observe", agent.BucketName(), memd.CmdObserve.Name(), 0, false, "")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("Get", 1, false, false)
-	suite.VerifyKVMetrics("Observe", 1, false, true)
+
+	suite.VerifyKVMetrics(spec.Meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(spec.Meter, "Get", 1, false, false)
+	suite.VerifyKVMetrics(spec.Meter, "Observe", 1, false, true)
 }
 
 func (suite *StandardTestSuite) TestFlagsRoundTrip() {
@@ -1865,8 +1974,9 @@ func (suite *StandardTestSuite) TestMetaOps() {
 			suite.AssertOpSpan(nilParents[1], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "test")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false, false)
+
+	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestPing() {

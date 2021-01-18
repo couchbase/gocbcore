@@ -4,8 +4,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"testing"
 	"time"
-
-	"github.com/couchbase/gocbcore/v10/jcbmock"
 )
 
 func TestKvErrorConstantRetry(t *testing.T) {
@@ -85,31 +83,25 @@ func (lrs *errMapTestRetryStrategy) RetryAfter(request RetryRequest, reason Retr
 	return &WithDurationRetryAction{50 * time.Millisecond}
 }
 
-func (suite *StandardTestSuite) testKvErrorMapGeneric(errCode uint16) {
+func (suite *StandardTestSuite) testKvErrorMapGeneric(checkName TestName) {
 	suite.EnsureSupportsFeature(TestFeatureErrMap)
 
-	agent, h := suite.GetAgentAndHarness()
 	if !suite.IsMockServer() {
 		suite.T().Skipf("only supported when testing against mock server")
 	}
 
 	testKey := "hello"
 
-	agent.pollerController.Pause(true)
-	defer func() {
-		agent.pollerController.Pause(false)
-	}()
-
-	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
-		"bucket": suite.BucketName,
-		"code":   errCode,
-		"count":  3,
-	}))
+	spec := suite.StartTest(checkName)
+	h := suite.GetHarness()
+	agent := spec.Agent
 
 	strategy := &errMapTestRetryStrategy{}
 	h.PushOp(agent.Get(GetOptions{
-		Key:           []byte(testKey),
-		RetryStrategy: strategy,
+		Key:            []byte(testKey),
+		RetryStrategy:  strategy,
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *GetResult, err error) {
 		h.Wrap(func() {})
 	}))
@@ -129,27 +121,23 @@ func (suite *StandardTestSuite) testKvErrorMapGeneric(errCode uint16) {
 		}
 	}
 
-	suite.VerifyKVMetrics("Get", 1, false, false)
+	suite.VerifyKVMetrics(spec.Meter, "Get", 1, false, false)
 
-	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
-		"bucket": suite.BucketName,
-		"code":   errCode,
-		"count":  0,
-	}))
+	suite.EndTest(spec)
 }
 
 // It doesn't actually matter what strategy the error map specifies, we just test that retries happen as the
 // strategy dictates no matter what.
 func (suite *StandardTestSuite) TestKvErrorMap7ff0() {
-	suite.testKvErrorMapGeneric(0x7ff0)
+	suite.testKvErrorMapGeneric(TestNameErrMapLinearRetry)
 }
 
 func (suite *StandardTestSuite) TestKvErrorMap7ff1() {
-	suite.testKvErrorMapGeneric(0x7ff1)
+	suite.testKvErrorMapGeneric(TestNameErrMapConstantRetry)
 }
 
 func (suite *StandardTestSuite) TestKvErrorMap7ff2() {
-	suite.testKvErrorMapGeneric(0x7ff2)
+	suite.testKvErrorMapGeneric(TestNameErrMapExponentialRetry)
 }
 
 func (suite *UnitTestSuite) TestStoreKVErrorMapV1() {

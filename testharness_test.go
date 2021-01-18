@@ -5,13 +5,10 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/couchbase/gocbcore/v10/jcbmock"
 )
 
 var (
@@ -51,6 +48,7 @@ var (
 	TestFeatureExpandMacros         = TestFeatureCode("expandmacros")
 	TestFeaturePreserveExpiry       = TestFeatureCode("preserveexpiry")
 	TestFeatureNSServer             = TestFeatureCode("nsserver")
+	TestFeatureExpandMacrosSeqNo    = TestFeatureCode("expandmacrosseqno")
 )
 
 type TestFeatureFlag struct {
@@ -113,18 +111,6 @@ func ParseCerts(path string) (*x509.CertPool, *tls.Certificate, error) {
 	}
 
 	return roots, &cert, nil
-}
-
-func TimeTravel(waitDura time.Duration, mockInst *jcbmock.Mock) {
-	if mockInst == nil {
-		time.Sleep(waitDura)
-		return
-	}
-
-	waitSecs := int(math.Ceil(float64(waitDura) / float64(time.Second)))
-	mockInst.Control(jcbmock.NewCommand(jcbmock.CTimeTravel, map[string]interface{}{
-		"Offset": waitSecs,
-	}))
 }
 
 // Gets a set of keys evenly distributed across all server nodes.
