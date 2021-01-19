@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 9.1.1 (19 January 2021)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1032](GOCBC-1032):
+  Added support for bucket capability support verification to agent, at API stability internal.
+* [https://issues.couchbase.com/browse/GOCBC-1030](GOCBC-1030):
+  Added support for internal cancellation of bootstrap before completion, allowing pipeline clients to shutdown without waiting for bootstrap to complete (such as on connection takeover).
+
+  Added support to fallback to http config fetching if select bucket fails with a valid fallback error, allowing for faster config fetching against non-kv nodes.
+
 ## Version 9.1.0 (15 December 2020)
 
 ### New Features and Behavioral Changes
