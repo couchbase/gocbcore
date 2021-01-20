@@ -350,7 +350,7 @@ func (client *memdClient) run() {
 			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
 				if !client.closed {
-					logErrorf("memdClient read failure: %v", err)
+					logWarnf("memdClient read failure: %v", err)
 				}
 				break
 			}
@@ -442,8 +442,8 @@ func (client *memdClient) run() {
 
 			err := client.conn.Close()
 			if err != nil {
-				// Lets log an error, as this is non-fatal
-				logErrorf("Failed to shut down client connection (%s)", err)
+				// Lets log a warning, as this is non-fatal
+				logWarnf("Failed to shut down client connection (%s)", err)
 			}
 		}
 
