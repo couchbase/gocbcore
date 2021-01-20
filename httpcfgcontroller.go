@@ -165,7 +165,7 @@ Looper:
 				streamPath = "bucketsStreaming"
 			}
 			// HTTP request time!
-			uri := fmt.Sprintf("/pools/default/%s/%s", streamPath, hcc.bucketName)
+			uri := fmt.Sprintf("/pools/default/%s/%s", streamPath, url.PathEscape(hcc.bucketName))
 			logDebugf("Requesting config from: %s/%s.", pickedSrv, uri)
 
 			req := &httpRequest{

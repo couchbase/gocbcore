@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -395,7 +396,8 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 func (dc *diagnosticsComponent) endpointsFromCapiList(capiEpList []string) []string {
 	var epList []string
 	for _, ep := range capiEpList {
-		epList = append(epList, strings.TrimRight(ep, "/"+dc.bucket))
+		// We escape the bucket name when we add it to the ep list so we need to do it here too.
+		epList = append(epList, strings.TrimRight(ep, "/"+url.PathEscape(dc.bucket)))
 	}
 
 	return epList

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 )
 
@@ -249,7 +250,7 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.KvSsl)
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, name)
+			lists.capiEp = fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, url.PathEscape(name))
 		}
 		if ports.Mgmt > 0 {
 			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
@@ -268,7 +269,7 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.Kv)
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("http://%s:%d/%s", hostname, ports.Capi, name)
+			lists.capiEp = fmt.Sprintf("http://%s:%d/%s", hostname, ports.Capi, url.PathEscape(name))
 		}
 		if ports.Mgmt > 0 {
 			lists.mgmtEp = fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt)
