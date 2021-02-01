@@ -150,6 +150,7 @@ type waitUntilOp struct {
 	stopCh     chan struct{}
 	timer      *time.Timer
 	httpCancel context.CancelFunc
+	closed     bool
 
 	retryLock    sync.Mutex
 	retries      uint32
@@ -196,6 +197,11 @@ func (wuo *waitUntilOp) recordRetryAttempt(reason RetryReason) {
 func (wuo *waitUntilOp) cancel(err error) {
 	wuo.lock.Lock()
 	wuo.timer.Stop()
+	if wuo.closed {
+		wuo.lock.Unlock()
+		return
+	}
+	wuo.closed = true
 	wuo.lock.Unlock()
 	close(wuo.stopCh)
 	wuo.httpCancel()
