@@ -12,15 +12,17 @@ const (
 
 // ManifestCollection is the representation of a collection within a manifest.
 type ManifestCollection struct {
-	UID  uint32
-	Name string
+	UID    uint32
+	Name   string
+	MaxTTL uint32
 }
 
 // UnmarshalJSON is a custom implementation of json unmarshaling.
 func (item *ManifestCollection) UnmarshalJSON(data []byte) error {
 	decData := struct {
-		UID  string `json:"uid"`
-		Name string `json:"name"`
+		UID    string `json:"uid"`
+		Name   string `json:"name"`
+		MaxTTL uint32 `json:"maxTTL"`
 	}{}
 	if err := json.Unmarshal(data, &decData); err != nil {
 		return err
@@ -33,6 +35,7 @@ func (item *ManifestCollection) UnmarshalJSON(data []byte) error {
 
 	item.UID = uint32(decUID)
 	item.Name = decData.Name
+	item.MaxTTL = decData.MaxTTL
 	return nil
 }
 
