@@ -252,11 +252,11 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	hreq.Header.Set("User-Agent", clientInfoString(uniqueID, hc.userAgent))
 
 	for {
-		dSpan := hc.tracer.StartHTTPSpan(req, "dispatch_to_server")
+		dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
 		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
 		// we can't close the body of this response as it's long lived beyond the function
 		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
-		dSpan.Finish()
+		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID)
 		if err != nil {
 			logSchedf("Received HTTP Response for ID=%s, errored", req.UniqueID)
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation

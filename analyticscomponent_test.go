@@ -97,7 +97,8 @@ func (nqh *analyticsTestHelper) testBasic(t *testing.T) {
 	deadline := time.Now().Add(60000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"statement":         fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"client_context_id": "1235",
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
@@ -239,7 +240,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
-	payloadStr := `{"statement":"SELECT * FROM test LIMIT 1"}`
+	payloadStr := `{"statement":"SELECT * FROM test LIMIT 1","client_context_id":"1235"}`
 	op, err := cbasCpt.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
@@ -289,7 +290,7 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),

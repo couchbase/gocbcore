@@ -67,7 +67,7 @@ type AgentConfig struct {
 	HTTPMaxIdleConnsPerHost   int
 	HTTPIdleConnectionTimeout time.Duration
 
-	// Volatile: Tracer API is subject to change.
+	// Uncommitted: Tracer API may change in the future.
 	Tracer           RequestTracer
 	NoRootTraceSpans bool
 

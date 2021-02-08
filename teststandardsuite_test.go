@@ -216,6 +216,7 @@ func (suite *StandardTestSuite) makeAgentConfig(testConfig *TestConfig) AgentCon
 	config := AgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
+	config.UseDurations = true
 	config.UseMutationTokens = true
 	config.UseCollections = true
 	config.UseOutOfOrderResponses = true
@@ -233,6 +234,7 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	config := AgentGroupConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
+	config.UseDurations = true
 	config.UseMutationTokens = true
 	config.UseCollections = true
 	config.UseOutOfOrderResponses = true

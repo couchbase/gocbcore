@@ -1,19 +1,22 @@
 package gocbcore
 
 import (
-	"fmt"
+	"net"
+	"net/http"
+	"time"
 )
 
 // RequestTracer describes the tracing abstraction in the SDK.
 type RequestTracer interface {
-	StartSpan(operationName string, parentContext RequestSpanContext) RequestSpan
+	RequestSpan(parentContext RequestSpanContext, operationName string) RequestSpan
 }
 
 // RequestSpan is the interface for spans that are created by a RequestTracer.
 type RequestSpan interface {
-	Finish()
+	End()
 	Context() RequestSpanContext
-	SetTag(key string, value interface{}) RequestSpan
+	AddEvent(name string, timestamp time.Time)
+	SetAttribute(key string, value interface{})
 }
 
 // RequestSpanContext is the interface for for external span contexts that can be passed in into the SDK option blocks.
@@ -31,19 +34,21 @@ var (
 type noopTracer struct {
 }
 
-func (tracer noopTracer) StartSpan(operationName string, parentContext RequestSpanContext) RequestSpan {
+func (tracer noopTracer) RequestSpan(parentContext RequestSpanContext, operationName string) RequestSpan {
 	return defaultNoopSpan
 }
 
-func (span noopSpan) Finish() {
+func (span noopSpan) End() {
 }
 
 func (span noopSpan) Context() RequestSpanContext {
 	return defaultNoopSpanContext
 }
 
-func (span noopSpan) SetTag(key string, value interface{}) RequestSpan {
-	return defaultNoopSpan
+func (span noopSpan) SetAttribute(key string, value interface{}) {
+}
+
+func (span noopSpan) AddEvent(key string, timestamp time.Time) {
 }
 
 type opTracer struct {
@@ -53,7 +58,7 @@ type opTracer struct {
 
 func (tracer *opTracer) Finish() {
 	if tracer.opSpan != nil {
-		tracer.opSpan.Finish()
+		tracer.opSpan.End()
 	}
 }
 
@@ -67,7 +72,8 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 
 type tracerManager interface {
 	CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer
-	StartHTTPSpan(req *httpRequest, name string) RequestSpan
+	StartHTTPDispatchSpan(req *httpRequest, name string) RequestSpan
+	StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string)
 	StartCmdTrace(req *memdQRequest)
 	StartNetTrace(req *memdQRequest)
 }
@@ -94,10 +100,8 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 		}
 	}
 
-	opSpan := tc.tracer.StartSpan(operationName, parentContext).
-		SetTag("component", "couchbase-go-sdk").
-		SetTag("db.instance", tc.bucket).
-		SetTag("span.kind", "client")
+	opSpan := tc.tracer.RequestSpan(parentContext, operationName)
+	opSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
 
 	return &opTracer{
 		parentContext: parentContext,
@@ -105,9 +109,25 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 	}
 }
 
-func (tc *tracerComponent) StartHTTPSpan(req *httpRequest, name string) RequestSpan {
-	return tc.tracer.StartSpan(name, req.RootTraceContext).
-		SetTag("retry", req.RetryAttempts())
+func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) RequestSpan {
+	span := tc.tracer.RequestSpan(req.RootTraceContext, name)
+	return span
+}
+
+func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string) {
+	span.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+	span.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
+	if id != "" {
+		span.SetAttribute(spanAttribOperationIDKey, id)
+	}
+	remoteName, remotePort, err := net.SplitHostPort(req.Host)
+	if err != nil {
+		logDebugf("Failed to split host port: %s", err)
+	}
+
+	span.SetAttribute(spanAttribNetPeerNameKey, remoteName)
+	span.SetAttribute(spanAttribNetPeerPortKey, remotePort)
+	span.End()
 }
 
 func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
@@ -121,8 +141,7 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	}
 
 	req.processingLock.Lock()
-	req.cmdTraceSpan = tc.tracer.StartSpan(req.Packet.Command.Name(), req.RootTraceContext).
-		SetTag("retry", req.RetryAttempts())
+	req.cmdTraceSpan = tc.tracer.RequestSpan(req.RootTraceContext, req.Packet.Command.Name())
 
 	req.processingLock.Unlock()
 }
@@ -138,8 +157,7 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 	}
 
 	req.processingLock.Lock()
-	req.netTraceSpan = tc.tracer.StartSpan("rpc", req.cmdTraceSpan.Context()).
-		SetTag("span.kind", "client")
+	req.netTraceSpan = tc.tracer.RequestSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
 	req.processingLock.Unlock()
 }
 
@@ -153,17 +171,19 @@ func stopCmdTrace(req *memdQRequest) {
 		return
 	}
 
-	req.cmdTraceSpan.Finish()
+	req.cmdTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+
+	req.cmdTraceSpan.End()
 	req.cmdTraceSpan = nil
 }
 
 func cancelReqTrace(req *memdQRequest) {
 	if req.cmdTraceSpan != nil {
 		if req.netTraceSpan != nil {
-			req.netTraceSpan.Finish()
+			req.netTraceSpan.End()
 		}
 
-		req.cmdTraceSpan.Finish()
+		req.cmdTraceSpan.End()
 	}
 }
 
@@ -177,17 +197,28 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 		return
 	}
 
-	req.netTraceSpan.SetTag("couchbase.operation_id", fmt.Sprintf("0x%x", resp.Opaque))
-	req.netTraceSpan.SetTag("couchbase.local_id", resp.sourceConnID)
-	if isLogRedactionLevelNone() {
-		req.netTraceSpan.SetTag("couchbase.document_key", string(req.Key))
-	}
-	req.netTraceSpan.SetTag("local.address", localAddress)
-	req.netTraceSpan.SetTag("peer.address", remoteAddress)
-	if resp.Packet.ServerDurationFrame != nil {
-		req.netTraceSpan.SetTag("server_duration", resp.Packet.ServerDurationFrame.ServerDuration)
+	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+	req.netTraceSpan.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
+	req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, resp.Opaque)
+	req.netTraceSpan.SetAttribute(spanAttribLocalIDKey, resp.sourceConnID)
+	localName, localPort, err := net.SplitHostPort(localAddress)
+	if err != nil {
+		logDebugf("Failed to split host port: %s", err)
 	}
 
-	req.netTraceSpan.Finish()
+	remoteName, remotePort, err := net.SplitHostPort(remoteAddress)
+	if err != nil {
+		logDebugf("Failed to split host port: %s", err)
+	}
+
+	req.netTraceSpan.SetAttribute(spanAttribNetHostNameKey, localName)
+	req.netTraceSpan.SetAttribute(spanAttribNetHostPortKey, localPort)
+	req.netTraceSpan.SetAttribute(spanAttribNetPeerNameKey, remoteName)
+	req.netTraceSpan.SetAttribute(spanAttribNetPeerPortKey, remotePort)
+	if resp.Packet.ServerDurationFrame != nil {
+		req.netTraceSpan.SetAttribute(spanAttribServerDurationKey, resp.Packet.ServerDurationFrame.ServerDuration)
+	}
+
+	req.netTraceSpan.End()
 	req.netTraceSpan = nil
 }

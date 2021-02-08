@@ -196,6 +196,10 @@ func (command CmdCode) Name() string {
 		return "CMD_SUBDOCGETCOUNT"
 	case CmdGetErrorMap:
 		return "CMD_GETERRORMAP"
+	case CmdCollectionsGetID:
+		return "CMD_GETCOLLECTIONID"
+	case CmdCollectionsGetManifest:
+		return "CMD_GETCOLLECTIONMANIFEST"
 	default:
 		return "CMD_x" + hex.EncodeToString([]byte{byte(command)})
 	}

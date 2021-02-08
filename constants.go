@@ -86,3 +86,18 @@ const (
 	// the next vBucket.
 	DCPBackfillOrderSequential
 )
+
+const (
+	spanNameDispatchToServer    = "dispatch_to_server"
+	spanAttribDBSystemKey       = "db.system"
+	spanAttribDBSystemValue     = "couchbase"
+	spanAttribNetTransportKey   = "net.transport"
+	spanAttribNetTransportValue = "IP.TCP"
+	spanAttribOperationIDKey    = "db.couchbase.operation_id"
+	spanAttribLocalIDKey        = "db.couchbase.local_id"
+	spanAttribNetHostNameKey    = "net.host.name"
+	spanAttribNetHostPortKey    = "net.host.port"
+	spanAttribNetPeerNameKey    = "net.peer.name"
+	spanAttribNetPeerPortKey    = "net.peer.port"
+	spanAttribServerDurationKey = "db.couchbase.server_duration"
+)

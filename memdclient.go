@@ -253,7 +253,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		// There is no known request that goes with this response.  Ignore it.
 		logDebugf("Received response with no corresponding request.")
 		if client.zombieLogger != nil {
-			client.zombieLogger.RecordZombieResponse(resp, client.connID, client.Address())
+			client.zombieLogger.RecordZombieResponse(resp, client.connID, client.LocalAddress(), client.Address())
 		}
 		return
 	}

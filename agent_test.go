@@ -1332,16 +1332,12 @@ func (suite *StandardTestSuite) TestStats() {
 				for i := 0; i < len(spans); i++ {
 					span := spans[i]
 					suite.Assert().Equal(memd.CmdStat.Name(), span.Name)
-					suite.Assert().Equal(1, len(span.Tags))
 					suite.Assert().True(span.Finished)
-					suite.Assert().Equal(uint32(0), span.Tags["retry"])
 
-					netSpans := span.Spans["rpc"]
+					netSpans := span.Spans[spanNameDispatchToServer]
 					if suite.Assert().Equal(1, len(netSpans)) {
-						suite.Assert().Equal("rpc", netSpans[0].Name)
-						suite.Assert().Equal(1, len(netSpans[0].Tags))
+						suite.Assert().Equal(spanNameDispatchToServer, netSpans[0].Name)
 						suite.Assert().True(netSpans[0].Finished)
-						suite.Assert().Equal("client", netSpans[0].Tags["span.kind"])
 					}
 				}
 			}

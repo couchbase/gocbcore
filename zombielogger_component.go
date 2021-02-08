@@ -9,26 +9,29 @@ import (
 )
 
 type zombieLogEntry struct {
-	connectionID string
-	operationID  string
-	endpoint     string
-	duration     time.Duration
-	serviceType  string
+	connectionID  string
+	operationID   string
+	remoteSocket  string
+	localSocket   string
+	duration      time.Duration
+	operationName string
 }
 
 type zombieLogItem struct {
-	ConnectionID     string `json:"c"`
-	OperationID      string `json:"i"`
-	Endpoint         string `json:"r"`
-	ServerDurationUs uint64 `json:"d"`
-	ServiceType      string `json:"s"`
+	ConnectionID     string `json:"last_local_id"`
+	OperationID      string `json:"operation_id"`
+	RemoteSocket     string `json:"last_remote_socket,omitempty"`
+	LocalSocket      string `json:"last_local_socket,omitempty"`
+	ServerDurationUs uint64 `json:"last_server_duration_us,omitempty"`
+	OperationName    string `json:"operation_name"`
 }
 
-type zombieLogService struct {
-	Service string          `json:"service"`
-	Count   int             `json:"count"`
-	Top     []zombieLogItem `json:"top"`
+type zombieLogJsonEntry struct {
+	Count int             `json:"total_count"`
+	Top   []zombieLogItem `json:"top_requests"`
 }
+
+type zombieLogService map[string]zombieLogJsonEntry
 
 type zombieLoggerComponent struct {
 	zombieLock sync.RWMutex
@@ -62,63 +65,76 @@ func (zlc *zombieLoggerComponent) Start() {
 
 		lastTick = lastTick.Add(zlc.interval)
 
-		// Preallocate space to copy the ops into...
-		oldOps := make([]*zombieLogEntry, zlc.sampleSize)
-
-		zlc.zombieLock.Lock()
-		// Escape early if we have no ops to log...
-		if len(zlc.zombieOps) == 0 {
-			zlc.zombieLock.Unlock()
+		jsonBytes := zlc.createOutput()
+		if len(jsonBytes) == 0 {
 			continue
-		}
-
-		// Copy out our ops so we can cheaply print them out without blocking
-		// our ops from actually being recorded in other goroutines (which would
-		// effectively slow down the op pipeline for logging).
-		oldOps = oldOps[0:len(zlc.zombieOps)]
-		copy(oldOps, zlc.zombieOps)
-		zlc.zombieOps = zlc.zombieOps[:0]
-
-		zlc.zombieLock.Unlock()
-
-		jsonData := zombieLogService{
-			Service: "kv",
-		}
-
-		for i := len(oldOps) - 1; i >= 0; i-- {
-			op := oldOps[i]
-
-			jsonData.Top = append(jsonData.Top, zombieLogItem{
-				OperationID:      op.operationID,
-				ConnectionID:     op.connectionID,
-				Endpoint:         op.endpoint,
-				ServerDurationUs: uint64(op.duration / time.Microsecond),
-				ServiceType:      op.serviceType,
-			})
-		}
-
-		jsonData.Count = len(jsonData.Top)
-
-		jsonBytes, err := json.Marshal(jsonData)
-		if err != nil {
-			logDebugf("Failed to generate zombie logging JSON: %s", err)
 		}
 
 		logWarnf("Orphaned responses observed:\n %s", jsonBytes)
 	}
 }
 
+func (zlc *zombieLoggerComponent) createOutput() []byte {
+	// Preallocate space to copy the ops into...
+	oldOps := make([]*zombieLogEntry, zlc.sampleSize)
+
+	zlc.zombieLock.Lock()
+	// Escape early if we have no ops to log...
+	if len(zlc.zombieOps) == 0 {
+		zlc.zombieLock.Unlock()
+		return nil
+	}
+
+	// Copy out our ops so we can cheaply print them out without blocking
+	// our ops from actually being recorded in other goroutines (which would
+	// effectively slow down the op pipeline for logging).
+	oldOps = oldOps[0:len(zlc.zombieOps)]
+	copy(oldOps, zlc.zombieOps)
+	zlc.zombieOps = zlc.zombieOps[:0]
+
+	zlc.zombieLock.Unlock()
+
+	entries := zombieLogJsonEntry{
+		Top: make([]zombieLogItem, len(oldOps)),
+	}
+
+	for i := 0; i < len(oldOps); i++ {
+		op := oldOps[i]
+
+		entries.Top[len(oldOps)-i-1] = zombieLogItem{
+			OperationID:      op.operationID,
+			ConnectionID:     op.connectionID,
+			RemoteSocket:     op.remoteSocket,
+			LocalSocket:      op.localSocket,
+			ServerDurationUs: uint64(op.duration.Microseconds()),
+			OperationName:    op.operationName,
+		}
+	}
+
+	entries.Count = len(entries.Top)
+
+	jsonBytes, err := json.Marshal(zombieLogService{
+		"kv": entries,
+	})
+	if err != nil {
+		logDebugf("Failed to generate zombie logging JSON: %s", err)
+	}
+
+	return jsonBytes
+}
+
 func (zlc *zombieLoggerComponent) Stop() {
 	close(zlc.stopSig)
 }
 
-func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, connID, address string) {
+func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, connID, localAddr, remoteAddr string) {
 	entry := &zombieLogEntry{
-		connectionID: connID,
-		operationID:  fmt.Sprintf("0x%x", resp.Opaque),
-		endpoint:     address,
-		duration:     0,
-		serviceType:  fmt.Sprintf("kv:%s", resp.Command.Name()),
+		connectionID:  connID,
+		operationID:   fmt.Sprintf("0x%x", resp.Opaque),
+		remoteSocket:  remoteAddr,
+		duration:      0,
+		operationName: resp.Command.Name(),
+		localSocket:   localAddr,
 	}
 
 	if resp.Packet.ServerDurationFrame != nil {

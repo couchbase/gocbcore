@@ -1098,7 +1098,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 }
 
 func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("GetMeta", nil)
+	tracer := crud.tracer.CreateOpTrace("GetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1192,7 +1192,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("SetMeta", nil)
+	tracer := crud.tracer.CreateOpTrace("SetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1282,7 +1282,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
-	tracer := crud.tracer.CreateOpTrace("DeleteMeta", nil)
+	tracer := crud.tracer.CreateOpTrace("DeleteMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {

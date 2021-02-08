@@ -88,7 +88,8 @@ func (nqh *n1qlTestHelper) testN1QLBasic(t *testing.T) {
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"statement":         fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"client_context_id": "12345",
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
@@ -191,7 +192,8 @@ func (nqh *n1qlTestHelper) testN1QLPrepared(t *testing.T) {
 	deadline := time.Now().Add(15000 * time.Millisecond)
 	runTestQuery := func() ([]testDoc, error) {
 		test := map[string]interface{}{
-			"statement": fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"statement":         fmt.Sprintf("SELECT i,testName FROM %s WHERE testName=\"%s\"", nqh.suite.BucketName, nqh.TestName),
+			"client_context_id": "1234",
 		}
 		payload, err := json.Marshal(test)
 		if err != nil {
@@ -342,7 +344,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := `{"statement":"SELECT * FROM test"}`
+	payloadStr := `{"statement":"SELECT * FROM test","client_context_id":"12345"}`
 	op, err := n1qlCpt.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
@@ -392,7 +394,7 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
@@ -478,7 +480,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := `{"statement":"SELECT * FROM test"}`
+	payloadStr := `{"statement":"SELECT * FROM test","client_context_id":"12345"}`
 	op, err := n1qlCpt.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(5 * time.Second),
@@ -528,7 +530,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
-	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1"}`, suite.BucketName)
+	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
 		Deadline: time.Now().Add(100 * time.Microsecond),
