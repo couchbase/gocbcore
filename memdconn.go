@@ -76,10 +76,8 @@ func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, de
 		logWarnf("Failed to disable TCP nodelay (%s)", err)
 	}
 
-	var conn io.ReadWriteCloser
-	if tlsConfig == nil {
-		conn = tcpConn
-	} else {
+	var conn io.ReadWriteCloser = tcpConn
+	if tlsConfig != nil {
 		tlsConn := tls.Client(tcpConn, tlsConfig)
 		err = tlsConn.Handshake()
 		if err != nil {

@@ -5,7 +5,7 @@ import (
 )
 
 func (suite *StandardTestSuite) TestOpMap() {
-	var rd memdOpMap
+	rd := newMemdOpMap()
 
 	testOp1 := &memdQRequest{
 		Packet: memd.Packet{},

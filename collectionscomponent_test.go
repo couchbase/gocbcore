@@ -44,7 +44,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
 			})
 		})
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
@@ -59,7 +59,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		})
 
@@ -142,7 +142,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{}}, req, errCollectionNotFound)
 			})
 		}).Once()
 	// Second request we simulate the collection coming online.
@@ -162,7 +162,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
 			})
 		}).Once()
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
@@ -177,7 +177,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		}).Once()
 
@@ -258,7 +258,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errInternalServerFailure)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{}}, req, errInternalServerFailure)
 			})
 		}).Once()
 
@@ -462,7 +462,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
 			})
 		})
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
@@ -477,7 +477,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		})
 
@@ -553,7 +553,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(-1, req.ReplicaIdx)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{}}, req, errCollectionNotFound)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{}}, req, errCollectionNotFound)
 			})
 		}).Once()
 	dispatcher.On("DispatchDirect", mock.AnythingOfType("*gocbcore.memdQRequest")).Return(&memdQRequest{}, nil).
@@ -572,7 +572,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
 			})
 		}).Once()
 
@@ -588,7 +588,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		}).Once()
 
@@ -667,7 +667,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Extras: extras}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
 			})
 		}).Once()
 	// The second request should be queued due to cid being pending so it should get requeued.
@@ -683,7 +683,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		}).Twice()
 	// The third request should go straight through to Dispatch.
@@ -699,7 +699,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			suite.Assert().Equal(uint32(8), req.CollectionID)
 
 			time.AfterFunc(time.Millisecond, func() {
-				req.Callback(&memdQResponse{Packet: memd.Packet{Value: []byte("test")}}, req, nil)
+				req.Callback(&memdQResponse{Packet: &memd.Packet{Value: []byte("test")}}, req, nil)
 			})
 		}).Once()
 

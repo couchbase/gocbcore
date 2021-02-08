@@ -41,7 +41,7 @@ type memdClient struct {
 	connID                string
 	closed                bool
 	conn                  memdConn
-	opList                memdOpMap
+	opList                *memdOpMap
 	features              []memd.HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
@@ -82,6 +82,7 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		tracer:         tracer,
 		zombieLogger:   zombieLogger,
 		conn:           conn,
+		opList:         newMemdOpMap(),
 
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinRatio:  props.CompressionMinRatio,
@@ -238,14 +239,14 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 }
 
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
-	opIndex := resp.Opaque
+	defer memd.ReleasePacket(resp.Packet)
 
 	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Command, resp.Opaque, resp.Status)
 
 	client.lock.Lock()
 	// Find the request that goes with this response, don't check if the client is
 	// closed so that we can handle orphaned responses.
-	req := client.opList.FindAndMaybeRemove(opIndex, resp.Status != memd.StatusSuccess)
+	req := client.opList.FindAndMaybeRemove(resp.Opaque, resp.Status != memd.StatusSuccess)
 	client.lock.Unlock()
 
 	if req == nil {
@@ -256,6 +257,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		}
 		return
 	}
+
 	if !req.Persistent || resp.Status != memd.StatusSuccess {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
@@ -312,32 +314,29 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 }
 
 func (client *memdClient) run() {
-	dcpBufferQ := make(chan *dcpBuffer, client.dcpQueueSize)
-	dcpKillSwitch := make(chan bool)
-	dcpKillNotify := make(chan bool)
+	var (
+		dcpBufferQ    = make(chan *dcpBuffer, client.dcpQueueSize)
+		dcpKillSwitch = make(chan struct{})
+		dcpKillNotify = make(chan struct{})
+	)
+
 	go func() {
-		procDcpItem := func(q *dcpBuffer, more bool) bool {
-			if !more {
-				dcpKillNotify <- true
-				return false
-			}
-
-			logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
-			client.resolveRequest(q.resp)
-
-			// See below for information on MB-26363 for why this is here.
-			if !q.isInternal && client.dcpAckSize > 0 {
-				client.maybeSendDcpBufferAck(q.packetLen)
-			}
-
-			return true
-		}
+		defer close(dcpKillNotify)
 
 		for {
 			select {
 			case q, more := <-dcpBufferQ:
-				if !procDcpItem(q, more) {
+				if !more {
+					dcpKillNotify <- struct{}{}
 					return
+				}
+
+				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
+				client.resolveRequest(q.resp)
+
+				// See below for information on MB-26363 for why this is here.
+				if !q.isInternal && client.dcpAckSize > 0 {
+					client.maybeSendDcpBufferAck(q.packetLen)
 				}
 			case <-dcpKillSwitch:
 				close(dcpBufferQ)
@@ -346,6 +345,8 @@ func (client *memdClient) run() {
 	}()
 
 	go func() {
+		defer close(dcpKillSwitch)
+
 		for {
 			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
@@ -358,7 +359,7 @@ func (client *memdClient) run() {
 			resp := &memdQResponse{
 				sourceAddr:   client.conn.RemoteAddr(),
 				sourceConnID: client.connID,
-				Packet:       *packet,
+				Packet:       packet,
 			}
 
 			atomic.StoreInt64(&client.lastActivity, time.Now().UnixNano())
@@ -389,7 +390,7 @@ func (client *memdClient) run() {
 						endExtras := make([]byte, 4)
 						binary.BigEndian.PutUint32(endExtras, uint32(memd.StreamEndClosed))
 						endResp := &memdQResponse{
-							Packet: memd.Packet{
+							Packet: &memd.Packet{
 								Magic:   memd.CmdMagicReq,
 								Command: memd.CmdDcpStreamEnd,
 								Vbucket: vbID,
@@ -407,26 +408,12 @@ func (client *memdClient) run() {
 			}
 
 			switch resp.Packet.Command {
-			case memd.CmdDcpDeletion:
-				fallthrough
-			case memd.CmdDcpExpiration:
-				fallthrough
-			case memd.CmdDcpMutation:
-				fallthrough
-			case memd.CmdDcpSnapshotMarker:
-				fallthrough
-			case memd.CmdDcpEvent:
-				fallthrough
-			case memd.CmdDcpOsoSnapshot:
-				fallthrough
-			case memd.CmdDcpSeqNoAdvanced:
-				fallthrough
-			case memd.CmdDcpStreamEnd:
+			case memd.CmdDcpDeletion, memd.CmdDcpExpiration, memd.CmdDcpMutation, memd.CmdDcpSnapshotMarker,
+				memd.CmdDcpEvent, memd.CmdDcpOsoSnapshot, memd.CmdDcpSeqNoAdvanced, memd.CmdDcpStreamEnd:
 				dcpBufferQ <- &dcpBuffer{
 					resp:      resp,
 					packetLen: n,
 				}
-				continue
 			default:
 				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Command, resp.Opaque)
 				client.resolveRequest(resp)
@@ -434,11 +421,8 @@ func (client *memdClient) run() {
 		}
 
 		client.lock.Lock()
-		if client.closed {
-			client.lock.Unlock()
-		} else {
+		if !client.closed {
 			client.closed = true
-			client.lock.Unlock()
 
 			err := client.conn.Close()
 			if err != nil {
@@ -447,7 +431,9 @@ func (client *memdClient) run() {
 			}
 		}
 
-		dcpKillSwitch <- true
+		client.lock.Unlock()
+
+		dcpKillSwitch <- struct{}{}
 		<-dcpKillNotify
 
 		client.opList.Drain(func(req *memdQRequest) {

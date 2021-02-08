@@ -1,6 +1,9 @@
 package memd
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // BarrierFrame is used to signal to the server that this command should be
 // barriered and must not be executed concurrently with other commands.
@@ -77,4 +80,33 @@ type Packet struct {
 	ServerDurationFrame    *ServerDurationFrame
 	UserImpersonationFrame *UserImpersonationFrame
 	UnsupportedFrames      []UnsupportedFrame
+}
+
+// packetPool - Thread safe pool containing memcached packet structures. Used by the memcached connection when reading
+// packets from the TCP socket.
+var packetPool = sync.Pool{
+	New: func() interface{} {
+		return &Packet{}
+	},
+}
+
+// AcquirePacket - Retrieve a packet from the internal pool. Note that the packet should be returned to the pool to
+// avoid unnecessary allocations.
+func AcquirePacket() *Packet {
+	return packetPool.Get().(*Packet)
+}
+
+// ReleasePacket - Return a packet to the internal pool. Note that the packet will be reset, removing any active
+// pointers to existing data structures.
+func ReleasePacket(packet *Packet) {
+	packet.Key = nil
+	packet.Extras = nil
+	packet.Value = nil
+	packet.BarrierFrame = nil
+	packet.DurabilityLevelFrame = nil
+	packet.StreamIDFrame = nil
+	packet.OpenTracingFrame = nil
+	packet.ServerDurationFrame = nil
+	packet.UnsupportedFrames = nil
+	packetPool.Put(packet)
 }

@@ -54,7 +54,9 @@ type DCPAgentConfig struct {
 	UseStreamID     bool
 	UseOSOBackfill  bool
 	BackfillOrder   DCPBackfillOrder
-	DCPBufferSize   int
+
+	DCPBufferSize                int
+	DisableBufferAcknowledgement bool
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {

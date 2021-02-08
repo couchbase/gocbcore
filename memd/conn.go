@@ -1,27 +1,58 @@
 package memd
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync"
 	"time"
 )
 
+// bufPool - Thread safe pool containing packet write buffers i.e. they should be used to write a single packet to the
+// TCP socket.
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0))
+	},
+}
+
+// aquireWriteBuf - Returns a pointer to a write buffer which is ready to be used, ensure the buffer is released using
+// the 'releaseWriteBuf' function.
+func aquireWriteBuf() *bytes.Buffer {
+	return bufPool.Get().(*bytes.Buffer)
+}
+
+// releaseWriteBuf - Reset the buffer so that it's clean for the next user (note that this retains the underlying
+// storage for future writes) and then return it to the pool.
+func releaseWriteBuf(buf *bytes.Buffer) {
+	buf.Reset()
+	bufPool.Put(buf)
+}
+
 // Conn represents a memcached protocol connection.
 type Conn struct {
-	stream io.ReadWriter
+	reader io.Reader
+	writer io.Writer
 
-	headerBuf          []byte
-	enabledFeatures    map[HelloFeature]bool
+	headerBuf [24]byte
+
 	collectionsEnabled bool
+	enabledFeatures    map[HelloFeature]bool
 }
 
 // NewConn creates a new connection object which can be used to perform
 // reading and writing of packets.
 func NewConn(stream io.ReadWriter) *Conn {
 	return &Conn{
-		stream:          stream,
-		headerBuf:       make([]byte, 24),
+		// Use the provided writer directly without buffering writes; if we did so, we may end up writing packets into
+		// the buffer which remain in userspace indefinitely.
+		writer: stream,
+
+		// Wrap the provided reader with a buffer that's 20MB in size; this is the same size used for connections inside
+		// KV engine.
+		reader:          bufio.NewReaderSize(stream, 20*1024*1024),
 		enabledFeatures: make(map[HelloFeature]bool),
 	}
 }
@@ -39,10 +70,8 @@ func (c *Conn) EnableFeature(feature HelloFeature) {
 // on this particular connection.  Note that this is directly based on
 // calls to EnableFeature and is not controlled by the library.
 func (c *Conn) IsFeatureEnabled(feature HelloFeature) bool {
-	if enabled, ok := c.enabledFeatures[feature]; ok {
-		return enabled
-	}
-	return false
+	enabled, ok := c.enabledFeatures[feature]
+	return ok && enabled
 }
 
 // WritePacket writes a packet to the network.
@@ -121,133 +150,123 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 	// the frame variant depending on the usage of them.
 	pktMagic := pkt.Magic
 	if framesLen > 0 {
-		if pktMagic == CmdMagicReq {
+		switch pktMagic {
+		case CmdMagicReq:
 			if !c.IsFeatureEnabled(FeatureAltRequests) {
 				return errors.New("cannot use frames in req packets without enabling the feature")
 			}
 
 			pktMagic = cmdMagicReqExt
-		} else if pktMagic == CmdMagicRes {
+		case CmdMagicRes:
 			pktMagic = cmdMagicResExt
-		} else {
+		default:
 			return errors.New("cannot use frames with an unsupported magic")
 		}
 	}
 
-	// Go appears to do some clever things in regards to writing data
-	//   to the kernel for network dispatch.  Having a write buffer
-	//   per-server that is re-used actually hinders performance...
-	// For now, we will simply create a new buffer and let it be GC'd.
-	buffer := make([]byte, 24+keyLen+extLen+valLen+framesLen)
+	buffer := aquireWriteBuf()
+	defer releaseWriteBuf(buffer)
 
-	buffer[0] = uint8(pktMagic)
-	buffer[1] = uint8(pkt.Command)
+	buffer.WriteByte(byte(pktMagic))
+	buffer.WriteByte(byte(pkt.Command))
 
 	// This is safe to do without checking the magic as we check the magic
 	// above before incrementing the framesLen variable
 	if framesLen > 0 {
-		buffer[2] = uint8(framesLen)
-		buffer[3] = uint8(keyLen)
+		buffer.WriteByte(byte(framesLen))
+		buffer.WriteByte(byte(keyLen))
 	} else {
-		binary.BigEndian.PutUint16(buffer[2:], uint16(keyLen))
+		writeUint16(buffer, uint16(keyLen))
 	}
-	buffer[4] = byte(extLen)
-	buffer[5] = pkt.Datatype
 
-	if pkt.Magic == CmdMagicReq {
+	buffer.WriteByte(byte(extLen))
+	buffer.WriteByte(pkt.Datatype)
+
+	switch pkt.Magic {
+	case CmdMagicReq:
 		if pkt.Status != 0 {
 			return errors.New("cannot specify status in a request packet")
 		}
 
-		binary.BigEndian.PutUint16(buffer[6:], pkt.Vbucket)
-	} else if pkt.Magic == CmdMagicRes {
+		writeUint16(buffer, pkt.Vbucket)
+	case CmdMagicRes:
 		if pkt.Vbucket != 0 {
 			return errors.New("cannot specify vbucket in a response packet")
 		}
 
-		binary.BigEndian.PutUint16(buffer[6:], uint16(pkt.Status))
-	} else {
+		writeUint16(buffer, uint16(pkt.Status))
+	default:
 		return errors.New("cannot encode status/vbucket for unknown packet magic")
 	}
 
-	binary.BigEndian.PutUint32(buffer[8:], uint32(len(buffer)-24))
-	binary.BigEndian.PutUint32(buffer[12:], pkt.Opaque)
-	binary.BigEndian.PutUint64(buffer[16:], pkt.Cas)
-
-	bodyPos := 24
+	writeUint32(buffer, uint32(keyLen+extLen+valLen+framesLen))
+	writeUint32(buffer, pkt.Opaque)
+	writeUint64(buffer, pkt.Cas)
 
 	// Generate the framing extra data
-
-	// makeFrameHeader will take a FrameType and len and then encode it into a 4:4 bit
-	// frame header.  Note that this does not account for sizing overruns as this is meant
-	// to be done by the specific commands.
-	makeFrameHeader := func(ftype frameType, len uint8) uint8 {
-		ftypeNum := uint8(ftype)
-		return (ftypeNum << 4) | (len << 0)
-	}
 
 	if pkt.BarrierFrame != nil {
 		if pkt.Magic != CmdMagicReq {
 			return errors.New("cannot use barrier frame in non-request packets")
 		}
 
-		buffer[bodyPos] = makeFrameHeader(frameTypeReqBarrier, 0)
-		bodyPos++
+		writeFrameHeader(buffer, frameTypeReqBarrier, 0)
 	}
+
 	if pkt.DurabilityLevelFrame != nil || pkt.DurabilityTimeoutFrame != nil {
 		if pkt.Magic != CmdMagicReq {
 			return errors.New("cannot use durability level frame in non-request packets")
 		}
+
 		if !c.IsFeatureEnabled(FeatureSyncReplication) {
 			return errors.New("cannot use sync replication frames without enabling the feature")
 		}
+
 		if pkt.DurabilityLevelFrame == nil && pkt.DurabilityTimeoutFrame != nil {
 			return errors.New("cannot encode durability timeout frame without durability level frame")
 		}
 
 		if pkt.DurabilityTimeoutFrame == nil {
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqSyncDurability, 1)
-			buffer[bodyPos+1] = uint8(pkt.DurabilityLevelFrame.DurabilityLevel)
-			bodyPos += 2
+			writeFrameHeader(buffer, frameTypeReqSyncDurability, 1)
+			buffer.WriteByte(byte(pkt.DurabilityLevelFrame.DurabilityLevel))
 		} else {
 			durabilityTimeoutMillis := pkt.DurabilityTimeoutFrame.DurabilityTimeout / time.Millisecond
 			if durabilityTimeoutMillis > 65535 {
 				durabilityTimeoutMillis = 65535
 			}
 
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqSyncDurability, 3)
-			buffer[bodyPos+1] = uint8(pkt.DurabilityLevelFrame.DurabilityLevel)
-			binary.BigEndian.PutUint16(buffer[bodyPos+2:], uint16(durabilityTimeoutMillis))
-			bodyPos += 4
+			writeFrameHeader(buffer, frameTypeReqSyncDurability, 3)
+			buffer.WriteByte(byte(pkt.DurabilityLevelFrame.DurabilityLevel))
+			writeUint16(buffer, uint16(durabilityTimeoutMillis))
 		}
 	}
+
 	if pkt.StreamIDFrame != nil {
 		if pkt.Magic != CmdMagicReq {
 			return errors.New("cannot use stream id frame in non-request packets")
 		}
 
-		buffer[bodyPos+0] = makeFrameHeader(frameTypeReqStreamID, 2)
-		binary.BigEndian.PutUint16(buffer[bodyPos+1:], pkt.StreamIDFrame.StreamID)
-		bodyPos += 3
+		writeFrameHeader(buffer, frameTypeReqStreamID, 2)
+		writeUint16(buffer, pkt.StreamIDFrame.StreamID)
 	}
+
 	if pkt.OpenTracingFrame != nil {
 		if pkt.Magic != CmdMagicReq {
 			return errors.New("cannot use open tracing frame in non-request packets")
 		}
+
 		if !c.IsFeatureEnabled(FeatureOpenTracing) {
 			return errors.New("cannot use open tracing frames without enabling the feature")
 		}
 
 		traceCtxLen := len(pkt.OpenTracingFrame.TraceContext)
 		if traceCtxLen < 15 {
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqOpenTracing, uint8(traceCtxLen))
-			copy(buffer[bodyPos+1:], pkt.OpenTracingFrame.TraceContext)
-			bodyPos += 1 + traceCtxLen
+			writeFrameHeader(buffer, frameTypeReqOpenTracing, uint8(traceCtxLen))
+			buffer.Write(pkt.OpenTracingFrame.TraceContext)
 		} else {
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqOpenTracing, 15)
-			buffer[bodyPos+1] = uint8(traceCtxLen - 15)
-			copy(buffer[bodyPos+2:], pkt.OpenTracingFrame.TraceContext)
-			bodyPos += 2 + traceCtxLen
+			writeFrameHeader(buffer, frameTypeReqOpenTracing, 15)
+			buffer.WriteByte(uint8(traceCtxLen - 15))
+			buffer.Write(pkt.OpenTracingFrame.TraceContext)
 		}
 	}
 
@@ -255,15 +274,13 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		if pkt.Magic != CmdMagicRes {
 			return errors.New("cannot use server duration frame in non-response packets")
 		}
+
 		if !c.IsFeatureEnabled(FeatureDurations) {
 			return errors.New("cannot use server duration frames without enabling the feature")
 		}
 
-		serverDurationEnc := EncodeSrvDura16(pkt.ServerDurationFrame.ServerDuration)
-
-		buffer[bodyPos+0] = makeFrameHeader(frameTypeResSrvDuration, 2)
-		binary.BigEndian.PutUint16(buffer[bodyPos+1:], serverDurationEnc)
-		bodyPos += 3
+		writeFrameHeader(buffer, frameTypeResSrvDuration, 2)
+		writeUint16(buffer, EncodeSrvDura16(pkt.ServerDurationFrame.ServerDuration))
 	}
 
 	if pkt.UserImpersonationFrame != nil {
@@ -273,14 +290,12 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 
 		userCtxLen := len(pkt.UserImpersonationFrame.User)
 		if userCtxLen < 15 {
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqUserImpersonation, uint8(userCtxLen))
-			copy(buffer[bodyPos+1:], pkt.UserImpersonationFrame.User)
-			bodyPos += 1 + userCtxLen
+			writeFrameHeader(buffer, frameTypeReqUserImpersonation, uint8(userCtxLen))
+			buffer.Write(pkt.UserImpersonationFrame.User)
 		} else {
-			buffer[bodyPos+0] = makeFrameHeader(frameTypeReqUserImpersonation, 15)
-			buffer[bodyPos+1] = uint8(userCtxLen - 15)
-			copy(buffer[bodyPos+2:], pkt.UserImpersonationFrame.User)
-			bodyPos += 2 + userCtxLen
+			writeFrameHeader(buffer, frameTypeReqUserImpersonation, 15)
+			buffer.WriteByte(byte(userCtxLen - 15))
+			buffer.Write(pkt.UserImpersonationFrame.User)
 		}
 	}
 
@@ -289,21 +304,20 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 	}
 
 	// Copy the extras into the body of the packet
-	copy(buffer[bodyPos:], extras)
-	bodyPos += len(extras)
+	buffer.Write(extras)
 
 	// Copy the encoded key into the body of the packet
-	copy(buffer[bodyPos:], encodedKey)
-	bodyPos += len(encodedKey)
+	buffer.Write(encodedKey)
 
 	// Copy the value into the body of the packet
-	copy(buffer[bodyPos:], pkt.Value)
+	buffer.Write(pkt.Value)
 
-	bytesWritten, err := c.stream.Write(buffer)
+	n, err := c.writer.Write(buffer.Bytes())
 	if err != nil {
 		return err
 	}
-	if bytesWritten != len(buffer) {
+
+	if n != buffer.Len() {
 		return io.ErrShortWrite
 	}
 
@@ -312,65 +326,58 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 
 // ReadPacket reads a packet from the network.
 func (c *Conn) ReadPacket() (*Packet, int, error) {
-	var pkt Packet
-
-	// We use a single byte blob to read all headers to avoid allocating a bunch
-	// of identical buffers when we only need one
-	headerBuf := c.headerBuf
+	pkt := AcquirePacket()
 
 	// Read the entire 24-byte header first
-	_, err := io.ReadFull(c.stream, headerBuf)
+	_, err := io.ReadFull(c.reader, c.headerBuf[:])
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Grab the length of the full body
-	bodyLen := binary.BigEndian.Uint32(headerBuf[8:])
+	bodyLen := binary.BigEndian.Uint32(c.headerBuf[8:])
 
 	// Read the remaining bytes of the body
 	bodyBuf := make([]byte, bodyLen)
-	_, err = io.ReadFull(c.stream, bodyBuf)
+	_, err = io.ReadFull(c.reader, bodyBuf)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	pktMagic := CmdMagic(headerBuf[0])
-	if pktMagic == cmdMagicReqExt {
+	pktMagic := CmdMagic(c.headerBuf[0])
+	switch pktMagic {
+	case CmdMagicReq, cmdMagicReqExt:
 		pkt.Magic = CmdMagicReq
-	} else if pktMagic == cmdMagicResExt {
+		pkt.Vbucket = binary.BigEndian.Uint16(c.headerBuf[6:])
+	case CmdMagicRes, cmdMagicResExt:
 		pkt.Magic = CmdMagicRes
-	} else {
-		pkt.Magic = pktMagic
-	}
-
-	pkt.Command = CmdCode(headerBuf[1])
-	pkt.Datatype = headerBuf[5]
-	pkt.Opaque = binary.BigEndian.Uint32(headerBuf[12:])
-	pkt.Cas = binary.BigEndian.Uint64(headerBuf[16:])
-
-	if pktMagic == CmdMagicReq || pktMagic == cmdMagicReqExt {
-		pkt.Vbucket = binary.BigEndian.Uint16(headerBuf[6:])
-	} else if pktMagic == CmdMagicRes || pktMagic == cmdMagicResExt {
-		pkt.Status = StatusCode(binary.BigEndian.Uint16(headerBuf[6:]))
-	} else {
+		pkt.Status = StatusCode(binary.BigEndian.Uint16(c.headerBuf[6:]))
+	default:
 		return nil, 0, errors.New("cannot decode status/vbucket for unknown packet magic")
 	}
 
-	extLen := int(headerBuf[4])
-	keyLen := 0
-	framesLen := 0
+	pkt.Command = CmdCode(c.headerBuf[1])
+	pkt.Datatype = c.headerBuf[5]
+	pkt.Opaque = binary.BigEndian.Uint32(c.headerBuf[12:])
+	pkt.Cas = binary.BigEndian.Uint64(c.headerBuf[16:])
+
+	var (
+		extLen    = int(c.headerBuf[4])
+		keyLen    = int(binary.BigEndian.Uint16(c.headerBuf[2:]))
+		framesLen int
+	)
+
 	if pktMagic == cmdMagicReqExt || pktMagic == cmdMagicResExt {
-		framesLen = int(headerBuf[2])
-		keyLen = int(headerBuf[3])
-	} else {
-		keyLen = int(binary.BigEndian.Uint16(headerBuf[2:]))
+		framesLen = int(c.headerBuf[2])
+		keyLen = int(c.headerBuf[3])
 	}
 
-	bodyPos := 0
-
 	if framesLen > 0 {
-		framesBuf := bodyBuf[bodyPos : bodyPos+framesLen]
-		framePos := 0
+		var (
+			framesBuf = bodyBuf[:framesLen]
+			framePos  int
+		)
+
 		for framePos < framesLen {
 			frameHeader := framesBuf[framePos]
 			framePos++
@@ -390,7 +397,8 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 			frameBody := framesBuf[framePos : framePos+frameLen]
 			framePos += frameLen
 
-			if pktMagic == cmdMagicReqExt {
+			switch pktMagic {
+			case cmdMagicReqExt:
 				if frType == frameTypeReqBarrier && frameLen == 0 {
 					pkt.BarrierFrame = &BarrierFrame{}
 				} else if frType == frameTypeReqSyncDurability && (frameLen == 1 || frameLen == 3) {
@@ -424,7 +432,7 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 						Data: frameBody,
 					})
 				}
-			} else if pktMagic == cmdMagicResExt {
+			case cmdMagicResExt:
 				if frType == frameTypeResSrvDuration && frameLen == 2 {
 					serverDurationEnc := binary.BigEndian.Uint16(frameBody)
 					pkt.ServerDurationFrame = &ServerDurationFrame{
@@ -438,19 +446,16 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 						Data: frameBody,
 					})
 				}
-			} else {
+			default:
 				return nil, 0, errors.New("got unexpected magic when decoding frames")
 			}
 		}
-
-		bodyPos += framesLen
 	}
 
-	pkt.Extras = bodyBuf[bodyPos : bodyPos+extLen]
-	bodyPos += extLen
+	pkt.Extras = bodyBuf[framesLen : framesLen+extLen]
+	pkt.Key = bodyBuf[framesLen+extLen : framesLen+extLen+keyLen]
+	pkt.Value = bodyBuf[framesLen+extLen+keyLen:]
 
-	keyVal := bodyBuf[bodyPos : bodyPos+keyLen]
-	bodyPos += keyLen
 	if c.collectionsEnabled {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
@@ -459,19 +464,48 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 			return nil, 0, errors.New("the observe operation is not supported with collections enabled")
 		}
 
-		if IsCommandCollectionEncoded(pkt.Command) && keyLen > 0 {
-			collectionID, idLen, err := DecodeULEB128_32(keyVal)
+		if keyLen > 0 && IsCommandCollectionEncoded(pkt.Command) {
+			collectionID, idLen, err := DecodeULEB128_32(pkt.Key)
 			if err != nil {
 				return nil, 0, err
 			}
 
-			keyVal = keyVal[idLen:]
+			pkt.Key = pkt.Key[idLen:]
 			pkt.CollectionID = collectionID
 		}
 	}
-	pkt.Key = keyVal
 
-	pkt.Value = bodyBuf[bodyPos:]
+	return pkt, 24 + int(bodyLen), nil
+}
 
-	return &pkt, 24 + int(bodyLen), nil
+// writeUint16 - Similar to 'bytes.BigEndian.PutUint16' accept we write directly into the provided buffer.
+func writeUint16(buffer *bytes.Buffer, n uint16) {
+	buffer.WriteByte(byte(n >> 8))
+	buffer.WriteByte(byte(n))
+}
+
+// writeUint32 - Similar to 'bytes.BigEndian.PutUint32' accept we write directly into the provided buffer.
+func writeUint32(buffer *bytes.Buffer, n uint32) {
+	buffer.WriteByte(byte(n >> 24))
+	buffer.WriteByte(byte(n >> 16))
+	buffer.WriteByte(byte(n >> 8))
+	buffer.WriteByte(byte(n))
+}
+
+// writeUint64 - Similar to 'bytes.BigEndian.PutUint64' accept we write directly into the provided buffer.
+func writeUint64(buffer *bytes.Buffer, n uint64) {
+	buffer.WriteByte(byte(n >> 56))
+	buffer.WriteByte(byte(n >> 48))
+	buffer.WriteByte(byte(n >> 40))
+	buffer.WriteByte(byte(n >> 32))
+	buffer.WriteByte(byte(n >> 24))
+	buffer.WriteByte(byte(n >> 16))
+	buffer.WriteByte(byte(n >> 8))
+	buffer.WriteByte(byte(n))
+}
+
+// writeFrameHeader - Write a single byte containing information about the following frame directly into the provided
+// buffer.
+func writeFrameHeader(buffer *bytes.Buffer, frameType frameType, frameLen uint8) {
+	buffer.WriteByte(uint8(frameType)<<4 | frameLen)
 }

@@ -14,7 +14,7 @@ import (
 // packets data along with some useful meta-data related to
 // the response.
 type memdQResponse struct {
-	memd.Packet
+	*memd.Packet
 
 	sourceAddr   string
 	sourceConnID string
@@ -172,32 +172,16 @@ func (req *memdQRequest) recordRetryAttempt(retryReason RetryReason) {
 	}
 }
 
-func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) bool {
-	t := req.Timer()
-	if t != nil {
+func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) {
+	if t := req.Timer(); t != nil {
 		t.Stop()
 	}
 
-	if req.Persistent {
-		if err != nil {
-			if req.internalCancel(err) {
-				req.Callback(resp, req, err)
-				return true
-			}
-		} else {
-			if atomic.LoadUint32(&req.isCompleted) == 0 {
-				req.Callback(resp, req, err)
-				return true
-			}
-		}
-	} else {
-		if atomic.SwapUint32(&req.isCompleted, 1) == 0 {
-			req.Callback(resp, req, err)
-			return true
-		}
+	if (!req.Persistent && atomic.SwapUint32(&req.isCompleted, 1) == 0) ||
+		(err == nil && atomic.LoadUint32(&req.isCompleted) == 0) ||
+		(err != nil && req.internalCancel(err)) {
+		req.Callback(resp, req, err)
 	}
-
-	return false
 }
 
 func (req *memdQRequest) isCancelled() bool {

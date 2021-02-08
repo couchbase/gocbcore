@@ -26,14 +26,14 @@ func (client *syncClient) Address() string {
 	return client.client.Address()
 }
 
-func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (respOut *memd.Packet, errOut error) {
+func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (valOut []byte, errOut error) {
 	signal := make(chan bool, 1)
 
 	qreq := memdQRequest{
 		Packet: *req,
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {
-				respOut = &resp.Packet
+				valOut = resp.Packet.Value
 			}
 			errOut = err
 			signal <- true
@@ -60,7 +60,7 @@ func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (respO
 }
 
 func (client *syncClient) doBasicOp(cmd memd.CmdCode, k, v, e []byte, deadline time.Time) ([]byte, error) {
-	resp, err := client.doRequest(
+	return client.doRequest(
 		&memd.Packet{
 			Magic:   memd.CmdMagicReq,
 			Command: cmd,
@@ -70,15 +70,6 @@ func (client *syncClient) doBasicOp(cmd memd.CmdCode, k, v, e []byte, deadline t
 		},
 		deadline,
 	)
-
-	// We do it this way as the response value could still be useful even if an
-	// error status code is returned.  For instance, StatusAuthContinue still
-	// contains authentication stepping information.
-	if resp == nil {
-		return nil, err
-	}
-
-	return resp.Value, err
 }
 
 func (client *syncClient) ExecDcpControl(key string, value string, deadline time.Time) error {

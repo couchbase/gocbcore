@@ -39,7 +39,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	useJSONHello := !config.DisableJSONHello
 	useXErrorHello := !config.DisableXErrorHello
 	useSyncReplicationHello := !config.DisableSyncReplicationHello
-	dcpBufferSize := 8 * 1024 * 1024
+	dcpBufferSize := 20 * 1024 * 1024
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	dcpBackfillOrderStr := ""
@@ -177,8 +177,10 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			}
 		}
 
-		if err := sclient.ExecEnableDcpBufferAck(dcpBufferSize, deadline); err != nil {
-			return err
+		if !config.DisableBufferAcknowledgement {
+			if err := sclient.ExecEnableDcpBufferAck(dcpBufferSize, deadline); err != nil {
+				return err
+			}
 		}
 
 		return sclient.ExecEnableDcpClientEnd(deadline)

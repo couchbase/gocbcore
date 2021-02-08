@@ -6,134 +6,71 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 )
 
-type memdOpMapItem struct {
-	value *memdQRequest
-	next  *memdOpMapItem
-}
-
-// This is used to store operations while they are pending
-//  a response from the server to allow mapping of a response
-//  opaque back to the originating request.  This queue takes
-//  advantage of the monotonic nature of the opaque values
-//  and synchronous responses from the server to nearly always
-//  return the request without needing to iterate at all.
+// memdOpMap - Uses the requests opaque to map requests to responses. Note that this structure is not thread safe, and
+// uses should be guarded by a mutex.
 type memdOpMap struct {
-	opIndex uint32
-
-	first *memdOpMapItem
-	last  *memdOpMapItem
+	opaque   uint32
+	requests map[uint32]*memdQRequest
 }
 
-// Add a new request to the bottom of the op queue.
-func (q *memdOpMap) Add(req *memdQRequest) {
-	q.opIndex++
-	atomic.StoreUint32(&req.Opaque, q.opIndex)
-
-	item := &memdOpMapItem{
-		value: req,
-		next:  nil,
-	}
-
-	if q.last == nil {
-		q.first = item
-		q.last = item
-	} else {
-		q.last.next = item
-		q.last = item
-	}
+// newMemdOpMap - Creates a new empty 'memdOpMap' initializing any internal structures. Note that the requests opaque
+// will begin at one and monotonically increase from there.
+func newMemdOpMap() *memdOpMap {
+	return &memdOpMap{requests: make(map[uint32]*memdQRequest)}
 }
 
-// Removes a request from the op queue.  Expects to be passed
-//  the request to remove, along with the request that
-//  immediately precedes it in the queue.
-func (q *memdOpMap) remove(prev *memdOpMapItem, req *memdOpMapItem) {
-	if prev == nil {
-		q.first = req.next
-		if q.first == nil {
-			q.last = nil
+// Add - Add a new request to the map, the provided requests opaque value will be updated atomically.
+func (m *memdOpMap) Add(req *memdQRequest) {
+	m.opaque++
+	atomic.StoreUint32(&req.Opaque, m.opaque)
+	m.requests[m.opaque] = req
+}
+
+// Remove - Remove the provided request from the map.
+func (m *memdOpMap) Remove(req *memdQRequest) bool {
+	_, ok := m.requests[req.Opaque]
+	delete(m.requests, req.Opaque)
+	return ok
+}
+
+// FindOpenStream - This allows searching through the list of requests for a specific request. This is only used to fix
+// the DCP server bug MB-26363.
+func (m *memdOpMap) FindOpenStream(vbID uint16) *memdQRequest {
+	for _, req := range m.requests {
+		if req.Magic == memd.CmdMagicReq && req.Command == memd.CmdDcpStreamReq && req.Vbucket == vbID {
+			return req
 		}
-		return
-	}
-	prev.next = req.next
-	if prev.next == nil {
-		q.last = prev
-	}
-}
-
-// Removes a specific request from the op queue.
-func (q *memdOpMap) Remove(req *memdQRequest) bool {
-	cur := q.first
-	var prev *memdOpMapItem
-	for cur != nil {
-		if cur.value == req {
-			q.remove(prev, cur)
-			return true
-		}
-		prev = cur
-		cur = cur.next
-	}
-
-	return false
-}
-
-// This allows searching through the list of requests for a specific
-// request.  This is only used by the DCP server bug fix for MB-26363.
-func (q *memdOpMap) FindOpenStream(vbID uint16) *memdQRequest {
-	cur := q.first
-	for cur != nil {
-		if cur.value.Magic == memd.CmdMagicReq &&
-			cur.value.Command == memd.CmdDcpStreamReq &&
-			cur.value.Vbucket == vbID {
-			return cur.value
-		}
-		cur = cur.next
 	}
 
 	return nil
 }
 
-// Locates a request (searching FIFO-style) in the op queue using
-// the opaque value that was assigned to it when it was dispatched.
-func (q *memdOpMap) Find(opaque uint32) *memdQRequest {
-	cur := q.first
-	for cur != nil {
-		if cur.value.Opaque == opaque {
-			return cur.value
-		}
-		cur = cur.next
-	}
-
-	return nil
+// Find - Lookup a request using its opaque, note that this function by return a <nil> pointer.
+func (m *memdOpMap) Find(opaque uint32) *memdQRequest {
+	return m.requests[opaque]
 }
 
-// Locates a request (searching FIFO-style) in the op queue using
-// the opaque value that was assigned to it when it was dispatched.
-// It then removes the request from the queue if it is not persistent
-// or if alwaysRemove is set to true.
-func (q *memdOpMap) FindAndMaybeRemove(opaque uint32, force bool) *memdQRequest {
-	cur := q.first
-	var prev *memdOpMapItem
-	for cur != nil {
-		if cur.value.Opaque == opaque {
-			if !cur.value.Persistent || force {
-				q.remove(prev, cur)
-			}
-
-			return cur.value
-		}
-		prev = cur
-		cur = cur.next
+// FindAndMaybeRemove - Lookup a request using its opaque and then remove it from the map if it's not persistent or the
+// 'force' argument is true.
+func (m *memdOpMap) FindAndMaybeRemove(opaque uint32, force bool) *memdQRequest {
+	req, ok := m.requests[opaque]
+	if !ok {
+		return nil
 	}
 
-	return nil
+	if force || !req.Persistent {
+		delete(m.requests, opaque)
+	}
+
+	return req
 }
 
-// Clears the queue of all requests and calls the passed function
-// once for each request found in the queue.
-func (q *memdOpMap) Drain(cb func(*memdQRequest)) {
-	for cur := q.first; cur != nil; cur = cur.next {
-		cb(cur.value)
+// Drain - Remove all the requests from the map whilst running the provided callback for each request.
+func (m *memdOpMap) Drain(callback func(req *memdQRequest)) {
+	for opaque, req := range m.requests {
+		callback(req)
+		delete(m.requests, opaque)
 	}
-	q.first = nil
-	q.last = nil
+
+	m.requests = make(map[uint32]*memdQRequest)
 }
