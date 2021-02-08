@@ -130,6 +130,7 @@ func (config *AgentConfig) redacted() interface{} {
 //   http_retry_delay (duration) - The length of time to wait between HTTP poller retries if connecting fails.
 //   kv_pool_size (int) - The number of connections to create to each kv node.
 //   max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
+//   unordered_execution_enabled (bool) - Whether to enabled the "out of order responses" feature.
 func (config *AgentConfig) FromConnStr(connStr string) error {
 	baseSpec, err := connstr.Parse(connStr)
 	if err != nil {
@@ -362,6 +363,15 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 			return fmt.Errorf("max queue size option must be a number")
 		}
 		config.MaxQueueSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption("unordered_execution_enabled"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return fmt.Errorf("unordered_execution_enabled option must be a boolean")
+		}
+		config.UseOutOfOrderResponses = val
 	}
 
 	return nil
