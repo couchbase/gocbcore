@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 9.1.2 (16 February 2021)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1041](GOCBC-1041):
+  Dropped the log level for memdclient read failures to warn, from error.
+* [https://issues.couchbase.com/browse/GOCBC-1046](GOCBC-1046):
+  Added `MaxTTl` to `ManifestCollection`.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1042](GOCBC-1042):
+  Fixed issue where bucket names were not being correctly escaped.
+* [https://issues.couchbase.com/browse/GOCBC-1050](GOCBC-1050):
+  Fixed issue where the diagnostics component could panic if an operation was cancelled by the user after it had already been internally cancelled.
+
 ## Version 9.1.1 (19 January 2021)
 
 ### New Features and Behavioral Changes
