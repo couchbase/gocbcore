@@ -14,7 +14,7 @@ func (agent *Agent) Internal() *AgentInternal {
 	}
 }
 
-// HasBucketCapabilityStatus verifies whether the specified capability has the specified status.
-func (ai *AgentInternal) HasBucketCapabilityStatus(cap BucketCapability, status BucketCapabilityStatus) bool {
-	return ai.agent.kvMux.HasBucketCapabilityStatus(cap, status)
+// BucketCapabilityStatus returns the current status for a given bucket capability.
+func (ai *AgentInternal) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
+	return ai.agent.kvMux.BucketCapabilityStatus(cap)
 }

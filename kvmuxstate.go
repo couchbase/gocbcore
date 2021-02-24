@@ -88,6 +88,15 @@ func (mux *kvMuxState) HasBucketCapabilityStatus(cap BucketCapability, status Bu
 	return st == status
 }
 
+func (mux *kvMuxState) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
+	st, ok := mux.bucketCapabilities[cap]
+	if !ok {
+		return BucketCapabilityStatusUnsupported
+	}
+
+	return st
+}
+
 // nolint: unused
 func (mux *kvMuxState) debugString() string {
 	var outStr string

@@ -229,6 +229,15 @@ func (mux *kvMux) HasBucketCapabilityStatus(cap BucketCapability, status BucketC
 	return clientMux.HasBucketCapabilityStatus(cap, status)
 }
 
+func (mux *kvMux) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return BucketCapabilityStatusUnknown
+	}
+
+	return clientMux.BucketCapabilityStatus(cap)
+}
+
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 	clientMux := mux.getState()
 	if clientMux == nil {
