@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"github.com/couchbase/gocbcore/v9/memd"
 	"testing"
 	"time"
 
@@ -127,6 +128,8 @@ func (suite *StandardTestSuite) testKvErrorMapGeneric(errCode uint16) {
 			suite.T().Fatalf("Expected reason to be KVErrMapRetryReason but was %s", reason.Description())
 		}
 	}
+
+	suite.VerifyKVMetrics(memd.CmdGet, 4, false)
 
 	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
 		"bucket": suite.BucketName,

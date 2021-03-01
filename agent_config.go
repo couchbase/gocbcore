@@ -73,6 +73,9 @@ type AgentConfig struct {
 	Tracer           RequestTracer
 	NoRootTraceSpans bool
 
+	// Uncommitted: Meter API may change in the future.
+	Meter Meter
+
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig
 

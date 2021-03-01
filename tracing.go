@@ -83,13 +83,15 @@ type tracerComponent struct {
 	tracer           RequestTracer
 	bucket           string
 	noRootTraceSpans bool
+	metrics          Meter
 }
 
-func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool) *tracerComponent {
+func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool, metrics Meter) *tracerComponent {
 	return &tracerComponent{
 		tracer:           tracer,
 		bucket:           bucket,
 		noRootTraceSpans: noRootTraceSpans,
+		metrics:          metrics,
 	}
 }
 
@@ -143,7 +145,6 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 
 	req.processingLock.Lock()
 	req.cmdTraceSpan = tc.tracer.RequestSpan(req.RootTraceContext, req.Packet.Command.Name())
-
 	req.processingLock.Unlock()
 }
 
@@ -160,6 +161,28 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 	req.processingLock.Lock()
 	req.netTraceSpan = tc.tracer.RequestSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
 	req.processingLock.Unlock()
+}
+
+func (tc *tracerComponent) ResponseValueRecord(service, operation, remoteAddress string, latencyUs uint64) {
+	remoteName, _, err := net.SplitHostPort(remoteAddress)
+	if err != nil {
+		logDebugf("Failed to split host port: %v", err)
+	}
+
+	attribs := map[string]string{
+		metricAttribServiceKey:     service,
+		metricAttribNetPeerNameKey: remoteName,
+	}
+	if operation != "" {
+		attribs[metricAttribOperationKey] = operation
+	}
+
+	recorder, err := tc.metrics.ValueRecorder("db.couchbase.responses", attribs)
+	if err != nil {
+		logDebugf("Failed to get value recorder: %v", err)
+	}
+
+	recorder.RecordValue(latencyUs)
 }
 
 func stopCmdTrace(req *memdQRequest) {

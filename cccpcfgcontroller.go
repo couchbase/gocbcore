@@ -78,7 +78,7 @@ func (ccc *cccpConfigController) DoLoop() error {
 	tickTime := ccc.confCccpPollPeriod
 	paused := false
 
-	logDebugf("CCCP Looper starting.")
+	logInfof("CCCP Looper starting.")
 	nodeIdx := -1
 	// The first time that we loop we want to skip any sleep so that we can try get a config and bootstrapped ASAP.
 	firstLoop := true

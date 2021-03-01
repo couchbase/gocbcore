@@ -314,6 +314,7 @@ func (suite *StandardTestSuite) TestN1QL() {
 			}
 		}
 	}
+	suite.VerifyMetrics("query", 1, true)
 
 	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
@@ -385,6 +386,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 			}
 		}
 	}
+	suite.VerifyMetrics("query", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLTimeout() {
@@ -434,6 +436,7 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 			}
 		}
 	}
+	suite.VerifyMetrics("query", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLPrepared() {
@@ -521,6 +524,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 			}
 		}
 	}
+	suite.VerifyMetrics("query", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
@@ -570,6 +574,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 			}
 		}
 	}
+	suite.VerifyMetrics("query", 1, true)
 }
 
 // TestN1QLRowStreamerErrorsAndResults tests the case where we receive both errors and results from the server meaning

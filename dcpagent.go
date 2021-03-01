@@ -139,7 +139,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
 		config.HTTPIdleConnectionTimeout, tlsConfig)
 
-	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false)
+	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, noopMeter{})
 
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.

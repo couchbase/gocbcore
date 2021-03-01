@@ -167,24 +167,43 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		}
 	}
 
+	var service string
 	// Identify an endpoint to use for the request
 	endpoint := req.Endpoint
 	if endpoint == "" {
 		var err error
 		switch req.Service {
 		case MgmtService:
+			service = metricValueServiceManagementValue
 			endpoint, err = hc.getMgmtEp()
 		case CapiService:
+			service = metricValueServiceViewsValue
 			endpoint, err = hc.getCapiEp()
 		case N1qlService:
+			service = metricValueServiceQueryValue
 			endpoint, err = hc.getN1qlEp()
 		case FtsService:
+			service = metricValueServiceSearchValue
 			endpoint, err = hc.getFtsEp()
 		case CbasService:
+			service = metricValueServiceAnalyticsValue
 			endpoint, err = hc.getCbasEp()
 		}
 		if err != nil {
 			return nil, err
+		}
+	} else {
+		switch req.Service {
+		case MgmtService:
+			service = metricValueServiceManagementValue
+		case CapiService:
+			service = metricValueServiceViewsValue
+		case N1qlService:
+			service = metricValueServiceQueryValue
+		case FtsService:
+			service = metricValueServiceSearchValue
+		case CbasService:
+			service = metricValueServiceAnalyticsValue
 		}
 	}
 
@@ -252,11 +271,13 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	hreq.Header.Set("User-Agent", clientInfoString(uniqueID, hc.userAgent))
 
 	for {
+		start := time.Now()
 		dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
 		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
 		// we can't close the body of this response as it's long lived beyond the function
 		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
 		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID)
+		hc.tracer.ResponseValueRecord(service, "", hreq.Host, uint64(time.Since(start).Microseconds()))
 		if err != nil {
 			logSchedf("Received HTTP Response for ID=%s, errored", req.UniqueID)
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation

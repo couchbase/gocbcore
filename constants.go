@@ -101,3 +101,15 @@ const (
 	spanAttribNetPeerPortKey    = "net.peer.port"
 	spanAttribServerDurationKey = "db.couchbase.server_duration"
 )
+
+const (
+	metricAttribServiceKey            = "db.couchbase.service"
+	metricAttribNetPeerNameKey        = "net.peer.name"
+	metricAttribOperationKey          = "db.operation"
+	metricValueServiceKeyValue        = "kv"
+	metricValueServiceQueryValue      = "query"
+	metricValueServiceSearchValue     = "search"
+	metricValueServiceAnalyticsValue  = "analytics"
+	metricValueServiceViewsValue      = "views"
+	metricValueServiceManagementValue = "management"
+)

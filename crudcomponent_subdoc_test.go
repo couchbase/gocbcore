@@ -107,6 +107,10 @@ func (suite *StandardTestSuite) TestSubdocXattrs() {
 		})
 	}))
 	s.Wait(0)
+
+	suite.VerifyKVMetrics(memd.CmdSet, 1, true)
+	suite.VerifyKVMetrics(memd.CmdSubDocMultiMutation, 1, true)
+	suite.VerifyKVMetrics(memd.CmdSubDocMultiLookup, 1, true)
 }
 
 func (suite *StandardTestSuite) TestSubdocXattrsReorder() {

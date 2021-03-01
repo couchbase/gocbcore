@@ -218,6 +218,7 @@ func (suite *StandardTestSuite) TestAnalytics() {
 				}
 			}
 		}
+		suite.VerifyMetrics("analytics", 1, true)
 	}
 
 	suite.T().Run("cleanup", helper.testCleanup)
@@ -281,6 +282,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 			}
 		}
 	}
+	suite.VerifyMetrics("analytics", 1, true)
 }
 
 func (suite *StandardTestSuite) TestAnalyticsTimeout() {
@@ -330,4 +332,5 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 			}
 		}
 	}
+	suite.VerifyMetrics("analytics", 1, true)
 }

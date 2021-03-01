@@ -19,10 +19,12 @@ type StandardTestSuite struct {
 	agentGroup *AgentGroup
 	mockInst   *jcbmock.Mock
 	tracer     *testTracer
+	meter      *testMeter
 }
 
 func (suite *StandardTestSuite) BeforeTest(suiteName, testName string) {
 	suite.tracer.Reset()
+	suite.meter.Reset()
 }
 
 func (suite *StandardTestSuite) SetupSuite() {
@@ -57,6 +59,7 @@ func (suite *StandardTestSuite) SetupSuite() {
 
 	suite.TestConfig = globalTestConfig
 	suite.tracer = newTestTracer()
+	suite.meter = newTestMeter()
 	var err error
 	suite.agentGroup, err = suite.initAgentGroup(suite.makeAgentGroupConfig(globalTestConfig))
 	suite.Require().Nil(err, err)
@@ -239,6 +242,7 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	config.UseCollections = true
 	config.UseOutOfOrderResponses = true
 	config.Tracer = suite.tracer
+	config.Meter = suite.meter
 
 	config.Auth = testConfig.Authenticator
 
@@ -366,6 +370,26 @@ func (suite *StandardTestSuite) mutateIn(agent *Agent, s *TestSubHarness, ops []
 	}))
 	s.Wait(0)
 	return
+}
+
+func (suite *StandardTestSuite) VerifyKVMetrics(cmd memd.CmdCode, length int, atLeastLen bool) {
+	suite.VerifyMetrics(makeMetricsKeyFromCmd("kv", cmd), length, atLeastLen)
+}
+
+func (suite *StandardTestSuite) VerifyMetrics(key string, length int, atLeastLen bool) {
+	suite.meter.lock.Lock()
+	defer suite.meter.lock.Unlock()
+	recorders := suite.meter.recorders
+	if suite.Assert().Contains(recorders, key) {
+		if atLeastLen {
+			suite.Assert().GreaterOrEqual(len(recorders[key].values), length)
+		} else {
+			suite.Assert().Len(recorders[key].values, length)
+		}
+		for _, val := range recorders[key].values {
+			suite.Assert().NotZero(val)
+		}
+	}
 }
 
 func TestStandardSuite(t *testing.T) {

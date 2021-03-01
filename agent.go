@@ -92,7 +92,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if tracer == nil {
 		tracer = noopTracer{}
 	}
-	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.NoRootTraceSpans)
+	meter := config.Meter
+	if meter == nil {
+		meter = noopMeter{}
+	}
+	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.NoRootTraceSpans, meter)
 
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),

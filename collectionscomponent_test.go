@@ -68,7 +68,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 
@@ -188,7 +188,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 
@@ -270,7 +270,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 
@@ -335,7 +335,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownUnsup
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 
@@ -394,7 +394,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsUnsupported() {
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -490,7 +490,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -603,7 +603,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -715,7 +715,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1

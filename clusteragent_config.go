@@ -20,6 +20,7 @@ type clusterAgentConfig struct {
 	// Volatile: Tracer API is subject to change.
 	Tracer           RequestTracer
 	NoRootTraceSpans bool
+	Meter            Meter
 
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig

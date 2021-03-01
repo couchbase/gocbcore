@@ -45,6 +45,7 @@ func (config *AgentGroupConfig) toAgentConfig() *AgentConfig {
 		HTTPMaxIdleConnsPerHost:   config.HTTPMaxIdleConnsPerHost,
 		HTTPIdleConnectionTimeout: config.HTTPIdleConnectionTimeout,
 		Tracer:                    config.Tracer,
+		Meter:                     config.Meter,
 		NoRootTraceSpans:          config.NoRootTraceSpans,
 		DefaultRetryStrategy:      config.DefaultRetryStrategy,
 		CircuitBreakerConfig:      config.CircuitBreakerConfig,
