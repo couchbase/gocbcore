@@ -26,8 +26,7 @@ type clusterAgentConfig struct {
 }
 
 func (config *clusterAgentConfig) redacted() interface{} {
-	newConfig := clusterAgentConfig{}
-	newConfig = *config
+	newConfig := *config
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.

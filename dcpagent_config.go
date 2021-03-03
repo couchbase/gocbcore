@@ -60,8 +60,7 @@ type DCPAgentConfig struct {
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {
-	newConfig := DCPAgentConfig{}
-	newConfig = *config
+	newConfig := *config
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.

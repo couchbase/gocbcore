@@ -83,8 +83,7 @@ type AgentConfig struct {
 }
 
 func (config *AgentConfig) redacted() interface{} {
-	newConfig := AgentConfig{}
-	newConfig = *config
+	newConfig := *config
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.
