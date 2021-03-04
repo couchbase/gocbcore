@@ -67,6 +67,7 @@ func (ccc *cccpConfigController) Done() chan struct{} {
 	return ccc.looperDoneSig
 }
 
+// Reset must never be called concurrently with the Stop or whilst the poll loop is running.
 func (ccc *cccpConfigController) Reset() {
 	ccc.looperStopSig = make(chan struct{})
 	ccc.looperDoneSig = make(chan struct{})

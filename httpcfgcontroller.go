@@ -95,6 +95,7 @@ func (hcc *httpConfigController) Stop() {
 	close(hcc.looperStopSig)
 }
 
+// Reset must never be called concurrently with the Stop or whilst the poll loop is running.
 func (hcc *httpConfigController) Reset() {
 	hcc.looperStopSig = make(chan struct{})
 	hcc.looperDoneSig = make(chan struct{})

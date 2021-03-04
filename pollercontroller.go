@@ -41,6 +41,10 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	}
 
 	pc.controllerLock.Lock()
+	if pc.stopped {
+		pc.controllerLock.Unlock()
+		return
+	}
 	if cfg.bktType == bktTypeCouchbase && pc.activeController == pc.httpPoller {
 		logDebugf("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
 		pc.activeController = nil
@@ -106,6 +110,7 @@ func (pc *pollerController) Pause(paused bool) {
 	}
 }
 
+// Stop should never be called more than once.
 func (pc *pollerController) Stop() {
 	pc.controllerLock.Lock()
 	pc.stopped = true
@@ -148,6 +153,14 @@ func (pc *pollerController) PollerError() error {
 func (pc *pollerController) ForceHTTPPoller() {
 	go func() {
 		pc.controllerLock.Lock()
+		if pc.stopped || pc.activeController == nil {
+			// If active controller is nil at this point then something strange is happening, we're trying to force
+			// http polling at the same time as we've received a config via http polling and are attempting to reset to
+			// use cccp polling (which means that the server must support cccp. If this happens let's just let
+			// cccp start up.
+			pc.controllerLock.Unlock()
+			return
+		}
 		if pc.activeController == pc.cccpPoller {
 			logDebugf("Stopping CCCP poller for HTTP polling takeover")
 			pc.cccpPoller.Stop()
