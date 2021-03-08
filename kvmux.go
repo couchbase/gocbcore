@@ -102,7 +102,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 
 	// Attempt to atomically update the routing data
 	if !mux.updateState(oldMuxState, newMuxState) {
-		logErrorf("Someone preempted the config update, skipping update")
+		logWarnf("Someone preempted the config update, skipping update")
 		return
 	}
 
