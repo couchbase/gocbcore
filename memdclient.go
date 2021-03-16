@@ -351,7 +351,7 @@ func (client *memdClient) run() {
 			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
 				if !client.closed {
-					logWarnf("memdClient read failure: %v", err)
+					logWarnf("memdClient read failure on conn `%v` : %v", client.connID, err)
 				}
 				break
 			}
