@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 9.1.3 (16 March 2021)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1056](GOCBC-1056):
+  Various performance improvements to reduce CPU level.
+* [https://issues.couchbase.com/browse/GOCBC-1068)](GOCBC-1068):
+  Dropped the log level for preempted config updates.
+* [https://issues.couchbase.com/browse/GOCBC-940)](GOCBC-940):
+  Updated the tracing interfaces and orphaned response logging output.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1066](GOCBC-1066):
+  Fixed issue which could cause the config pollers to panic.
+
 ## Version 9.1.2 (16 February 2021)
 
 ### New Features and Behavioral Changes
