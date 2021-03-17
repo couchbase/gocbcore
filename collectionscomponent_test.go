@@ -34,7 +34,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -136,7 +137,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -152,7 +154,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -252,7 +255,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -452,7 +456,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -547,7 +552,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -562,7 +568,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)
@@ -657,7 +664,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 
 			suite.Assert().Equal(memd.CmdMagicReq, req.Magic)
 			suite.Assert().Equal(memd.CmdCollectionsGetID, req.Command)
-			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Key)
+			suite.Assert().Equal([]byte(fmt.Sprintf("%s.%s", sName, cName)), req.Value)
+			suite.Assert().Empty(req.Key)
 			suite.Assert().Empty(req.CollectionName)
 			suite.Assert().Empty(req.ScopeName)
 			suite.Assert().Equal(-1, req.ReplicaIdx)

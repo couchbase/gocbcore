@@ -2173,7 +2173,7 @@ func testCreateScope(name, bucketName string, agent *Agent) (*Manifest, error) {
 
 	req := &HTTPRequest{
 		Service:  MgmtService,
-		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections", bucketName),
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/scopes", bucketName),
 		Method:   "POST",
 		Body:     []byte(data.Encode()),
 		Headers:  make(map[string]string),
@@ -2259,7 +2259,7 @@ func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool
 
 	req := &HTTPRequest{
 		Service:  MgmtService,
-		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s", bucketName, name),
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/scopes/%s", bucketName, name),
 		Method:   "DELETE",
 		Headers:  make(map[string]string),
 		Deadline: time.Now().Add(10 * time.Second),
@@ -2353,7 +2353,7 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 
 	req := &HTTPRequest{
 		Service:  MgmtService,
-		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s/", bucketName, scopeName),
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/scopes/%s/collections", bucketName, scopeName),
 		Method:   "POST",
 		Body:     []byte(data.Encode()),
 		Headers:  make(map[string]string),
@@ -2446,7 +2446,7 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 
 	req := &HTTPRequest{
 		Service:  MgmtService,
-		Path:     fmt.Sprintf("/pools/default/buckets/%s/collections/%s/%s", bucketName, scopeName, name),
+		Path:     fmt.Sprintf("/pools/default/buckets/%s/scopes/%s/collections/%s", bucketName, scopeName, name),
 		Method:   "DELETE",
 		Headers:  make(map[string]string),
 		Deadline: time.Now().Add(10 * time.Second),
