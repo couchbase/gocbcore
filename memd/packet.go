@@ -99,14 +99,6 @@ func AcquirePacket() *Packet {
 // ReleasePacket - Return a packet to the internal pool. Note that the packet will be reset, removing any active
 // pointers to existing data structures.
 func ReleasePacket(packet *Packet) {
-	packet.Key = nil
-	packet.Extras = nil
-	packet.Value = nil
-	packet.BarrierFrame = nil
-	packet.DurabilityLevelFrame = nil
-	packet.StreamIDFrame = nil
-	packet.OpenTracingFrame = nil
-	packet.ServerDurationFrame = nil
-	packet.UnsupportedFrames = nil
+	*packet = Packet{}
 	packetPool.Put(packet)
 }

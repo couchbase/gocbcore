@@ -67,9 +67,8 @@ func (m *memdOpMap) FindAndMaybeRemove(opaque uint32, force bool) *memdQRequest 
 
 // Drain - Remove all the requests from the map whilst running the provided callback for each request.
 func (m *memdOpMap) Drain(callback func(req *memdQRequest)) {
-	for opaque, req := range m.requests {
+	for _, req := range m.requests {
 		callback(req)
-		delete(m.requests, opaque)
 	}
 
 	m.requests = make(map[uint32]*memdQRequest)

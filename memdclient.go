@@ -315,38 +315,44 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 func (client *memdClient) run() {
 	var (
-		dcpBufferQ    = make(chan *dcpBuffer, client.dcpQueueSize)
-		dcpKillSwitch = make(chan struct{})
-		dcpKillNotify = make(chan struct{})
+		// A queue for DCP commands so we can execute them out-of-band from packet receiving.  This
+		// is integral to allow the higher level application to back-pressure against the DCP packet
+		// processing without interfeering with the SDKs control commands (like config fetch).
+		dcpBufferQ = make(chan *dcpBuffer, client.dcpQueueSize)
+
+		// When a kill request comes in, we need to immediately stop processing all requests.  This
+		// includes immediately stopping the DCP queue rather than waiting for the application to
+		// flush that queue.  This means that we lose packets that were read but not processed, but
+		// this is not fundementally different to if we had just not read them at all.  As a side
+		// effect of this, we need to use a separate kill signal on top of closing the queue.
+		isShuttingDown = uint32(0)
+
+		// After we signal that DCP processing should stop, we need a notification so we know when
+		// it has been completed, we do this to prevent leaving the goroutine around, and we need to
+		// ensure that the application has finished with the last packet it received before we stop.
+		dcpProcDoneCh = make(chan struct{})
 	)
 
 	go func() {
-		defer close(dcpKillNotify)
+		defer close(dcpProcDoneCh)
 
 		for {
-			select {
-			case q, more := <-dcpBufferQ:
-				if !more {
-					dcpKillNotify <- struct{}{}
-					return
-				}
+			q, stillOpen := <-dcpBufferQ
+			if !stillOpen || atomic.LoadUint32(&isShuttingDown) != 0 {
+				return
+			}
 
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
-				client.resolveRequest(q.resp)
+			logSchedf("Resolving response OP=0x%x. Opaque=%d", q.resp.Command, q.resp.Opaque)
+			client.resolveRequest(q.resp)
 
-				// See below for information on MB-26363 for why this is here.
-				if !q.isInternal && client.dcpAckSize > 0 {
-					client.maybeSendDcpBufferAck(q.packetLen)
-				}
-			case <-dcpKillSwitch:
-				close(dcpBufferQ)
+			// See below for information on MB-26363 for why this is here.
+			if !q.isInternal && client.dcpAckSize > 0 {
+				client.maybeSendDcpBufferAck(q.packetLen)
 			}
 		}
 	}()
 
 	go func() {
-		defer close(dcpKillSwitch)
-
 		for {
 			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
@@ -423,18 +429,24 @@ func (client *memdClient) run() {
 		client.lock.Lock()
 		if !client.closed {
 			client.closed = true
+			client.lock.Unlock()
 
 			err := client.conn.Close()
 			if err != nil {
 				// Lets log a warning, as this is non-fatal
 				logWarnf("Failed to shut down client connection (%s)", err)
 			}
+		} else {
+			client.lock.Unlock()
 		}
 
-		client.lock.Unlock()
-
-		dcpKillSwitch <- struct{}{}
-		<-dcpKillNotify
+		// We first mark that we are shutting down to stop the DCP processor from running any
+		// additional packets up to the application.  We then close the buffer channel to wake
+		// the processor if its asleep (queue was empty).  We then wait to ensure it is finished
+		// with whatever packet was being processed.
+		atomic.StoreUint32(&isShuttingDown, 1)
+		close(dcpBufferQ)
+		<-dcpProcDoneCh
 
 		client.opList.Drain(func(req *memdQRequest) {
 			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {

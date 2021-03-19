@@ -177,10 +177,20 @@ func (req *memdQRequest) tryCallback(resp *memdQResponse, err error) {
 		t.Stop()
 	}
 
-	if (!req.Persistent && atomic.SwapUint32(&req.isCompleted, 1) == 0) ||
-		(err == nil && atomic.LoadUint32(&req.isCompleted) == 0) ||
-		(err != nil && req.internalCancel(err)) {
-		req.Callback(resp, req, err)
+	if req.Persistent {
+		if err != nil {
+			if req.internalCancel(err) {
+				req.Callback(resp, req, err)
+			}
+		} else {
+			if atomic.LoadUint32(&req.isCompleted) == 0 {
+				req.Callback(resp, req, err)
+			}
+		}
+	} else {
+		if atomic.SwapUint32(&req.isCompleted, 1) == 0 {
+			req.Callback(resp, req, err)
+		}
 	}
 }
 
