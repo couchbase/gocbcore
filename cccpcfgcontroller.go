@@ -108,7 +108,7 @@ Looper:
 
 		numNodes := iter.NumPipelines()
 		if numNodes == 0 {
-			logDebugf("CCCPPOLL: No nodes available to poll, return upstream")
+			logInfof("CCCPPOLL: No nodes available to poll, return upstream")
 			return errNoCCCPHosts
 		}
 
@@ -122,14 +122,14 @@ Looper:
 			nodeIdx = (nodeIdx + 1) % numNodes
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
-				logDebugf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
 				if isPollingFallbackError(err) {
 					// This error is indicative of a memcached bucket which we can't handle so return the error.
-					logDebugf("CCCPPOLL: CCCP not supported, returning error upstream.")
+					logInfof("CCCPPOLL: CCCP not supported, returning error upstream.")
 					foundErr = err
 					return true
 				}
 
+				logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
 				ccc.setError(err)
 				return false
 			}
@@ -139,13 +139,13 @@ Looper:
 
 			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {
-				logErrorf("CCCPPOLL: Failed to parse source address. %v", err)
+				logWarnf("CCCPPOLL: Failed to parse source address. %v", err)
 				return false
 			}
 
 			bk, err := parseConfig(cccpBytes, hostName)
 			if err != nil {
-				logDebugf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+				logWarnf("CCCPPOLL: Failed to parse CCCP config. %v", err)
 				return false
 			}
 
@@ -157,7 +157,7 @@ Looper:
 		}
 
 		if foundConfig == nil {
-			logDebugf("CCCPPOLL: Failed to retrieve config from any node.")
+			logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
 			continue
 		}
 

@@ -2000,6 +2000,10 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalid
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
+	// This test purposefully triggers error cases.
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
 	addr1 := cfg.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port == "8091" {

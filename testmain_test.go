@@ -16,17 +16,27 @@ import (
 	"time"
 )
 
+var globalTestLogger *testLogger
+
 type testLogger struct {
-	Parent   Logger
-	LogCount []uint64
+	Parent           Logger
+	LogCount         []uint64
+	suppressWarnings bool
 }
 
 func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
 	if level >= 0 && level < LogMaxVerbosity {
+		if logger.suppressWarnings && level == LogWarn {
+			level = LogInfo
+		}
 		atomic.AddUint64(&logger.LogCount[level], 1)
 	}
 
 	return logger.Parent.Log(level, offset+1, fmt.Sprintf("[%s] ", logLevelToString(level))+format, v...)
+}
+
+func (logger *testLogger) SuppressWarnings(suppress bool) {
+	logger.suppressWarnings = suppress
 }
 
 func createTestLogger() *testLogger {
@@ -175,25 +185,24 @@ func TestMain(m *testing.M) {
 		panic("Unrecognized test suite requested")
 	}
 
-	var logger *testLogger
 	if !*disableLogger {
 		// Set up our special logger which logs the log level count
-		logger = createTestLogger()
-		SetLogger(logger)
+		globalTestLogger = createTestLogger()
+		SetLogger(globalTestLogger)
 	}
 
 	result := m.Run()
 
-	if logger != nil {
+	if globalTestLogger != nil {
 		log.Printf("Log Messages Emitted:")
 		var preLogTotal uint64
 		for i := 0; i < int(LogMaxVerbosity); i++ {
-			count := atomic.LoadUint64(&logger.LogCount[i])
+			count := atomic.LoadUint64(&globalTestLogger.LogCount[i])
 			preLogTotal += count
 			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
 		}
 
-		abnormalLogCount := atomic.LoadUint64(&logger.LogCount[LogError]) + atomic.LoadUint64(&logger.LogCount[LogWarn])
+		abnormalLogCount := atomic.LoadUint64(&globalTestLogger.LogCount[LogError]) + atomic.LoadUint64(&globalTestLogger.LogCount[LogWarn])
 		if abnormalLogCount > 0 {
 			log.Printf("Detected unexpected logging, failing")
 			result = 1
@@ -204,7 +213,7 @@ func TestMain(m *testing.M) {
 		log.Printf("Post sleep log Messages Emitted:")
 		var postLogTotal uint64
 		for i := 0; i < int(LogMaxVerbosity); i++ {
-			count := atomic.LoadUint64(&logger.LogCount[i])
+			count := atomic.LoadUint64(&globalTestLogger.LogCount[i])
 			postLogTotal += count
 			log.Printf("  (%s): %d", logLevelToString(LogLevel(i)), count)
 		}

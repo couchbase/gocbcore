@@ -140,7 +140,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	conn, err := dialMemdConn(ctx, address, tlsConfig, deadline)
 	cancel()
 	if err != nil {
-		logDebugf("Failed to connect. %v", err)
+		logWarnf("Failed to connect. %v", err)
 		return nil, err
 	}
 

@@ -180,7 +180,7 @@ Looper:
 			var err error
 			resp, err = hcc.httpComponent.DoInternalHTTPRequest(req, true)
 			if err != nil {
-				logDebugf("Failed to connect to host. %v", err)
+				logWarnf("Failed to connect to host. %v", err)
 				hcc.setError(err)
 				return 0
 			}
@@ -191,19 +191,19 @@ Looper:
 					logErrorf("Socket close failed handling status code != 200 (%s)", err)
 				}
 				if resp.StatusCode == 401 {
-					logDebugf("Failed to connect to host, bad auth.")
+					logWarnf("Failed to connect to host, bad auth.")
 					hcc.setError(errAuthenticationFailure)
 					return -1
 				} else if resp.StatusCode == 404 {
 					if is2x {
-						logDebugf("Failed to connect to host, bad bucket.")
+						logWarnf("Failed to connect to host, bad bucket.")
 						hcc.setError(errAuthenticationFailure)
 						return -1
 					}
 
 					return doConfigRequest(true)
 				}
-				logDebugf("Failed to connect to host, unexpected status code: %v.", resp.StatusCode)
+				logWarnf("Failed to connect to host, unexpected status code: %v.", resp.StatusCode)
 				hcc.setError(errCliInternalError)
 				return 0
 			}

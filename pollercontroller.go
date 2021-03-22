@@ -46,7 +46,7 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 		return
 	}
 	if cfg.bktType == bktTypeCouchbase && pc.activeController == pc.httpPoller {
-		logDebugf("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
+		logInfof("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
 		pc.activeController = nil
 		pc.controllerLock.Unlock()
 		go func() {
@@ -162,7 +162,7 @@ func (pc *pollerController) ForceHTTPPoller() {
 			return
 		}
 		if pc.activeController == pc.cccpPoller {
-			logDebugf("Stopping CCCP poller for HTTP polling takeover")
+			logInfof("Stopping CCCP poller for HTTP polling takeover")
 			pc.cccpPoller.Stop()
 			pollerCh := pc.cccpPoller.Done()
 			if pollerCh != nil {
