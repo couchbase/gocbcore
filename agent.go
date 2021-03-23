@@ -462,7 +462,7 @@ func buildAuthHandler(auth AuthProvider) authFuncHandler {
 					completedCh <- BytesAndError{Err: err}
 				})
 				if callErr != nil {
-					return nil, nil, err
+					return nil, nil, callErr
 				}
 				return completedCh, continueCh, nil
 			}
