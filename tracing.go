@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -199,7 +200,7 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 
 	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
 	req.netTraceSpan.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
-	req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, resp.Opaque)
+	req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, strconv.Itoa(int(resp.Opaque)))
 	req.netTraceSpan.SetAttribute(spanAttribLocalIDKey, resp.sourceConnID)
 	localName, localPort, err := net.SplitHostPort(localAddress)
 	if err != nil {
