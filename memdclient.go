@@ -614,14 +614,14 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
-		logWarnf("Failed to execute HELLO (%v)", err)
+		logDebugf("Failed to execute HELLO (%v)", err)
 		return err
 	}
 
 	errMapCh, err := client.ExecGetErrorMap(1, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
-		logInfof("Failed to execute Get error map (%v)", err)
+		logDebugf("Failed to execute Get error map (%v)", err)
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
@@ -631,7 +631,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		listMechsCh = make(chan SaslListMechsCompleted, 1)
 		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
-				logInfof("Failed to fetch list auth mechs (%v)", err)
+				logDebugf("Failed to fetch list auth mechs (%v)", err)
 			}
 			listMechsCh <- SaslListMechsCompleted{
 				Err:   err,
@@ -639,7 +639,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 			}
 		})
 		if err != nil {
-			logInfof("Failed to execute list auth mechs (%v)", err)
+			logDebugf("Failed to execute list auth mechs (%v)", err)
 		}
 	}
 
@@ -648,7 +648,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if firstAuthMethod != nil {
 		completedAuthCh, continueAuthCh, err = firstAuthMethod()
 		if err != nil {
-			logWarnf("Failed to execute auth (%v)", err)
+			logDebugf("Failed to execute auth (%v)", err)
 			return err
 		}
 	}
@@ -658,7 +658,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		if bucket != "" {
 			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
-				logWarnf("Failed to execute select bucket (%v)", err)
+				logDebugf("Failed to execute select bucket (%v)", err)
 				return err
 			}
 		}
@@ -668,7 +668,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 	helloResp := <-helloCh
 	if helloResp.Err != nil {
-		logInfof("Failed to hello with server (%v)", helloResp.Err)
+		logDebugf("Failed to hello with server (%v)", helloResp.Err)
 		return helloResp.Err
 	}
 
@@ -676,7 +676,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if errMapResp.Err == nil {
 		settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
 	} else {
-		logInfof("Failed to fetch kv error map (%s)", errMapResp.Err)
+		logDebugf("Failed to fetch kv error map (%s)", errMapResp.Err)
 	}
 
 	var serverAuthMechanisms []AuthMechanism
@@ -686,7 +686,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 			serverAuthMechanisms = listMechsResp.Mechs
 			logDebugf("Server supported auth mechanisms: %v", serverAuthMechanisms)
 		} else {
-			logInfof("Failed to fetch auth mechs from server (%v)", listMechsResp.Err)
+			logDebugf("Failed to fetch auth mechs from server (%v)", listMechsResp.Err)
 		}
 	}
 
@@ -694,7 +694,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if completedAuthCh != nil {
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
-			logInfof("Failed to perform auth against server (%v)", authResp.Err)
+			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
 			if errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				// If there's only one auth mechanism then we can just fail.
 				if len(authMechanisms) == 1 {
@@ -718,7 +718,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				var mech AuthMechanism
 				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
 				if !found {
-					logWarnf("Failed to authenticate, all options exhausted")
+					logDebugf("Failed to authenticate, all options exhausted")
 					return authResp.Err
 				}
 
@@ -726,19 +726,19 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				nextAuthFunc := settings.AuthHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
-					logWarnf("Failed to authenticate, no available credentials")
+					logInfof("Failed to authenticate, no available credentials")
 					return authResp.Err
 				}
 				completedAuthCh, continueAuthCh, err = nextAuthFunc()
 				if err != nil {
-					logWarnf("Failed to execute auth (%v)", err)
+					logDebugf("Failed to execute auth (%v)", err)
 					return err
 				}
 				if continueAuthCh == nil {
 					if bucket != "" {
 						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
-							logWarnf("Failed to execute select bucket (%v)", err)
+							logDebugf("Failed to execute select bucket (%v)", err)
 							return err
 						}
 					}
@@ -750,7 +750,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 					break
 				}
 
-				logWarnf("Failed to perform auth against server (%v)", authResp.Err)
+				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
 				if errors.Is(authResp.Err, ErrAuthenticationFailure) {
 					return authResp.Err
 				}
@@ -1067,7 +1067,7 @@ func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh ch
 		}
 		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
 		if err != nil {
-			logWarnf("Failed to execute select bucket (%v)", err)
+			logDebugf("Failed to execute select bucket (%v)", err)
 			selectCh <- BytesAndError{Err: err}
 			return
 		}

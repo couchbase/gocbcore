@@ -1909,6 +1909,10 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBuc
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
+	// This test purposefully triggers error cases.
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
 	addr1 := cfg.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port != "8091" {
@@ -2118,6 +2122,10 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 	if len(cfg.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
+
+	// This test purposefully triggers error cases.
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
 
 	addr1 := cfg.MemdAddrs[0]
 	port := strings.Split(addr1, ":")[1]

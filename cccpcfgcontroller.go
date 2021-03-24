@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"errors"
 	"math/rand"
 	"sync"
 	"time"
@@ -129,7 +130,13 @@ Looper:
 					return true
 				}
 
-				logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %v", err)
+				// Only log the error at warn if it's unexpected.
+				// If we cancelled the request or we're shutting down the connection then it's not really unexpected.
+				if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
+					logDebugf("CCCPPOLL: CCCP request was cancelled or connection was shutdown: %v", err)
+				} else {
+					logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %s", err)
+				}
 				ccc.setError(err)
 				return false
 			}
@@ -139,7 +146,7 @@ Looper:
 
 			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {
-				logWarnf("CCCPPOLL: Failed to parse source address. %v", err)
+				logWarnf("CCCPPOLL: Failed to parse source address. %s", err)
 				return false
 			}
 
@@ -157,7 +164,13 @@ Looper:
 		}
 
 		if foundConfig == nil {
-			logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
+			// Only log the error at warn if it's unexpected.
+			// If we cancelled the request then we're shutting down and this isn't unexpected.
+			if errors.Is(ccc.Error(), ErrRequestCanceled) {
+				logDebugf("CCCPPOLL: CCCP request was cancelled.")
+			} else {
+				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
+			}
 			continue
 		}
 
@@ -213,7 +226,7 @@ func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOu
 		return
 	case <-ccc.looperStopSig:
 		ReleaseTimer(timeoutTmr, false)
-		req.cancelWithCallback(errAmbiguousTimeout)
+		req.cancelWithCallback(errRequestCanceled)
 		<-signal
 		return
 

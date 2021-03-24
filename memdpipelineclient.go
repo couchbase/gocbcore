@@ -228,6 +228,10 @@ func (pipecli *memdPipelineClient) Run() {
 		if cli.err != nil {
 			atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnected))
 			pipecli.lock.Lock()
+			if pipecli.parent != nil {
+				// If we know that we're shutting then don't log the error, it isn't unexpected.
+				logWarnf("Pipeline Client %p failed to bootstrap: %s", pipecli, cli.err)
+			}
 			pipecli.connectError = cli.err
 			pipecli.lock.Unlock()
 			continue

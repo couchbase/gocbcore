@@ -475,12 +475,12 @@ func buildAuthHandler(auth AuthProvider) authFuncHandler {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
-	routeCloseErr := agent.kvMux.Close()
-
 	poller := agent.pollerController
 	if poller != nil {
 		poller.Stop()
 	}
+
+	routeCloseErr := agent.kvMux.Close()
 
 	if agent.zombieLogger != nil {
 		agent.zombieLogger.Stop()
