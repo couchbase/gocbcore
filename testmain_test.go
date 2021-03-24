@@ -21,12 +21,12 @@ var globalTestLogger *testLogger
 type testLogger struct {
 	Parent           Logger
 	LogCount         []uint64
-	suppressWarnings bool
+	suppressWarnings uint32
 }
 
 func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
 	if level >= 0 && level < LogMaxVerbosity {
-		if logger.suppressWarnings && level == LogWarn {
+		if atomic.LoadUint32(&logger.suppressWarnings) == 1 && level == LogWarn {
 			level = LogInfo
 		}
 		atomic.AddUint64(&logger.LogCount[level], 1)
@@ -36,7 +36,11 @@ func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...in
 }
 
 func (logger *testLogger) SuppressWarnings(suppress bool) {
-	logger.suppressWarnings = suppress
+	if suppress {
+		atomic.StoreUint32(&logger.suppressWarnings, 1)
+	} else {
+		atomic.StoreUint32(&logger.suppressWarnings, 0)
+	}
 }
 
 func createTestLogger() *testLogger {
