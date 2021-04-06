@@ -604,7 +604,7 @@ type bootstrapProps struct {
 type memdInitFunc func(*memdClient, time.Time) error
 
 func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
-	logDebugf("Fetching cluster client data")
+	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
 
 	bucket := settings.Bucket
 	features := client.helloFeatures(settings.HelloProps)
@@ -614,14 +614,14 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
-		logDebugf("Failed to execute HELLO (%v)", err)
+		logDebugf("Memdclient `%s/%p` Failed to execute HELLO (%v)", client.Address(), client, err)
 		return err
 	}
 
 	errMapCh, err := client.ExecGetErrorMap(1, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
-		logDebugf("Failed to execute Get error map (%v)", err)
+		logDebugf("Memdclient `%s/%p`Failed to execute Get error map (%v)", client.Address(), client, err)
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
@@ -631,7 +631,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		listMechsCh = make(chan SaslListMechsCompleted, 1)
 		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
-				logDebugf("Failed to fetch list auth mechs (%v)", err)
+				logDebugf("Memdclient `%s/%p` Failed to fetch list auth mechs (%v)", client.Address(), client, err)
 			}
 			listMechsCh <- SaslListMechsCompleted{
 				Err:   err,
@@ -639,7 +639,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 			}
 		})
 		if err != nil {
-			logDebugf("Failed to execute list auth mechs (%v)", err)
+			logDebugf("Memdclient `%s/%p` Failed to execute list auth mechs (%v)", client.Address(), client, err)
 		}
 	}
 
@@ -648,7 +648,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if firstAuthMethod != nil {
 		completedAuthCh, continueAuthCh, err = firstAuthMethod()
 		if err != nil {
-			logDebugf("Failed to execute auth (%v)", err)
+			logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
 			return err
 		}
 	}
@@ -658,7 +658,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		if bucket != "" {
 			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
-				logDebugf("Failed to execute select bucket (%v)", err)
+				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 				return err
 			}
 		}
@@ -668,7 +668,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 	helloResp := <-helloCh
 	if helloResp.Err != nil {
-		logDebugf("Failed to hello with server (%v)", helloResp.Err)
+		logDebugf("Memdclient `%s/%p` Failed to hello with server (%v)", client.Address(), client, helloResp.Err)
 		return helloResp.Err
 	}
 
@@ -676,7 +676,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if errMapResp.Err == nil {
 		settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
 	} else {
-		logDebugf("Failed to fetch kv error map (%s)", errMapResp.Err)
+		logDebugf("Memdclient `%s/%p` Failed to fetch kv error map (%s)", client.Address(), client, errMapResp.Err)
 	}
 
 	var serverAuthMechanisms []AuthMechanism
@@ -684,9 +684,9 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		listMechsResp := <-listMechsCh
 		if listMechsResp.Err == nil {
 			serverAuthMechanisms = listMechsResp.Mechs
-			logDebugf("Server supported auth mechanisms: %v", serverAuthMechanisms)
+			logDebugf("Memdclient `%s/%p` Server supported auth mechanisms: %v", client.Address(), client, serverAuthMechanisms)
 		} else {
-			logDebugf("Failed to fetch auth mechs from server (%v)", listMechsResp.Err)
+			logDebugf("Memdclient `%s/%p` Failed to fetch auth mechs from server (%v)", client.Address(), client, listMechsResp.Err)
 		}
 	}
 
@@ -694,7 +694,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if completedAuthCh != nil {
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
-			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+			logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authResp.Err)
 			if errors.Is(authResp.Err, ErrRequestCanceled) {
 				// There's no point in us trying different mechanisms if something has cancelled bootstrapping.
 				return authResp.Err
@@ -713,7 +713,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 				// If we've got here then the auth mechanism we tried is unsupported so let's keep trying with the next
 				// supported mechanism.
-				logInfof("Unsupported authentication mechanism, will attempt to find next supported mechanism")
+				logInfof("Memdclient `%p` Unsupported authentication mechanism, will attempt to find next supported mechanism", client)
 			}
 
 			for {
@@ -721,27 +721,27 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				var mech AuthMechanism
 				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
 				if !found {
-					logDebugf("Failed to authenticate, all options exhausted")
+					logDebugf("Memdclient `%s/%p` Failed to authenticate, all options exhausted", client.Address(), client)
 					return authResp.Err
 				}
 
-				logDebugf("Retrying authentication with found supported mechanism: %s", mech)
+				logDebugf("Memdclient `%s/%p` Retrying authentication with found supported mechanism: %s", client.Address(), client, mech)
 				nextAuthFunc := settings.AuthHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
-					logInfof("Failed to authenticate, no available credentials")
+					logInfof("Memdclient `%p` Failed to authenticate, no available credentials", client)
 					return authResp.Err
 				}
 				completedAuthCh, continueAuthCh, err = nextAuthFunc()
 				if err != nil {
-					logDebugf("Failed to execute auth (%v)", err)
+					logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
 					return err
 				}
 				if continueAuthCh == nil {
 					if bucket != "" {
 						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
-							logDebugf("Failed to execute select bucket (%v)", err)
+							logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 							return err
 						}
 					}
@@ -753,27 +753,27 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 					break
 				}
 
-				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
+				logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authResp.Err)
 				if errors.Is(authResp.Err, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
 					return authResp.Err
 				}
 			}
 		}
-		logDebugf("Authenticated successfully")
+		logDebugf("Memdclient `%s/%p` Authenticated successfully", client.Address(), client)
 	}
 
 	if selectCh != nil {
 		selectResp := <-selectCh
 		if selectResp.Err != nil {
-			logWarnf("Failed to perform select bucket against server (%v)", selectResp.Err)
+			logWarnf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectResp.Err)
 			return selectResp.Err
 		}
 	}
 
 	client.features = helloResp.SrvFeatures
 
-	logDebugf("Client Features: %+v", features)
-	logDebugf("Server Features: %+v", client.features)
+	logDebugf("Memdclient `%s/%p` Client Features: %+v", client.Address(), client, features)
+	logDebugf("Memdclient `%s/%p` Server Features: %+v", client.Address(), client, client.features)
 
 	for _, feature := range client.features {
 		client.conn.EnableFeature(feature)
@@ -1041,7 +1041,6 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 		case <-doneCh:
 			return
 		case <-client.cancelBootstrapSig:
-			logInfof("Bootstrap cancellation request received")
 			req.Cancel()
 			<-doneCh
 			return
@@ -1070,7 +1069,7 @@ func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh ch
 		}
 		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
 		if err != nil {
-			logDebugf("Failed to execute select bucket (%v)", err)
+			logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 			selectCh <- BytesAndError{Err: err}
 			return
 		}
