@@ -508,6 +508,7 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 				for _, cli := range pipeline.clients {
 					err := cli.Error()
 					if err != nil {
+						logDebugf("Error found in client before config seen: %v", err)
 						connectErr = err
 
 						return true
@@ -523,8 +524,13 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 
 				// We don't care about timeouts, they don't tell us anything we want to know.
 				if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+					logDebugf("Error found in poller before config seen: %v", pollerErr)
 					connectErr = pollerErr
 				}
+			}
+
+			if connectErr == nil {
+				logDebugf("No config seen yet in kv muxer but no errors found.")
 			}
 		} else if revID > -1 {
 			expected := iter.NumPipelines()
@@ -548,6 +554,7 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 
 					err := cli.Error()
 					if err != nil {
+						logDebugf("Error found in client after config seen: %v", err)
 						connectErr = err
 
 						// If the desired state is degraded then we need to keep trying as a different client or pipeline
@@ -563,6 +570,7 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 
 						// We don't care about timeouts, they don't tell us anything we want to know.
 						if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+							logDebugf("Error found in poller after config seen: %v", pollerErr)
 							connectErr = pollerErr
 						}
 					}
@@ -646,7 +654,9 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 
 	for {
 		clientMux := muxer.Get()
-		if clientMux.revID > -1 {
+		if clientMux.revID == -1 {
+			logDebugf("No config seen yet in http muxer.")
+		} else {
 			var epList []string
 			switch service {
 			case N1qlService:
@@ -683,6 +693,8 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 							return
 						}
 
+						logDebugf("Error returned for HTTP request for service %d: %v", service, err)
+
 						if desiredState == ClusterStateOnline {
 							// Cancel this run entirely, we can't satisfy the requirements
 							cancel()
@@ -690,6 +702,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 						return
 					}
 					if resp.StatusCode != 200 {
+						logDebugf("Non-200 status code returned for HTTP request for service %d: %d", service, resp.StatusCode)
 						if desiredState == ClusterStateOnline {
 							// Cancel this run entirely, we can't satisfy the requirements
 							cancel()
