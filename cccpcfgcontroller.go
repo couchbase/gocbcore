@@ -132,12 +132,13 @@ Looper:
 
 				// Only log the error at warn if it's unexpected.
 				// If we cancelled the request or we're shutting down the connection then it's not really unexpected.
+				ccc.setError(err)
 				if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
 					logDebugf("CCCPPOLL: CCCP request was cancelled or connection was shutdown: %v", err)
-				} else {
-					logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %s", err)
+					return true
 				}
-				ccc.setError(err)
+
+				logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %s", err)
 				return false
 			}
 			ccc.setError(nil)
