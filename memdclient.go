@@ -695,7 +695,10 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		authResp := <-completedAuthCh
 		if authResp.Err != nil {
 			logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-			if errors.Is(authResp.Err, ErrAuthenticationFailure) {
+			if errors.Is(authResp.Err, ErrRequestCanceled) {
+				// There's no point in us trying different mechanisms if something has cancelled bootstrapping.
+				return authResp.Err
+			} else if errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				// If there's only one auth mechanism then we can just fail.
 				if len(authMechanisms) == 1 {
 					return authResp.Err
@@ -751,7 +754,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				}
 
 				logDebugf("Failed to perform auth against server (%v)", authResp.Err)
-				if errors.Is(authResp.Err, ErrAuthenticationFailure) {
+				if errors.Is(authResp.Err, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
 					return authResp.Err
 				}
 			}
