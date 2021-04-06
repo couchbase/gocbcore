@@ -119,7 +119,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 			// If collections just aren't enabled then we never need to refresh the connections because collections
 			// have come online.
 			mux.pipelineTakeover(oldMuxState, newMuxState)
-		} else if oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
+		} else if oldMuxState.revID == -1 || oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
 			// Get the new muxer to takeover the pipelines from the older one
 			mux.pipelineTakeover(oldMuxState, newMuxState)
 		} else {
