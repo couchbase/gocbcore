@@ -765,7 +765,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	if selectCh != nil {
 		selectResp := <-selectCh
 		if selectResp.Err != nil {
-			logWarnf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectResp.Err)
+			logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectResp.Err)
 			return selectResp.Err
 		}
 	}
