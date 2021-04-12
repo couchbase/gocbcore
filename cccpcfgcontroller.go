@@ -167,7 +167,7 @@ Looper:
 		if foundConfig == nil {
 			// Only log the error at warn if it's unexpected.
 			// If we cancelled the request then we're shutting down and this isn't unexpected.
-			if errors.Is(ccc.Error(), ErrRequestCanceled) {
+			if errors.Is(ccc.Error(), ErrRequestCanceled) || errors.Is(ccc.Error(), ErrShutdown) {
 				logDebugf("CCCPPOLL: CCCP request was cancelled.")
 			} else {
 				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
