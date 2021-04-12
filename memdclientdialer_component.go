@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"sync"
 	"time"
 )
@@ -88,9 +89,11 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 	deadline := time.Now().Add(mcc.kvConnectTimeout)
 	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler)
 	if err != nil {
-		mcc.serverFailuresLock.Lock()
-		mcc.serverFailures[address] = time.Now()
-		mcc.serverFailuresLock.Unlock()
+		if !errors.Is(err, ErrRequestCanceled) {
+			mcc.serverFailuresLock.Lock()
+			mcc.serverFailures[address] = time.Now()
+			mcc.serverFailuresLock.Unlock()
+		}
 
 		return nil, err
 	}
@@ -101,9 +104,11 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		if closeErr != nil {
 			logWarnf("Failed to close authentication client (%s)", closeErr)
 		}
-		mcc.serverFailuresLock.Lock()
-		mcc.serverFailures[address] = time.Now()
-		mcc.serverFailuresLock.Unlock()
+		if !errors.Is(err, ErrRequestCanceled) {
+			mcc.serverFailuresLock.Lock()
+			mcc.serverFailures[address] = time.Now()
+			mcc.serverFailuresLock.Unlock()
+		}
 
 		mcc.bootstrapFailHandler.onBootstrapFail(err)
 
@@ -140,6 +145,9 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	conn, err := dialMemdConn(ctx, address, tlsConfig, deadline)
 	cancel()
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			err = errRequestCanceled
+		}
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
 	}
