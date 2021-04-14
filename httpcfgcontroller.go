@@ -41,6 +41,7 @@ type httpConfigController struct {
 	cfgMgr               *configManagementComponent
 	confHTTPRetryDelay   time.Duration
 	confHTTPRedialPeriod time.Duration
+	confHTTPMaxWait      time.Duration
 	httpComponent        *httpComponent
 	bucketName           string
 
@@ -54,6 +55,7 @@ type httpConfigController struct {
 type httpPollerProperties struct {
 	confHTTPRetryDelay   time.Duration
 	confHTTPRedialPeriod time.Duration
+	confHTTPMaxWait      time.Duration
 	httpComponent        *httpComponent
 }
 
@@ -64,6 +66,7 @@ func newHTTPConfigController(bucketName string, props httpPollerProperties, muxe
 		cfgMgr:               cfgMgr,
 		confHTTPRedialPeriod: props.confHTTPRedialPeriod,
 		confHTTPRetryDelay:   props.confHTTPRetryDelay,
+		confHTTPMaxWait:      props.confHTTPMaxWait,
 		httpComponent:        props.httpComponent,
 		bucketName:           bucketName,
 
@@ -175,6 +178,7 @@ Looper:
 				Path:     uri,
 				Endpoint: pickedSrv,
 				UniqueID: uuid.New().String(),
+				Deadline: time.Now().Add(hcc.confHTTPMaxWait),
 			}
 
 			var err error

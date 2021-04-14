@@ -148,6 +148,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		confHTTPRedialPeriod = config.HTTPRedialPeriod
 	}
 
+	confHTTPMaxWait := 5 * time.Second
+	if config.HTTPMaxWait > 0 {
+		confHTTPMaxWait = config.HTTPMaxWait
+	}
+
 	confCccpMaxWait := 3 * time.Second
 	if config.CccpMaxWait > 0 {
 		confCccpMaxWait = config.CccpMaxWait
@@ -311,6 +316,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 					httpComponent:        c.http,
 					confHTTPRetryDelay:   confHTTPRetryDelay,
 					confHTTPRedialPeriod: confHTTPRedialPeriod,
+					confHTTPMaxWait:      confHTTPMaxWait,
 				},
 				c.httpMux,
 				c.cfgManager,

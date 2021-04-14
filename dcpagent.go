@@ -82,6 +82,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		confHTTPRedialPeriod = config.HTTPRedialPeriod
 	}
 
+	confHTTPMaxWait := 5 * time.Second
+	if config.HTTPMaxWait > 0 {
+		confHTTPMaxWait = config.HTTPMaxWait
+	}
+
 	if config.CompressionMinSize > 0 {
 		compressionMinSize = config.CompressionMinSize
 	}
@@ -289,6 +294,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				httpComponent:        c.http,
 				confHTTPRetryDelay:   confHTTPRetryDelay,
 				confHTTPRedialPeriod: confHTTPRedialPeriod,
+				confHTTPMaxWait:      confHTTPMaxWait,
 			},
 			c.httpMux,
 			c.cfgManager,

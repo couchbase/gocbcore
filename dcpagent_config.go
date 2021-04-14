@@ -37,6 +37,7 @@ type DCPAgentConfig struct {
 
 	HTTPRedialPeriod time.Duration
 	HTTPRetryDelay   time.Duration
+	HTTPMaxWait      time.Duration
 	CccpMaxWait      time.Duration
 	CccpPollPeriod   time.Duration
 
@@ -332,6 +333,14 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 			return fmt.Errorf("max queue size option must be a number")
 		}
 		config.MaxQueueSize = int(val)
+	}
+
+	if valStr, ok := fetchOption("http_config_poll_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return fmt.Errorf("http_config_poll_timeout option must be a duration or a number")
+		}
+		config.HTTPMaxWait = val
 	}
 
 	return nil
