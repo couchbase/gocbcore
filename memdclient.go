@@ -547,6 +547,11 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 		features = append(features, memd.FeatureJSON)
 	}
 
+	// Indicate that we understand Point in Time
+	if props.PITRFeatureEnabled {
+		features = append(features, memd.FeaturePITR)
+	}
+
 	// If the user wants to use mutation tokens, lets enable them
 	if props.MutationTokensEnabled {
 		features = append(features, memd.FeatureSeqNo)
@@ -590,6 +595,7 @@ type helloProps struct {
 	JSONFeatureEnabled     bool
 	XErrorFeatureEnabled   bool
 	SyncReplicationEnabled bool
+	PITRFeatureEnabled     bool
 }
 
 type bootstrapProps struct {

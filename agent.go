@@ -114,6 +114,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	useCompression := config.UseCompression
 	useCollections := config.UseCollections
 	useJSONHello := !config.DisableJSONHello
+	usePITRHello := config.EnablePITRHello
 	useXErrorHello := !config.DisableXErrors
 	useSyncReplicationHello := !config.DisableSyncReplicationHello
 	compressionMinSize := 32
@@ -250,6 +251,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				JSONFeatureEnabled:     useJSONHello,
 				XErrorFeatureEnabled:   useXErrorHello,
 				SyncReplicationEnabled: useSyncReplicationHello,
+				PITRFeatureEnabled:     usePITRHello,
 			},
 			Bucket:         c.bucketName,
 			UserAgent:      userAgent,

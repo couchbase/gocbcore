@@ -53,7 +53,7 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			if opts.StreamOptions != nil {
 				streamID = opts.StreamOptions.StreamID
 			}
-			evtHandler.End(vbID, streamID, err)
+			evtHandler.End(DcpStreamEnd{vbID, streamID}, err)
 			return
 		}
 
@@ -76,56 +76,82 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 		// This is one of the stream events
 		switch resp.Command {
 		case memd.CmdDcpSnapshotMarker:
-			vbID := resp.Vbucket
-			newStartSeqNo := binary.BigEndian.Uint64(resp.Extras[0:])
-			newEndSeqNo := binary.BigEndian.Uint64(resp.Extras[8:])
-			snapshotType := binary.BigEndian.Uint32(resp.Extras[16:])
-			var streamID uint16
+			snapShotmarker := DcpSnapshotMarker{VbID: resp.Vbucket}
 			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+				snapShotmarker.StreamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.SnapshotMarker(newStartSeqNo, newEndSeqNo, vbID, streamID, SnapshotState(snapshotType))
+			if len(resp.Extras) == 20 {
+				// Length of 20 indicates a v1 packet
+				snapShotmarker.StartSeqNo = binary.BigEndian.Uint64(resp.Extras[0:])
+				snapShotmarker.EndSeqNo = binary.BigEndian.Uint64(resp.Extras[8:])
+				snapShotmarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Extras[16:]))
+			} else if len(resp.Extras) == 1 {
+				// Length of 1 indicates a v2 packet
+				snapShotmarker.StartSeqNo = binary.BigEndian.Uint64(resp.Value[0:])
+				snapShotmarker.EndSeqNo = binary.BigEndian.Uint64(resp.Value[8:])
+				snapShotmarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Value[16:]))
+				snapShotmarker.MaxVisibleSeqNo = binary.BigEndian.Uint64(resp.Value[20:])
+				snapShotmarker.HighCompletedSeqNo = binary.BigEndian.Uint64(resp.Value[28:])
+				version := int(resp.Extras[0])
+				if version == 1 {
+					// v2.1 includes the snapshot TimeStamp
+					snapShotmarker.SnapshotTimeStamp = binary.BigEndian.Uint64(resp.Value[36:])
+				}
+			}
+			evtHandler.SnapshotMarker(snapShotmarker)
 		case memd.CmdDcpMutation:
-			vbID := resp.Vbucket
-			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
-			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
-			flags := binary.BigEndian.Uint32(resp.Extras[16:])
-			expiry := binary.BigEndian.Uint32(resp.Extras[20:])
-			lockTime := binary.BigEndian.Uint32(resp.Extras[24:])
-			var streamID uint16
-			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+			mutation := DcpMutation{
+				SeqNo:        binary.BigEndian.Uint64(resp.Extras[0:]),
+				RevNo:        binary.BigEndian.Uint64(resp.Extras[8:]),
+				Flags:        binary.BigEndian.Uint32(resp.Extras[16:]),
+				Expiry:       binary.BigEndian.Uint32(resp.Extras[20:]),
+				LockTime:     binary.BigEndian.Uint32(resp.Extras[24:]),
+				Cas:	      resp.Cas,
+				Datatype:     resp.Datatype,
+				VbID:         resp.Vbucket,
+				CollectionID: resp.CollectionID,
+				Key:          resp.Key,
+				Value:        resp.Value,
 			}
-			evtHandler.Mutation(seqNo, revNo, flags, expiry, lockTime, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
+			if resp.StreamIDFrame != nil {
+				mutation.StreamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.Mutation(mutation)
 		case memd.CmdDcpDeletion:
-			vbID := resp.Vbucket
-			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
-			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
-			var deleteTime uint32
+			deletion := DcpDeletion{
+				SeqNo :       binary.BigEndian.Uint64(resp.Extras[0:]),
+				RevNo :       binary.BigEndian.Uint64(resp.Extras[8:]),
+				Cas:          resp.Cas,
+				Datatype:     resp.Datatype,
+				VbID:         resp.Vbucket,
+				CollectionID: resp.CollectionID,
+				Key:          resp.Key,
+				Value:        resp.Value,
+			}
 			if len(resp.Extras) == 21 {
 				// Length of 21 indicates a v2 packet
-				deleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
+				deletion.DeleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
 			}
-
-			var streamID uint16
 			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+				deletion.StreamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.Deletion(seqNo, revNo, deleteTime, resp.Cas, resp.Datatype, vbID, resp.CollectionID, streamID, resp.Key, resp.Value)
+			evtHandler.Deletion(deletion)
 		case memd.CmdDcpExpiration:
-			vbID := resp.Vbucket
-			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
-			revNo := binary.BigEndian.Uint64(resp.Extras[8:])
-			var deleteTime uint32
+			expiration := DcpExpiration{
+				SeqNo:        binary.BigEndian.Uint64(resp.Extras[0:]),
+				RevNo:        binary.BigEndian.Uint64(resp.Extras[8:]),
+				Cas:          resp.Cas,
+				VbID:         resp.Vbucket,
+				CollectionID: resp.CollectionID,
+				Key:          resp.Key,
+			}
 			if len(resp.Extras) > 16 {
-				deleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
+				expiration.DeleteTime = binary.BigEndian.Uint32(resp.Extras[16:])
 			}
-
-			var streamID uint16
 			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+				expiration.StreamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.Expiration(seqNo, revNo, deleteTime, resp.Cas, vbID, resp.CollectionID, streamID, resp.Key)
+			evtHandler.Expiration(expiration)
 		case memd.CmdDcpEvent:
 			vbID := resp.Vbucket
 			seqNo := binary.BigEndian.Uint64(resp.Extras[0:])
@@ -138,62 +164,103 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 
 			switch eventCode {
 			case memd.StreamEventCollectionCreate:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				scopeID := binary.BigEndian.Uint32(resp.Value[8:])
-				collectionID := binary.BigEndian.Uint32(resp.Value[12:])
-				var ttl uint32
-				if version == 1 {
-					ttl = binary.BigEndian.Uint32(resp.Value[16:])
+				creation := DcpCollectionCreation{
+					SeqNo:        seqNo,
+					Version:      version,
+					VbID:         vbID,
+					ManifestUID:  binary.BigEndian.Uint64(resp.Value[0:]),
+					ScopeID:      binary.BigEndian.Uint32(resp.Value[8:]),
+					CollectionID: binary.BigEndian.Uint32(resp.Value[12:]),
+					StreamID:     streamID,
+					Key:          resp.Key,
 				}
-				evtHandler.CreateCollection(seqNo, version, vbID, manifestUID, scopeID, collectionID, ttl, streamID, resp.Key)
+				if version == 1 {
+					creation.Ttl = binary.BigEndian.Uint32(resp.Value[16:])
+				}
+				evtHandler.CreateCollection(creation)
 			case memd.StreamEventCollectionDelete:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				scopeID := binary.BigEndian.Uint32(resp.Value[8:])
-				collectionID := binary.BigEndian.Uint32(resp.Value[12:])
-				evtHandler.DeleteCollection(seqNo, version, vbID, manifestUID, scopeID, collectionID, streamID)
+				deleteion := DcpCollectionDeletion{
+					SeqNo:        seqNo,
+					Version:      version,
+					VbID:         vbID,
+					ManifestUID:  binary.BigEndian.Uint64(resp.Value[0:]),
+					ScopeID:      binary.BigEndian.Uint32(resp.Value[8:]),
+					CollectionID: binary.BigEndian.Uint32(resp.Value[12:]),
+					StreamID:     streamID,
+				}
+				evtHandler.DeleteCollection(deleteion)
 			case memd.StreamEventCollectionFlush:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				collectionID := binary.BigEndian.Uint32(resp.Value[8:])
-				evtHandler.FlushCollection(seqNo, version, vbID, manifestUID, collectionID)
+				flush := DcpCollectionFlush{
+					SeqNo:        seqNo,
+					Version:      version,
+					VbID:         vbID,
+					ManifestUID:  binary.BigEndian.Uint64(resp.Value[0:]),
+					CollectionID: binary.BigEndian.Uint32(resp.Value[8:]),
+					StreamID:     streamID,
+				}
+				evtHandler.FlushCollection(flush)
 			case memd.StreamEventScopeCreate:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				scopeID := binary.BigEndian.Uint32(resp.Value[8:])
-				evtHandler.CreateScope(seqNo, version, vbID, manifestUID, scopeID, streamID, resp.Key)
+				creation := DcpScopeCreation{
+					SeqNo:       seqNo,
+					Version:     version,
+					VbID:        vbID,
+					ManifestUID: binary.BigEndian.Uint64(resp.Value[0:]),
+					ScopeID:     binary.BigEndian.Uint32(resp.Value[8:]),
+					StreamID:    streamID,
+					Key:         resp.Key,
+				}
+				evtHandler.CreateScope(creation)
 			case memd.StreamEventScopeDelete:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				scopeID := binary.BigEndian.Uint32(resp.Value[8:])
-				evtHandler.DeleteScope(seqNo, version, vbID, manifestUID, scopeID, streamID)
+				deletion := DcpScopeDeletion{
+					SeqNo:       seqNo,
+					Version:     version,
+					VbID:        vbID,
+					ManifestUID: binary.BigEndian.Uint64(resp.Value[0:]),
+					ScopeID:     binary.BigEndian.Uint32(resp.Value[8:]),
+					StreamID:    streamID,
+				}
+				evtHandler.DeleteScope(deletion)
 			case memd.StreamEventCollectionChanged:
-				manifestUID := binary.BigEndian.Uint64(resp.Value[0:])
-				collectionID := binary.BigEndian.Uint32(resp.Value[8:])
-				ttl := binary.BigEndian.Uint32(resp.Value[12:])
-				evtHandler.ModifyCollection(seqNo, version, vbID, manifestUID, collectionID, ttl, streamID)
+				modification := DcpCollectionModification{
+					SeqNo:        seqNo,
+					Version:      version,
+					VbID:         vbID,
+					ManifestUID:  binary.BigEndian.Uint64(resp.Value[0:]),
+					CollectionID: binary.BigEndian.Uint32(resp.Value[8:]),
+					Ttl:          binary.BigEndian.Uint32(resp.Value[12:]),
+					StreamID:     streamID,
+
+				}
+				evtHandler.ModifyCollection(modification)
 			}
 		case memd.CmdDcpStreamEnd:
-			vbID := resp.Vbucket
 			code := memd.StreamEndStatus(binary.BigEndian.Uint32(resp.Extras[0:]))
-			var streamID uint16
-			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+			end := DcpStreamEnd{
+				VbID: resp.Vbucket,
 			}
-			evtHandler.End(vbID, streamID, getStreamEndStatusError(code))
+			if resp.StreamIDFrame != nil {
+				end.StreamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.End(end, getStreamEndStatusError(code))
 			req.internalCancel(err)
 		case memd.CmdDcpOsoSnapshot:
-			vbID := resp.Vbucket
-			snapshotType := binary.BigEndian.Uint32(resp.Extras[0:])
-			var streamID uint16
-			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+			snapshot := DcpOSOSnapshot{
+				VbID: resp.Vbucket,
+				SnapshotType: binary.BigEndian.Uint32(resp.Extras[0:]),
 			}
-			evtHandler.OSOSnapshot(vbID, snapshotType, streamID)
+			if resp.StreamIDFrame != nil {
+				snapshot.StreamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.OSOSnapshot(snapshot)
 		case memd.CmdDcpSeqNoAdvanced:
-			vbID := resp.Vbucket
-			seqno := binary.BigEndian.Uint64(resp.Extras[0:])
-			var streamID uint16
-			if resp.StreamIDFrame != nil {
-				streamID = resp.StreamIDFrame.StreamID
+			seqNoAdvanced := DcpSeqNoAdvanced{
+			    SeqNo: binary.BigEndian.Uint64(resp.Extras[0:]),
+				VbID: resp.Vbucket,
 			}
-			evtHandler.SeqNoAdvanced(vbID, seqno, streamID)
+			if resp.StreamIDFrame != nil {
+				seqNoAdvanced.StreamID = resp.StreamIDFrame.StreamID
+			}
+			evtHandler.SeqNoAdvanced(seqNoAdvanced)
 		}
 	}
 

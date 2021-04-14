@@ -94,6 +94,9 @@ const (
 	// FeatureOpenTracing indicates support for OpenTracing.
 	FeatureOpenTracing = HelloFeature(0x13)
 
+	// FeaturePITR indicates support for PITR snapshots.
+	FeaturePITR = HelloFeature(0x16)
+
 	// FeatureCreateAsDeleted indicates support for the create as deleted feature.
 	FeatureCreateAsDeleted = HelloFeature(0x17)
 
@@ -304,6 +307,9 @@ const (
 
 	// DcpOpenFlagIncludeDeleteTimes indicates the client wishes to receive delete times.
 	DcpOpenFlagIncludeDeleteTimes = DcpOpenFlag(0x20)
+
+	// DcpOpenFlagPiTR indicates the client wishes to receive PITR snapshots
+	DcpOpenFlagPiTR = DcpOpenFlag(0x80)
 )
 
 // DcpStreamAddFlag specifies flags for DCP streams configured when the stream is opened.

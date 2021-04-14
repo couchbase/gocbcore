@@ -82,7 +82,7 @@ func (suite *DCPTestSuite) SetupSuite() {
 	suite.so = &TestStreamObserver{
 		lock:      sync.Mutex{},
 		lastSeqno: make(map[uint16]uint64),
-		snapshots: make(map[uint16]SnapshotMarker),
+		snapshots: make(map[uint16]DcpSnapshotMarker),
 		endWg:     sync.WaitGroup{},
 	}
 }
@@ -402,8 +402,8 @@ func (suite *DCPTestSuite) runDCPStream() int {
 			snapshot := suite.so.snapshots[en.VbID]
 			suite.so.lock.Unlock()
 
-			op, err := suite.dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(en.VbID)].VbUUID, SeqNo(snapshot.lastSnapEnd), en.SeqNo,
-				SeqNo(snapshot.lastSnapStart), SeqNo(snapshot.lastSnapEnd), suite.so, OpenStreamOptions{}, func(entries []FailoverEntry, err error) {
+			op, err := suite.dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(en.VbID)].VbUUID, SeqNo(snapshot.EndSeqNo), en.SeqNo,
+				SeqNo(snapshot.StartSeqNo), SeqNo(snapshot.EndSeqNo), suite.so, OpenStreamOptions{}, func(entries []FailoverEntry, err error) {
 					ch <- err
 				},
 			)

@@ -37,6 +37,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	useCompression := config.UseCompression
 	useCollections := config.UseCollections
 	useJSONHello := !config.DisableJSONHello
+	usePITRHello := config.EnablePITRHello
 	useXErrorHello := !config.DisableXErrorHello
 	useSyncReplicationHello := !config.DisableSyncReplicationHello
 	dcpBufferSize := 20 * 1024 * 1024
@@ -241,6 +242,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				CollectionsEnabled:     useCollections,
 				CompressionEnabled:     useCompression,
 				JSONFeatureEnabled:     useJSONHello,
+				PITRFeatureEnabled:     usePITRHello,
 				XErrorFeatureEnabled:   useXErrorHello,
 				SyncReplicationEnabled: useSyncReplicationHello,
 			},

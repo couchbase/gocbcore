@@ -45,6 +45,7 @@ type AgentConfig struct {
 	DisableXErrors         bool
 
 	DisableJSONHello            bool
+	EnablePITRHello             bool
 	DisableSyncReplicationHello bool
 
 	UseCollections bool

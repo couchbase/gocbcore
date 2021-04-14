@@ -27,6 +27,7 @@ type DCPAgentConfig struct {
 	DisableDecompression bool
 
 	DisableJSONHello            bool
+	EnablePITRHello             bool
 	DisableXErrorHello          bool
 	DisableSyncReplicationHello bool
 
