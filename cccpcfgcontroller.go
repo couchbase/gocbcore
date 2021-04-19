@@ -10,7 +10,7 @@ import (
 )
 
 type cccpConfigController struct {
-	muxer              *kvMux
+	muxer              dispatcher
 	cfgMgr             *configManagementComponent
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
@@ -26,7 +26,7 @@ type cccpConfigController struct {
 	errLock  sync.Mutex
 }
 
-func newCCCPConfigController(props cccpPollerProperties, muxer *kvMux, cfgMgr *configManagementComponent) *cccpConfigController {
+func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMgr *configManagementComponent) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,

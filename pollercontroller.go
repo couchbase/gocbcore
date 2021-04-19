@@ -3,12 +3,14 @@ package gocbcore
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 )
 
 type pollerController struct {
 	activeController configPollerController
 	controllerLock   sync.Mutex
 	stopped          bool
+	bucketConfigSeen uint32
 
 	cccpPoller *cccpConfigController
 	httpPoller *httpConfigController
@@ -36,20 +38,27 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 
 // We listen out for the first config that comes in so that we (re)start the cccp if applicable.
 func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
-	if cfg.bktType == bktTypeCouchbase || cfg.bktType == bktTypeMemcached {
-		pc.cfgMgr.RemoveConfigWatcher(pc)
-	}
-
-	pc.controllerLock.Lock()
-	if pc.stopped {
-		pc.controllerLock.Unlock()
+	if cfg.bktType != bktTypeCouchbase && cfg.bktType != bktTypeMemcached {
 		return
 	}
-	if cfg.bktType == bktTypeCouchbase && pc.activeController == pc.httpPoller {
-		logInfof("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
-		pc.activeController = nil
-		pc.controllerLock.Unlock()
-		go func() {
+	atomic.SwapUint32(&pc.bucketConfigSeen, 1)
+	pc.cfgMgr.RemoveConfigWatcher(pc)
+
+	if cfg.bktType == bktTypeMemcached {
+		return
+	}
+
+	go func() {
+		pc.controllerLock.Lock()
+		if pc.stopped {
+			pc.controllerLock.Unlock()
+			return
+		}
+		if pc.activeController == pc.httpPoller {
+			logInfof("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
+			pc.activeController = nil
+			pc.controllerLock.Unlock()
+
 			pc.httpPoller.Stop()
 			pollerCh := pc.httpPoller.Done()
 			if pollerCh != nil {
@@ -58,10 +67,10 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 			pc.httpPoller.Reset()
 			pc.cccpPoller.Reset()
 			pc.Start()
-		}()
-	} else {
-		pc.controllerLock.Unlock()
-	}
+		} else {
+			pc.controllerLock.Unlock()
+		}
+	}()
 }
 
 func (pc *pollerController) Start() {
@@ -71,6 +80,7 @@ func (pc *pollerController) Start() {
 		return
 	}
 
+	atomic.SwapUint32(&pc.bucketConfigSeen, 0)
 	if pc.cccpPoller == nil {
 		pc.activeController = pc.httpPoller
 		pc.controllerLock.Unlock()
@@ -152,6 +162,13 @@ func (pc *pollerController) PollerError() error {
 
 func (pc *pollerController) ForceHTTPPoller() {
 	go func() {
+		if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
+			logInfof("Config already seen, not forcing HTTP")
+			// If we've seen a config already then either cccp or http polling have managed to fetch a config and
+			// bucket type can't have changed so there's no reason to fallback.
+			return
+		}
+
 		pc.controllerLock.Lock()
 		if pc.stopped || pc.activeController == nil {
 			// If active controller is nil at this point then something strange is happening, we're trying to force
@@ -170,6 +187,14 @@ func (pc *pollerController) ForceHTTPPoller() {
 			}
 			pc.httpPoller.Reset()
 			pc.cccpPoller.Reset()
+			if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
+				pc.controllerLock.Unlock()
+				logInfof("Config seen whilst waiting for CCCP poller to stop, restarting CCCP poller.")
+				// CCCP managed to fetch a config whilst we were waiting for shutdown, in this case we want to just
+				// start CCCP again as the bucket must exist and be a couchbase bucket.
+				pc.Start()
+				return
+			}
 		} else if pc.activeController == pc.httpPoller {
 			pc.controllerLock.Unlock()
 			return
