@@ -110,6 +110,30 @@ func (mux *httpMux) FtsEps() []string {
 	return clientMux.ftsEpList
 }
 
+func (mux *httpMux) EventingEps() []string {
+	if cMux := mux.Get(); cMux != nil {
+		return cMux.eventingEpList
+	}
+
+	return nil
+}
+
+func (mux *httpMux) GSIEps() []string {
+	if cMux := mux.Get(); cMux != nil {
+		return cMux.gsiEpList
+	}
+
+	return nil
+}
+
+func (mux *httpMux) BackupEps() []string {
+	if cMux := mux.Get(); cMux != nil {
+		return cMux.backupEpList
+	}
+
+	return nil
+}
+
 func (mux *httpMux) ConfigRev() (int64, error) {
 	clientMux := mux.Get()
 	if clientMux == nil {

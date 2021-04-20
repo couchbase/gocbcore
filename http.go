@@ -93,9 +93,10 @@ type HTTPRequest struct {
 
 // HTTPResponse encapsulates the response from an HTTP request.
 type HTTPResponse struct {
-	Endpoint   string
-	StatusCode int
-	Body       io.ReadCloser
+	Endpoint      string
+	StatusCode    int
+	ContentLength int64
+	Body          io.ReadCloser
 }
 
 func wrapHTTPError(req *httpRequest, err error) HTTPError {

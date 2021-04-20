@@ -34,6 +34,15 @@ const (
 
 	// CbasService represents an analytics service.
 	CbasService = ServiceType(6)
+
+	// EventingService represents the eventing service.
+	EventingService = ServiceType(7)
+
+	// GSIService represents the indexing service.
+	GSIService = ServiceType(8)
+
+	// BackupService represents the backup service.
+	BackupService = ServiceType(9)
 )
 
 // DcpAgentPriority specifies the priority level for a dcp stream

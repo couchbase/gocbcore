@@ -1,20 +1,26 @@
 package gocbcore
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type routeConfig struct {
-	revID        int64
-	uuid         string
-	name         string
-	bktType      bucketType
-	kvServerList []string
-	capiEpList   []string
-	mgmtEpList   []string
-	n1qlEpList   []string
-	ftsEpList    []string
-	cbasEpList   []string
-	vbMap        *vbucketMap
-	ketamaMap    *ketamaContinuum
+	revID          int64
+	uuid           string
+	name           string
+	bktType        bucketType
+	kvServerList   []string
+	capiEpList     []string
+	mgmtEpList     []string
+	n1qlEpList     []string
+	ftsEpList      []string
+	cbasEpList     []string
+	eventingEpList []string
+	gsiEpList      []string
+	backupEpList   []string
+	vbMap          *vbucketMap
+	ketamaMap      *ketamaContinuum
 
 	clusterCapabilitiesVer []int
 	clusterCapabilities    map[string][]string
@@ -24,53 +30,41 @@ type routeConfig struct {
 }
 
 func (config *routeConfig) DebugString() string {
-	var outStr string
+	var buffer bytes.Buffer
 
-	outStr += fmt.Sprintf("Revision ID: %d\n", config.revID)
+	buffer.WriteString(fmt.Sprintf("Revision ID: %d\n", config.revID))
 
-	outStr += "Capi Eps:\n"
-	for _, ep := range config.capiEpList {
-		outStr += fmt.Sprintf("  - %s\n", ep)
+	addEps := func(title string, eps []string) {
+		fmt.Fprintf(&buffer, "%s Eps:\n", title)
+		for _, ep := range eps {
+			fmt.Fprintf(&buffer, "  - %s\n", ep)
+		}
 	}
 
-	outStr += "Mgmt Eps:\n"
-	for _, ep := range config.mgmtEpList {
-		outStr += fmt.Sprintf("  - %s\n", ep)
-	}
-
-	outStr += "N1ql Eps:\n"
-	for _, ep := range config.n1qlEpList {
-		outStr += fmt.Sprintf("  - %s\n", ep)
-	}
-
-	outStr += "FTS Eps:\n"
-	for _, ep := range config.ftsEpList {
-		outStr += fmt.Sprintf("  - %s\n", ep)
-	}
-
-	outStr += "CBAS Eps:\n"
-	for _, ep := range config.cbasEpList {
-		outStr += fmt.Sprintf("  - %s\n", ep)
-	}
+	addEps("Capi", config.capiEpList)
+	addEps("Mgmt", config.mgmtEpList)
+	addEps("N1ql", config.n1qlEpList)
+	addEps("FTS", config.ftsEpList)
+	addEps("CBAS", config.cbasEpList)
+	addEps("Eventing", config.eventingEpList)
+	addEps("GSI", config.gsiEpList)
+	addEps("Backup", config.backupEpList)
 
 	if config.vbMap != nil {
-		outStr += "VBMap:\n"
-		outStr += fmt.Sprintf("%+v\n", config.vbMap)
+		fmt.Fprintln(&buffer, "VBMap:")
+		fmt.Fprintf(&buffer, "%+v\n", config.vbMap)
 	} else {
-		outStr += "VBMap: not-used\n"
+		fmt.Fprintln(&buffer, "VBMap: not-used")
 	}
 
 	if config.ketamaMap != nil {
-		outStr += "KetamaMap:\n"
-		outStr += fmt.Sprintf("%+v\n", config.ketamaMap)
+		fmt.Fprintln(&buffer, "KetamaMap:")
+		fmt.Fprintf(&buffer, "%+v\n", config.ketamaMap)
 	} else {
-		outStr += "KetamaMap: not-used\n"
+		fmt.Fprintln(&buffer, "KetamaMap: not-used")
 	}
 
-	// outStr += "Source Data: *"
-	//outStr += fmt.Sprintf("  Source Data: %v", rd.source)
-
-	return outStr
+	return buffer.String()
 }
 
 func (config *routeConfig) IsValid() bool {

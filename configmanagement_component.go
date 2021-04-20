@@ -152,7 +152,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket) *r
 		// First we check if the source server is from the defaults list
 		srcInDefaultConfig := false
 		for _, endpoint := range defaultRouteConfig.kvServerList {
-			if endpoint == srcServer {
+			if trimSchemePrefix(endpoint) == srcServer {
 				srcInDefaultConfig = true
 			}
 		}

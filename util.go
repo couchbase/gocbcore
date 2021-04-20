@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func getMapValueString(dict map[string]interface{}, key string, def string) string {
@@ -61,4 +62,13 @@ func clientInfoString(connID, userAgent string) string {
 	}
 
 	return string(clientInfoBytes)
+}
+
+func trimSchemePrefix(address string) string {
+	idx := strings.Index(address, "://")
+	if idx < 0 {
+		return address
+	}
+
+	return address[idx+len("://"):]
 }

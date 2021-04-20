@@ -519,6 +519,16 @@ func (agent *Agent) ClientID() string {
 	return agent.clientID
 }
 
+// MemdEps returns all the available endpoints for performing KV/DCP operations (using the memcached binary protocol).
+// As apposed to other endpoints, these will have the 'couchbase(s)://' scheme prefix.
+func (agent *Agent) MemdEps() []string {
+	snapshot, err := agent.kvMux.PipelineSnapshot()
+	if err != nil {
+		return []string{}
+	}
+	return snapshot.state.kvServerList
+}
+
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
@@ -547,6 +557,21 @@ func (agent *Agent) FtsEps() []string {
 // CBAS queries.
 func (agent *Agent) CbasEps() []string {
 	return agent.httpMux.CbasEps()
+}
+
+// EventingEps returns all the available endpoints for managing/interacting with the Eventing Service.
+func (agent *Agent) EventingEps() []string {
+	return agent.httpMux.EventingEps()
+}
+
+// GSIEps returns all the available endpoints for managing/interacting with the GSI Service.
+func (agent *Agent) GSIEps() []string {
+	return agent.httpMux.GSIEps()
+}
+
+// BackupEps returns all the available endpoints for managing/interacting with the Backup Service.
+func (agent *Agent) BackupEps() []string {
+	return agent.httpMux.BackupEps()
 }
 
 // HasCollectionsSupport verifies whether or not collections are available on the agent.

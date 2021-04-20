@@ -193,6 +193,12 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		case CbasService:
 			service = metricValueServiceAnalyticsValue
 			endpoint, err = hc.getCbasEp()
+		case EventingService:
+			endpoint, err = hc.getEventingEp()
+		case GSIService:
+			endpoint, err = hc.getGSIEp()
+		case BackupService:
+			endpoint, err = hc.getBackupEp()
 		}
 		if err != nil {
 			return nil, err
@@ -367,9 +373,10 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
 
 		respOut := HTTPResponse{
-			Endpoint:   endpoint,
-			StatusCode: hresp.StatusCode,
-			Body:       hresp.Body,
+			Endpoint:      endpoint,
+			StatusCode:    hresp.StatusCode,
+			ContentLength: hresp.ContentLength,
+			Body:          hresp.Body,
 		}
 
 		querySuccess = true
@@ -378,49 +385,45 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}
 }
 
-/* #nosec G404 */
 func (hc *httpComponent) getMgmtEp() (string, error) {
-	mgmtEps := hc.muxer.MgmtEps()
-	if len(mgmtEps) == 0 {
-		return "", errServiceNotAvailable
-	}
-	return mgmtEps[rand.Intn(len(mgmtEps))], nil
+	return randFromServiceEndpoints(hc.muxer.MgmtEps())
 }
 
-/* #nosec G404 */
 func (hc *httpComponent) getCapiEp() (string, error) {
-	capiEps := hc.muxer.CapiEps()
-	if len(capiEps) == 0 {
-		return "", errServiceNotAvailable
-	}
-	return capiEps[rand.Intn(len(capiEps))], nil
+	return randFromServiceEndpoints(hc.muxer.CapiEps())
 }
 
-/* #nosec G404 */
 func (hc *httpComponent) getN1qlEp() (string, error) {
-	n1qlEps := hc.muxer.N1qlEps()
-	if len(n1qlEps) == 0 {
-		return "", errServiceNotAvailable
-	}
-	return n1qlEps[rand.Intn(len(n1qlEps))], nil
+	return randFromServiceEndpoints(hc.muxer.N1qlEps())
 }
 
-/* #nosec G404 */
 func (hc *httpComponent) getFtsEp() (string, error) {
-	ftsEps := hc.muxer.FtsEps()
-	if len(ftsEps) == 0 {
-		return "", errServiceNotAvailable
-	}
-	return ftsEps[rand.Intn(len(ftsEps))], nil
+	return randFromServiceEndpoints(hc.muxer.FtsEps())
+}
+
+func (hc *httpComponent) getCbasEp() (string, error) {
+	return randFromServiceEndpoints(hc.muxer.CbasEps())
+}
+
+func (hc *httpComponent) getEventingEp() (string, error) {
+	return randFromServiceEndpoints(hc.muxer.EventingEps())
+}
+
+func (hc *httpComponent) getGSIEp() (string, error) {
+	return randFromServiceEndpoints(hc.muxer.GSIEps())
+}
+
+func (hc *httpComponent) getBackupEp() (string, error) {
+	return randFromServiceEndpoints(hc.muxer.BackupEps())
 }
 
 /* #nosec G404 */
-func (hc *httpComponent) getCbasEp() (string, error) {
-	cbasEps := hc.muxer.CbasEps()
-	if len(cbasEps) == 0 {
+func randFromServiceEndpoints(endpoints []string) (string, error) {
+	if len(endpoints) == 0 {
 		return "", errServiceNotAvailable
 	}
-	return cbasEps[rand.Intn(len(cbasEps))], nil
+
+	return endpoints[rand.Intn(len(endpoints))], nil
 }
 
 func injectJSONCreds(body []byte, creds []UserPassPair) []byte {

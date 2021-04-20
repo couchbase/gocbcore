@@ -1622,7 +1622,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
@@ -1648,7 +1648,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
@@ -1669,13 +1669,13 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 
 	networkType := cfgManager.NetworkType()
 	if networkType != "default" {
-		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
+		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
 	}
 
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
@@ -1701,7 +1701,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
@@ -1727,7 +1727,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}
@@ -1753,7 +1753,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	for i, server := range mgr.cfg.kvServerList {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
-		cfgBkServer := fmt.Sprintf("%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
 		if server != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
 		}

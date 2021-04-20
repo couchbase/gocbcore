@@ -27,18 +27,24 @@ type cfgNode struct {
 }
 
 type cfgNodeServices struct {
-	Kv      uint16 `json:"kv"`
-	Capi    uint16 `json:"capi"`
-	Mgmt    uint16 `json:"mgmt"`
-	N1ql    uint16 `json:"n1ql"`
-	Fts     uint16 `json:"fts"`
-	Cbas    uint16 `json:"cbas"`
-	KvSsl   uint16 `json:"kvSSL"`
-	CapiSsl uint16 `json:"capiSSL"`
-	MgmtSsl uint16 `json:"mgmtSSL"`
-	N1qlSsl uint16 `json:"n1qlSSL"`
-	FtsSsl  uint16 `json:"ftsSSL"`
-	CbasSsl uint16 `json:"cbasSSL"`
+	Kv          uint16 `json:"kv"`
+	Capi        uint16 `json:"capi"`
+	Mgmt        uint16 `json:"mgmt"`
+	N1ql        uint16 `json:"n1ql"`
+	Fts         uint16 `json:"fts"`
+	Cbas        uint16 `json:"cbas"`
+	Eventing    uint16 `json:"eventingAdminPort"`
+	GSI         uint16 `json:"indexHttp"`
+	Backup      uint16 `json:"backupAPI"`
+	KvSsl       uint16 `json:"kvSSL"`
+	CapiSsl     uint16 `json:"capiSSL"`
+	MgmtSsl     uint16 `json:"mgmtSSL"`
+	N1qlSsl     uint16 `json:"n1qlSSL"`
+	FtsSsl      uint16 `json:"ftsSSL"`
+	CbasSsl     uint16 `json:"cbasSSL"`
+	EventingSsl uint16 `json:"eventingSSL"`
+	GSISsl      uint16 `json:"indexHttps"`
+	BackupSsl   uint16 `json:"backupAPIHTTPS"`
 }
 
 type cfgNodeAltAddress struct {
@@ -85,13 +91,18 @@ type cfgBucket struct {
 }
 
 func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
-	var kvServerList []string
-	var capiEpList []string
-	var mgmtEpList []string
-	var n1qlEpList []string
-	var ftsEpList []string
-	var cbasEpList []string
-	var bktType bucketType
+	var (
+		kvServerList   []string
+		capiEpList     []string
+		mgmtEpList     []string
+		n1qlEpList     []string
+		ftsEpList      []string
+		cbasEpList     []string
+		eventingEpList []string
+		gsiEpList      []string
+		backupEpList   []string
+		bktType        bucketType
+	)
 
 	switch cfg.NodeLocator {
 	case "ketama":
@@ -152,6 +163,15 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			if endpoints.cbasEp != "" {
 				cbasEpList = append(cbasEpList, endpoints.cbasEp)
 			}
+			if endpoints.eventingEp != "" {
+				eventingEpList = append(eventingEpList, endpoints.eventingEp)
+			}
+			if endpoints.gsiEp != "" {
+				gsiEpList = append(gsiEpList, endpoints.gsiEp)
+			}
+			if endpoints.backupEp != "" {
+				backupEpList = append(backupEpList, endpoints.backupEp)
+			}
 		}
 	} else {
 		if useSsl {
@@ -198,6 +218,9 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		n1qlEpList:             n1qlEpList,
 		ftsEpList:              ftsEpList,
 		cbasEpList:             cbasEpList,
+		eventingEpList:         eventingEpList,
+		gsiEpList:              gsiEpList,
+		backupEpList:           backupEpList,
 		bktType:                bktType,
 		clusterCapabilities:    cfg.ClusterCapabilities,
 		clusterCapabilitiesVer: cfg.ClusterCapabilitiesVer,
@@ -217,12 +240,15 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 }
 
 type serverEps struct {
-	kvServer string
-	capiEp   string
-	mgmtEp   string
-	n1qlEp   string
-	ftsEp    string
-	cbasEp   string
+	kvServer   string
+	capiEp     string
+	mgmtEp     string
+	n1qlEp     string
+	ftsEp      string
+	cbasEp     string
+	eventingEp string
+	gsiEp      string
+	backupEp   string
 }
 
 func getHostname(hostname, sourceHostname string) string {
@@ -246,7 +272,7 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *se
 
 	if useSsl {
 		if ports.KvSsl > 0 {
-			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.KvSsl)
+			lists.kvServer = fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl)
 		}
 		if ports.Capi > 0 {
 			lists.capiEp = fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl)
@@ -263,9 +289,18 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *se
 		if ports.Cbas > 0 {
 			lists.cbasEp = fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl)
 		}
+		if ports.Eventing > 0 {
+			lists.eventingEp = fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl)
+		}
+		if ports.GSI > 0 {
+			lists.gsiEp = fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl)
+		}
+		if ports.Backup > 0 {
+			lists.backupEp = fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl)
+		}
 	} else {
 		if ports.Kv > 0 {
-			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.Kv)
+			lists.kvServer = fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv)
 		}
 		if ports.Capi > 0 {
 			lists.capiEp = fmt.Sprintf("http://%s:%d", hostname, ports.Capi)
@@ -281,6 +316,15 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *se
 		}
 		if ports.Cbas > 0 {
 			lists.cbasEp = fmt.Sprintf("http://%s:%d", hostname, ports.Cbas)
+		}
+		if ports.Eventing > 0 {
+			lists.eventingEp = fmt.Sprintf("http://%s:%d", hostname, ports.Eventing)
+		}
+		if ports.GSI > 0 {
+			lists.gsiEp = fmt.Sprintf("http://%s:%d", hostname, ports.GSI)
+		}
+		if ports.Backup > 0 {
+			lists.backupEp = fmt.Sprintf("http://%s:%d", hostname, ports.Backup)
 		}
 	}
 	return lists

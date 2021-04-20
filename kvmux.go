@@ -3,12 +3,13 @@ package gocbcore
 import (
 	"container/list"
 	"errors"
-	"github.com/couchbase/gocbcore/v9/memd"
 	"io"
 	"sort"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 type bucketCapabilityVerifier interface {
@@ -548,7 +549,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 
 	pipelines := make([]*memdPipeline, len(cfg.kvServerList))
 	for i, hostPort := range cfg.kvServerList {
-		hostPort := hostPort
+		hostPort := trimSchemePrefix(hostPort)
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
 			return mux.dialer.SlowDialMemdClient(cancelSig, hostPort, mux.handleOpRoutingResp)
