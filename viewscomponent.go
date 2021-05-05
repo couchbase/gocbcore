@@ -156,6 +156,10 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 		resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 		if err != nil {
 			cancel()
+			if errors.Is(err, ErrRequestCanceled) {
+				cb(nil, err)
+				return
+			}
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
 			cb(nil, wrapViewQueryError(ireq, ddoc, view, err))

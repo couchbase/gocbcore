@@ -87,6 +87,11 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 		resp, err := hc.DoInternalHTTPRequest(ireq, false)
 		if err != nil {
 			cancel()
+			if errors.Is(err, ErrRequestCanceled) {
+				cb(nil, err)
+				return
+			}
+
 			cb(nil, wrapHTTPError(ireq, err))
 			return
 		}

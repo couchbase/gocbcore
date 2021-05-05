@@ -500,6 +500,9 @@ ExecuteLoop:
 
 		resp, err := nqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 		if err != nil {
+			if errors.Is(err, ErrRequestCanceled) {
+				return nil, err
+			}
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
 			return nil, wrapN1QLError(ireq, statementForErr, err)

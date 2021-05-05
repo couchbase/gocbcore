@@ -179,6 +179,10 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 			resp, err := sqc.httpComponent.DoInternalHTTPRequest(ireq, false)
 			if err != nil {
 				cancel()
+				if errors.Is(err, ErrRequestCanceled) {
+					cb(nil, err)
+					return
+				}
 				// execHTTPRequest will handle retrying due to in-flight socket close based
 				// on whether or not IsIdempotent is set on the httpRequest
 				cb(nil, wrapSearchError(ireq, nil, indexName, query, err))
