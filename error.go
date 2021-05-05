@@ -150,6 +150,8 @@ var (
 	ErrIndexFailure = errors.New("index failure")
 
 	ErrPreparedStatementFailure = errors.New("prepared statement failure")
+
+	ErrDMLFailure = errors.New("data service returned an error during execution of DML statement")
 )
 
 // Analytics Error Definitions RFC#58@15

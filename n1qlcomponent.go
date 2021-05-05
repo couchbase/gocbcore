@@ -159,7 +159,11 @@ func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
 			err = errParsingFailure
 		}
 		if errCode == 12009 {
-			err = errCasMismatch
+			if strings.Contains(strings.ToLower(firstErr.Message), "cas mismatch") {
+				err = errCasMismatch
+			} else {
+				err = errDMLFailure
+			}
 		}
 		if errCodeGroup == 5 {
 			err = errInternalServerFailure
