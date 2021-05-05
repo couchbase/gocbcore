@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/url"
 	"strings"
 )
 
@@ -130,7 +129,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 
 			hostname = getHostname(hostname, cfg.SourceHostname)
 
-			endpoints := endpointsFromPorts(useSsl, ports, cfg.Name, hostname)
+			endpoints := endpointsFromPorts(useSsl, ports, hostname)
 			if endpoints.kvServer != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer)
@@ -242,7 +241,7 @@ func getHostname(hostname, sourceHostname string) string {
 	return hostname
 }
 
-func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname string) *serverEps {
+func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *serverEps {
 	lists := &serverEps{}
 
 	if useSsl {
@@ -250,7 +249,7 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.KvSsl)
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, url.PathEscape(name))
+			lists.capiEp = fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl)
 		}
 		if ports.Mgmt > 0 {
 			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
@@ -269,7 +268,7 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.Kv)
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("http://%s:%d/%s", hostname, ports.Capi, url.PathEscape(name))
+			lists.capiEp = fmt.Sprintf("http://%s:%d", hostname, ports.Capi)
 		}
 		if ports.Mgmt > 0 {
 			lists.mgmtEp = fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt)

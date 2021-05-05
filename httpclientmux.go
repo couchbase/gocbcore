@@ -7,6 +7,8 @@ type httpClientMux struct {
 	ftsEpList  []string
 	cbasEpList []string
 
+	bucket string
+
 	uuid       string
 	revID      int64
 	breakerCfg CircuitBreakerConfig
@@ -19,6 +21,8 @@ func newHTTPClientMux(cfg *routeConfig, breakerCfg CircuitBreakerConfig) *httpCl
 		n1qlEpList: cfg.n1qlEpList,
 		ftsEpList:  cfg.ftsEpList,
 		cbasEpList: cfg.cbasEpList,
+
+		bucket: cfg.name,
 
 		uuid:       cfg.uuid,
 		revID:      cfg.revID,

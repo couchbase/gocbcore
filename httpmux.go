@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"net/url"
 	"sync/atomic"
 	"unsafe"
 )
@@ -57,13 +58,20 @@ func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 	mux.Update(oldHTTPMux, newHTTPMux)
 }
 
+// CapiEps returns the capi endpoints with the path escaped bucket name appended.
 func (mux *httpMux) CapiEps() []string {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return clientMux.capiEpList
+	var epList []string
+	for _, ep := range clientMux.capiEpList {
+		ep = ep + "/" + url.PathEscape(clientMux.bucket)
+		epList = append(epList, ep)
+	}
+
+	return epList
 }
 
 func (mux *httpMux) MgmtEps() []string {

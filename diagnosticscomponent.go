@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -244,7 +242,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 			case MgmtService:
 				epList = clientMux.mgmtEpList
 			case CapiService:
-				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
+				epList = clientMux.capiEpList
 			}
 
 			if len(epList) == 0 {
@@ -391,16 +389,6 @@ func (dc *diagnosticsComponent) Ping(opts PingOptions, cb PingCallback) (Pending
 	}
 
 	return op, nil
-}
-
-func (dc *diagnosticsComponent) endpointsFromCapiList(capiEpList []string) []string {
-	var epList []string
-	for _, ep := range capiEpList {
-		// We escape the bucket name when we add it to the ep list so we need to do it here too.
-		epList = append(epList, strings.TrimRight(ep, "/"+url.PathEscape(dc.bucket)))
-	}
-
-	return epList
 }
 
 // Diagnostics returns diagnostics information about the client.
@@ -664,7 +652,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 			case FtsService:
 				epList = clientMux.ftsEpList
 			case CapiService:
-				epList = dc.endpointsFromCapiList(clientMux.capiEpList)
+				epList = clientMux.capiEpList
 			case MgmtService:
 				epList = clientMux.mgmtEpList
 			}
