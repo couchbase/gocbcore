@@ -1,26 +1,17 @@
 package gocbcore
 
-import (
-	"crypto/x509"
-	"time"
-)
-
 type clusterAgentConfig struct {
-	HTTPAddrs []string
 	UserAgent string
-	UseTLS    bool
-	Auth      AuthProvider
 
-	TLSRootCAProvider func() *x509.CertPool
+	SeedConfig SeedConfig
 
-	HTTPMaxIdleConns          int
-	HTTPMaxIdleConnsPerHost   int
-	HTTPIdleConnectionTimeout time.Duration
+	SecurityConfig SecurityConfig
 
-	// Volatile: Tracer API is subject to change.
-	Tracer           RequestTracer
-	NoRootTraceSpans bool
-	Meter            Meter
+	HTTPConfig HTTPConfig
+
+	TracerConfig TracerConfig
+
+	MeterConfig MeterConfig
 
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig
@@ -31,10 +22,7 @@ func (config *clusterAgentConfig) redacted() interface{} {
 	if isLogRedactionLevelFull() {
 		// The slices here are still pointing at config's underlying arrays
 		// so we need to make them not do that.
-		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
-		for i, addr := range newConfig.HTTPAddrs {
-			newConfig.HTTPAddrs[i] = redactSystemData(addr)
-		}
+		newConfig.SeedConfig = newConfig.SeedConfig.redacted()
 	}
 
 	return newConfig

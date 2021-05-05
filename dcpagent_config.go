@@ -1,79 +1,90 @@
 package gocbcore
 
 import (
-	"crypto/x509"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"strconv"
-	"time"
-
 	"github.com/couchbase/gocbcore/v9/connstr"
+	"strconv"
 )
 
 // DCPAgentConfig specifies the configuration options for creation of a DCPAgent.
 type DCPAgentConfig struct {
-	UserAgent   string
-	MemdAddrs   []string
-	HTTPAddrs   []string
-	UseTLS      bool
-	BucketName  string
-	NetworkType string
-	Auth        AuthProvider
+	UserAgent  string
+	BucketName string
 
-	TLSRootCAProvider func() *x509.CertPool
+	SeedConfig SeedConfig
 
-	UseCompression       bool
-	DisableDecompression bool
+	SecurityConfig SecurityConfig
 
-	DisableJSONHello            bool
-	EnablePITRHello             bool
-	DisableXErrorHello          bool
-	DisableSyncReplicationHello bool
+	CompressionConfig CompressionConfig
 
-	UseCollections bool
+	ConfigPollerConfig ConfigPollerConfig
 
-	CompressionMinSize  int
-	CompressionMinRatio float64
+	IoConfig IoConfig
 
-	HTTPRedialPeriod time.Duration
-	HTTPRetryDelay   time.Duration
-	HTTPMaxWait      time.Duration
-	CccpMaxWait      time.Duration
-	CccpPollPeriod   time.Duration
+	KVConfig KVConfig
 
-	ConnectTimeout   time.Duration
-	KVConnectTimeout time.Duration
-	KvPoolSize       int
-	MaxQueueSize     int
+	HTTPConfig HTTPConfig
 
-	HTTPMaxIdleConns          int
-	HTTPMaxIdleConnsPerHost   int
-	HTTPIdleConnectionTimeout time.Duration
+	DCPConfig DCPConfig
+}
 
+// DCPConfig specifies DCP specific configuration options.
+type DCPConfig struct {
 	AgentPriority   DcpAgentPriority
 	UseExpiryOpcode bool
 	UseStreamID     bool
 	UseOSOBackfill  bool
 	BackfillOrder   DCPBackfillOrder
 
-	DCPBufferSize                int
+	BufferSize                   int
 	DisableBufferAcknowledgement bool
+}
+
+func (config DCPConfig) fromSpec(spec connstr.ResolvedConnSpec) (DCPConfig, error) {
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "dcp_priority"); ok {
+		var priority DcpAgentPriority
+		switch valStr {
+		case "":
+			priority = DcpAgentPriorityLow
+		case "low":
+			priority = DcpAgentPriorityLow
+		case "medium":
+			priority = DcpAgentPriorityMed
+		case "high":
+			priority = DcpAgentPriorityHigh
+		default:
+			return DCPConfig{}, fmt.Errorf("dcp_priority must be one of low, medium or high")
+		}
+		config.AgentPriority = priority
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "dcp_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return DCPConfig{}, fmt.Errorf("dcp buffer size option must be a number")
+		}
+		config.BufferSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "enable_dcp_expiry"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return DCPConfig{}, fmt.Errorf("enable_dcp_expiry option must be a boolean")
+		}
+		config.UseExpiryOpcode = val
+	}
+
+	return config, nil
 }
 
 func (config *DCPAgentConfig) redacted() interface{} {
 	newConfig := *config
+
 	if isLogRedactionLevelFull() {
-		// The slices here are still pointing at config's underlying arrays
-		// so we need to make them not do that.
-		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
-		for i, addr := range newConfig.HTTPAddrs {
-			newConfig.HTTPAddrs[i] = redactSystemData(addr)
-		}
-		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
-		for i, addr := range newConfig.MemdAddrs {
-			newConfig.MemdAddrs[i] = redactSystemData(addr)
-		}
+		newConfig.SeedConfig = newConfig.SeedConfig.redacted()
 
 		if newConfig.BucketName != "" {
 			newConfig.BucketName = redactMetaData(newConfig.BucketName)
@@ -117,231 +128,43 @@ func (config *DCPAgentConfig) FromConnStr(connStr string) error {
 		return err
 	}
 
-	fetchOption := func(name string) (string, bool) {
-		optValue := spec.Options[name]
-		if len(optValue) == 0 {
-			return "", false
-		}
-		return optValue[len(optValue)-1], true
+	config.DCPConfig, err = config.DCPConfig.fromSpec(spec)
+	if err != nil {
+		return err
+	}
+	config.SeedConfig, err = config.SeedConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	// Grab the resolved hostnames into a set of string arrays
-	var httpHosts []string
-	for _, specHost := range spec.HttpHosts {
-		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	config.SecurityConfig, err = config.SecurityConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	var memdHosts []string
-	for _, specHost := range spec.MemdHosts {
-		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
-	switch val, _ := fetchOption("bootstrap_on"); val {
-	case "http":
-		memdHosts = nil
-		if len(httpHosts) == 0 {
-			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
-		}
-	case "cccp":
-		httpHosts = nil
-		if len(memdHosts) == 0 {
-			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
-		}
-	case "both":
-	case "":
-		// Do nothing
-		break
-	default:
-		return errors.New("bootstrap_on={http,cccp,both}")
+	config.CompressionConfig, err = config.CompressionConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	config.MemdAddrs = memdHosts
-	config.HTTPAddrs = httpHosts
-
-	if spec.UseSsl {
-		cacertpaths := spec.Options["ca_cert_path"]
-
-		if len(cacertpaths) > 0 {
-			roots := x509.NewCertPool()
-
-			for _, path := range cacertpaths {
-				cacert, err := ioutil.ReadFile(path)
-				if err != nil {
-					return err
-				}
-
-				ok := roots.AppendCertsFromPEM(cacert)
-				if !ok {
-					return errInvalidCertificate
-				}
-			}
-
-			config.TLSRootCAProvider = func() *x509.CertPool {
-				return roots
-			}
-		}
-
-		config.UseTLS = true
+	config.ConfigPollerConfig, err = config.ConfigPollerConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if spec.Bucket != "" {
-		config.BucketName = spec.Bucket
+	config.IoConfig, err = config.IoConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("network"); ok {
-		config.NetworkType = valStr
+	config.HTTPConfig, err = config.HTTPConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("kv_connect_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("kv_connect_timeout option must be a duration or a number")
-		}
-		config.KVConnectTimeout = val
-	}
-
-	if valStr, ok := fetchOption("config_poll_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("config poll timeout option must be a duration or a number")
-		}
-		config.CccpMaxWait = val
-	}
-
-	if valStr, ok := fetchOption("config_poll_interval"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("config pool interval option must be duration or a number")
-		}
-		config.CccpPollPeriod = val
-	}
-
-	if valStr, ok := fetchOption("compression"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("compression option must be a boolean")
-		}
-		config.UseCompression = val
-	}
-
-	if valStr, ok := fetchOption("compression_min_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinSize = int(val)
-	}
-
-	if valStr, ok := fetchOption("compression_min_ratio"); ok {
-		val, err := strconv.ParseFloat(valStr, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinRatio = val
-	}
-
-	if valStr, ok := fetchOption("max_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http max idle connections option must be a number")
-		}
-		config.HTTPMaxIdleConns = int(val)
-	}
-
-	if valStr, ok := fetchOption("max_perhost_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max_perhost_idle_http_connections option must be a number")
-		}
-		config.HTTPMaxIdleConnsPerHost = int(val)
-	}
-
-	if valStr, ok := fetchOption("idle_http_connection_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
-		}
-		config.HTTPIdleConnectionTimeout = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_redial_period"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http redial period option must be a duration or a number")
-		}
-		config.HTTPRedialPeriod = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_retry_delay"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http retry delay option must be a duration or a number")
-		}
-		config.HTTPRetryDelay = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("dcp_priority"); ok {
-		var priority DcpAgentPriority
-		switch valStr {
-		case "":
-			priority = DcpAgentPriorityLow
-		case "low":
-			priority = DcpAgentPriorityLow
-		case "medium":
-			priority = DcpAgentPriorityMed
-		case "high":
-			priority = DcpAgentPriorityHigh
-		default:
-			return fmt.Errorf("dcp_priority must be one of low, medium or high")
-		}
-		config.AgentPriority = priority
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("dcp_buffer_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("dcp buffer size option must be a number")
-		}
-		config.DCPBufferSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("enable_dcp_expiry"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("enable_dcp_expiry option must be a boolean")
-		}
-		config.UseExpiryOpcode = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("kv_pool_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("kv pool size option must be a number")
-		}
-		config.KvPoolSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("max_queue_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max queue size option must be a number")
-		}
-		config.MaxQueueSize = int(val)
-	}
-
-	if valStr, ok := fetchOption("http_config_poll_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http_config_poll_timeout option must be a duration or a number")
-		}
-		config.HTTPMaxWait = val
+	config.KVConfig, err = config.KVConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
 	return nil

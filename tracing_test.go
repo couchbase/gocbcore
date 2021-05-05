@@ -171,9 +171,9 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 func (suite *StandardTestSuite) TestBasicOpsTracingParentNoRoot() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
 	cfg.BucketName = globalTestConfig.BucketName
-	cfg.NoRootTraceSpans = true
+	cfg.TracerConfig.NoRootTraceSpans = true
 	tracer := newTestTracer()
-	cfg.Tracer = tracer
+	cfg.TracerConfig.Tracer = tracer
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
 	defer agent.Close()
@@ -212,7 +212,7 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentRoot() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
 	cfg.BucketName = globalTestConfig.BucketName
 	tracer := newTestTracer()
-	cfg.Tracer = tracer
+	cfg.TracerConfig.Tracer = tracer
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
 	defer agent.Close()

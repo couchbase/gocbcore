@@ -2208,18 +2208,18 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port != "8091" {
 		suite.T().Skipf("Skipping test due to non default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{addr1}
-	cfg.MemdAddrs = []string{}
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2233,21 +2233,21 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	parts := strings.Split(addr1, ":")
 	if parts[1] != "8091" {
 		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
 	}
 
-	cfg.HTTPAddrs = []string{parts[0] + ":" + "18091"}
-	cfg.MemdAddrs = []string{}
-	cfg.UseTLS = true
+	cfg.SeedConfig.HTTPAddrs = []string{parts[0] + ":" + "18091"}
+	cfg.SeedConfig.MemdAddrs = []string{}
+	cfg.SecurityConfig.UseTLS = true
 	// SkipVerify
-	cfg.TLSRootCAProvider = func() *x509.CertPool {
+	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
 		return nil
 	}
 	cfg.BucketName = globalTestConfig.BucketName
@@ -2261,7 +2261,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBucket() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
@@ -2269,14 +2269,14 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBuc
 	globalTestLogger.SuppressWarnings(true)
 	defer globalTestLogger.SuppressWarnings(false)
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port != "8091" {
 		suite.T().Skipf("Skipping test due to non default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{addr1}
-	cfg.MemdAddrs = []string{}
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
 	cfg.BucketName = "idontexist"
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2304,18 +2304,18 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBuc
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port == "8091" {
 		suite.T().Skipf("Skipping test due to default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{addr1}
-	cfg.MemdAddrs = []string{}
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2327,18 +2327,18 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port == "8091" {
 		suite.T().Skipf("Skipping test due to default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{addr1}
-	cfg.MemdAddrs = []string{}
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
 	defer agent.Close()
@@ -2356,7 +2356,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalidBucket() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.HTTPAddrs) == 0 {
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
 
@@ -2364,14 +2364,14 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalid
 	globalTestLogger.SuppressWarnings(true)
 	defer globalTestLogger.SuppressWarnings(false)
 
-	addr1 := cfg.HTTPAddrs[0]
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port == "8091" {
 		suite.T().Skipf("Skipping test due to default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{addr1}
-	cfg.MemdAddrs = []string{}
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
 	cfg.BucketName = "idontexist"
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2399,18 +2399,18 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalid
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPort() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.MemdAddrs) == 0 {
+	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no Memd addresses")
 	}
 
-	addr1 := cfg.MemdAddrs[0]
+	addr1 := cfg.SeedConfig.MemdAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port != "11210" {
 		suite.T().Skipf("Skipping test due to non default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{}
-	cfg.MemdAddrs = []string{addr1}
+	cfg.SeedConfig.HTTPAddrs = []string{}
+	cfg.SeedConfig.MemdAddrs = []string{addr1}
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2424,21 +2424,21 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.MemdAddrs) == 0 {
+	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
 
-	addr1 := cfg.MemdAddrs[0]
+	addr1 := cfg.SeedConfig.MemdAddrs[0]
 	parts := strings.Split(addr1, ":")
 	if parts[1] != "11210" {
 		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
 	}
 
-	cfg.HTTPAddrs = []string{}
-	cfg.MemdAddrs = []string{parts[0] + ":11207"}
-	cfg.UseTLS = true
+	cfg.SeedConfig.HTTPAddrs = []string{}
+	cfg.SeedConfig.MemdAddrs = []string{parts[0] + ":11207"}
+	cfg.SecurityConfig.UseTLS = true
 	// SkipVerify
-	cfg.TLSRootCAProvider = func() *x509.CertPool {
+	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
 		return nil
 	}
 	cfg.BucketName = globalTestConfig.BucketName
@@ -2452,18 +2452,18 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.MemdAddrs) == 0 {
+	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
 
-	addr1 := cfg.MemdAddrs[0]
+	addr1 := cfg.SeedConfig.MemdAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port == "8091" {
 		suite.T().Skipf("Skipping test due to default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{}
-	cfg.MemdAddrs = []string{addr1}
+	cfg.SeedConfig.HTTPAddrs = []string{}
+	cfg.SeedConfig.MemdAddrs = []string{addr1}
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2475,7 +2475,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBucket() {
 	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.MemdAddrs) == 0 {
+	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
 
@@ -2483,14 +2483,14 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 	globalTestLogger.SuppressWarnings(true)
 	defer globalTestLogger.SuppressWarnings(false)
 
-	addr1 := cfg.MemdAddrs[0]
+	addr1 := cfg.SeedConfig.MemdAddrs[0]
 	port := strings.Split(addr1, ":")[1]
 	if port != "11210" {
 		suite.T().Skipf("Skipping test due to non default port %s", port)
 	}
 
-	cfg.HTTPAddrs = []string{}
-	cfg.MemdAddrs = []string{addr1}
+	cfg.SeedConfig.HTTPAddrs = []string{}
+	cfg.SeedConfig.MemdAddrs = []string{addr1}
 	cfg.BucketName = "idontexist"
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)

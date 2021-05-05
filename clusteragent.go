@@ -28,22 +28,22 @@ type clusterAgent struct {
 
 func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	var tlsConfig *dynTLSConfig
-	if config.UseTLS {
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+	if config.SecurityConfig.UseTLS {
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
 	}
 
-	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
-		config.HTTPIdleConnectionTimeout, tlsConfig)
+	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
+		config.HTTPConfig.IdleConnectionTimeout, tlsConfig)
 
-	tracer := config.Tracer
+	tracer := config.TracerConfig.Tracer
 	if tracer == nil {
 		tracer = noopTracer{}
 	}
-	meter := config.Meter
+	meter := config.MeterConfig.Meter
 	if meter == nil {
 		meter = &noopMeter{}
 	}
-	tracerCmpt := newTracerComponent(tracer, "", config.NoRootTraceSpans, meter)
+	tracerCmpt := newTracerComponent(tracer, "", config.TracerConfig.NoRootTraceSpans, meter)
 
 	c := &clusterAgent{
 		tlsConfig: tlsConfig,
@@ -56,11 +56,11 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
-	auth := config.Auth
+	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
 
 	var httpEpList []string
-	for _, hostPort := range config.HTTPAddrs {
+	for _, hostPort := range config.SeedConfig.HTTPAddrs {
 		if c.tlsConfig == nil {
 			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
 		} else {

@@ -103,14 +103,14 @@ func (suite *DCPTestSuite) makeOpAgentConfig(testConfig *DCPTestConfig) AgentCon
 	config := AgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
-	config.UseMutationTokens = true
-	config.UseCollections = true
+	config.IoConfig.UseMutationTokens = true
+	config.IoConfig.UseCollections = true
 	config.BucketName = testConfig.BucketName
 
-	config.Auth = testConfig.Authenticator
+	config.SecurityConfig.Auth = testConfig.Authenticator
 
 	if testConfig.CAProvider != nil {
-		config.TLSRootCAProvider = testConfig.CAProvider
+		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config
@@ -146,17 +146,17 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 	config := DCPAgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
-	config.UseCollections = suite.SupportsFeature(TestFeatureCollections)
+	config.IoConfig.UseCollections = suite.SupportsFeature(TestFeatureCollections)
 	config.BucketName = testConfig.BucketName
 
 	if expiryEnabled {
-		config.UseExpiryOpcode = true
+		config.DCPConfig.UseExpiryOpcode = true
 	}
 
-	config.Auth = testConfig.Authenticator
+	config.SecurityConfig.Auth = testConfig.Authenticator
 
 	if testConfig.CAProvider != nil {
-		config.TLSRootCAProvider = testConfig.CAProvider
+		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config

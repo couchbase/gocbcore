@@ -76,27 +76,27 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	logInfof("Creating new agent: %+v", config)
 
 	var tlsConfig *dynTLSConfig
-	if config.UseTLS {
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+	if config.SecurityConfig.UseTLS {
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
 	}
 
 	httpIdleConnTimeout := 4500 * time.Millisecond
-	if config.HTTPIdleConnectionTimeout > 0 {
-		httpIdleConnTimeout = config.HTTPIdleConnectionTimeout
+	if config.HTTPConfig.IdleConnectionTimeout > 0 {
+		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
 	}
 
-	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
+	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
 		httpIdleConnTimeout, tlsConfig)
 
-	tracer := config.Tracer
+	tracer := config.TracerConfig.Tracer
 	if tracer == nil {
 		tracer = noopTracer{}
 	}
-	meter := config.Meter
+	meter := config.MeterConfig.Meter
 	if meter == nil {
 		meter = noopMeter{}
 	}
-	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.NoRootTraceSpans, meter)
+	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, meter)
 
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),
@@ -111,68 +111,68 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
-	auth := config.Auth
+	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
-	useMutationTokens := config.UseMutationTokens
-	disableDecompression := config.DisableDecompression
-	useCompression := config.UseCompression
-	useCollections := config.UseCollections
-	useJSONHello := !config.DisableJSONHello
-	usePITRHello := config.EnablePITRHello
-	useXErrorHello := !config.DisableXErrors
-	useSyncReplicationHello := !config.DisableSyncReplicationHello
+	useMutationTokens := config.IoConfig.UseMutationTokens
+	disableDecompression := config.CompressionConfig.DisableDecompression
+	useCompression := config.CompressionConfig.Enabled
+	useCollections := config.IoConfig.UseCollections
+	useJSONHello := !config.IoConfig.DisableJSONHello
+	usePITRHello := config.IoConfig.EnablePITRHello
+	useXErrorHello := !config.IoConfig.DisableXErrorHello
+	useSyncReplicationHello := !config.IoConfig.DisableSyncReplicationHello
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
-	useDurations := config.UseDurations
-	useOutOfOrder := config.UseOutOfOrderResponses
+	useDurations := config.IoConfig.UseDurations
+	useOutOfOrder := config.IoConfig.UseOutOfOrderResponses
 
 	kvConnectTimeout := 7000 * time.Millisecond
-	if config.KVConnectTimeout > 0 {
-		kvConnectTimeout = config.KVConnectTimeout
+	if config.KVConfig.ConnectTimeout > 0 {
+		kvConnectTimeout = config.KVConfig.ConnectTimeout
 	}
 
 	serverWaitTimeout := 5 * time.Second
 
 	kvPoolSize := 1
-	if config.KvPoolSize > 0 {
-		kvPoolSize = config.KvPoolSize
+	if config.KVConfig.PoolSize > 0 {
+		kvPoolSize = config.KVConfig.PoolSize
 	}
 
 	maxQueueSize := 2048
-	if config.MaxQueueSize > 0 {
-		maxQueueSize = config.MaxQueueSize
+	if config.KVConfig.MaxQueueSize > 0 {
+		maxQueueSize = config.KVConfig.MaxQueueSize
 	}
 
 	confHTTPRetryDelay := 10 * time.Second
-	if config.HTTPRetryDelay > 0 {
-		confHTTPRetryDelay = config.HTTPRetryDelay
+	if config.ConfigPollerConfig.HTTPRetryDelay > 0 {
+		confHTTPRetryDelay = config.ConfigPollerConfig.HTTPRetryDelay
 	}
 
 	confHTTPRedialPeriod := 10 * time.Second
-	if config.HTTPRedialPeriod > 0 {
-		confHTTPRedialPeriod = config.HTTPRedialPeriod
+	if config.ConfigPollerConfig.HTTPRedialPeriod > 0 {
+		confHTTPRedialPeriod = config.ConfigPollerConfig.HTTPRedialPeriod
 	}
 
 	confHTTPMaxWait := 5 * time.Second
-	if config.HTTPMaxWait > 0 {
-		confHTTPMaxWait = config.HTTPMaxWait
+	if config.ConfigPollerConfig.HTTPMaxWait > 0 {
+		confHTTPMaxWait = config.ConfigPollerConfig.HTTPMaxWait
 	}
 
 	confCccpMaxWait := 3 * time.Second
-	if config.CccpMaxWait > 0 {
-		confCccpMaxWait = config.CccpMaxWait
+	if config.ConfigPollerConfig.CccpMaxWait > 0 {
+		confCccpMaxWait = config.ConfigPollerConfig.CccpMaxWait
 	}
 
 	confCccpPollPeriod := 2500 * time.Millisecond
-	if config.CccpPollPeriod > 0 {
-		confCccpPollPeriod = config.CccpPollPeriod
+	if config.ConfigPollerConfig.CccpPollPeriod > 0 {
+		confCccpPollPeriod = config.ConfigPollerConfig.CccpPollPeriod
 	}
 
-	if config.CompressionMinSize > 0 {
-		compressionMinSize = config.CompressionMinSize
+	if config.CompressionConfig.MinSize > 0 {
+		compressionMinSize = config.CompressionConfig.MinSize
 	}
-	if config.CompressionMinRatio > 0 {
-		compressionMinRatio = config.CompressionMinRatio
+	if config.CompressionConfig.MinRatio > 0 {
+		compressionMinRatio = config.CompressionConfig.MinRatio
 		if compressionMinRatio >= 1.0 {
 			compressionMinRatio = 1.0
 		}
@@ -181,9 +181,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
-	authMechanisms := config.AuthMechanisms
+	authMechanisms := config.SecurityConfig.AuthMechanisms
 	if len(authMechanisms) == 0 {
-		if config.UseTLS {
+		if config.SecurityConfig.UseTLS {
 			authMechanisms = []AuthMechanism{PlainAuthMechanism}
 		} else {
 			// No user specified auth mechanisms so set our defaults.
@@ -192,7 +192,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				ScramSha256AuthMechanism,
 				ScramSha1AuthMechanism}
 		}
-	} else if !config.UseTLS {
+	} else if !config.SecurityConfig.UseTLS {
 		// The user has specified their own mechanisms and not using TLS so we check if they've set PLAIN.
 		for _, mech := range authMechanisms {
 			if mech == PlainAuthMechanism {
@@ -204,7 +204,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	authHandler := buildAuthHandler(auth)
 
 	var httpEpList []string
-	for _, hostPort := range config.HTTPAddrs {
+	for _, hostPort := range config.SeedConfig.HTTPAddrs {
 		if !c.IsSecure() {
 			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
 		} else {
@@ -212,14 +212,14 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		}
 	}
 
-	if config.UseZombieLogger {
+	if config.OrphanReporterConfig.Enabled {
 		zombieLoggerInterval := 10 * time.Second
 		zombieLoggerSampleSize := 10
-		if config.ZombieLoggerInterval > 0 {
-			zombieLoggerInterval = config.ZombieLoggerInterval
+		if config.OrphanReporterConfig.ReportInterval > 0 {
+			zombieLoggerInterval = config.OrphanReporterConfig.ReportInterval
 		}
-		if config.ZombieLoggerSampleSize > 0 {
-			zombieLoggerSampleSize = config.ZombieLoggerSampleSize
+		if config.OrphanReporterConfig.SampleSize > 0 {
+			zombieLoggerSampleSize = config.OrphanReporterConfig.SampleSize
 		}
 
 		c.zombieLogger = newZombieLoggerComponent(zombieLoggerInterval, zombieLoggerSampleSize)
@@ -228,9 +228,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.NetworkType,
-			UseSSL:       config.UseTLS,
-			SrcMemdAddrs: config.MemdAddrs,
+			NetworkType:  config.IoConfig.NetworkType,
+			UseSSL:       config.SecurityConfig.UseTLS,
+			SrcMemdAddrs: config.SeedConfig.MemdAddrs,
 			SrcHTTPAddrs: httpEpList,
 		},
 	)
@@ -282,7 +282,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	)
 	c.collections = newCollectionIDManager(
 		collectionIDProps{
-			MaxQueueSize:         config.MaxQueueSize,
+			MaxQueueSize:         config.KVConfig.MaxQueueSize,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
 		},
 		c.kvMux,
@@ -301,7 +301,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.tracer,
 	)
 
-	if len(config.MemdAddrs) == 0 && config.BucketName == "" {
+	if len(config.SeedConfig.MemdAddrs) == 0 && config.BucketName == "" {
 		// The http poller can't run without a bucket. We don't trigger an error for this case
 		// because AgentGroup users who use memcached buckets on non-default ports will end up here.
 		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
@@ -342,7 +342,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	// Kick everything off.
 	cfg := &routeConfig{
-		kvServerList: config.MemdAddrs,
+		kvServerList: config.SeedConfig.MemdAddrs,
 		mgmtEpList:   httpEpList,
 		revID:        -1,
 	}

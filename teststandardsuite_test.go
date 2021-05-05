@@ -221,15 +221,17 @@ func (suite *StandardTestSuite) makeAgentConfig(testConfig *TestConfig) AgentCon
 	config := AgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
-	config.UseDurations = true
-	config.UseMutationTokens = true
-	config.UseCollections = true
-	config.UseOutOfOrderResponses = true
+	config.IoConfig = IoConfig{
+		UseDurations:           true,
+		UseMutationTokens:      true,
+		UseCollections:         true,
+		UseOutOfOrderResponses: true,
+	}
 
-	config.Auth = testConfig.Authenticator
+	config.SecurityConfig.Auth = testConfig.Authenticator
 
 	if testConfig.CAProvider != nil {
-		config.TLSRootCAProvider = testConfig.CAProvider
+		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config
@@ -239,17 +241,19 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	config := AgentGroupConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
-	config.UseDurations = true
-	config.UseMutationTokens = true
-	config.UseCollections = true
-	config.UseOutOfOrderResponses = true
-	config.Tracer = suite.tracer
-	config.Meter = suite.meter
+	config.IoConfig = IoConfig{
+		UseDurations:           true,
+		UseMutationTokens:      true,
+		UseCollections:         true,
+		UseOutOfOrderResponses: true,
+	}
+	config.TracerConfig.Tracer = suite.tracer
+	config.MeterConfig.Meter = suite.meter
 
-	config.Auth = testConfig.Authenticator
+	config.SecurityConfig.Auth = testConfig.Authenticator
 
 	if testConfig.CAProvider != nil {
-		config.TLSRootCAProvider = testConfig.CAProvider
+		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 	}
 
 	return config

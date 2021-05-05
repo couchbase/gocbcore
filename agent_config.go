@@ -27,79 +27,406 @@ func parseDurationOrInt(valStr string) (time.Duration, error) {
 
 // AgentConfig specifies the configuration options for creation of an Agent.
 type AgentConfig struct {
-	MemdAddrs   []string
-	HTTPAddrs   []string
-	BucketName  string
-	UserAgent   string
-	UseTLS      bool
-	NetworkType string
-	Auth        AuthProvider
+	BucketName string
+	UserAgent  string
 
+	SeedConfig SeedConfig
+
+	SecurityConfig SecurityConfig
+
+	CompressionConfig CompressionConfig
+
+	ConfigPollerConfig ConfigPollerConfig
+
+	IoConfig IoConfig
+
+	KVConfig KVConfig
+
+	HTTPConfig HTTPConfig
+
+	DefaultRetryStrategy RetryStrategy
+
+	CircuitBreakerConfig CircuitBreakerConfig
+
+	OrphanReporterConfig OrphanReporterConfig
+
+	TracerConfig TracerConfig
+
+	MeterConfig MeterConfig
+}
+
+// OrphanReporterConfig specifies options for controlling the orphan
+// reporter which records when the SDK receives responses for requests
+// that are no longer in the system (usually due to being timed out).
+type OrphanReporterConfig struct {
+	Enabled        bool
+	ReportInterval time.Duration
+	SampleSize     int
+}
+
+func (config OrphanReporterConfig) fromSpec(spec connstr.ResolvedConnSpec) (OrphanReporterConfig, error) {
+	if valStr, ok := fetchOption(spec, "orphaned_response_logging"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return OrphanReporterConfig{}, fmt.Errorf("orphaned_response_logging option must be a boolean")
+		}
+		config.Enabled = val
+	}
+
+	if valStr, ok := fetchOption(spec, "orphaned_response_logging_interval"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return OrphanReporterConfig{}, fmt.Errorf("orphaned_response_logging_interval option must be a number")
+		}
+		config.ReportInterval = val
+	}
+
+	if valStr, ok := fetchOption(spec, "orphaned_response_logging_sample_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return OrphanReporterConfig{}, fmt.Errorf("orphaned_response_logging_sample_size option must be a number")
+		}
+		config.SampleSize = int(val)
+	}
+
+	return config, nil
+}
+
+// SecurityConfig specifies options for controlling security related
+// items such as TLS root certificates and verification skipping.
+type SecurityConfig struct {
+	UseTLS            bool
 	TLSRootCAProvider func() *x509.CertPool
 
-	UseMutationTokens      bool
-	UseCompression         bool
-	UseDurations           bool
-	DisableDecompression   bool
-	UseOutOfOrderResponses bool
-	DisableXErrors         bool
+	Auth AuthProvider
 
-	DisableJSONHello            bool
-	EnablePITRHello             bool
-	DisableSyncReplicationHello bool
+	// AuthMechanisms is the list of mechanisms that the SDK can use to attempt authentication.
+	// Note that if you add PLAIN to the list, this will cause credential leakage on the network
+	// since PLAIN sends the credentials in cleartext. It is disabled by default to prevent downgrade attacks. We
+	// recommend using a TLS connection if using PLAIN.
+	AuthMechanisms []AuthMechanism
+}
 
-	UseCollections bool
+func (config SecurityConfig) fromSpec(spec connstr.ResolvedConnSpec) (SecurityConfig, error) {
+	if spec.UseSsl {
+		cacertpaths := spec.Options["ca_cert_path"]
 
-	CompressionMinSize  int
-	CompressionMinRatio float64
+		if len(cacertpaths) > 0 {
+			roots := x509.NewCertPool()
 
+			for _, path := range cacertpaths {
+				cacert, err := ioutil.ReadFile(path)
+				if err != nil {
+					return SecurityConfig{}, err
+				}
+
+				ok := roots.AppendCertsFromPEM(cacert)
+				if !ok {
+					return SecurityConfig{}, errInvalidCertificate
+				}
+			}
+
+			config.TLSRootCAProvider = func() *x509.CertPool {
+				return roots
+			}
+		}
+
+		config.UseTLS = true
+	}
+
+	return config, nil
+}
+
+// CompressionConfig specifies options for controlling compression applied to documents using KV.
+type CompressionConfig struct {
+	Enabled              bool
+	DisableDecompression bool
+	MinSize              int
+	MinRatio             float64
+}
+
+func (config CompressionConfig) fromSpec(spec connstr.ResolvedConnSpec) (CompressionConfig, error) {
+	if valStr, ok := fetchOption(spec, "compression"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return CompressionConfig{}, fmt.Errorf("compression option must be a boolean")
+		}
+		config.Enabled = val
+	}
+
+	if valStr, ok := fetchOption(spec, "compression_min_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return CompressionConfig{}, fmt.Errorf("compression_min_size option must be an int")
+		}
+		config.MinSize = int(val)
+	}
+
+	if valStr, ok := fetchOption(spec, "compression_min_ratio"); ok {
+		val, err := strconv.ParseFloat(valStr, 64)
+		if err != nil {
+			return CompressionConfig{}, fmt.Errorf("compression_min_size option must be an int")
+		}
+		config.MinRatio = val
+	}
+
+	return config, nil
+}
+
+// ConfigPollerConfig specifies options for controlling the cluster configuration pollers.
+type ConfigPollerConfig struct {
 	HTTPRedialPeriod time.Duration
 	HTTPRetryDelay   time.Duration
 	HTTPMaxWait      time.Duration
 	CccpMaxWait      time.Duration
 	CccpPollPeriod   time.Duration
+}
 
-	ConnectTimeout   time.Duration
-	KVConnectTimeout time.Duration
+func (config ConfigPollerConfig) fromSpec(spec connstr.ResolvedConnSpec) (ConfigPollerConfig, error) {
+	if valStr, ok := fetchOption(spec, "config_poll_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return ConfigPollerConfig{}, fmt.Errorf("config poll timeout option must be a duration or a number")
+		}
+		config.CccpMaxWait = val
+	}
 
-	KvPoolSize   int
-	MaxQueueSize int
+	if valStr, ok := fetchOption(spec, "config_poll_interval"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return ConfigPollerConfig{}, fmt.Errorf("config pool interval option must be duration or a number")
+		}
+		config.CccpPollPeriod = val
+	}
 
-	HTTPMaxIdleConns          int
-	HTTPMaxIdleConnsPerHost   int
-	HTTPIdleConnectionTimeout time.Duration
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "http_redial_period"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return ConfigPollerConfig{}, fmt.Errorf("http redial period option must be a duration or a number")
+		}
+		config.HTTPRedialPeriod = val
+	}
 
-	// Uncommitted: Tracer API may change in the future.
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "http_retry_delay"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return ConfigPollerConfig{}, fmt.Errorf("http retry delay option must be a duration or a number")
+		}
+		config.HTTPRetryDelay = val
+	}
+
+	if valStr, ok := fetchOption(spec, "http_config_poll_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return ConfigPollerConfig{}, fmt.Errorf("http_config_poll_timeout option must be a duration or a number")
+		}
+		config.HTTPMaxWait = val
+	}
+
+	return config, nil
+}
+
+// IoConfig specifies IO related configuration options such as HELLO flags and the network type to use.
+type IoConfig struct {
+	NetworkType string
+
+	UseMutationTokens           bool
+	UseDurations                bool
+	UseOutOfOrderResponses      bool
+	DisableXErrorHello          bool
+	DisableJSONHello            bool
+	DisableSyncReplicationHello bool
+	EnablePITRHello             bool
+	UseCollections              bool
+}
+
+func (config IoConfig) fromSpec(spec connstr.ResolvedConnSpec) (IoConfig, error) {
+	if valStr, ok := fetchOption(spec, "network"); ok {
+		config.NetworkType = valStr
+	}
+
+	if valStr, ok := fetchOption(spec, "enable_mutation_tokens"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return IoConfig{}, fmt.Errorf("enable_mutation_tokens option must be a boolean")
+		}
+		config.UseMutationTokens = val
+	}
+
+	if valStr, ok := fetchOption(spec, "enable_server_durations"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return IoConfig{}, fmt.Errorf("server_duration option must be a boolean")
+		}
+		config.UseDurations = val
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "unordered_execution_enabled"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return IoConfig{}, fmt.Errorf("unordered_execution_enabled option must be a boolean")
+		}
+		config.UseOutOfOrderResponses = val
+	}
+
+	return config, nil
+}
+
+// TracerConfig specifies tracer related configuration options.
+// Uncommitted: Tracer API may change in the future.
+type TracerConfig struct {
 	Tracer           RequestTracer
 	NoRootTraceSpans bool
+}
 
-	// Uncommitted: Meter API may change in the future.
+// MeterConfig specifies meter related configuration options.
+type MeterConfig struct {
 	Meter Meter
+}
 
-	DefaultRetryStrategy RetryStrategy
-	CircuitBreakerConfig CircuitBreakerConfig
+// HTTPConfig specifies http related configuration options.
+type HTTPConfig struct {
+	MaxIdleConns          int
+	MaxIdleConnsPerHost   int
+	IdleConnectionTimeout time.Duration
+}
 
-	UseZombieLogger        bool
-	ZombieLoggerInterval   time.Duration
-	ZombieLoggerSampleSize int
+func (config HTTPConfig) fromSpec(spec connstr.ResolvedConnSpec) (HTTPConfig, error) {
+	if valStr, ok := fetchOption(spec, "max_idle_http_connections"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("http max idle connections option must be a number")
+		}
+		config.MaxIdleConns = int(val)
+	}
 
-	// AuthMechanisms is the list of mechanisms that the SDK can use to attempt authentication.
-	AuthMechanisms []AuthMechanism
+	if valStr, ok := fetchOption(spec, "max_perhost_idle_http_connections"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("max_perhost_idle_http_connections option must be a number")
+		}
+		config.MaxIdleConnsPerHost = int(val)
+	}
+
+	if valStr, ok := fetchOption(spec, "idle_http_connection_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
+		}
+		config.IdleConnectionTimeout = val
+	}
+
+	return config, nil
+}
+
+// KVConfig specifies kv related configuration options.
+type KVConfig struct {
+	ConnectTimeout time.Duration
+
+	PoolSize     int
+	MaxQueueSize int
+}
+
+func (config KVConfig) fromSpec(spec connstr.ResolvedConnSpec) (KVConfig, error) {
+
+	if valStr, ok := fetchOption(spec, "kv_connect_timeout"); ok {
+		val, err := parseDurationOrInt(valStr)
+		if err != nil {
+			return KVConfig{}, fmt.Errorf("kv_connect_timeout option must be a duration or a number")
+		}
+		config.ConnectTimeout = val
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "kv_pool_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return KVConfig{}, fmt.Errorf("kv pool size option must be a number")
+		}
+		config.PoolSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "max_queue_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return KVConfig{}, fmt.Errorf("max queue size option must be a number")
+		}
+		config.MaxQueueSize = int(val)
+	}
+
+	return config, nil
+}
+
+// SeedConfig specifies initial seed configuration options such as addresses.
+type SeedConfig struct {
+	HTTPAddrs []string
+	MemdAddrs []string
+}
+
+func (config SeedConfig) fromSpec(spec connstr.ResolvedConnSpec) (SeedConfig, error) {
+	// Grab the resolved hostnames into a set of string arrays
+	var httpHosts []string
+	for _, specHost := range spec.HttpHosts {
+		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	var memdHosts []string
+	for _, specHost := range spec.MemdHosts {
+		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
+	}
+
+	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
+	switch val, _ := fetchOption(spec, "bootstrap_on"); val {
+	case "http":
+		memdHosts = nil
+		if len(httpHosts) == 0 {
+			return SeedConfig{}, errors.New("bootstrap_on=http but no HTTP hosts in connection string")
+		}
+	case "cccp":
+		httpHosts = nil
+		if len(memdHosts) == 0 {
+			return SeedConfig{}, errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
+		}
+	case "both":
+	case "":
+		// Do nothing
+		break
+	default:
+		return SeedConfig{}, errors.New("bootstrap_on={http,cccp,both}")
+	}
+	config.MemdAddrs = memdHosts
+	config.HTTPAddrs = httpHosts
+
+	return config, nil
+}
+
+func (config SeedConfig) redacted() SeedConfig {
+	newConfig := SeedConfig{
+		HTTPAddrs: config.HTTPAddrs,
+		MemdAddrs: config.MemdAddrs,
+	}
+	// The slices here are still pointing at config's underlying arrays
+	// so we need to make them not do that.
+	newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
+	for i, addr := range newConfig.HTTPAddrs {
+		newConfig.HTTPAddrs[i] = redactSystemData(addr)
+	}
+	newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
+	for i, addr := range newConfig.MemdAddrs {
+		newConfig.MemdAddrs[i] = redactSystemData(addr)
+	}
+
+	return newConfig
 }
 
 func (config *AgentConfig) redacted() interface{} {
 	newConfig := *config
 	if isLogRedactionLevelFull() {
-		// The slices here are still pointing at config's underlying arrays
-		// so we need to make them not do that.
-		newConfig.HTTPAddrs = append([]string(nil), newConfig.HTTPAddrs...)
-		for i, addr := range newConfig.HTTPAddrs {
-			newConfig.HTTPAddrs[i] = redactSystemData(addr)
-		}
-		newConfig.MemdAddrs = append([]string(nil), newConfig.MemdAddrs...)
-		for i, addr := range newConfig.MemdAddrs {
-			newConfig.MemdAddrs[i] = redactSystemData(addr)
-		}
+		newConfig.SeedConfig = newConfig.SeedConfig.redacted()
 
 		if newConfig.BucketName != "" {
 			newConfig.BucketName = redactMetaData(newConfig.BucketName)
@@ -107,6 +434,14 @@ func (config *AgentConfig) redacted() interface{} {
 	}
 
 	return newConfig
+}
+
+func fetchOption(spec connstr.ResolvedConnSpec, name string) (string, bool) {
+	optValue := spec.Options[name]
+	if len(optValue) == 0 {
+		return "", false
+	}
+	return optValue[len(optValue)-1], true
 }
 
 // FromConnStr populates the AgentConfig with information from a
@@ -146,244 +481,48 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 		return err
 	}
 
-	fetchOption := func(name string) (string, bool) {
-		optValue := spec.Options[name]
-		if len(optValue) == 0 {
-			return "", false
-		}
-		return optValue[len(optValue)-1], true
-	}
-
-	// Grab the resolved hostnames into a set of string arrays
-	var httpHosts []string
-	for _, specHost := range spec.HttpHosts {
-		httpHosts = append(httpHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-
-	var memdHosts []string
-	for _, specHost := range spec.MemdHosts {
-		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
-	}
-
-	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
-	switch val, _ := fetchOption("bootstrap_on"); val {
-	case "http":
-		memdHosts = nil
-		if len(httpHosts) == 0 {
-			return errors.New("bootstrap_on=http but no HTTP hosts in connection string")
-		}
-	case "cccp":
-		httpHosts = nil
-		if len(memdHosts) == 0 {
-			return errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
-		}
-	case "both":
-	case "":
-		// Do nothing
-		break
-	default:
-		return errors.New("bootstrap_on={http,cccp,both}")
-	}
-	config.MemdAddrs = memdHosts
-	config.HTTPAddrs = httpHosts
-
-	if spec.UseSsl {
-		cacertpaths := spec.Options["ca_cert_path"]
-
-		if len(cacertpaths) > 0 {
-			roots := x509.NewCertPool()
-
-			for _, path := range cacertpaths {
-				cacert, err := ioutil.ReadFile(path)
-				if err != nil {
-					return err
-				}
-
-				ok := roots.AppendCertsFromPEM(cacert)
-				if !ok {
-					return errInvalidCertificate
-				}
-			}
-
-			config.TLSRootCAProvider = func() *x509.CertPool {
-				return roots
-			}
-		}
-
-		config.UseTLS = true
-	}
-
 	if spec.Bucket != "" {
 		config.BucketName = spec.Bucket
 	}
 
-	if valStr, ok := fetchOption("network"); ok {
-		config.NetworkType = valStr
+	config.SeedConfig, err = config.SeedConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("kv_connect_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("kv_connect_timeout option must be a duration or a number")
-		}
-		config.KVConnectTimeout = val
+	config.SecurityConfig, err = config.SecurityConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("config_poll_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("config poll timeout option must be a duration or a number")
-		}
-		config.CccpMaxWait = val
+	config.OrphanReporterConfig, err = config.OrphanReporterConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("config_poll_interval"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("config pool interval option must be duration or a number")
-		}
-		config.CccpPollPeriod = val
+	config.CompressionConfig, err = config.CompressionConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("enable_mutation_tokens"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("enable_mutation_tokens option must be a boolean")
-		}
-		config.UseMutationTokens = val
+	config.ConfigPollerConfig, err = config.ConfigPollerConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("compression"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("compression option must be a boolean")
-		}
-		config.UseCompression = val
+	config.IoConfig, err = config.IoConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("compression_min_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinSize = int(val)
+	config.HTTPConfig, err = config.HTTPConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
-	if valStr, ok := fetchOption("compression_min_ratio"); ok {
-		val, err := strconv.ParseFloat(valStr, 64)
-		if err != nil {
-			return fmt.Errorf("compression_min_size option must be an int")
-		}
-		config.CompressionMinRatio = val
-	}
-
-	if valStr, ok := fetchOption("enable_server_durations"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("server_duration option must be a boolean")
-		}
-		config.UseDurations = val
-	}
-
-	if valStr, ok := fetchOption("max_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("http max idle connections option must be a number")
-		}
-		config.HTTPMaxIdleConns = int(val)
-	}
-
-	if valStr, ok := fetchOption("max_perhost_idle_http_connections"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max_perhost_idle_http_connections option must be a number")
-		}
-		config.HTTPMaxIdleConnsPerHost = int(val)
-	}
-
-	if valStr, ok := fetchOption("idle_http_connection_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("idle_http_connection_timeout option must be a duration or a number")
-		}
-		config.HTTPIdleConnectionTimeout = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging option must be a boolean")
-		}
-		config.UseZombieLogger = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_interval"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_interval option must be a number")
-		}
-		config.ZombieLoggerInterval = val
-	}
-
-	if valStr, ok := fetchOption("orphaned_response_logging_sample_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("orphaned_response_logging_sample_size option must be a number")
-		}
-		config.ZombieLoggerSampleSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_redial_period"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http redial period option must be a duration or a number")
-		}
-		config.HTTPRedialPeriod = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("http_retry_delay"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http retry delay option must be a duration or a number")
-		}
-		config.HTTPRetryDelay = val
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("kv_pool_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("kv pool size option must be a number")
-		}
-		config.KvPoolSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("max_queue_size"); ok {
-		val, err := strconv.ParseInt(valStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("max queue size option must be a number")
-		}
-		config.MaxQueueSize = int(val)
-	}
-
-	// This option is experimental
-	if valStr, ok := fetchOption("unordered_execution_enabled"); ok {
-		val, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return fmt.Errorf("unordered_execution_enabled option must be a boolean")
-		}
-		config.UseOutOfOrderResponses = val
-	}
-
-	if valStr, ok := fetchOption("http_config_poll_timeout"); ok {
-		val, err := parseDurationOrInt(valStr)
-		if err != nil {
-			return fmt.Errorf("http_config_poll_timeout option must be a duration or a number")
-		}
-		config.HTTPMaxWait = val
+	config.KVConfig, err = config.KVConfig.fromSpec(spec)
+	if err != nil {
+		return err
 	}
 
 	return nil

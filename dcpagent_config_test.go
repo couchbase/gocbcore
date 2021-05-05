@@ -14,8 +14,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_FromConnStr() {
 		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
-	if config.KVConnectTimeout != 100*time.Microsecond {
-		suite.T().Fatalf("Ex :%v", config.KVConnectTimeout)
+	if config.KVConfig.ConnectTimeout != 100*time.Microsecond {
+		suite.T().Fatalf("Ex :%v", config.KVConfig.ConnectTimeout)
 	}
 }
 
@@ -28,12 +28,12 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_Couchbase1() {
 		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
-	if len(config.MemdAddrs) != 1 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
+	if len(config.SeedConfig.MemdAddrs) != 1 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.SeedConfig.MemdAddrs)
 	}
 
-	if config.MemdAddrs[0] != "10.112.192.101:11210" {
-		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
+	if config.SeedConfig.MemdAddrs[0] != "10.112.192.101:11210" {
+		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.SeedConfig.MemdAddrs[0])
 	}
 }
 
@@ -46,8 +46,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_Couchbase2() {
 		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
-	if len(config.MemdAddrs) != 2 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 2 but was %v", config.MemdAddrs)
+	if len(config.SeedConfig.MemdAddrs) != 2 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 2 but was %v", config.SeedConfig.MemdAddrs)
 	}
 }
 
@@ -60,20 +60,20 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_DefaultHTTP() {
 		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
-	if len(config.MemdAddrs) != 1 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.MemdAddrs)
+	if len(config.SeedConfig.MemdAddrs) != 1 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.SeedConfig.MemdAddrs)
 	}
 
-	if len(config.HTTPAddrs) != 1 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+	if len(config.SeedConfig.HTTPAddrs) != 1 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.SeedConfig.HTTPAddrs)
 	}
 
-	if config.MemdAddrs[0] != "10.112.192.101:11210" {
-		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.MemdAddrs[0])
+	if config.SeedConfig.MemdAddrs[0] != "10.112.192.101:11210" {
+		suite.T().Fatalf("Expected address to be 10.112.192.101:11210 but was %v", config.SeedConfig.MemdAddrs[0])
 	}
 
-	if config.HTTPAddrs[0] != "10.112.192.101:8091" {
-		suite.T().Fatalf("Expected address to be 10.112.192.101:8091 but was %v", config.HTTPAddrs[0])
+	if config.SeedConfig.HTTPAddrs[0] != "10.112.192.101:8091" {
+		suite.T().Fatalf("Expected address to be 10.112.192.101:8091 but was %v", config.SeedConfig.HTTPAddrs[0])
 	}
 }
 
@@ -86,16 +86,16 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_NonDefaultHTTP() {
 		suite.T().Fatalf("Failed to execute FromConnStr: %v", err)
 	}
 
-	if len(config.MemdAddrs) != 0 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 0 but was %v", config.MemdAddrs)
+	if len(config.SeedConfig.MemdAddrs) != 0 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 0 but was %v", config.SeedConfig.MemdAddrs)
 	}
 
-	if len(config.HTTPAddrs) != 1 {
-		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.HTTPAddrs)
+	if len(config.SeedConfig.HTTPAddrs) != 1 {
+		suite.T().Fatalf("Expected MemdAddrs to be len 1 but was %v", config.SeedConfig.HTTPAddrs)
 	}
 
-	if config.HTTPAddrs[0] != "10.112.192.101:9000" {
-		suite.T().Fatalf("Expected address to be 10.112.192.101:9000 but was %v", config.HTTPAddrs[0])
+	if config.SeedConfig.HTTPAddrs[0] != "10.112.192.101:9000" {
+		suite.T().Fatalf("Expected address to be 10.112.192.101:9000 but was %v", config.SeedConfig.HTTPAddrs[0])
 	}
 }
 
@@ -123,8 +123,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_Network() {
 				t.Errorf("FromConnStr() error = %v", err)
 			}
 
-			if config.NetworkType != tt.expected {
-				suite.T().Fatalf("Expected %s but was %s", tt.expected, config.NetworkType)
+			if config.IoConfig.NetworkType != tt.expected {
+				suite.T().Fatalf("Expected %s but was %s", tt.expected, config.IoConfig.NetworkType)
 			}
 		})
 	}
@@ -160,8 +160,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_KVConnectTimeout() {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
 			}
 
-			if config.KVConnectTimeout != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KVConnectTimeout)
+			if config.KVConfig.ConnectTimeout != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KVConfig.ConnectTimeout)
 			}
 		})
 	}
@@ -197,8 +197,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_ConfigPollTimeout() {
 				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
 			}
 
-			if config.CccpMaxWait != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CccpMaxWait)
+			if config.ConfigPollerConfig.CccpMaxWait != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.ConfigPollerConfig.CccpMaxWait)
 			}
 		})
 	}
@@ -238,8 +238,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_ConfigPollPeriod() {
 				return
 			}
 
-			if config.CccpPollPeriod != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CccpPollPeriod)
+			if config.ConfigPollerConfig.CccpPollPeriod != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.ConfigPollerConfig.CccpPollPeriod)
 			}
 		})
 	}
@@ -279,8 +279,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_Compression() {
 				return
 			}
 
-			if config.UseCompression != tt.expected {
-				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.UseCompression)
+			if config.CompressionConfig.Enabled != tt.expected {
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.CompressionConfig.Enabled)
 			}
 		})
 	}
@@ -315,8 +315,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_CompressionMinSize() {
 				return
 			}
 
-			if config.CompressionMinSize != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CompressionMinSize)
+			if config.CompressionConfig.MinSize != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.CompressionConfig.MinSize)
 			}
 		})
 	}
@@ -351,8 +351,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_CompressionMinRatio() {
 				return
 			}
 
-			if config.CompressionMinRatio != tt.expected {
-				suite.T().Fatalf("Expected %f but was %f", tt.expected, config.CompressionMinRatio)
+			if config.CompressionConfig.MinRatio != tt.expected {
+				suite.T().Fatalf("Expected %f but was %f", tt.expected, config.CompressionConfig.MinRatio)
 			}
 		})
 	}
@@ -402,8 +402,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_DCPPriority() {
 				return
 			}
 
-			if config.AgentPriority != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.AgentPriority)
+			if config.DCPConfig.AgentPriority != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.DCPConfig.AgentPriority)
 			}
 		})
 	}
@@ -443,8 +443,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_EnableDCPExpiry() {
 				return
 			}
 
-			if config.UseExpiryOpcode != tt.expected {
-				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.UseExpiryOpcode)
+			if config.DCPConfig.UseExpiryOpcode != tt.expected {
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.DCPConfig.UseExpiryOpcode)
 			}
 		})
 	}
@@ -479,8 +479,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_KVPoolSize() {
 				return
 			}
 
-			if config.KvPoolSize != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KvPoolSize)
+			if config.KVConfig.PoolSize != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KVConfig.PoolSize)
 			}
 		})
 	}
@@ -515,8 +515,8 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_MaxQueueSize() {
 				return
 			}
 
-			if config.MaxQueueSize != tt.expected {
-				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.MaxQueueSize)
+			if config.KVConfig.MaxQueueSize != tt.expected {
+				suite.T().Fatalf("Expected %d but was %d", tt.expected, config.KVConfig.MaxQueueSize)
 			}
 		})
 	}

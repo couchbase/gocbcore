@@ -38,19 +38,14 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 	}
 
 	ag.clusterAgent = createClusterAgent(&clusterAgentConfig{
-		HTTPAddrs:                 config.HTTPAddrs,
-		UserAgent:                 config.UserAgent,
-		UseTLS:                    config.UseTLS,
-		Auth:                      config.Auth,
-		TLSRootCAProvider:         config.TLSRootCAProvider,
-		HTTPMaxIdleConns:          config.HTTPMaxIdleConns,
-		HTTPMaxIdleConnsPerHost:   config.HTTPMaxIdleConnsPerHost,
-		HTTPIdleConnectionTimeout: config.HTTPIdleConnectionTimeout,
-		Tracer:                    config.Tracer,
-		Meter:                     config.Meter,
-		NoRootTraceSpans:          config.NoRootTraceSpans,
-		DefaultRetryStrategy:      config.DefaultRetryStrategy,
-		CircuitBreakerConfig:      config.CircuitBreakerConfig,
+		UserAgent:            config.UserAgent,
+		SeedConfig:           config.SeedConfig,
+		SecurityConfig:       config.SecurityConfig,
+		HTTPConfig:           config.HTTPConfig,
+		TracerConfig:         config.TracerConfig,
+		MeterConfig:          config.MeterConfig,
+		DefaultRetryStrategy: config.DefaultRetryStrategy,
+		CircuitBreakerConfig: config.CircuitBreakerConfig,
 	})
 	ag.clusterAgent.RegisterWith(agent.cfgManager)
 

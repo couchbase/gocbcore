@@ -31,15 +31,15 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new dcp agent: %+v", config)
 
-	auth := config.Auth
+	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
-	disableDecompression := config.DisableDecompression
-	useCompression := config.UseCompression
-	useCollections := config.UseCollections
-	useJSONHello := !config.DisableJSONHello
-	usePITRHello := config.EnablePITRHello
-	useXErrorHello := !config.DisableXErrorHello
-	useSyncReplicationHello := !config.DisableSyncReplicationHello
+	disableDecompression := config.CompressionConfig.DisableDecompression
+	useCompression := config.CompressionConfig.Enabled
+	useCollections := config.IoConfig.UseCollections
+	useJSONHello := !config.IoConfig.DisableJSONHello
+	usePITRHello := config.IoConfig.EnablePITRHello
+	useXErrorHello := !config.IoConfig.DisableXErrorHello
+	useSyncReplicationHello := !config.IoConfig.DisableSyncReplicationHello
 	dcpBufferSize := 20 * 1024 * 1024
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
@@ -47,63 +47,63 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	dcpPriorityStr := ""
 
 	kvConnectTimeout := 7000 * time.Millisecond
-	if config.KVConnectTimeout > 0 {
-		kvConnectTimeout = config.KVConnectTimeout
+	if config.KVConfig.ConnectTimeout > 0 {
+		kvConnectTimeout = config.KVConfig.ConnectTimeout
 	}
 
 	serverWaitTimeout := 5 * time.Second
 
 	kvPoolSize := 1
-	if config.KvPoolSize > 0 {
-		kvPoolSize = config.KvPoolSize
+	if config.KVConfig.PoolSize > 0 {
+		kvPoolSize = config.KVConfig.PoolSize
 	}
 
 	maxQueueSize := 2048
-	if config.MaxQueueSize > 0 {
-		maxQueueSize = config.MaxQueueSize
+	if config.KVConfig.MaxQueueSize > 0 {
+		maxQueueSize = config.KVConfig.MaxQueueSize
 	}
 
 	confCccpMaxWait := 3 * time.Second
-	if config.CccpMaxWait > 0 {
-		confCccpMaxWait = config.CccpMaxWait
+	if config.ConfigPollerConfig.CccpMaxWait > 0 {
+		confCccpMaxWait = config.ConfigPollerConfig.CccpMaxWait
 	}
 
 	confCccpPollPeriod := 2500 * time.Millisecond
-	if config.CccpPollPeriod > 0 {
-		confCccpPollPeriod = config.CccpPollPeriod
+	if config.ConfigPollerConfig.CccpPollPeriod > 0 {
+		confCccpPollPeriod = config.ConfigPollerConfig.CccpPollPeriod
 	}
 
 	confHTTPRetryDelay := 10 * time.Second
-	if config.HTTPRetryDelay > 0 {
-		confHTTPRetryDelay = config.HTTPRetryDelay
+	if config.ConfigPollerConfig.HTTPRetryDelay > 0 {
+		confHTTPRetryDelay = config.ConfigPollerConfig.HTTPRetryDelay
 	}
 
 	confHTTPRedialPeriod := 10 * time.Second
-	if config.HTTPRedialPeriod > 0 {
-		confHTTPRedialPeriod = config.HTTPRedialPeriod
+	if config.ConfigPollerConfig.HTTPRedialPeriod > 0 {
+		confHTTPRedialPeriod = config.ConfigPollerConfig.HTTPRedialPeriod
 	}
 
 	confHTTPMaxWait := 5 * time.Second
-	if config.HTTPMaxWait > 0 {
-		confHTTPMaxWait = config.HTTPMaxWait
+	if config.ConfigPollerConfig.HTTPMaxWait > 0 {
+		confHTTPMaxWait = config.ConfigPollerConfig.HTTPMaxWait
 	}
 
-	if config.CompressionMinSize > 0 {
-		compressionMinSize = config.CompressionMinSize
+	if config.CompressionConfig.MinSize > 0 {
+		compressionMinSize = config.CompressionConfig.MinSize
 	}
-	if config.CompressionMinRatio > 0 {
-		compressionMinRatio = config.CompressionMinRatio
+	if config.CompressionConfig.MinRatio > 0 {
+		compressionMinRatio = config.CompressionConfig.MinRatio
 		if compressionMinRatio >= 1.0 {
 			compressionMinRatio = 1.0
 		}
 	}
 
-	if config.DCPBufferSize > 0 {
-		dcpBufferSize = config.DCPBufferSize
+	if config.DCPConfig.BufferSize > 0 {
+		dcpBufferSize = config.DCPConfig.BufferSize
 	}
 	dcpQueueSize := (dcpBufferSize + 23) / 24
 
-	switch config.AgentPriority {
+	switch config.DCPConfig.AgentPriority {
 	case DcpAgentPriorityLow:
 		dcpPriorityStr = "low"
 	case DcpAgentPriorityMed:
@@ -114,7 +114,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	// If the user doesn't explicitly set the backfill order, the DCP control flag will not be sent to the cluster
 	// and the default will implicitly be used (which is 'round-robin').
-	switch config.BackfillOrder {
+	switch config.DCPConfig.BackfillOrder {
 	case DCPBackfillOrderRoundRobin:
 		dcpBackfillOrderStr = "round-robin"
 	case DCPBackfillOrderSequential:
@@ -127,17 +127,17 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		ScramSha1AuthMechanism}
 
 	// PLAIN authentication is only supported over TLS
-	if config.UseTLS {
+	if config.SecurityConfig.UseTLS {
 		authMechanisms = append(authMechanisms, PlainAuthMechanism)
 	}
 
 	var tlsConfig *dynTLSConfig
-	if config.UseTLS {
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+	if config.SecurityConfig.UseTLS {
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
 	}
 
-	httpCli := createHTTPClient(config.HTTPMaxIdleConns, config.HTTPMaxIdleConnsPerHost,
-		config.HTTPIdleConnectionTimeout, tlsConfig)
+	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
+		config.HTTPConfig.IdleConnectionTimeout, tlsConfig)
 
 	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, noopMeter{})
 
@@ -159,19 +159,19 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			}
 		}
 
-		if config.UseExpiryOpcode {
+		if config.DCPConfig.UseExpiryOpcode {
 			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
 				return err
 			}
 		}
 
-		if config.UseStreamID {
+		if config.DCPConfig.UseStreamID {
 			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
 				return err
 			}
 		}
 
-		if config.UseOSOBackfill {
+		if config.DCPConfig.UseOSOBackfill {
 			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			}
 		}
 
-		if !config.DisableBufferAcknowledgement {
+		if !config.DCPConfig.DisableBufferAcknowledgement {
 			if err := sclient.ExecEnableDcpBufferAck(dcpBufferSize, deadline); err != nil {
 				return err
 			}
@@ -209,7 +209,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	authHandler := buildAuthHandler(auth)
 
 	var httpEpList []string
-	for _, hostPort := range config.HTTPAddrs {
+	for _, hostPort := range config.SeedConfig.HTTPAddrs {
 		if !c.IsSecure() {
 			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
 		} else {
@@ -219,9 +219,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.NetworkType,
-			UseSSL:       config.UseTLS,
-			SrcMemdAddrs: config.MemdAddrs,
+			NetworkType:  config.IoConfig.NetworkType,
+			UseSSL:       config.SecurityConfig.UseTLS,
+			SrcMemdAddrs: config.SeedConfig.MemdAddrs,
 			SrcHTTPAddrs: []string{},
 		},
 	)
@@ -305,11 +305,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	)
 
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
-	c.dcp = newDcpComponent(c.kvMux, config.UseStreamID)
+	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID)
 
 	// Kick everything off.
 	cfg := &routeConfig{
-		kvServerList: config.MemdAddrs,
+		kvServerList: config.SeedConfig.MemdAddrs,
 		mgmtEpList:   httpEpList,
 		revID:        -1,
 	}
