@@ -69,6 +69,7 @@ type cfgVBucketServerMap struct {
 // Bucket is the primary entry point for most data operations.
 type cfgBucket struct {
 	Rev                 int64 `json:"rev"`
+	RevEpoch            int64 `json:"revEpoch"`
 	SourceHostname      string
 	Capabilities        []string `json:"bucketCapabilities"`
 	CapabilitiesVersion string   `json:"bucketCapabilitiesVer"`
@@ -210,6 +211,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 
 	rc := &routeConfig{
 		revID:                  cfg.Rev,
+		revEpoch:               cfg.RevEpoch,
 		uuid:                   cfg.UUID,
 		name:                   cfg.Name,
 		kvServerList:           kvServerList,

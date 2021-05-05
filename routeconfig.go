@@ -7,6 +7,7 @@ import (
 
 type routeConfig struct {
 	revID          int64
+	revEpoch       int64
 	uuid           string
 	name           string
 	bktType        bucketType
@@ -33,6 +34,8 @@ func (config *routeConfig) DebugString() string {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(fmt.Sprintf("Revision ID: %d\n", config.revID))
+	buffer.WriteString(fmt.Sprintf("Revision Epoch: %d\n", config.revEpoch))
+
 	if config.name != "" {
 		fmt.Fprintf(&buffer, "Bucket: %s\n", config.name)
 	}

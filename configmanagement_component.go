@@ -123,16 +123,23 @@ func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 	// Check that the new config data is newer than the current one, in the case where we've done a select bucket
 	// against an existing connection then the revisions could be the same. In that case the configuration still
 	// needs to be applied.
-	if cfg.revID == 0 {
-		logDebugf("Unversioned configuration data, switching.")
-	} else if cfg.bktType != oldCfg.bktType {
+	// In the case where the rev epochs are the same then we need to compare rev IDs. If the new config epoch is lower
+	// than the old one then we ignore it, if it's newer then we apply the new config.
+	if cfg.bktType != oldCfg.bktType {
 		logDebugf("Configuration data changed bucket type, switching.")
-	} else if cfg.revID == oldCfg.revID {
-		logDebugf("Ignoring configuration with identical revision number")
+	} else if cfg.revEpoch < oldCfg.revEpoch {
+		logDebugf("Ignoring new configuration as it has an older revision epoch")
 		return false
-	} else if cfg.revID < oldCfg.revID {
-		logDebugf("Ignoring new configuration as it has an older revision id")
-		return false
+	} else if cfg.revEpoch == oldCfg.revEpoch {
+		if cfg.revID == 0 {
+			logDebugf("Unversioned configuration data, switching.")
+		} else if cfg.revID == oldCfg.revID {
+			logDebugf("Ignoring configuration with identical revision number")
+			return false
+		} else if cfg.revID < oldCfg.revID {
+			logDebugf("Ignoring new configuration as it has an older revision id")
+			return false
+		}
 	}
 
 	cm.currentConfig = cfg
