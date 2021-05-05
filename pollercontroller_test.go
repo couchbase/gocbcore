@@ -75,11 +75,11 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	}
 	req := pipeline.queue.pop(c)
 	suite.Require().Equal(req.Command, memd.CmdGetClusterConfig)
-	req.Callback(&memdQResponse{
+	req.tryCallback(&memdQResponse{
 		Packet: &memd.Packet{
 			Value: config,
 		},
-	}, req, nil)
+	}, nil)
 
 	poller.ForceHTTPPoller()
 	// Let ForceHTTPPoller take the lock, have hit the cccp poller done channel, and restarted cccp.
