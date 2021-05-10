@@ -79,7 +79,7 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 		var errsMap map[string]string
 		var errsArr []string
 
-		if err := json.Unmarshal(respBody, &errsArr); err != nil {
+		if err := json.Unmarshal(respBody, &errsArr); err == nil {
 			errorDescs = make([]ViewQueryErrorDesc, len(errsArr))
 			for errIdx, errMessage := range errsArr {
 				errorDescs[errIdx] = ViewQueryErrorDesc{
@@ -87,7 +87,7 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 					Message:    errMessage,
 				}
 			}
-		} else if err := json.Unmarshal(respBody, &errsMap); err != nil {
+		} else if err := json.Unmarshal(respBody, &errsMap); err == nil {
 			for errNode, errMessage := range errsMap {
 				errorDescs = append(errorDescs, ViewQueryErrorDesc{
 					SourceNode: errNode,
