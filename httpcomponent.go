@@ -281,7 +281,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
 		// we can't close the body of this response as it's long lived beyond the function
 		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
-		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID)
+		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
 		hc.tracer.ResponseValueRecord(service, "", hreq.Host, uint64(time.Since(start).Microseconds()))
 		if err != nil {
 			logSchedf("Received HTTP Response for ID=%s, errored", req.UniqueID)

@@ -112,9 +112,10 @@ func (suite *StandardTestSuite) AssertCmdSpansGE(parents map[RequestSpanContext]
 
 func (suite *StandardTestSuite) AssertCmdSpan(span *testSpan, expectedName string) {
 	suite.Assert().Equal(expectedName, span.Name)
-	suite.Assert().Equal(1, len(span.Tags))
+	suite.Assert().Equal(2, len(span.Tags))
 	suite.Assert().True(span.Finished)
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
+	suite.Assert().Contains(span.Tags, "db.couchbase.retries")
 
 	suite.AssertNetSpansEq(span.Spans, 1)
 }
@@ -164,6 +165,7 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 	suite.Assert().NotEmpty(dispatchSpan.Tags["db.couchbase.operation_id"])
 	suite.Assert().NotEmpty(dispatchSpan.Tags["net.peer.name"])
 	suite.Assert().NotEmpty(dispatchSpan.Tags["net.peer.port"])
+	suite.Assert().Contains(span.Tags, "db.couchbase.retries")
 }
 
 func (suite *StandardTestSuite) TestBasicOpsTracingParentNoRoot() {

@@ -74,7 +74,7 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 type tracerManager interface {
 	CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer
 	StartHTTPDispatchSpan(req *httpRequest, name string) RequestSpan
-	StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string)
+	StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32)
 	StartCmdTrace(req *memdQRequest)
 	StartNetTrace(req *memdQRequest)
 }
@@ -117,7 +117,7 @@ func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) 
 	return span
 }
 
-func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string) {
+func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32) {
 	span.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
 	span.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
 	if id != "" {
@@ -130,6 +130,7 @@ func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Requ
 
 	span.SetAttribute(spanAttribNetPeerNameKey, remoteName)
 	span.SetAttribute(spanAttribNetPeerPortKey, remotePort)
+	span.SetAttribute(spanAttribNumRetries, retries)
 	span.End()
 }
 
@@ -196,6 +197,7 @@ func stopCmdTrace(req *memdQRequest) {
 	}
 
 	req.cmdTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+	req.cmdTraceSpan.SetAttribute(spanAttribNumRetries, req.RetryAttempts())
 
 	req.cmdTraceSpan.End()
 	req.cmdTraceSpan = nil

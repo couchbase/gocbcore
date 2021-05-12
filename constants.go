@@ -100,6 +100,7 @@ const (
 	spanAttribNetPeerNameKey    = "net.peer.name"
 	spanAttribNetPeerPortKey    = "net.peer.port"
 	spanAttribServerDurationKey = "db.couchbase.server_duration"
+	spanAttribNumRetries        = "db.couchbase.retries"
 )
 
 const (
