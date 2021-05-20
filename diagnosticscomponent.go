@@ -634,8 +634,6 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service ServiceType,
 	desiredState ClusterState, op *waitUntilOp) {
 	retryStrat := &failFastRetryStrategy{}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	muxer := dc.httpMux
 
 	var path string
@@ -672,52 +670,57 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 			}
 
 			connected := uint32(0)
-			var wg sync.WaitGroup
-			for _, ep := range epList {
-				wg.Add(1)
-				go func(ep string) {
-					defer wg.Done()
-					req := &httpRequest{
-						Service:       service,
-						Method:        "GET",
-						Path:          path,
-						RetryStrategy: retryStrat,
-						Endpoint:      ep,
-						IsIdempotent:  true,
-						Context:       ctx,
-						UniqueID:      uuid.New().String(),
-					}
-					resp, err := dc.httpComponent.DoInternalHTTPRequest(req, false)
-					if err != nil {
-						if errors.Is(err, context.Canceled) {
+			func() {
+				ctx, cancel := context.WithCancel(ctx)
+				defer cancel()
+
+				var wg sync.WaitGroup
+				for _, ep := range epList {
+					wg.Add(1)
+					go func(ep string) {
+						defer wg.Done()
+						req := &httpRequest{
+							Service:       service,
+							Method:        "GET",
+							Path:          path,
+							RetryStrategy: retryStrat,
+							Endpoint:      ep,
+							IsIdempotent:  true,
+							Context:       ctx,
+							UniqueID:      uuid.New().String(),
+						}
+						resp, err := dc.httpComponent.DoInternalHTTPRequest(req, false)
+						if err != nil {
+							if errors.Is(err, context.Canceled) {
+								return
+							}
+
+							logDebugf("Error returned for HTTP request for service %d: %v", service, err)
+
+							if desiredState == ClusterStateOnline {
+								// Cancel this run entirely, we can't satisfy the requirements
+								cancel()
+							}
 							return
 						}
-
-						logDebugf("Error returned for HTTP request for service %d: %v", service, err)
-
-						if desiredState == ClusterStateOnline {
-							// Cancel this run entirely, we can't satisfy the requirements
+						if resp.StatusCode != 200 {
+							logDebugf("Non-200 status code returned for HTTP request for service %d: %d", service, resp.StatusCode)
+							if desiredState == ClusterStateOnline {
+								// Cancel this run entirely, we can't satisfy the requirements
+								cancel()
+							}
+							return
+						}
+						atomic.AddUint32(&connected, 1)
+						if desiredState == ClusterStateDegraded {
+							// Cancel this run entirely, we've successfully satisfied the requirements
 							cancel()
 						}
-						return
-					}
-					if resp.StatusCode != 200 {
-						logDebugf("Non-200 status code returned for HTTP request for service %d: %d", service, resp.StatusCode)
-						if desiredState == ClusterStateOnline {
-							// Cancel this run entirely, we can't satisfy the requirements
-							cancel()
-						}
-						return
-					}
-					atomic.AddUint32(&connected, 1)
-					if desiredState == ClusterStateDegraded {
-						// Cancel this run entirely, we've successfully satisfied the requirements
-						cancel()
-					}
-				}(ep)
-			}
+					}(ep)
+				}
 
-			wg.Wait()
+				wg.Wait()
+			}()
 
 			switch desiredState {
 			case ClusterStateDegraded:
