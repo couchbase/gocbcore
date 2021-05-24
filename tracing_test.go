@@ -165,7 +165,7 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 	suite.Assert().NotEmpty(dispatchSpan.Tags["db.couchbase.operation_id"])
 	suite.Assert().NotEmpty(dispatchSpan.Tags["net.peer.name"])
 	suite.Assert().NotEmpty(dispatchSpan.Tags["net.peer.port"])
-	suite.Assert().Contains(span.Tags, "db.couchbase.retries")
+	suite.Assert().Contains(dispatchSpan.Tags, "db.couchbase.retries")
 }
 
 func (suite *StandardTestSuite) TestBasicOpsTracingParentNoRoot() {
