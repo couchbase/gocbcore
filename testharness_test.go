@@ -49,6 +49,7 @@ var (
 	TestFeatureCreateDeleted        = TestFeatureCode("createasdeleted")
 	TestFeatureReplaceBodyWithXattr = TestFeatureCode("replacebodywithxattr")
 	TestFeatureExpandMacros         = TestFeatureCode("expandmacros")
+	TestFeaturePreserveExpiry       = TestFeatureCode("preserveexpiry")
 )
 
 type TestFeatureFlag struct {

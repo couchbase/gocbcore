@@ -145,6 +145,9 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			framesLen += 2 + userLen
 		}
 	}
+	if pkt.PreserveExpiryFrame != nil {
+		framesLen += 1
+	}
 
 	// We automatically upgrade a packet from normal Req or Res magic into
 	// the frame variant depending on the usage of them.
@@ -297,6 +300,18 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			buffer.WriteByte(byte(userCtxLen - 15))
 			buffer.Write(pkt.UserImpersonationFrame.User)
 		}
+	}
+
+	if pkt.PreserveExpiryFrame != nil {
+		if pkt.Magic != CmdMagicReq {
+			return errors.New("cannot use preserve expiry frame in non-request packets")
+		}
+
+		if !c.IsFeatureEnabled(FeaturePreserveExpiry) {
+			return errors.New("cannot use preserve expiry frames without enabling the feature")
+		}
+
+		writeFrameHeader(buffer, frameTypeReqPreserveExpiry, 0)
 	}
 
 	if len(pkt.UnsupportedFrames) > 0 {

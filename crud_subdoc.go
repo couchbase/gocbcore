@@ -38,6 +38,7 @@ type MutateInOptions struct {
 	DurabilityLevelTimeout time.Duration
 	CollectionID           uint32
 	Deadline               time.Time
+	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
 	User []byte

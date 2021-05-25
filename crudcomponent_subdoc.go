@@ -261,6 +261,17 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}
 	}
 
+	var preserveExpiryFrame *memd.PreserveExpiryFrame
+	if opts.PreserveExpiry {
+		if opts.Flags|memd.SubdocDocFlagAddDoc == 1 {
+			return nil, wrapError(errInvalidArgument, "cannot use preserve expiry with add doc flags")
+		}
+		if opts.Expiry != 0 && opts.PreserveExpiry && opts.Flags|memd.SubdocDocFlagNone == 1 {
+			return nil, wrapError(errInvalidArgument, "cannot use preserve expiry with expiry and no doc flags")
+		}
+		preserveExpiryFrame = &memd.PreserveExpiryFrame{}
+	}
+
 	if opts.Flags&memd.SubdocDocFlagCreateAsDeleted != 0 {
 		// We can get here before support status is actually known, we'll send the request unless we know for a fact
 		// that this is unsupported.
@@ -343,6 +354,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			DurabilityTimeoutFrame: duraTimeoutFrame,
 			CollectionID:           opts.CollectionID,
 			UserImpersonationFrame: userFrame,
+			PreserveExpiryFrame:    preserveExpiryFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),

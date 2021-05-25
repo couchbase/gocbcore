@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/gocbcore/v9/memd"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (suite *StandardTestSuite) TestSubdocXattrs() {
@@ -1343,4 +1344,89 @@ func (suite *StandardTestSuite) TestMutateInExpandMacroSeqNo() {
 	suite.Require().Nil(err, err)
 
 	suite.Require().Greater(seqno2Int, seqnoInt)
+}
+
+func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	expiry := uint32(25)
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testmutateinpreserveExpiry"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Expiry:         expiry,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	ops := []SubDocOp{
+		{
+			Op:    memd.SubDocOpDictSet,
+			Value: []byte("{}"),
+			Path:  "test",
+		},
+	}
+
+	s.PushOp(agent.MutateIn(MutateInOptions{
+		Key:            []byte("testmutateinpreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+		Ops:            ops,
+	}, func(res *MutateInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Mutatein operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte("testmutateinpreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
+			if res.Expiry < expectedExpiry {
+				s.Fatalf("Invalid expiry received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testmutateinpreserveExpiry")
+			suite.AssertOpSpan(nilParents[1], "MutateIn", agent.BucketName(), memd.CmdSubDocMultiMutation.Name(), 1, false, "testmutateinpreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testmutateinpreserveExpiry")
+		}
+	}
+	suite.VerifyKVMetrics(memd.CmdSet, 1, false)
+	suite.VerifyKVMetrics(memd.CmdSubDocMultiMutation, 1, false)
+	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
 }

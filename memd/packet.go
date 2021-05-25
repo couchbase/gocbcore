@@ -57,6 +57,13 @@ type UserImpersonationFrame struct {
 	User []byte
 }
 
+// PreserveExpiryFrame is used to indicate that the server should preserve the
+// expiry time for existing document.
+type PreserveExpiryFrame struct {
+	// Preserve Expiry frames have no extra configuration, but their existence
+	// triggers the preserve expiry behaviour.
+}
+
 // Packet represents a single request or response packet being exchanged
 // between two clients.
 type Packet struct {
@@ -79,6 +86,7 @@ type Packet struct {
 	OpenTracingFrame       *OpenTracingFrame
 	ServerDurationFrame    *ServerDurationFrame
 	UserImpersonationFrame *UserImpersonationFrame
+	PreserveExpiryFrame    *PreserveExpiryFrame
 	UnsupportedFrames      []UnsupportedFrame
 }
 

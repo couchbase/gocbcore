@@ -31,6 +31,7 @@ const (
 	frameTypeReqOpenTracing       = frameType(3)
 	frameTypeReqUserImpersonation = frameType(4)
 	frameTypeResSrvDuration       = frameType(0)
+	frameTypeReqPreserveExpiry    = frameType(5)
 )
 
 // HelloFeature represents a feature code included in a memcached
@@ -93,6 +94,9 @@ const (
 
 	// FeatureOpenTracing indicates support for OpenTracing.
 	FeatureOpenTracing = HelloFeature(0x13)
+
+	// FeaturePreserveExpiry indicates support for preserve TTL.
+	FeaturePreserveExpiry = HelloFeature(0x14)
 
 	// FeaturePITR indicates support for PITR snapshots.
 	FeaturePITR = HelloFeature(0x16)

@@ -91,6 +91,313 @@ func (suite *StandardTestSuite) TestCidRetries() {
 	s.Wait(0)
 }
 
+func (suite *StandardTestSuite) TestPreserveExpirySet() {
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	expiry := uint32(25)
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testsetpreserveExpiry"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Expiry:         expiry,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testsetpreserveExpiry"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte("testsetpreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
+			if res.Expiry < expectedExpiry {
+				s.Fatalf("Invalid expiry received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testsetpreserveExpiry")
+			suite.AssertOpSpan(nilParents[1], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testsetpreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testsetpreserveExpiry")
+		}
+	}
+	suite.VerifyKVMetrics(memd.CmdSet, 2, false)
+	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
+}
+
+func (suite *StandardTestSuite) TestPreserveExpiryReplace() {
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	expiry := uint32(25)
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testreplacepreserveExpiry"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Expiry:         expiry,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Replace(ReplaceOptions{
+		Key:            []byte("testreplacepreserveExpiry"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte("testreplacepreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
+			if res.Expiry < expectedExpiry {
+				s.Fatalf("Invalid expiry received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testreplacepreserveExpiry")
+			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testreplacepreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testreplacepreserveExpiry")
+		}
+	}
+	suite.VerifyKVMetrics(memd.CmdSet, 1, false)
+	suite.VerifyKVMetrics(memd.CmdReplace, 1, false)
+	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
+}
+
+func (suite *StandardTestSuite) TestPreserveExpiryAppend() {
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	expiry := uint32(25)
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testappendpreserveExpiry"),
+		Value:          []byte("hello "),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Expiry:         expiry,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Append(AdjoinOptions{
+		Key:            []byte("testappendpreserveExpiry"),
+		Value:          []byte("world"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+	}, func(res *AdjoinResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte("testappendpreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
+			if res.Expiry < expectedExpiry {
+				s.Fatalf("Invalid expiry received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testappendpreserveExpiry")
+			suite.AssertOpSpan(nilParents[1], "Append", agent.BucketName(), memd.CmdAppend.Name(), 1, false, "testappendpreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testappendpreserveExpiry")
+		}
+	}
+	suite.VerifyKVMetrics(memd.CmdSet, 1, false)
+	suite.VerifyKVMetrics(memd.CmdAppend, 1, false)
+	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
+}
+
+func (suite *StandardTestSuite) TestPreserveExpiryIncrement() {
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	expiry := uint32(25)
+
+	s.PushOp(agent.Increment(CounterOptions{
+		Key:            []byte("testincrementpreserveExpiry"),
+		Initial:        5,
+		Delta:          1,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+		Expiry:         expiry,
+	}, func(res *CounterResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Increment(CounterOptions{
+		Key:            []byte("testincrementpreserveExpiry"),
+		Delta:          1,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		PreserveExpiry: true,
+	}, func(res *CounterResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Replace operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte("testincrementpreserveExpiry"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetMetaResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("GetMeta operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
+			if res.Expiry < expectedExpiry {
+				s.Fatalf("Invalid expiry received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().Equal(3, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Increment", agent.BucketName(), memd.CmdIncrement.Name(), 1, false, "testincrementpreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testincrementpreserveExpiry")
+		}
+	}
+	suite.VerifyKVMetrics(memd.CmdIncrement, 2, false)
+	suite.VerifyKVMetrics(memd.CmdGetMeta, 1, false)
+}
+
 func (suite *StandardTestSuite) TestBasicOps() {
 	agent, s := suite.GetAgentAndHarness()
 

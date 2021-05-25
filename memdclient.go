@@ -582,6 +582,7 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 	features = append(features, memd.FeatureAltRequests)
 	features = append(features, memd.FeatureCreateAsDeleted)
 	features = append(features, memd.FeatureReplaceBodyWithXattr)
+	features = append(features, memd.FeaturePreserveExpiry)
 
 	if props.SyncReplicationEnabled {
 		features = append(features, memd.FeatureSyncReplication)

@@ -684,6 +684,11 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 		opts.RetryStrategy = crud.defaultRetryStrategy
 	}
 
+	var preserveExpiryFrame *memd.PreserveExpiryFrame
+	if opts.PreserveExpiry {
+		preserveExpiryFrame = &memd.PreserveExpiryFrame{}
+	}
+
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], opts.Flags)
 	binary.BigEndian.PutUint32(extraBuf[4:], opts.Expiry)
@@ -700,6 +705,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 			DurabilityTimeoutFrame: duraTimeoutFrame,
 			UserImpersonationFrame: userFrame,
 			CollectionID:           opts.CollectionID,
+			PreserveExpiryFrame:    preserveExpiryFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -752,6 +758,7 @@ func (crud *crudComponent) Set(opts SetOptions, cb StoreCallback) (PendingOp, er
 		CollectionID:           opts.CollectionID,
 		Deadline:               opts.Deadline,
 		User:                   opts.User,
+		PreserveExpiry:         opts.PreserveExpiry,
 	}, cb)
 }
 
@@ -776,6 +783,9 @@ func (crud *crudComponent) Add(opts AddOptions, cb StoreCallback) (PendingOp, er
 }
 
 func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (PendingOp, error) {
+	if opts.PreserveExpiry && opts.Expiry > 0 {
+		return nil, wrapError(errInvalidArgument, "cannot use preserve expiry and an expiry > 0 for replace")
+	}
 	return crud.store("Replace", memd.CmdReplace, storeOptions(opts), cb)
 }
 
@@ -824,6 +834,11 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 		}
 	}
 
+	var preserveExpiryFrame *memd.PreserveExpiryFrame
+	if opts.PreserveExpiry {
+		preserveExpiryFrame = &memd.PreserveExpiryFrame{}
+	}
+
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = crud.defaultRetryStrategy
 	}
@@ -841,6 +856,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 			DurabilityTimeoutFrame: duraTimeoutFrame,
 			CollectionID:           opts.CollectionID,
 			UserImpersonationFrame: userFrame,
+			PreserveExpiryFrame:    preserveExpiryFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
@@ -941,6 +957,10 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 			User: opts.User,
 		}
 	}
+	var preserveExpiryFrame *memd.PreserveExpiryFrame
+	if opts.PreserveExpiry {
+		preserveExpiryFrame = &memd.PreserveExpiryFrame{}
+	}
 
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = crud.defaultRetryStrategy
@@ -969,6 +989,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 			DurabilityTimeoutFrame: duraTimeoutFrame,
 			CollectionID:           opts.CollectionID,
 			UserImpersonationFrame: userFrame,
+			PreserveExpiryFrame:    preserveExpiryFrame,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
