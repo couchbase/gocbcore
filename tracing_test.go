@@ -158,7 +158,7 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 	suite.Require().GreaterOrEqual(len(childSpans), 1)
 
 	dispatchSpan := childSpans[0]
-	suite.Assert().Equal(5, len(dispatchSpan.Tags))
+	suite.Assert().Equal(6, len(dispatchSpan.Tags))
 	suite.Assert().True(dispatchSpan.Finished)
 	suite.Assert().Equal("couchbase", dispatchSpan.Tags["db.system"])
 	suite.Assert().Equal("IP.TCP", dispatchSpan.Tags["net.transport"])
