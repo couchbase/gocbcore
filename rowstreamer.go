@@ -76,6 +76,11 @@ func (s *rowStreamer) begin() error {
 			if err != nil {
 				return err
 			}
+
+			if t == nil {
+				continue
+			}
+
 			if delim, ok := t.(json.Delim); !ok || delim != '[' {
 				return errors.New("expected an opening bracket for the rows")
 			}
@@ -103,7 +108,7 @@ func (s *rowStreamer) readRow() (json.RawMessage, error) {
 		return nil, errors.New("unexpected parsing state during readRow")
 	}
 
-	// If we've already read all rows, we return nil
+	// If we've already read all rows or rows is null, we return nil
 	if s.state > rowStreamStateRows {
 		return nil, nil
 	}
