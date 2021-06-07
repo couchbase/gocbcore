@@ -47,7 +47,7 @@ type SearchQueryOptions struct {
 }
 
 type jsonSearchErrorResponse struct {
-	Status string
+	Error string
 }
 
 func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, query interface{}, err error) *SearchError {
@@ -84,7 +84,7 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 		var respParse jsonSearchErrorResponse
 		parseErr := json.Unmarshal(respBody, &respParse)
 		if parseErr == nil {
-			errMsg = respParse.Status
+			errMsg = respParse.Error
 		}
 	}
 
