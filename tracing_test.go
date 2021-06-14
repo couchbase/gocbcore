@@ -37,6 +37,9 @@ func (ts *testSpan) SetAttribute(key string, value interface{}) {
 func (ts *testSpan) AddEvent(key string, timestamp time.Time) {
 }
 
+func (ts *testSpan) SetStatus(status SpanStatus) {
+}
+
 type testTracer struct {
 	Spans map[RequestSpanContext][]*testSpan
 }

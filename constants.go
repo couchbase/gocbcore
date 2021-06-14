@@ -123,3 +123,10 @@ const (
 	metricValueServiceViewsValue      = "views"
 	metricValueServiceManagementValue = "management"
 )
+
+type SpanStatus string
+
+const (
+	SpanStatusOK    SpanStatus = "Ok"
+	SpanStatusError SpanStatus = "Error"
+)
