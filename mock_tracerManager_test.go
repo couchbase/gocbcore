@@ -4,7 +4,6 @@ package gocbcore
 
 import (
 	http "net/http"
-	time "time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -56,7 +55,7 @@ func (_m *mockTracerManager) StartNetTrace(req *memdQRequest) {
 	_m.Called(req)
 }
 
-// StopHTTPDispatchSpan provides a mock function with given fields: span, resp, id, duration
-func (_m *mockTracerManager) StopHTTPDispatchSpan(span RequestSpan, resp *http.Response, id string, duration time.Duration) {
-	_m.Called(span, resp, id, duration)
+// StopHTTPDispatchSpan provides a mock function with given fields: span, req, id, retries
+func (_m *mockTracerManager) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32) {
+	_m.Called(span, req, id, retries)
 }

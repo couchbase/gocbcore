@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/mock"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -577,18 +578,46 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	suite.VerifyMetrics("query", 1, true)
 }
 
-// TestN1QLRowStreamerErrorsAndResults tests the case where we receive both errors and results from the server meaning
+// TestN1QLErrorsAndResults tests the case where we receive both errors and results from the server meaning
 // that we cannot immediately return an error and must surface it through Err instead.
-func (suite *UnitTestSuite) TestN1QLRowStreamerErrorsAndResults() {
+func (suite *UnitTestSuite) TestN1QLErrorsAndResults() {
 	d, err := suite.LoadRawTestDataset("query_rows_errors")
 	suite.Require().Nil(err)
 
-	qStreamer, err := newQueryStreamer(ioutil.NopCloser(bytes.NewBuffer(d)), "results")
-	suite.Require().Nil(err)
-
-	reader := N1QLRowReader{
-		streamer: qStreamer,
+	r := ioutil.NopCloser(bytes.NewReader(d))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(d)),
+		Body:          r,
 	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil)
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan *N1QLRowReader)
+	_, err = n1qlC.N1QLQuery(N1QLQueryOptions{
+		Payload: payload,
+	}, func(reader *N1QLRowReader, err error) {
+		suite.Require().Nil(err, err)
+		waitCh <- reader
+	})
+	suite.Require().Nil(err, err)
+
+	reader := <-waitCh
 
 	numRows := 0
 	for reader.NextRow() != nil {
@@ -607,5 +636,154 @@ func (suite *UnitTestSuite) TestN1QLRowStreamerErrorsAndResults() {
 	suite.Require().Len(nErr.Errors, 1)
 	firstErr := nErr.Errors[0]
 	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().NotEmpty(firstErr.Message)
+}
+
+func (suite *UnitTestSuite) TestN1QLOldPreparedErrorsAndResults() {
+	d, err := suite.LoadRawTestDataset("query_rows_errors")
+	suite.Require().Nil(err)
+
+	r := ioutil.NopCloser(bytes.NewReader(d))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(d)),
+		Body:          r,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil)
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan error)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload: payload,
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().Nil(err, err)
+
+	err = <-waitCh
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().NotEmpty(firstErr.Message)
+}
+
+func (suite *UnitTestSuite) TestN1QLOldPreparedUnknownErrorsAndResults() {
+	d, err := suite.LoadRawTestDataset("query_rows_unknown_errors")
+	suite.Require().Nil(err)
+
+	r := ioutil.NopCloser(bytes.NewReader(d))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(d)),
+		Body:          r,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil)
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan error)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload: payload,
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().Nil(err, err)
+
+	err = <-waitCh
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(13014), firstErr.Code)
+	suite.Assert().NotEmpty(firstErr.Message)
+}
+
+func (suite *UnitTestSuite) TestN1QLErrUnknownErrorsAndResults() {
+	d, err := suite.LoadRawTestDataset("query_rows_unknown_errors")
+	suite.Require().Nil(err)
+
+	r := ioutil.NopCloser(bytes.NewReader(d))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(d)),
+		Body:          r,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil)
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan *N1QLRowReader)
+	_, err = n1qlC.N1QLQuery(N1QLQueryOptions{
+		Payload: payload,
+	}, func(reader *N1QLRowReader, err error) {
+		suite.Require().Nil(err, err)
+		waitCh <- reader
+	})
+	suite.Require().Nil(err, err)
+
+	reader := <-waitCh
+
+	numRows := 0
+	for reader.NextRow() != nil {
+		numRows++
+	}
+	suite.Assert().Zero(numRows)
+
+	err = reader.Err()
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(13014), firstErr.Code)
 	suite.Assert().NotEmpty(firstErr.Message)
 }
