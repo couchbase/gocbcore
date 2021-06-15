@@ -42,6 +42,12 @@ func (q N1QLRowReader) Err() error {
 			Errors:     descs,
 		}
 	}
+	if len(descs) > 0 {
+		return &N1QLError{
+			InnerError: errors.New("query error"),
+			Errors:     descs,
+		}
+	}
 
 	return nil
 }
@@ -445,7 +451,23 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 		b := cacheRes.NextRow()
 		if b == nil {
 			cancel()
-			cb(nil, wrapN1QLError(ireq, statement, errCliInternalError))
+			var n1qlError *N1QLError
+			meta, metaErr := cacheRes.MetaData()
+			if metaErr == nil {
+				descs, err := parseN1QLError(bytes.NewReader(meta))
+				if err != nil {
+					n1qlError = wrapN1QLError(ireq, statement, err)
+					n1qlError.Errors = descs
+				} else if len(descs) > 0 {
+					n1qlError = wrapN1QLError(ireq, statement, errors.New("query error"))
+					n1qlError.Errors = descs
+				}
+			}
+			if n1qlError == nil {
+				n1qlError = wrapN1QLError(ireq, statement, errCliInternalError)
+			}
+
+			cb(nil, n1qlError)
 			return
 		}
 
