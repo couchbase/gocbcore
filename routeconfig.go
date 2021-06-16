@@ -33,6 +33,9 @@ func (config *routeConfig) DebugString() string {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(fmt.Sprintf("Revision ID: %d\n", config.revID))
+	if config.name != "" {
+		fmt.Fprintf(&buffer, "Bucket: %s\n", config.name)
+	}
 
 	addEps := func(title string, eps []string) {
 		fmt.Fprintf(&buffer, "%s Eps:\n", title)
