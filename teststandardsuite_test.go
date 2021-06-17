@@ -378,19 +378,19 @@ func (suite *StandardTestSuite) mutateIn(agent *Agent, s *TestSubHarness, ops []
 	return
 }
 
-func (suite *StandardTestSuite) VerifyKVMetrics(cmd memd.CmdCode, length int, atLeastLen bool) {
-	suite.VerifyMetrics(makeMetricsKeyFromCmd("kv", cmd), length, atLeastLen)
+func (suite *StandardTestSuite) VerifyKVMetrics(operation string, num int, atLeastNum bool) {
+	suite.VerifyMetrics(makeMetricsKey("kv", operation), num, atLeastNum)
 }
 
-func (suite *StandardTestSuite) VerifyMetrics(key string, length int, atLeastLen bool) {
+func (suite *StandardTestSuite) VerifyMetrics(key string, num int, atLeastNum bool) {
 	suite.meter.lock.Lock()
 	defer suite.meter.lock.Unlock()
 	recorders := suite.meter.recorders
 	if suite.Assert().Contains(recorders, key) {
-		if atLeastLen {
-			suite.Assert().GreaterOrEqual(len(recorders[key].values), length)
+		if atLeastNum {
+			suite.Assert().GreaterOrEqual(len(recorders[key].values), num)
 		} else {
-			suite.Assert().Len(recorders[key].values, length)
+			suite.Assert().Len(recorders[key].values, num)
 		}
 		for _, val := range recorders[key].values {
 			suite.Assert().NotZero(val)

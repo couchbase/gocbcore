@@ -113,15 +113,15 @@ const (
 )
 
 const (
-	metricAttribServiceKey            = "db.couchbase.service"
-	metricAttribNetPeerNameKey        = "net.peer.name"
-	metricAttribOperationKey          = "db.operation"
-	metricValueServiceKeyValue        = "kv"
-	metricValueServiceQueryValue      = "query"
-	metricValueServiceSearchValue     = "search"
-	metricValueServiceAnalyticsValue  = "analytics"
-	metricValueServiceViewsValue      = "views"
-	metricValueServiceManagementValue = "management"
+	metricAttribServiceKey           = "db.couchbase.service"
+	metricAttribOperationKey         = "db.operation"
+	meterNameCBOperations            = "db.couchbase.operations"
+	metricValueServiceKeyValue       = "kv"
+	metricValueServiceQueryValue     = "n1ql"
+	metricValueServiceSearchValue    = "fts"
+	metricValueServiceAnalyticsValue = "cbas"
+	metricValueServiceViewsValue     = "capi"
+	metricValueServiceHTTPValue      = "http"
 )
 
 type SpanStatus string

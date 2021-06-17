@@ -218,7 +218,7 @@ func (suite *StandardTestSuite) TestAnalytics() {
 				}
 			}
 		}
-		suite.VerifyMetrics("analytics", 1, true)
+		suite.VerifyMetrics("cbas:AnalyticsQuery", 1, true)
 	}
 
 	suite.T().Run("cleanup", helper.testCleanup)
@@ -237,7 +237,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: suite.tracer})
+	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
@@ -282,7 +282,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 			}
 		}
 	}
-	suite.VerifyMetrics("analytics", 1, true)
+	suite.VerifyMetrics("cbas:AnalyticsQuery", 1, false)
 }
 
 func (suite *StandardTestSuite) TestAnalyticsTimeout() {
@@ -332,5 +332,5 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 			}
 		}
 	}
-	suite.VerifyMetrics("analytics", 1, true)
+	suite.VerifyMetrics("cbas:AnalyticsQuery", 1, false)
 }

@@ -81,6 +81,7 @@ type tracerManager interface {
 	StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32)
 	StartCmdTrace(req *memdQRequest)
 	StartNetTrace(req *memdQRequest)
+	ResponseValueRecord(service, operation string, start time.Time)
 }
 
 type tracerComponent struct {
@@ -168,26 +169,20 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 	req.processingLock.Unlock()
 }
 
-func (tc *tracerComponent) ResponseValueRecord(service, operation, remoteAddress string, latencyUs uint64) {
-	remoteName, _, err := net.SplitHostPort(remoteAddress)
-	if err != nil {
-		logDebugf("Failed to split host port: %v", err)
-	}
-
+func (tc *tracerComponent) ResponseValueRecord(service, operation string, start time.Time) {
 	attribs := map[string]string{
-		metricAttribServiceKey:     service,
-		metricAttribNetPeerNameKey: remoteName,
+		metricAttribServiceKey: service,
 	}
 	if operation != "" {
 		attribs[metricAttribOperationKey] = operation
 	}
 
-	recorder, err := tc.metrics.ValueRecorder("db.couchbase.responses", attribs)
+	recorder, err := tc.metrics.ValueRecorder(meterNameCBOperations, attribs)
 	if err != nil {
 		logDebugf("Failed to get value recorder: %v", err)
 	}
 
-	recorder.RecordValue(latencyUs)
+	recorder.RecordValue(uint64(time.Since(start).Microseconds()))
 }
 
 func stopCmdTrace(req *memdQRequest) {

@@ -27,6 +27,8 @@ func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetrySt
 }
 
 func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Get", start)
 	tracer := crud.tracer.CreateOpTrace("Get", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -110,6 +112,8 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 }
 
 func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetAndTouch", start)
 	tracer := crud.tracer.CreateOpTrace("GetAndTouch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -197,6 +201,8 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 }
 
 func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetAndLock", start)
 	tracer := crud.tracer.CreateOpTrace("GetAndLock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -284,6 +290,8 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 }
 
 func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetOneReplica", start)
 	tracer := crud.tracer.CreateOpTrace("GetOneReplica", opts.TraceContext)
 
 	if opts.ReplicaIdx <= 0 {
@@ -374,6 +382,8 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 }
 
 func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Touch", start)
 	tracer := crud.tracer.CreateOpTrace("Touch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -458,6 +468,8 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 }
 
 func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Unlock", start)
 	tracer := crud.tracer.CreateOpTrace("Unlock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -539,6 +551,8 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 }
 
 func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Delete", start)
 	tracer := crud.tracer.CreateOpTrace("Delete", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -636,6 +650,8 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 }
 
 func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -790,6 +806,8 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (Pendi
 }
 
 func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -901,6 +919,8 @@ func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinCallback) (Pendi
 }
 
 func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts CounterOptions, cb CounterCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
 	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -1034,6 +1054,8 @@ func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterCallback) (P
 }
 
 func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetRandom", start)
 	tracer := crud.tracer.CreateOpTrace("GetRandom", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
@@ -1119,6 +1141,8 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 }
 
 func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetMeta", start)
 	tracer := crud.tracer.CreateOpTrace("GetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -1213,6 +1237,8 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "SetMeta", start)
 	tracer := crud.tracer.CreateOpTrace("SetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -1303,6 +1329,8 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "DeleteMeta", start)
 	tracer := crud.tracer.CreateOpTrace("DeleteMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {

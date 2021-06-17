@@ -31,6 +31,8 @@ func (sol *subdocOpList) Reorder(ops []SubDocOp) {
 	sol.indexes = append(xAttrIndexes, opIndexes...)
 }
 func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "LookupIn", start)
 	tracer := crud.tracer.CreateOpTrace("LookupIn", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
@@ -181,6 +183,8 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		return nil, wrapError(errInvalidArgument, "at least one op must be present")
 	}
 
+	start := time.Now()
+	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "MutateIn", start)
 	tracer := crud.tracer.CreateOpTrace("MutateIn", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))

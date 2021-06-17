@@ -101,6 +101,8 @@ func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req
 }
 
 func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionManifestOptions, cb GetCollectionManifestCallback) (PendingOp, error) {
+	start := time.Now()
+	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_collection_manifest", start)
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionManifest", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -141,6 +143,8 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 }
 
 func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollectionManifestsOptions, cb GetAllCollectionManifestsCallback) (PendingOp, error) {
+	start := time.Now()
+	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_all_collection_manifests", start)
 	tracer := cidMgr.tracer.CreateOpTrace("GetAllCollectionManifests", opts.TraceContext)
 
 	if opts.RetryStrategy == nil {
@@ -216,6 +220,8 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 // name in the key rather than in the corresponding fields.
 func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions,
 	cb GetCollectionIDCallback) (PendingOp, error) {
+	start := time.Now()
+	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_collection_id", start)
 	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {

@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"github.com/couchbase/gocbcore/v9/memd"
 	"sync"
 	"sync/atomic"
 )
@@ -70,10 +69,6 @@ func (tm *testMeter) ValueRecorder(name string, tags map[string]string) (ValueRe
 	}
 	tm.lock.Unlock()
 	return recorder, nil
-}
-
-func makeMetricsKeyFromCmd(service string, op memd.CmdCode) string {
-	return makeMetricsKey(service, op.Name())
 }
 
 func makeMetricsKey(service, op string) string {

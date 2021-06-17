@@ -315,7 +315,7 @@ func (suite *StandardTestSuite) TestN1QL() {
 			}
 		}
 	}
-	suite.VerifyMetrics("query", 1, true)
+	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true)
 
 	suite.T().Run("cleanup", helper.testCleanupN1ql)
 }
@@ -342,7 +342,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -387,7 +387,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 			}
 		}
 	}
-	suite.VerifyMetrics("query", 1, true)
+	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLTimeout() {
@@ -437,7 +437,7 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 			}
 		}
 	}
-	suite.VerifyMetrics("query", 1, true)
+	suite.VerifyMetrics("n1ql:N1QLQuery", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLPrepared() {
@@ -459,7 +459,7 @@ func (suite *StandardTestSuite) TestN1QLPrepared() {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+				suite.AssertHTTPSpan(nilParents[i], "PreparedN1QLQuery")
 			}
 		}
 	}
@@ -480,7 +480,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 		agent.http.auth,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -521,11 +521,11 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+				suite.AssertHTTPSpan(nilParents[i], "PreparedN1QLQuery")
 			}
 		}
 	}
-	suite.VerifyMetrics("query", 1, true)
+	suite.VerifyMetrics("n1ql:PreparedN1QLQuery", 1, true)
 }
 
 func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
@@ -571,11 +571,11 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
+				suite.AssertHTTPSpan(nilParents[i], "PreparedN1QLQuery")
 			}
 		}
 	}
-	suite.VerifyMetrics("query", 1, true)
+	suite.VerifyMetrics("n1ql:PreparedN1QLQuery", 1, true)
 }
 
 // TestN1QLErrorsAndResults tests the case where we receive both errors and results from the server meaning

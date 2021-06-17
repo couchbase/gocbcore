@@ -130,6 +130,8 @@ func newViewQueryComponent(httpComponent *httpComponent, tracer *tracerComponent
 
 // ViewQuery executes a view query
 func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
+	start := time.Now()
+	defer vqc.tracer.ResponseValueRecord(metricValueServiceViewsValue, "ViewQuery", start)
 	tracer := vqc.tracer.CreateOpTrace("ViewQuery", opts.TraceContext)
 	defer tracer.Finish()
 

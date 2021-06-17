@@ -117,6 +117,8 @@ func newSearchQueryComponent(httpComponent *httpComponent, tracer *tracerCompone
 
 // SearchQuery executes a Search query
 func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQueryCallback) (PendingOp, error) {
+	start := time.Now()
+	defer sqc.tracer.ResponseValueRecord(metricValueServiceSearchValue, "SearchQuery", start)
 	tracer := sqc.tracer.CreateOpTrace("SearchQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -155,7 +157,6 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 		Context:          ctx,
 		CancelFunc:       cancel,
 	}
-	start := time.Now()
 
 	go func() {
 	ExecuteLoop:

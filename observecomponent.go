@@ -30,6 +30,8 @@ func newObserveComponent(cidMgr *collectionsComponent, defaultRetryStrategy Retr
 }
 
 func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
+	start := time.Now()
+	defer oc.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Observe", start)
 	tracer := oc.tracer.CreateOpTrace("Observe", opts.TraceContext)
 
 	if oc.bucketUtils.BucketType() != bktTypeCouchbase {
@@ -137,6 +139,8 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 }
 
 func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
+	start := time.Now()
+	defer oc.tracer.ResponseValueRecord(metricValueServiceKeyValue, "ObserveVb", start)
 	tracer := oc.tracer.CreateOpTrace("ObserveVb", nil)
 
 	if oc.bucketUtils.BucketType() != bktTypeCouchbase {

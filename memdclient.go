@@ -228,9 +228,6 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Command, req.Opaque)
 
 	client.tracer.StartNetTrace(req)
-	req.processingLock.Lock()
-	req.writtenToNetworkAt = time.Now()
-	req.processingLock.Unlock()
 
 	err := client.conn.WritePacket(packet)
 	if err != nil {
@@ -269,7 +266,6 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	if !req.Persistent {
 		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
-		client.tracer.ResponseValueRecord(metricValueServiceKeyValue, req.Command.Name(), client.Address(), uint64(time.Since(req.writtenToNetworkAt).Microseconds()))
 	}
 
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0

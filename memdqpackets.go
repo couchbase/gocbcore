@@ -81,8 +81,6 @@ type memdQRequest struct {
 	// for the request.
 	connInfo atomic.Value
 
-	writtenToNetworkAt time.Time
-
 	RootTraceContext RequestSpanContext
 	cmdTraceSpan     RequestSpan
 	netTraceSpan     RequestSpan

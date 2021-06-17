@@ -233,6 +233,8 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 
 // N1QLQuery executes a N1QL query
 func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
+	start := time.Now()
+	defer nqc.tracer.ResponseValueRecord(metricValueServiceQueryValue, "N1QLQuery", start)
 	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -276,7 +278,9 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 
 // PreparedN1QLQuery executes a prepared N1QL query
 func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
-	tracer := nqc.tracer.CreateOpTrace("N1QLQuery", opts.TraceContext)
+	start := time.Now()
+	defer nqc.tracer.ResponseValueRecord(metricValueServiceQueryValue, "PreparedN1QLQuery", start)
+	tracer := nqc.tracer.CreateOpTrace("PreparedN1QLQuery", opts.TraceContext)
 	defer tracer.Finish()
 
 	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1 {

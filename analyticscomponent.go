@@ -160,6 +160,8 @@ func newAnalyticsQueryComponent(httpComponent *httpComponent, tracer *tracerComp
 
 // AnalyticsQuery executes an analytics query
 func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, cb AnalyticsQueryCallback) (PendingOp, error) {
+	start := time.Now()
+	defer aqc.tracer.ResponseValueRecord(metricValueServiceAnalyticsValue, "AnalyticsQuery", start)
 	tracer := aqc.tracer.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
 	defer tracer.Finish()
 
@@ -190,7 +192,6 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 		Context:          ctx,
 		CancelFunc:       cancel,
 	}
-	start := time.Now()
 
 	go func() {
 	ExecuteLoop:
