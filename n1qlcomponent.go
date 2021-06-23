@@ -171,6 +171,10 @@ func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
 				err = errDMLFailure
 			}
 		}
+		if errCode == 13014 {
+			err = errAuthenticationFailure
+		}
+
 		if errCodeGroup == 5 {
 			err = errInternalServerFailure
 		}
