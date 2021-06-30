@@ -26,9 +26,11 @@ type memdClientDialerComponent struct {
 	tracer       *tracerComponent
 	zombieLogger *zombieLoggerComponent
 
-	bootstrapProps       bootstrapProps
-	bootstrapCB          memdInitFunc
-	bootstrapFailHandler memdBoostrapFailHandler
+	bootstrapProps    bootstrapProps
+	bootstrapInitFunc memdInitFunc
+
+	bootstrapFailHandlersLock sync.Mutex
+	bootstrapFailHandlers     []memdBoostrapFailHandler
 }
 
 type memdClientDialerProps struct {
@@ -47,7 +49,7 @@ type memdBoostrapFailHandler interface {
 }
 
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapCB memdInitFunc, failCB memdBoostrapFailHandler) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapInitFunc memdInitFunc) *memdClientDialerComponent {
 	return &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
@@ -58,15 +60,37 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		tracer:            tracer,
 		serverFailures:    make(map[string]time.Time),
 
-		bootstrapProps:       bSettings,
-		bootstrapCB:          bootstrapCB,
-		bootstrapFailHandler: failCB,
+		bootstrapProps:    bSettings,
+		bootstrapInitFunc: bootstrapInitFunc,
 
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinSize:   props.CompressionMinSize,
 		compressionMinRatio:  props.CompressionMinRatio,
 		disableDecompression: props.DisableDecompression,
 	}
+}
+
+func (mcc *memdClientDialerComponent) AddBootstrapFailHandler(handler memdBoostrapFailHandler) {
+	mcc.bootstrapFailHandlersLock.Lock()
+	mcc.bootstrapFailHandlers = append(mcc.bootstrapFailHandlers, handler)
+	mcc.bootstrapFailHandlersLock.Unlock()
+}
+
+func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoostrapFailHandler) {
+	var idx int
+	mcc.bootstrapFailHandlersLock.Lock()
+	for i, w := range mcc.bootstrapFailHandlers {
+		if w == handler {
+			idx = i
+		}
+	}
+
+	if idx == len(mcc.bootstrapFailHandlers) {
+		mcc.bootstrapFailHandlers = mcc.bootstrapFailHandlers[:idx]
+	} else {
+		mcc.bootstrapFailHandlers = append(mcc.bootstrapFailHandlers[:idx], mcc.bootstrapFailHandlers[idx+1:]...)
+	}
+	mcc.bootstrapFailHandlersLock.Unlock()
 }
 
 func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address string,
@@ -98,7 +122,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		return nil, err
 	}
 
-	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, mcc.bootstrapCB)
+	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, mcc.bootstrapInitFunc)
 	if err != nil {
 		closeErr := client.Close()
 		if closeErr != nil {
@@ -110,7 +134,13 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 			mcc.serverFailuresLock.Unlock()
 		}
 
-		mcc.bootstrapFailHandler.onBootstrapFail(err)
+		mcc.bootstrapFailHandlersLock.Lock()
+		handlers := make([]memdBoostrapFailHandler, len(mcc.bootstrapFailHandlers))
+		copy(handlers, mcc.bootstrapFailHandlers)
+		mcc.bootstrapFailHandlersLock.Unlock()
+		for _, handler := range handlers {
+			handler.onBootstrapFail(err)
+		}
 
 		return nil, err
 	}

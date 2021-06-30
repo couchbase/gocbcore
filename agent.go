@@ -26,6 +26,7 @@ type Agent struct {
 	pollerController *pollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
+	dialer           *memdClientDialerComponent
 
 	cfgManager   *configManagementComponent
 	errMap       *errMapComponent
@@ -235,7 +236,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		},
 	)
 
-	dialer := newMemdClientDialerComponent(
+	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
 			ServerWaitTimeout:    serverWaitTimeout,
 			KVConnectTimeout:     kvConnectTimeout,
@@ -267,7 +268,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.zombieLogger,
 		c.tracer,
 		initFn,
-		c,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -278,7 +278,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
-		dialer,
+		c.dialer,
 	)
 	c.collections = newCollectionIDManager(
 		collectionIDProps{
@@ -331,6 +331,8 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		)
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 	}
+	c.dialer.AddBootstrapFailHandler(c)
+	c.dialer.AddBootstrapFailHandler(c.diagnostics)
 
 	c.observe = newObserveComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.kvMux)
 	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap, c.kvMux)

@@ -98,12 +98,14 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	return c
 }
 
-func (agent *clusterAgent) RegisterWith(cfgMgr configManager) {
+func (agent *clusterAgent) RegisterWith(cfgMgr configManager, dialer *memdClientDialerComponent) {
 	cfgMgr.AddConfigWatcher(agent)
+	dialer.AddBootstrapFailHandler(agent.diagnostics)
 }
 
-func (agent *clusterAgent) UnregisterWith(cfgMgr configManager) {
+func (agent *clusterAgent) UnregisterWith(cfgMgr configManager, dialer *memdClientDialerComponent) {
 	cfgMgr.RemoveConfigWatcher(agent)
+	dialer.RemoveBootstrapFailHandler(agent.diagnostics)
 }
 
 func (agent *clusterAgent) AddConfigWatcher(watcher routeConfigWatcher) {

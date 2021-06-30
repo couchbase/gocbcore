@@ -21,6 +21,10 @@ type diagnosticsComponent struct {
 	bucket              string
 	defaultRetry        RetryStrategy
 	pollerErrorProvider pollerErrorProvider
+
+	// preConfigBootstrapError must only be used for checking for bootstrap errors when a config has not yet been seen.
+	preConfigBootstrapError     error
+	preConfigBootstrapErrorLock sync.Mutex
 }
 
 func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *httpComponent, bucket string,
@@ -33,6 +37,13 @@ func newDiagnosticsComponent(kvMux *kvMux, httpMux *httpMux, httpComponent *http
 		defaultRetry:        defaultRetry,
 		pollerErrorProvider: pollerErrorProvider,
 	}
+}
+
+func (dc *diagnosticsComponent) onBootstrapFail(err error) {
+	// It doesn't really matter if we overwrite this error.
+	dc.preConfigBootstrapErrorLock.Lock()
+	dc.preConfigBootstrapError = err
+	dc.preConfigBootstrapErrorLock.Unlock()
 }
 
 func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Duration, deadline time.Time,
@@ -489,22 +500,11 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 		var connectErr error
 		revID := iter.RevID()
 		if revID == -1 {
-			// We've not seen a config so let's see if there are any errors lurking on the connections.
-			iter.Iterate(0, func(pipeline *memdPipeline) bool {
-				pipeline.clientsLock.Lock()
-				defer pipeline.clientsLock.Unlock()
-				for _, cli := range pipeline.clients {
-					err := cli.Error()
-					if err != nil {
-						logDebugf("Error found in client before config seen: %v", err)
-						connectErr = err
-
-						return true
-					}
-				}
-
-				return false
-			})
+			// We've not seen a config so let's see if we've been informed about any errors.
+			dc.preConfigBootstrapErrorLock.Lock()
+			connectErr = dc.preConfigBootstrapError
+			logDebugf("Bootstrap error found before config seen: %v", connectErr)
+			dc.preConfigBootstrapErrorLock.Unlock()
 
 			// If there's no error appearing from the pipeline client then let's check the poller
 			if connectErr == nil && dc.pollerErrorProvider != nil {
@@ -551,21 +551,21 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 							return true
 						}
 					}
-
-					// If there's no error appearing from the pipeline client then let's check the poller
-					if connectErr == nil && dc.pollerErrorProvider != nil {
-						pollerErr := dc.pollerErrorProvider.PollerError()
-
-						// We don't care about timeouts, they don't tell us anything we want to know.
-						if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
-							logDebugf("Error found in poller after config seen: %v", pollerErr)
-							connectErr = pollerErr
-						}
-					}
 				}
 
 				return false
 			})
+
+			// If there's no error appearing from the pipeline client then let's check the poller
+			if connectErr == nil && dc.pollerErrorProvider != nil {
+				pollerErr := dc.pollerErrorProvider.PollerError()
+
+				// We don't care about timeouts, they don't tell us anything we want to know.
+				if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+					logDebugf("Error found in poller after config seen: %v", pollerErr)
+					connectErr = pollerErr
+				}
+			}
 
 			switch desiredState {
 			case ClusterStateDegraded:
@@ -640,8 +640,28 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 
 	for {
 		clientMux := muxer.Get()
+		var connectErr error
 		if clientMux.revID == -1 {
-			logDebugf("No config seen yet in http muxer.")
+			// We've not seen a config so let's see if we've been informed about any errors.
+			dc.preConfigBootstrapErrorLock.Lock()
+			connectErr = dc.preConfigBootstrapError
+			logDebugf("Bootstrap error found before config seen: %v", connectErr)
+			dc.preConfigBootstrapErrorLock.Unlock()
+
+			// If there's no error appearing from the pipeline client then let's check the poller
+			if connectErr == nil && dc.pollerErrorProvider != nil {
+				pollerErr := dc.pollerErrorProvider.PollerError()
+
+				// We don't care about timeouts, they don't tell us anything we want to know.
+				if pollerErr != nil && !errors.Is(pollerErr, ErrTimeout) {
+					logDebugf("Error found in poller before config seen: %v", pollerErr)
+					connectErr = pollerErr
+				}
+			}
+
+			if connectErr == nil {
+				logDebugf("No config seen yet in http muxer but no errors found.")
+			}
 		} else {
 			var epList []string
 			switch service {
@@ -733,11 +753,25 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 			}
 		}
 
-		var shouldRetry bool
-		shouldRetry, until := retryOrchMaybeRetry(op, NotReadyRetryReason)
-		if !shouldRetry {
-			op.cancel(errCliInternalError)
-			return
+		var until time.Time
+		if connectErr == nil {
+			var shouldRetry bool
+			shouldRetry, until = retryOrchMaybeRetry(op, NotReadyRetryReason)
+			if !shouldRetry {
+				op.cancel(errCliInternalError)
+				return
+			}
+		} else {
+			var shouldRetry bool
+			if errors.Is(connectErr, ErrBucketNotFound) {
+				shouldRetry, until = retryOrchMaybeRetry(op, BucketNotReadyReason)
+			} else {
+				shouldRetry, until = retryOrchMaybeRetry(op, ConnectionErrorRetryReason)
+			}
+			if !shouldRetry {
+				op.cancel(connectErr)
+				return
+			}
 		}
 
 		select {

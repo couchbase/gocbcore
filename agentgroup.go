@@ -47,7 +47,7 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 		DefaultRetryStrategy: config.DefaultRetryStrategy,
 		CircuitBreakerConfig: config.CircuitBreakerConfig,
 	})
-	ag.clusterAgent.RegisterWith(agent.cfgManager)
+	ag.clusterAgent.RegisterWith(agent.cfgManager, agent.dialer)
 
 	ag.boundAgents[config.BucketName] = agent
 
@@ -74,12 +74,12 @@ func (ag *AgentGroup) OpenBucket(bucketName string) error {
 		return err
 	}
 
-	ag.clusterAgent.RegisterWith(agent.cfgManager)
+	ag.clusterAgent.RegisterWith(agent.cfgManager, agent.dialer)
 
 	ag.agentsLock.Lock()
 	ag.boundAgents[bucketName] = agent
-	ag.agentsLock.Unlock()
 	ag.maybeCloseGlobalAgent()
+	ag.agentsLock.Unlock()
 
 	return nil
 }
@@ -107,7 +107,7 @@ func (ag *AgentGroup) Close() error {
 	var firstError error
 	ag.agentsLock.Lock()
 	for _, agent := range ag.boundAgents {
-		ag.clusterAgent.UnregisterWith(agent.cfgManager)
+		ag.clusterAgent.UnregisterWith(agent.cfgManager, agent.dialer)
 		if err := agent.Close(); err != nil && firstError == nil {
 			firstError = err
 		}
@@ -152,6 +152,8 @@ func (ag *AgentGroup) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallback) 
 }
 
 // WaitUntilReady returns whether or not the AgentGroup can ping the requested services.
+// This can only be used when no bucket has been opened, if a bucket has been opened then you *must* use the agent
+// belonging to that bucket.
 func (ag *AgentGroup) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
 	cb WaitUntilReadyCallback) (PendingOp, error) {
 	return ag.clusterAgent.WaitUntilReady(deadline, opts, cb)
@@ -222,19 +224,18 @@ func (ag *AgentGroup) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, err
 }
 
 func (ag *AgentGroup) maybeCloseGlobalAgent() {
-	ag.agentsLock.Lock()
 	// Close and delete the global level agent that we created on Connect.
 	agent := ag.boundAgents[""]
 	if agent == nil {
-		ag.agentsLock.Unlock()
 		return
 	}
 	logDebugf("Shutting down global level agent")
 	delete(ag.boundAgents, "")
-	ag.agentsLock.Unlock()
 
-	ag.clusterAgent.UnregisterWith(agent.cfgManager)
-	if err := agent.Close(); err != nil {
-		logDebugf("Failed to close agent: %s", err)
-	}
+	go func() {
+		ag.clusterAgent.UnregisterWith(agent.cfgManager, agent.dialer)
+		if err := agent.Close(); err != nil {
+			logDebugf("Failed to close agent: %s", err)
+		}
+	}()
 }

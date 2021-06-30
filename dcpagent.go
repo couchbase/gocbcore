@@ -17,6 +17,7 @@ type DCPAgent struct {
 	pollerController *pollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
+	dialer           *memdClientDialerComponent
 
 	cfgManager  *configManagementComponent
 	errMap      *errMapComponent
@@ -226,7 +227,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		},
 	)
 
-	dialer := newMemdClientDialerComponent(
+	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
 			ServerWaitTimeout:    serverWaitTimeout,
 			KVConnectTimeout:     kvConnectTimeout,
@@ -256,7 +257,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		nil,
 		c.tracer,
 		initFn,
-		c,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -267,7 +267,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
-		dialer,
+		c.dialer,
 	)
 	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
 	c.http = newHTTPComponent(
@@ -306,6 +306,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
 	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID)
+
+	c.dialer.AddBootstrapFailHandler(c)
+	c.dialer.AddBootstrapFailHandler(c.diagnostics)
 
 	// Kick everything off.
 	cfg := &routeConfig{
