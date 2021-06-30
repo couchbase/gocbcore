@@ -144,12 +144,6 @@ func (ag *AgentGroup) SearchQuery(opts SearchQueryOptions, cb SearchQueryCallbac
 	return ag.clusterAgent.SearchQuery(opts, cb)
 }
 
-// ViewQuery executes a view query against a random connected agent.
-// If no agent is connected then this will block until one is available or the deadline is reached.
-func (ag *AgentGroup) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
-	return ag.clusterAgent.ViewQuery(opts, cb)
-}
-
 // DoHTTPRequest will perform an HTTP request against one of the HTTP
 // services which are available within the SDK, using a random connected agent.
 // If no agent is connected then this will block until one is available or the deadline is reached.
