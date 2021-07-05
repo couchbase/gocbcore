@@ -219,12 +219,16 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		queuedWith.Remove(req)
 	}
 
+	var localAddr string
+	var remoteAddr string
 	waitingIn := (*memdClient)(atomic.LoadPointer(&req.waitingIn))
 	if waitingIn != nil {
 		waitingIn.CancelRequest(req, err)
+		localAddr = waitingIn.LocalAddress()
+		remoteAddr = waitingIn.Address()
 	}
 
-	cancelReqTrace(req)
+	cancelReqTrace(req, localAddr, remoteAddr)
 	req.processingLock.Unlock()
 
 	return true

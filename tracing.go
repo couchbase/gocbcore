@@ -155,16 +155,18 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 }
 
 func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
+	req.processingLock.Lock()
 	if req.cmdTraceSpan == nil {
+		req.processingLock.Unlock()
 		return
 	}
 
 	if req.netTraceSpan != nil {
+		req.processingLock.Unlock()
 		logWarnf("Attempted to start net tracing on traced request")
 		return
 	}
 
-	req.processingLock.Lock()
 	req.netTraceSpan = tc.tracer.RequestSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
 	req.processingLock.Unlock()
 }
@@ -202,13 +204,13 @@ func stopCmdTrace(req *memdQRequest) {
 	req.cmdTraceSpan = nil
 }
 
-func cancelReqTrace(req *memdQRequest) {
+func cancelReqTrace(req *memdQRequest, local, remote string) {
 	if req.cmdTraceSpan != nil {
 		if req.netTraceSpan != nil {
-			req.netTraceSpan.End()
+			stopNetTrace(req, nil, local, remote)
 		}
 
-		req.cmdTraceSpan.End()
+		stopCmdTrace(req)
 	}
 }
 
@@ -224,8 +226,10 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 
 	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
 	req.netTraceSpan.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
-	req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, strconv.Itoa(int(resp.Opaque)))
-	req.netTraceSpan.SetAttribute(spanAttribLocalIDKey, resp.sourceConnID)
+	if resp != nil {
+		req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, strconv.Itoa(int(resp.Opaque)))
+		req.netTraceSpan.SetAttribute(spanAttribLocalIDKey, resp.sourceConnID)
+	}
 	localName, localPort, err := net.SplitHostPort(localAddress)
 	if err != nil {
 		logDebugf("Failed to split host port: %s", err)
@@ -240,7 +244,7 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 	req.netTraceSpan.SetAttribute(spanAttribNetHostPortKey, localPort)
 	req.netTraceSpan.SetAttribute(spanAttribNetPeerNameKey, remoteName)
 	req.netTraceSpan.SetAttribute(spanAttribNetPeerPortKey, remotePort)
-	if resp.Packet.ServerDurationFrame != nil {
+	if resp != nil && resp.Packet.ServerDurationFrame != nil {
 		req.netTraceSpan.SetAttribute(spanAttribServerDurationKey, resp.Packet.ServerDurationFrame.ServerDuration)
 	}
 
