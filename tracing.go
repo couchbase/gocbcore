@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -81,10 +82,11 @@ type tracerManager interface {
 }
 
 type tracerComponent struct {
-	tracer           RequestTracer
-	bucket           string
-	noRootTraceSpans bool
-	metrics          Meter
+	tracer                    RequestTracer
+	bucket                    string
+	noRootTraceSpans          bool
+	metrics                   Meter
+	valueRecorderAttribsCache sync.Map
 }
 
 func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool, metrics Meter) *tracerComponent {
@@ -168,14 +170,24 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 }
 
 func (tc *tracerComponent) ResponseValueRecord(service, operation string, start time.Time) {
-	attribs := map[string]string{
-		metricAttribServiceKey: service,
+	if tc.metrics == nil {
+		return
 	}
-	if operation != "" {
-		attribs[metricAttribOperationKey] = operation
+	key := service + "." + operation
+	attribs, ok := tc.valueRecorderAttribsCache.Load(key)
+	if !ok {
+		// It doesn't really matter if we end up storing the attribs against the same key multiple times. We just need
+		// to have a read efficient cache that doesn't cause actual data races.
+		attribs = map[string]string{
+			metricAttribServiceKey: service,
+		}
+		if operation != "" {
+			attribs.(map[string]string)[metricAttribOperationKey] = operation
+		}
+		tc.valueRecorderAttribsCache.Store(key, attribs)
 	}
 
-	recorder, err := tc.metrics.ValueRecorder(meterNameCBOperations, attribs)
+	recorder, err := tc.metrics.ValueRecorder(meterNameCBOperations, attribs.(map[string]string))
 	if err != nil {
 		logDebugf("Failed to get value recorder: %v", err)
 	}

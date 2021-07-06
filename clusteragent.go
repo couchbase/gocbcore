@@ -39,11 +39,8 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	if tracer == nil {
 		tracer = noopTracer{}
 	}
-	meter := config.MeterConfig.Meter
-	if meter == nil {
-		meter = &noopMeter{}
-	}
-	tracerCmpt := newTracerComponent(tracer, "", config.TracerConfig.NoRootTraceSpans, meter)
+
+	tracerCmpt := newTracerComponent(tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter)
 
 	c := &clusterAgent{
 		tlsConfig: tlsConfig,
