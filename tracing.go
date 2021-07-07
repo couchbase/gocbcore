@@ -18,7 +18,6 @@ type RequestSpan interface {
 	Context() RequestSpanContext
 	AddEvent(name string, timestamp time.Time)
 	SetAttribute(key string, value interface{})
-	SetStatus(status SpanStatus)
 }
 
 // RequestSpanContext is the interface for for external span contexts that can be passed in into the SDK option blocks.
@@ -51,9 +50,6 @@ func (span noopSpan) SetAttribute(key string, value interface{}) {
 }
 
 func (span noopSpan) AddEvent(key string, timestamp time.Time) {
-}
-
-func (span noopSpan) SetStatus(status SpanStatus) {
 }
 
 type opTracer struct {
