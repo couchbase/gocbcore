@@ -96,14 +96,12 @@ func (item *Manifest) UnmarshalJSON(data []byte) error {
 
 // GetCollectionManifestOptions are the options available to the GetCollectionManifest command.
 type GetCollectionManifestOptions struct {
-	// Volatile: Tracer API is subject to change.
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
 }
 
 // GetAllCollectionManifestsOptions are the options available to the GetAllCollectionManifests command.
 type GetAllCollectionManifestsOptions struct {
-	// Volatile: Tracer API is subject to change.
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
 }
@@ -111,8 +109,7 @@ type GetAllCollectionManifestsOptions struct {
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
 	RetryStrategy RetryStrategy
-	// Volatile: Tracer API is subject to change.
-	TraceContext RequestSpanContext
+	TraceContext  RequestSpanContext
 }
 
 // GetCollectionIDResult encapsulates the result of a GetCollectionID operation.

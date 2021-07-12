@@ -276,7 +276,6 @@ func (config IoConfig) fromSpec(spec connstr.ResolvedConnSpec) (IoConfig, error)
 }
 
 // TracerConfig specifies tracer related configuration options.
-// Uncommitted: Tracer API may change in the future.
 type TracerConfig struct {
 	Tracer           RequestTracer
 	NoRootTraceSpans bool

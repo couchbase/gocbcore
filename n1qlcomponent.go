@@ -86,7 +86,6 @@ type N1QLQueryOptions struct {
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 

@@ -87,7 +87,6 @@ type HTTPRequest struct {
 	Deadline      time.Time
 	RetryStrategy RetryStrategy
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 

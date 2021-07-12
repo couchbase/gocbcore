@@ -18,7 +18,6 @@ type GetOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -35,7 +34,6 @@ type GetAndTouchOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -52,7 +50,6 @@ type GetAndLockOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -68,7 +65,6 @@ type GetAnyReplicaOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -85,7 +81,6 @@ type GetOneReplicaOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -102,7 +97,6 @@ type TouchOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -119,7 +113,6 @@ type UnlockOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -138,7 +131,6 @@ type DeleteOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -160,7 +152,6 @@ type AddOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -183,7 +174,6 @@ type storeOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -206,7 +196,6 @@ type SetOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -230,7 +219,6 @@ type ReplaceOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -251,7 +239,6 @@ type AdjoinOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -274,7 +261,6 @@ type CounterOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -290,7 +276,6 @@ type GetRandomOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -306,7 +291,6 @@ type GetMetaOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -330,7 +314,6 @@ type SetMetaOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }
 
@@ -354,6 +337,5 @@ type DeleteMetaOptions struct {
 	// Internal: This should never be used and is not supported.
 	User []byte
 
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 }

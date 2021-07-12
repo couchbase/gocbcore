@@ -84,7 +84,6 @@ func (pop *pingOp) handledOneLocked(configRev int64) {
 
 // PingOptions encapsulates the parameters for a PingKv operation.
 type PingOptions struct {
-	// Volatile: Tracer API is subject to change.
 	TraceContext RequestSpanContext
 	KVDeadline   time.Time
 	CbasDeadline time.Time
