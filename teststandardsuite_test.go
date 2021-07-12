@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/couchbase/gocbcore/v9/memd"
 	"io/ioutil"
+	"net/http"
 	"testing"
 	"time"
 
@@ -53,6 +54,10 @@ func (suite *StandardTestSuite) SetupSuite() {
 			Username: "Administrator",
 			Password: "password",
 		}
+
+		// gocbcore itself doesn't use the default client but the mock downloader does so let's make sure that it
+		// doesn't hold any goroutines open which will affect our goroutine leak detector.
+		http.DefaultClient.CloseIdleConnections()
 	}
 
 	suite.TestConfig = globalTestConfig
