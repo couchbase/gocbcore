@@ -1,6 +1,12 @@
 # Release Notes
 
-## Version 10.0.0 (15 July 2021)
+## Version 10.0.1 (15 July 2021
+
+### Fixed Issues
+
+* Fixed issue where modules file contained incorrect gocbcore version.
+
+## Version 10.0.0 (15 July 2021) (Do not use, see v10.0.1)
 
 ###New Features and Behavioral Changes
 

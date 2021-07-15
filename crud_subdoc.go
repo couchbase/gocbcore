@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // LookupInOptions encapsulates the parameters for a LookupInEx operation.

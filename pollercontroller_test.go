@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // This test tests that after calling stop then force http poller will not attempt to do work.

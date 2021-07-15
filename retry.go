@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // RetryRequest is a request that can possibly be retried.

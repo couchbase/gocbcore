@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/jcbmock"
+	"github.com/couchbase/gocbcore/v10/jcbmock"
 )
 
 func TestKvErrorConstantRetry(t *testing.T) {

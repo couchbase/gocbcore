@@ -3,9 +3,9 @@ package gocbcore
 import (
 	"errors"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 
-	"github.com/couchbase/gocbcore/v9/jcbmock"
+	"github.com/couchbase/gocbcore/v10/jcbmock"
 )
 
 func (suite *StandardTestSuite) TestEnhancedErrors() {

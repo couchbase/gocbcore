@@ -3,13 +3,13 @@ package gocbcore
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/jcbmock"
+	"github.com/couchbase/gocbcore/v10/jcbmock"
 	"github.com/stretchr/testify/suite"
 )
 

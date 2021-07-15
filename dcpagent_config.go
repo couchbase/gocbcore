@@ -2,7 +2,7 @@ package gocbcore
 
 import (
 	"fmt"
-	"github.com/couchbase/gocbcore/v9/connstr"
+	"github.com/couchbase/gocbcore/v10/connstr"
 	"strconv"
 )
 

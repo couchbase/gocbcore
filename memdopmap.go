@@ -3,7 +3,7 @@ package gocbcore
 import (
 	"sync/atomic"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // memdOpMap - Uses the requests opaque to map requests to responses. Note that this structure is not thread safe, and

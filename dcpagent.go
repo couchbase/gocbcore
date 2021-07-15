@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // DCPAgent represents the base client handling DCP connections to a Couchbase Server.

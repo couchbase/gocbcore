@@ -7,7 +7,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // The data for a response from a server.  This includes the

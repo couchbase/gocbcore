@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 var statusCodeErrorMap = make(map[memd.StatusCode]error)

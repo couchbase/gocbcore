@@ -1,4 +1,4 @@
-module github.com/couchbase/gocbcore/v9
+module github.com/couchbase/gocbcore/v10
 
 require (
 	github.com/golang/snappy v0.0.1

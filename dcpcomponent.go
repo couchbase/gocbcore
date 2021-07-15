@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 type dcpComponent struct {
@@ -106,7 +106,7 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 				Flags:        binary.BigEndian.Uint32(resp.Extras[16:]),
 				Expiry:       binary.BigEndian.Uint32(resp.Extras[20:]),
 				LockTime:     binary.BigEndian.Uint32(resp.Extras[24:]),
-				Cas:	      resp.Cas,
+				Cas:          resp.Cas,
 				Datatype:     resp.Datatype,
 				VbID:         resp.Vbucket,
 				CollectionID: resp.CollectionID,
@@ -119,8 +119,8 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			evtHandler.Mutation(mutation)
 		case memd.CmdDcpDeletion:
 			deletion := DcpDeletion{
-				SeqNo :       binary.BigEndian.Uint64(resp.Extras[0:]),
-				RevNo :       binary.BigEndian.Uint64(resp.Extras[8:]),
+				SeqNo:        binary.BigEndian.Uint64(resp.Extras[0:]),
+				RevNo:        binary.BigEndian.Uint64(resp.Extras[8:]),
 				Cas:          resp.Cas,
 				Datatype:     resp.Datatype,
 				VbID:         resp.Vbucket,
@@ -229,7 +229,6 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 					CollectionID: binary.BigEndian.Uint32(resp.Value[8:]),
 					Ttl:          binary.BigEndian.Uint32(resp.Value[12:]),
 					StreamID:     streamID,
-
 				}
 				evtHandler.ModifyCollection(modification)
 			}
@@ -245,7 +244,7 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			req.internalCancel(err)
 		case memd.CmdDcpOsoSnapshot:
 			snapshot := DcpOSOSnapshot{
-				VbID: resp.Vbucket,
+				VbID:         resp.Vbucket,
 				SnapshotType: binary.BigEndian.Uint32(resp.Extras[0:]),
 			}
 			if resp.StreamIDFrame != nil {
@@ -254,8 +253,8 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			evtHandler.OSOSnapshot(snapshot)
 		case memd.CmdDcpSeqNoAdvanced:
 			seqNoAdvanced := DcpSeqNoAdvanced{
-			    SeqNo: binary.BigEndian.Uint64(resp.Extras[0:]),
-				VbID: resp.Vbucket,
+				SeqNo: binary.BigEndian.Uint64(resp.Extras[0:]),
+				VbID:  resp.Vbucket,
 			}
 			if resp.StreamIDFrame != nil {
 				seqNoAdvanced.StreamID = resp.StreamIDFrame.StreamID
