@@ -1,5 +1,48 @@
 # Release Notes
 
+## Version 10.0.0 (15 July 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-901](GOCBC-901):
+  Broke the `AgentConfig` up into grouped components.
+* [https://issues.couchbase.com/browse/GOCBC-1008](GOCBC-1008):
+  Updated mutate in to return cas mismatch error rather than document exists when doing a replace.
+* [https://issues.couchbase.com/browse/GOCBC-1062](GOCBC-1062):
+  Added support for DCP snapshot marker v2 and v2.1.
+* [https://issues.couchbase.com/browse/GOCBC-1081](GOCBC-1081):
+  During CCCP polling don't retry request if the error is request cancelled.
+* [https://issues.couchbase.com/browse/GOCBC-1130](GOCBC-1130):
+  Updated Query error handling to return an authentication error on error code 13104.
+* [https://issues.couchbase.com/browse/GOCBC-1087](GOCBC-1087):
+  Added support for communicating with Eventing and Backup services.
+* [https://issues.couchbase.com/browse/GOCBC-1093](GOCBC-1093):
+  Added support for `RevEpoch` in bucket configs.
+* [https://issues.couchbase.com/browse/GOCBC-1044](GOCBC-1044):
+* [https://issues.couchbase.com/browse/GOCBC-1128](GOCBC-1128):
+  Added `Meter` interface and operation level response latency metric.
+* [https://issues.couchbase.com/browse/GOCBC-1133](GOCBC-1133):
+  Remove `ViewQuery` from `AgentGroup`.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1135](GOCBC-1135):
+  Fixed issue where cmd traces could be ended twice in some scenarios when operation was cancelled.
+
+## Version 9.1.5 (15 June 2021)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1095](GOCBC-1095):
+  Fixed issue where SDK was parsing view error contents incorrectly.
+* [https://issues.couchbase.com/browse/GOCBC-1102](GOCBC-1102):
+  Fixed issue where `WaitUntilReady` wouldn't recover if one of the HTTP based services returned an error.
+* [https://issues.couchbase.com/browse/GOCBC-1106](GOCBC-1106):
+* [https://issues.couchbase.com/browse/GOCBC-1112](GOCBC-1112):
+  Fixed issues where fts responses were being parsed incorrectly.
+* [https://issues.couchbase.com/browse/GOCBC-1127](GOCBC-1127):
+  Fixed issue where query errors could be parsed incorrectly.
+
 ## Version 9.1.4 (20 April 2021)
 
 ###New Features and Behavioral Changes
