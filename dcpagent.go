@@ -122,15 +122,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		dcpBackfillOrderStr = "sequential"
 	}
 
-	authMechanisms := []AuthMechanism{
-		ScramSha512AuthMechanism,
-		ScramSha256AuthMechanism,
-		ScramSha1AuthMechanism}
-
-	// PLAIN authentication is only supported over TLS
-	if config.SecurityConfig.UseTLS {
-		authMechanisms = append(authMechanisms, PlainAuthMechanism)
-	}
+	authMechanisms := authMechanismsFromConfig(config.SecurityConfig)
 
 	var tlsConfig *dynTLSConfig
 	if config.SecurityConfig.UseTLS {
