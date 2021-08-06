@@ -672,11 +672,13 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		return helloResp.Err
 	}
 
-	errMapResp := <-errMapCh
-	if errMapResp.Err == nil {
-		settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
-	} else {
-		logDebugf("Memdclient `%s/%p` Failed to fetch kv error map (%s)", client.Address(), client, errMapResp.Err)
+	if errMapCh != nil {
+		errMapResp := <-errMapCh
+		if errMapResp.Err == nil {
+			settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
+		} else {
+			logDebugf("Memdclient `%s/%p` Failed to fetch kv error map (%s)", client.Address(), client, errMapResp.Err)
+		}
 	}
 
 	var serverAuthMechanisms []AuthMechanism
