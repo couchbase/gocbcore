@@ -125,9 +125,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		ScramSha256AuthMechanism,
 		ScramSha1AuthMechanism}
 
-	// PLAIN authentication is only supported over TLS
 	if config.UseTLS {
-		authMechanisms = append(authMechanisms, PlainAuthMechanism)
+		// Use PLAIN authentication over TLS so that LDAP is supported.
+		authMechanisms = []AuthMechanism{PlainAuthMechanism}
 	}
 
 	var tlsConfig *dynTLSConfig
