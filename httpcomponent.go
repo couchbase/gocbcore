@@ -83,6 +83,7 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 		RootTraceContext: tracer.RootContext(),
 		Context:          ctx,
 		CancelFunc:       cancel,
+		User:             req.User,
 	}
 
 	go func() {
@@ -251,6 +252,9 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		hreq.Header.Set("Content-Type", req.ContentType)
 	} else {
 		hreq.Header.Set("Content-Type", "application/json")
+	}
+	if len(req.User) > 0 {
+		hreq.Header.Set("cb-on-behalf", req.User)
 	}
 	for key, val := range req.Headers {
 		hreq.Header.Set(key, val)

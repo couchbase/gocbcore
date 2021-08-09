@@ -86,6 +86,9 @@ type N1QLQueryOptions struct {
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
 
+	// Internal: This should never be used and is not supported.
+	User string
+
 	TraceContext RequestSpanContext
 }
 
@@ -259,6 +262,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 		RootTraceContext: tracer.RootContext(),
 		Context:          ctx,
 		CancelFunc:       cancel,
+		User:             opts.User,
 	}
 
 	go func() {
@@ -353,6 +357,7 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 			RootTraceContext: tracer.RootContext(),
 			Context:          ctx,
 			CancelFunc:       cancel,
+			User:             opts.User,
 		}
 
 		results, err := nqc.execute(ireq, payloadMap, statement)
@@ -422,6 +427,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 				RootTraceContext: tracer.RootContext(),
 				Context:          ctx,
 				CancelFunc:       cancel,
+				User:             opts.User,
 			}
 
 			results, err := nqc.execute(ireq, payloadMap, statement)

@@ -29,6 +29,8 @@ type httpRequest struct {
 	Context    context.Context
 	CancelFunc context.CancelFunc
 
+	User string
+
 	retryCount   uint32
 	retryReasons []RetryReason
 }
@@ -86,6 +88,9 @@ type HTTPRequest struct {
 	UniqueID      string
 	Deadline      time.Time
 	RetryStrategy RetryStrategy
+
+	// Internal: This should never be used and is not supported.
+	User string
 
 	TraceContext RequestSpanContext
 }

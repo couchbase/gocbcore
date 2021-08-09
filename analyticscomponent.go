@@ -41,6 +41,9 @@ type AnalyticsQueryOptions struct {
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
 
+	// Internal: This should never be used and is not supported.
+	User string
+
 	TraceContext RequestSpanContext
 }
 
@@ -190,6 +193,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 		RootTraceContext: tracer.RootContext(),
 		Context:          ctx,
 		CancelFunc:       cancel,
+		User:             opts.User,
 	}
 
 	go func() {

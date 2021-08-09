@@ -42,6 +42,9 @@ type SearchQueryOptions struct {
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
 
+	// Internal: This should never be used and is not supported.
+	User string
+
 	TraceContext RequestSpanContext
 }
 
@@ -155,6 +158,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 		RootTraceContext: tracer.RootContext(),
 		Context:          ctx,
 		CancelFunc:       cancel,
+		User:             opts.User,
 	}
 
 	go func() {
