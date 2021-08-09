@@ -23,6 +23,7 @@ type memdPipelineClient struct {
 	state         uint32
 
 	connectError error
+	closedError  error
 }
 
 func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
@@ -61,9 +62,10 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 	pipecli.lock.Lock()
 	if pipecli.parent == nil {
 		logDebugf("Pipeline client ioLoop started with no parent pipeline")
+		closedErr := pipecli.closedError
 		pipecli.lock.Unlock()
 
-		err := client.Close()
+		err := client.Close(closedErr)
 		if err != nil {
 			logErrorf("Failed to close client for shut down ioLoop (%s)", err)
 		}
@@ -131,10 +133,11 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 			if pipecli.parent == nil {
 				// This pipelineClient has been shut down
 				logDebugf("Pipeline client `%s/%p` found no parent pipeline", pipecli.address, pipecli)
+				closedErr := pipecli.closedError
 				pipecli.lock.Unlock()
 
 				// Close our client to force the watcher goroutine above to clean it up
-				err := client.Close()
+				err := client.Close(closedErr)
 				if err != nil {
 					logErrorf("Pipeline client `%s/%p` failed to shut down client socket (%s)", pipecli.address, pipecli, err)
 				}
@@ -171,7 +174,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 				// logic via the client watcher above.  If the socket error was EOF
 				// we already did shut down, and the watcher should already be
 				// cleaning up.
-				err := client.Close()
+				err := client.Close(nil)
 				if err != nil {
 					logErrorf("Pipeline client `%s/%p` failed to shut down errored client socket (%s)", pipecli.address, pipecli, err)
 				}
@@ -253,7 +256,7 @@ func (pipecli *memdPipelineClient) Run() {
 
 // Close will close this pipeline client.  Note that this method will not wait for
 // everything to be cleaned up before returning.
-func (pipecli *memdPipelineClient) Close() error {
+func (pipecli *memdPipelineClient) Close(closeErr error) error {
 	logDebugf("Pipeline Client `%s/%p` received close request", pipecli.address, pipecli)
 	atomic.StoreUint32(&pipecli.state, uint32(EndpointStateDisconnecting))
 
@@ -264,6 +267,7 @@ func (pipecli *memdPipelineClient) Close() error {
 	pipecli.parent = nil
 	activeConsumer := pipecli.consumer
 	pipecli.consumer = nil
+	pipecli.closedError = closeErr
 	pipecli.lock.Unlock()
 
 	// We might be currently waiting for a new client to be dialled, in which we need to abandon that wait so that

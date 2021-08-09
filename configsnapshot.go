@@ -7,21 +7,21 @@ type ConfigSnapshot struct {
 
 // RevID returns the config revision for this snapshot.
 func (pi ConfigSnapshot) RevID() int64 {
-	return pi.state.revID
+	return pi.state.RevID()
 }
 
 // KeyToVbucket translates a particular key to its assigned vbucket.
 func (pi ConfigSnapshot) KeyToVbucket(key []byte) (uint16, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return 0, errUnsupportedOperation
 	}
-	return pi.state.vbMap.VbucketByKey(key), nil
+	return pi.state.VBMap().VbucketByKey(key), nil
 }
 
 // KeyToServer translates a particular key to its assigned server index.
 func (pi ConfigSnapshot) KeyToServer(key []byte, replicaIdx uint32) (int, error) {
-	if pi.state.vbMap != nil {
-		serverIdx, err := pi.state.vbMap.NodeByKey(key, replicaIdx)
+	if pi.state.VBMap() != nil {
+		serverIdx, err := pi.state.VBMap().NodeByKey(key, replicaIdx)
 		if err != nil {
 			return 0, err
 		}
@@ -29,8 +29,8 @@ func (pi ConfigSnapshot) KeyToServer(key []byte, replicaIdx uint32) (int, error)
 		return serverIdx, nil
 	}
 
-	if pi.state.ketamaMap != nil {
-		serverIdx, err := pi.state.ketamaMap.NodeByKey(key)
+	if pi.state.KetamaMap() != nil {
+		serverIdx, err := pi.state.KetamaMap().NodeByKey(key)
 		if err != nil {
 			return 0, err
 		}
@@ -43,11 +43,11 @@ func (pi ConfigSnapshot) KeyToServer(key []byte, replicaIdx uint32) (int, error)
 
 // VbucketToServer returns the server index for a particular vbucket.
 func (pi ConfigSnapshot) VbucketToServer(vbID uint16, replicaIdx uint32) (int, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return 0, errUnsupportedOperation
 	}
 
-	serverIdx, err := pi.state.vbMap.NodeByVbucket(vbID, replicaIdx)
+	serverIdx, err := pi.state.VBMap().NodeByVbucket(vbID, replicaIdx)
 	if err != nil {
 		return 0, err
 	}
@@ -57,31 +57,31 @@ func (pi ConfigSnapshot) VbucketToServer(vbID uint16, replicaIdx uint32) (int, e
 
 // VbucketsOnServer returns the list of VBuckets for a server.
 func (pi ConfigSnapshot) VbucketsOnServer(index int) ([]uint16, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return nil, errUnsupportedOperation
 	}
 
-	return pi.state.vbMap.VbucketsOnServer(index)
+	return pi.state.VBMap().VbucketsOnServer(index)
 }
 
 // NumVbuckets returns the number of VBuckets configured on the
 // connected cluster.
 func (pi ConfigSnapshot) NumVbuckets() (int, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return 0, errUnsupportedOperation
 	}
 
-	return pi.state.vbMap.NumVbuckets(), nil
+	return pi.state.VBMap().NumVbuckets(), nil
 }
 
 // NumReplicas returns the number of replicas configured on the
 // connected cluster.
 func (pi ConfigSnapshot) NumReplicas() (int, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return 0, errUnsupportedOperation
 	}
 
-	return pi.state.vbMap.NumReplicas(), nil
+	return pi.state.VBMap().NumReplicas(), nil
 }
 
 // NumServers returns the number of servers accessible for K/V.
@@ -91,5 +91,5 @@ func (pi ConfigSnapshot) NumServers() (int, error) {
 
 // BucketUUID returns the UUID of the bucket we are connected to.
 func (pi ConfigSnapshot) BucketUUID() string {
-	return pi.state.uuid
+	return pi.state.UUID()
 }

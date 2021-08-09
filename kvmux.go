@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -39,6 +40,15 @@ type kvMux struct {
 	dialer *memdClientDialerComponent
 
 	postCompleteErrHandler postCompleteErrorHandler
+
+	// muxStateWriteLock is necessary for functions which update the muxPtr, due to the scenario where ForceReconnect and
+	// OnNewRouteConfig could race. ForceReconnect must succeed and cannot fail because OnNewRouteConfig has updated
+	// the mux state whilst force is attempting to update it. We could also end up in a situation where a full reconnect
+	// is occurring at the same time as a pipeline takeover and scenarios like that, including missing a config update because
+	// ForceReconnect has won the race.
+	// There is no need for read side locks as we are locking around an atomic and it is only the write sides that present
+	// a potential issue.
+	muxStateWriteLock sync.Mutex
 }
 
 type kvMuxProps struct {
@@ -92,12 +102,15 @@ func (mux *kvMux) updateState(old, new *kvMuxState) bool {
 }
 
 func (mux *kvMux) clear() *kvMuxState {
+	mux.muxStateWriteLock.Lock()
 	val := atomic.SwapPointer(&mux.muxPtr, nil)
+	mux.muxStateWriteLock.Unlock()
 	return (*kvMuxState)(val)
 }
 
-//  This method MUST NEVER BLOCK due to its use from various contention points.
 func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
+	mux.muxStateWriteLock.Lock()
+	defer mux.muxStateWriteLock.Unlock()
 	oldMuxState := mux.getState()
 	newMuxState := mux.newKVMuxState(cfg)
 
@@ -108,7 +121,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	}
 
 	if oldMuxState == nil {
-		if newMuxState.revID > -1 && mux.collectionsEnabled && !newMuxState.collectionsSupported {
+		if newMuxState.RevID() > -1 && mux.collectionsEnabled && !newMuxState.collectionsSupported {
 			logDebugf("Collections disabled as unsupported")
 		}
 		// There is no existing muxer.  We can simply start the new pipelines.
@@ -120,13 +133,13 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 			// If collections just aren't enabled then we never need to refresh the connections because collections
 			// have come online.
 			mux.pipelineTakeover(oldMuxState, newMuxState)
-		} else if oldMuxState.revID == -1 || oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
+		} else if oldMuxState.RevID() == -1 || oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
 			// Get the new muxer to takeover the pipelines from the older one
 			mux.pipelineTakeover(oldMuxState, newMuxState)
 		} else {
 			// Collections support has changed so we need to reconnect all connections in order to support the new
 			// state.
-			mux.reconnectPipelines(oldMuxState, newMuxState)
+			mux.reconnectPipelines(oldMuxState, newMuxState, nil)
 		}
 
 		mux.requeueRequests(oldMuxState)
@@ -142,7 +155,7 @@ func (mux *kvMux) ConfigRev() (int64, error) {
 	if clientMux == nil {
 		return 0, errShutdown
 	}
-	return clientMux.revID, nil
+	return clientMux.RevID(), nil
 }
 
 func (mux *kvMux) ConfigUUID() string {
@@ -150,16 +163,16 @@ func (mux *kvMux) ConfigUUID() string {
 	if clientMux == nil {
 		return ""
 	}
-	return clientMux.uuid
+	return clientMux.UUID()
 }
 
 func (mux *kvMux) KeyToVbucket(key []byte) (uint16, error) {
 	clientMux := mux.getState()
-	if clientMux == nil || clientMux.vbMap == nil {
+	if clientMux == nil || clientMux.VBMap() == nil {
 		return 0, errShutdown
 	}
 
-	return clientMux.vbMap.VbucketByKey(key), nil
+	return clientMux.VBMap().VbucketByKey(key), nil
 }
 
 func (mux *kvMux) NumReplicas() int {
@@ -168,11 +181,11 @@ func (mux *kvMux) NumReplicas() int {
 		return 0
 	}
 
-	if clientMux.vbMap == nil {
+	if clientMux.VBMap() == nil {
 		return 0
 	}
 
-	return clientMux.vbMap.NumReplicas()
+	return clientMux.VBMap().NumReplicas()
 }
 
 func (mux *kvMux) BucketType() bucketType {
@@ -181,7 +194,7 @@ func (mux *kvMux) BucketType() bucketType {
 		return bktTypeInvalid
 	}
 
-	return clientMux.bktType
+	return clientMux.BucketType()
 }
 
 func (mux *kvMux) SupportsGCCCP() bool {
@@ -247,7 +260,7 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 
 	// We haven't seen a valid config yet so put this in the dead pipeline so
 	// it'll get requeued once we do get a config.
-	if clientMux.revID == -1 {
+	if clientMux.RevID() == -1 {
 		return clientMux.deadPipe, nil
 	}
 
@@ -260,17 +273,18 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 	} else {
 		var err error
 
-		if clientMux.bktType == bktTypeCouchbase {
+		bktType := clientMux.BucketType()
+		if bktType == bktTypeCouchbase {
 			if req.Key != nil {
-				req.Vbucket = clientMux.vbMap.VbucketByKey(req.Key)
+				req.Vbucket = clientMux.VBMap().VbucketByKey(req.Key)
 			}
 
-			srvIdx, err = clientMux.vbMap.NodeByVbucket(req.Vbucket, uint32(repIdx))
+			srvIdx, err = clientMux.VBMap().NodeByVbucket(req.Vbucket, uint32(repIdx))
 
 			if err != nil {
 				return nil, err
 			}
-		} else if clientMux.bktType == bktTypeMemcached {
+		} else if bktType == bktTypeMemcached {
 			if repIdx > 0 {
 				// Error. Memcached buckets don't understand replicas!
 				return nil, errInvalidReplica
@@ -281,11 +295,11 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 				return nil, errInvalidArgument
 			}
 
-			srvIdx, err = clientMux.ketamaMap.NodeByKey(req.Key)
+			srvIdx, err = clientMux.KetamaMap().NodeByKey(req.Key)
 			if err != nil {
 				return nil, err
 			}
-		} else if clientMux.bktType == bktTypeNone {
+		} else if bktType == bktTypeNone {
 			// This means that we're using GCCCP and not connected to a bucket
 			return nil, errGCCCPInUse
 		}
@@ -405,7 +419,7 @@ func (mux *kvMux) Close() error {
 	// Shut down the client multiplexer which will close all its queues
 	// effectively causing all the clients to shut down.
 	for _, pipeline := range clientMux.pipelines {
-		err := pipeline.Close()
+		err := pipeline.Close(nil)
 		if err != nil {
 			logErrorf("failed to shut down pipeline: %s", err)
 			muxErr = errCliInternalError
@@ -413,7 +427,7 @@ func (mux *kvMux) Close() error {
 	}
 
 	if clientMux.deadPipe != nil {
-		err := clientMux.deadPipe.Close()
+		err := clientMux.deadPipe.Close(nil)
 		if err != nil {
 			logErrorf("failed to shut down deadpipe: %s", err)
 			muxErr = errCliInternalError
@@ -429,6 +443,18 @@ func (mux *kvMux) Close() error {
 	mux.drainPipelines(clientMux, cb)
 
 	return muxErr
+}
+
+func (mux *kvMux) ForceReconnect() {
+	logDebugf("Forcing reconnect of all connections")
+	mux.muxStateWriteLock.Lock()
+	muxState := mux.getState()
+	newMuxState := mux.newKVMuxState(muxState.RouteConfig())
+
+	atomic.SwapPointer(&mux.muxPtr, unsafe.Pointer(newMuxState))
+
+	mux.reconnectPipelines(muxState, newMuxState, errForcedReconnect)
+	mux.muxStateWriteLock.Unlock()
 }
 
 func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, originalErr error) (bool, error) {
@@ -562,15 +588,15 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 	return newKVMuxState(cfg, pipelines, newDeadPipeline(mux.queueSize))
 }
 
-func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState) {
+func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState, closeErr error) {
 	for _, pipeline := range oldMuxState.pipelines {
-		err := pipeline.Close()
+		err := pipeline.Close(closeErr)
 		if err != nil {
 			logErrorf("failed to shut down pipeline: %s", err)
 		}
 	}
 
-	err := oldMuxState.deadPipe.Close()
+	err := oldMuxState.deadPipe.Close(closeErr)
 	if err != nil {
 		logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 	}
@@ -642,14 +668,14 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 			continue
 		}
 
-		err := pipeline.Close()
+		err := pipeline.Close(nil)
 		if err != nil {
 			logErrorf("Failed to properly close abandoned pipeline (%s)", err)
 		}
 	}
 
 	if oldMux != nil && oldMux.deadPipe != nil {
-		err := oldMux.deadPipe.Close()
+		err := oldMux.deadPipe.Close(nil)
 		if err != nil {
 			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 		}

@@ -40,6 +40,7 @@ type memdClient struct {
 	closeNotify           chan bool
 	connID                string
 	closed                bool
+	closedError           error
 	conn                  memdConn
 	opList                *memdOpMap
 	features              []memd.HelloFeature
@@ -356,9 +357,11 @@ func (client *memdClient) run() {
 		for {
 			packet, n, err := client.conn.ReadPacket()
 			if err != nil {
+				client.lock.Lock()
 				if !client.closed {
 					logWarnf("memdClient read failure on conn `%v` : %v", client.connID, err)
 				}
+				client.lock.Unlock()
 				break
 			}
 
@@ -426,6 +429,7 @@ func (client *memdClient) run() {
 			}
 		}
 
+		var closedError error
 		client.lock.Lock()
 		if !client.closed {
 			client.closed = true
@@ -437,6 +441,7 @@ func (client *memdClient) run() {
 				logWarnf("Failed to shut down client connection (%s)", err)
 			}
 		} else {
+			closedError = client.closedError
 			client.lock.Unlock()
 		}
 
@@ -448,12 +453,16 @@ func (client *memdClient) run() {
 		close(dcpBufferQ)
 		<-dcpProcDoneCh
 
+		if closedError == nil {
+			closedError = io.EOF
+		}
+
 		client.opList.Drain(func(req *memdQRequest) {
 			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {
 				logWarnf("Encountered an unowned request in a client opMap")
 			}
 
-			shortCircuited, routeErr := client.postErrHandler(nil, req, io.EOF)
+			shortCircuited, routeErr := client.postErrHandler(nil, req, closedError)
 			if shortCircuited {
 				return
 			}
@@ -469,9 +478,10 @@ func (client *memdClient) LocalAddress() string {
 	return client.conn.LocalAddr()
 }
 
-func (client *memdClient) Close() error {
+func (client *memdClient) Close(err error) error {
 	client.lock.Lock()
 	client.closed = true
+	client.closedError = err
 	client.lock.Unlock()
 
 	return client.conn.Close()

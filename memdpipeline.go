@@ -108,7 +108,7 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 
 		// We try to 'gracefully' error here by resolving all the requests as
 		//  errors, but allowing the application to continue.
-		err := oldPipeline.Close()
+		err := oldPipeline.Close(nil)
 		if err != nil {
 			// Log and continue with this non-fatal error.
 			logDebugf("Failed to shutdown old pipeline (%s)", err)
@@ -143,7 +143,7 @@ func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 	oldPipeline.queue.Close()
 }
 
-func (pipeline *memdPipeline) Close() error {
+func (pipeline *memdPipeline) Close(closeErr error) error {
 	// Shut down all the clients
 	pipeline.clientsLock.Lock()
 	clients := pipeline.clients
@@ -152,7 +152,7 @@ func (pipeline *memdPipeline) Close() error {
 
 	hadErrors := false
 	for _, pipecli := range clients {
-		err := pipecli.Close()
+		err := pipecli.Close(closeErr)
 		if err != nil {
 			logErrorf("failed to shutdown pipeline client: %s", err)
 			hadErrors = true

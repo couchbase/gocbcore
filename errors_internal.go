@@ -689,4 +689,5 @@ var (
 	errShutdown               = ncError{ErrShutdown}
 	errOverload               = ncError{ErrOverload}
 	errStreamIDNotEnabled     = ncError{ErrStreamIDNotEnabled}
+	errForcedReconnect        = ncError{ErrForcedReconnect}
 )

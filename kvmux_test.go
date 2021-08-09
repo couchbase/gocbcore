@@ -33,7 +33,9 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
-		revID: 1,
+		routeCfg: &routeConfig{
+			revID: 1,
+		},
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
 			BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnsupported,
 		},
@@ -53,7 +55,9 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported()
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
-		revID: 1,
+		routeCfg: &routeConfig{
+			revID: 1,
+		},
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
 			BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusSupported,
 		},

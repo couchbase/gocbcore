@@ -64,130 +64,130 @@ type FailoverEntry struct {
 
 // DcpSnapshotMarker represents a single response from the server
 type DcpSnapshotMarker struct {
-	StartSeqNo, EndSeqNo uint64
-	VbID, StreamID uint16
-	SnapshotType SnapshotState
+	StartSeqNo, EndSeqNo                                   uint64
+	VbID, StreamID                                         uint16
+	SnapshotType                                           SnapshotState
 	MaxVisibleSeqNo, HighCompletedSeqNo, SnapshotTimeStamp uint64
 }
 
 // DcpMutation represents a single DCP mutation from the server
 type DcpMutation struct {
-	SeqNo,RevNo uint64
-	Cas uint64
+	SeqNo, RevNo            uint64
+	Cas                     uint64
 	Flags, Expiry, LockTime uint32
-	CollectionID uint32
-	VbID uint16
-	StreamID uint16
-	Datatype uint8
-	Key, Value []byte
+	CollectionID            uint32
+	VbID                    uint16
+	StreamID                uint16
+	Datatype                uint8
+	Key, Value              []byte
 }
 
 // DcpDeletion represents a single DCP deletion from the server
 type DcpDeletion struct {
-	SeqNo,RevNo uint64
-	Cas uint64
-	DeleteTime uint32
+	SeqNo, RevNo uint64
+	Cas          uint64
+	DeleteTime   uint32
 	CollectionID uint32
-	VbID uint16
-	StreamID uint16
-	Datatype uint8
-	Key, Value []byte
+	VbID         uint16
+	StreamID     uint16
+	Datatype     uint8
+	Key, Value   []byte
 }
 
 // DcpExpiration represents a single DCP expiration from the server
 type DcpExpiration struct {
-	SeqNo,RevNo uint64
-	Cas uint64
-	DeleteTime uint32
+	SeqNo, RevNo uint64
+	Cas          uint64
+	DeleteTime   uint32
 	CollectionID uint32
-	VbID uint16
-	StreamID uint16
-	Key []byte
+	VbID         uint16
+	StreamID     uint16
+	Key          []byte
 }
 
 // DcpCollectionCreation represents a collection create DCP event from the server
 type DcpCollectionCreation struct {
-	SeqNo uint64
-	Version uint8
-	VbID uint16
-	ManifestUID uint64
-	ScopeID uint32
+	SeqNo        uint64
+	Version      uint8
+	VbID         uint16
+	ManifestUID  uint64
+	ScopeID      uint32
 	CollectionID uint32
-	Ttl uint32
-	StreamID uint16
-	Key []byte
+	Ttl          uint32
+	StreamID     uint16
+	Key          []byte
 }
 
 // DcpCollectionDeleteion represents a collection delete DCP event from the server
 type DcpCollectionDeletion struct {
-	SeqNo uint64
-	ManifestUID uint64
-	ScopeID uint32
+	SeqNo        uint64
+	ManifestUID  uint64
+	ScopeID      uint32
 	CollectionID uint32
-	StreamID uint16
-	VbID uint16
-	Version uint8
+	StreamID     uint16
+	VbID         uint16
+	Version      uint8
 }
 
 // DcpCollectionFlush represents a collection flush DCP event from the server
-type DcpCollectionFlush struct{
-	SeqNo uint64
-	Version uint8
-	VbID uint16
-	ManifestUID uint64
+type DcpCollectionFlush struct {
+	SeqNo        uint64
+	Version      uint8
+	VbID         uint16
+	ManifestUID  uint64
 	CollectionID uint32
-	StreamID uint16
+	StreamID     uint16
 }
 
 // DcpScopeCreation represents a scope creation DCP event from the server
 type DcpScopeCreation struct {
-	SeqNo uint64
-	Version uint8
-	VbID uint16
+	SeqNo       uint64
+	Version     uint8
+	VbID        uint16
 	ManifestUID uint64
-	ScopeID uint32
-	StreamID uint16
-	Key []byte
+	ScopeID     uint32
+	StreamID    uint16
+	Key         []byte
 }
 
 // DcpScopeDeletion represents a scope Deletion DCP event from the server
 type DcpScopeDeletion struct {
-	SeqNo uint64
-	Version uint8
-	VbID uint16
+	SeqNo       uint64
+	Version     uint8
+	VbID        uint16
 	ManifestUID uint64
-	ScopeID uint32
-	StreamID uint16
+	ScopeID     uint32
+	StreamID    uint16
 }
 
 // DcpCollectionModification represents a DCP collection modify event from the server
 type DcpCollectionModification struct {
-	SeqNo uint64
-	ManifestUID uint64
+	SeqNo        uint64
+	ManifestUID  uint64
 	CollectionID uint32
-	Ttl uint32
-	VbID uint16
-	StreamID uint16
-	Version uint8
+	Ttl          uint32
+	VbID         uint16
+	StreamID     uint16
+	Version      uint8
 }
 
 // DcpOSOSnapshot reprensents a DCP OSSSnapshot from the server
 type DcpOSOSnapshot struct {
 	SnapshotType uint32
-	VbID uint16
-	StreamID uint16
+	VbID         uint16
+	StreamID     uint16
 }
 
 // DcpSeqNoAdvanced represents a DCP SeqNoAdvanced from the server
 type DcpSeqNoAdvanced struct {
-	SeqNo uint64
-	VbID uint16
+	SeqNo    uint64
+	VbID     uint16
 	StreamID uint16
 }
 
 // DcpStreamEnd represnets a DCP stream end from the server
 type DcpStreamEnd struct {
-	VbID uint16
+	VbID     uint16
 	StreamID uint16
 }
 

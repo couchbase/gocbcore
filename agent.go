@@ -507,7 +507,7 @@ func (agent *Agent) MemdEps() []string {
 	if err != nil {
 		return []string{}
 	}
-	return snapshot.state.kvServerList
+	return snapshot.state.KVEps()
 }
 
 // CapiEps returns all the available endpoints for performing
@@ -596,6 +596,13 @@ func (agent *Agent) ConfigSnapshot() (*ConfigSnapshot, error) {
 // Uncommitted: This API may change in the future.
 func (agent *Agent) BucketName() string {
 	return agent.bucketName
+}
+
+// ForceReconnect rebuilds all connections being used by the agent.
+// Any in flight requests will be terminated with EOF.
+// Uncommitted: This API may change in the future.
+func (agent *Agent) ForceReconnect() {
+	agent.kvMux.ForceReconnect()
 }
 
 func (agent *Agent) onBootstrapFail(err error) {
