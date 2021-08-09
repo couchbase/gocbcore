@@ -77,6 +77,9 @@ var (
 
 	// ErrNotMyVBucket occurs when an operation is sent to a node which does not own the vbucket.
 	ErrNotMyVBucket = errors.New("not my vbucket")
+
+	// ErrForcedReconnect occurs when an operation is in flight during a forced reconnect.
+	ErrForcedReconnect = errors.New("forced reconnect")
 )
 
 // Shared Error Definitions RFC#58@15

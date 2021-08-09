@@ -8,12 +8,7 @@ type kvMuxState struct {
 	pipelines []*memdPipeline
 	deadPipe  *memdPipeline
 
-	kvServerList []string
-	bktType      bucketType
-	vbMap        *vbucketMap
-	ketamaMap    *ketamaContinuum
-	uuid         string
-	revID        int64
+	routeCfg *routeConfig
 
 	bucketCapabilities   map[BucketCapability]BucketCapabilityStatus
 	collectionsSupported bool
@@ -24,12 +19,7 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		pipelines: pipelines,
 		deadPipe:  deadpipe,
 
-		kvServerList: cfg.kvServerList,
-		bktType:      cfg.bktType,
-		vbMap:        cfg.vbMap,
-		ketamaMap:    cfg.ketamaMap,
-		uuid:         cfg.uuid,
-		revID:        cfg.revID,
+		routeCfg: cfg,
 
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
 			BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
@@ -64,8 +54,32 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 	return mux
 }
 
+func (mux *kvMuxState) RouteConfig() *routeConfig {
+	return mux.routeCfg
+}
+
+func (mux *kvMuxState) RevID() int64 {
+	return mux.routeCfg.revID
+}
+
+func (mux *kvMuxState) VBMap() *vbucketMap {
+	return mux.routeCfg.vbMap
+}
+
+func (mux *kvMuxState) UUID() string {
+	return mux.routeCfg.uuid
+}
+
+func (mux *kvMuxState) KetamaMap() *ketamaContinuum {
+	return mux.routeCfg.ketamaMap
+}
+
 func (mux *kvMuxState) BucketType() bucketType {
-	return mux.bktType
+	return mux.routeCfg.bktType
+}
+
+func (mux *kvMuxState) KVEps() []string {
+	return mux.routeCfg.kvServerList
 }
 
 func (mux *kvMuxState) NumPipelines() int {

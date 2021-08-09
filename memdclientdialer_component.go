@@ -100,7 +100,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 
 	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, mcc.bootstrapCB)
 	if err != nil {
-		closeErr := client.Close()
+		closeErr := client.Close(nil)
 		if closeErr != nil {
 			logWarnf("Failed to close authentication client (%s)", closeErr)
 		}

@@ -380,6 +380,13 @@ func (agent *DCPAgent) ConfigSnapshot() (*ConfigSnapshot, error) {
 	return agent.kvMux.ConfigSnapshot()
 }
 
+// ForceReconnect rebuilds all connections being used by the agent.
+// Any connected DCP streams will be terminated with EOF.
+// Uncommitted: This API may change in the future.
+func (agent *DCPAgent) ForceReconnect() {
+	agent.kvMux.ForceReconnect()
+}
+
 func (agent *DCPAgent) onBootstrapFail(err error) {
 	// If this error is a legitimate fallback reason then we should immediately start the http poller.
 	if agent.pollerController != nil && isPollingFallbackError(err) {

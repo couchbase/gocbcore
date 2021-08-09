@@ -135,7 +135,7 @@ func MakeDistKeys(agent *Agent, deadline time.Time) (keys []string, errOut error
 	for {
 		clientMux = agent.kvMux.getState()
 
-		if clientMux.revID > -1 {
+		if clientMux.RevID() > -1 {
 			break
 		}
 
@@ -152,8 +152,8 @@ func MakeDistKeys(agent *Agent, deadline time.Time) (keys []string, errOut error
 	for i := 0; remaining > 0; i++ {
 		keyTmp := fmt.Sprintf("DistKey_%d", i)
 		// Map the vBucket and server
-		vbID := clientMux.vbMap.VbucketByKey([]byte(keyTmp))
-		srvIx, err := clientMux.vbMap.NodeByVbucket(vbID, 0)
+		vbID := clientMux.VBMap().VbucketByKey([]byte(keyTmp))
+		srvIx, err := clientMux.VBMap().NodeByVbucket(vbID, 0)
 		if err != nil || srvIx < 0 || srvIx >= len(keys) || keys[srvIx] != "" {
 			continue
 		}

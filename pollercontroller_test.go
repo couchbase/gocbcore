@@ -37,8 +37,10 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	muxer := new(mockDispatcher)
 	muxer.On("PipelineSnapshot").Return(&pipelineSnapshot{
 		state: &kvMuxState{
-			revID:   1,
-			bktType: bktTypeCouchbase,
+			routeCfg: &routeConfig{
+				revID:   1,
+				bktType: bktTypeCouchbase,
+			},
 			pipelines: []*memdPipeline{
 				pipeline,
 			},

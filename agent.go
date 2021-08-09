@@ -586,6 +586,13 @@ func (agent *Agent) BucketName() string {
 	return agent.bucketName
 }
 
+// ForceReconnect rebuilds all connections being used by the agent.
+// Any in flight requests will be terminated with EOF.
+// Uncommitted: This API may change in the future.
+func (agent *Agent) ForceReconnect() {
+	agent.kvMux.ForceReconnect()
+}
+
 func (agent *Agent) onBootstrapFail(err error) {
 	// If this error is a legitimate fallback reason then we should immediately start the http poller.
 	if agent.pollerController != nil && isPollingFallbackError(err) {

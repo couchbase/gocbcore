@@ -7,7 +7,7 @@ type pipelineSnapshot struct {
 }
 
 func (pi pipelineSnapshot) RevID() int64 {
-	return pi.state.revID
+	return pi.state.RevID()
 }
 
 func (pi pipelineSnapshot) NumPipelines() int {
@@ -32,9 +32,9 @@ func (pi pipelineSnapshot) Iterate(offset int, cb func(*memdPipeline) bool) {
 }
 
 func (pi pipelineSnapshot) NodeByVbucket(vbID uint16, replicaID uint32) (int, error) {
-	if pi.state.vbMap == nil {
+	if pi.state.VBMap() == nil {
 		return 0, errUnsupportedOperation
 	}
 
-	return pi.state.vbMap.NodeByVbucket(vbID, replicaID)
+	return pi.state.VBMap().NodeByVbucket(vbID, replicaID)
 }
