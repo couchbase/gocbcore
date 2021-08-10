@@ -119,7 +119,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -261,7 +261,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 

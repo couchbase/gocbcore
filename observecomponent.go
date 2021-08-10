@@ -71,7 +71,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -219,7 +219,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 

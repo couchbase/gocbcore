@@ -18,7 +18,7 @@ type LookupInOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -40,7 +40,7 @@ type MutateInOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }

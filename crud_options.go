@@ -16,7 +16,7 @@ type GetOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -32,7 +32,7 @@ type GetAndTouchOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -48,7 +48,7 @@ type GetAndLockOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -63,7 +63,7 @@ type GetAnyReplicaOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -79,7 +79,7 @@ type GetOneReplicaOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -95,7 +95,7 @@ type TouchOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -111,7 +111,7 @@ type UnlockOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -129,7 +129,7 @@ type DeleteOptions struct {
 	Deadline               time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -150,7 +150,7 @@ type AddOptions struct {
 	Deadline               time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -172,7 +172,7 @@ type storeOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -194,7 +194,7 @@ type SetOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -217,7 +217,7 @@ type ReplaceOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -237,7 +237,7 @@ type AdjoinOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -259,7 +259,7 @@ type CounterOptions struct {
 	PreserveExpiry         bool
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -274,7 +274,7 @@ type GetRandomOptions struct {
 	CollectionID   uint32
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -289,7 +289,7 @@ type GetMetaOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -312,7 +312,7 @@ type SetMetaOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }
@@ -335,7 +335,7 @@ type DeleteMetaOptions struct {
 	Deadline       time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }

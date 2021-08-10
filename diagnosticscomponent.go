@@ -47,12 +47,12 @@ func (dc *diagnosticsComponent) onBootstrapFail(err error) {
 }
 
 func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Duration, deadline time.Time,
-	retryStrat RetryStrategy, user []byte, op *pingOp) {
+	retryStrat RetryStrategy, user string, op *pingOp) {
 
 	var userFrame *memd.UserImpersonationFrame
 	if len(user) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: user,
+			User: []byte(user),
 		}
 	}
 

@@ -72,7 +72,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -220,7 +220,7 @@ type StatsOptions struct {
 	Deadline      time.Time
 
 	// Internal: This should never be used and is not supported.
-	User []byte
+	User string
 
 	TraceContext RequestSpanContext
 }

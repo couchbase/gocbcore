@@ -57,7 +57,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -143,7 +143,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -232,7 +232,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -326,7 +326,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -410,7 +410,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -496,7 +496,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -593,7 +593,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -692,7 +692,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -848,7 +848,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -974,7 +974,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 	var preserveExpiryFrame *memd.PreserveExpiryFrame
@@ -1086,7 +1086,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -1179,7 +1179,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -1265,7 +1265,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
@@ -1357,7 +1357,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 	var userFrame *memd.UserImpersonationFrame
 	if len(opts.User) > 0 {
 		userFrame = &memd.UserImpersonationFrame{
-			User: opts.User,
+			User: []byte(opts.User),
 		}
 	}
 
