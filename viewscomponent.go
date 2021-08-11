@@ -45,6 +45,9 @@ type ViewQueryOptions struct {
 	RetryStrategy      RetryStrategy
 	Deadline           time.Time
 
+	// Internal: This should never be used and is not supported.
+	User string
+
 	TraceContext RequestSpanContext
 }
 
@@ -148,6 +151,7 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 		RootTraceContext: tracer.RootContext(),
 		Context:          ctx,
 		CancelFunc:       cancel,
+		User:             opts.User,
 	}
 
 	ddoc := opts.DesignDocumentName
