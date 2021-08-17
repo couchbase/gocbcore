@@ -1,5 +1,33 @@
 # Release Notes
 
+## Version 9.1.6 (17 August 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1148](GOCBC-1148):
+  Added support for forcibly reconnecting all connections.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1139](GOCBC-1139):
+  Fixed issue where DCP agent would try to use SCRAM auth with TLS enabled, causing LDAP usage to always fail bootstrap.
+* [https://issues.couchbase.com/browse/GOCBC-1147](GOCBC-1147):
+  Fixed issue where failing to fetch the error map during bootstrap would lead to bootstrap hanging.
+
+## Version 9.1.5 (15 June 2021)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1095](GOCBC-1095):
+  Fixed issue where SDK was parsing view error contents incorrectly.
+* [https://issues.couchbase.com/browse/GOCBC-1102](GOCBC-1102):
+  Fixed issue where `WaitUntilReady` wouldn't recover if one of the HTTP based services returned an error.
+* [https://issues.couchbase.com/browse/GOCBC-1106](GOCBC-1106):
+* [https://issues.couchbase.com/browse/GOCBC-1112](GOCBC-1112):
+  Fixed issues where fts responses were being parsed incorrectly.
+* [https://issues.couchbase.com/browse/GOCBC-1127](GOCBC-1127):
+  Fixed issue where query errors could be parsed incorrectly.
+
 ## Version 9.1.4 (20 April 2021)
 
 ###New Features and Behavioral Changes
