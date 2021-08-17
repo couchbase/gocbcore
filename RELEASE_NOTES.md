@@ -1,6 +1,24 @@
 # Release Notes
 
-## Version 10.0.1 (15 July 2021
+## Version 10.0.2 (17 August 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1146](GOCBC-1146):
+  Added support for user impersonation to non-KV services.
+* [https://issues.couchbase.com/browse/GOCBC-1148](GOCBC-1148):
+  Added support for forcibly reconnecting all connections.
+* [https://issues.couchbase.com/browse/GOCBC-1150](GOCBC-1150):
+  Update user impersonation options for KV to use a string rather than []byte.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1139](GOCBC-1139):
+  Fixed issue where DCP agent would try to use SCRAM auth with TLS enabled, causing LDAP usage to always fail bootstrap.
+* [https://issues.couchbase.com/browse/GOCBC-1147](GOCBC-1147):
+  Fixed issue where failing to fetch the error map during bootstrap would lead to bootstrap hanging.
+
+## Version 10.0.1 (15 July 2021)
 
 ### Fixed Issues
 
