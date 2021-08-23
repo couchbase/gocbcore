@@ -254,7 +254,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		hreq.Header.Set("Content-Type", "application/json")
 	}
 	if len(req.User) > 0 {
-		hreq.Header.Set("cb-on-behalf", req.User)
+		hreq.Header.Set("cb-on-behalf-of", req.User)
 	}
 	for key, val := range req.Headers {
 		hreq.Header.Set(key, val)
