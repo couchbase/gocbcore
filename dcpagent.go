@@ -221,14 +221,15 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
-			ServerWaitTimeout:    serverWaitTimeout,
-			KVConnectTimeout:     kvConnectTimeout,
-			ClientID:             c.clientID,
-			TLSConfig:            c.tlsConfig,
-			DCPQueueSize:         dcpQueueSize,
-			CompressionMinSize:   compressionMinSize,
-			CompressionMinRatio:  compressionMinRatio,
-			DisableDecompression: disableDecompression,
+			ServerWaitTimeout:      serverWaitTimeout,
+			KVConnectTimeout:       kvConnectTimeout,
+			ClientID:               c.clientID,
+			TLSConfig:              c.tlsConfig,
+			DCPQueueSize:           dcpQueueSize,
+			CompressionMinSize:     compressionMinSize,
+			CompressionMinRatio:    compressionMinRatio,
+			DisableDecompression:   disableDecompression,
+			InitialBootstrapNonTLS: config.SecurityConfig.InitialBootstrapNonTLS,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{

@@ -98,6 +98,14 @@ type SecurityConfig struct {
 	UseTLS            bool
 	TLSRootCAProvider func() *x509.CertPool
 
+	// InitialBootstrapNonTLS indicates that, even with UseTLS set to true, the SDK should fetch the first cluster
+	// config object over a non TLS connection. That is, if memcached protocol is in use then the first connection(s)
+	// to the cluster will be done to the address seeds without TLS enabled, and thus the first cluster config object
+	// fetched on a non TLS connection. If HTTP protocol is used then the cluster config object will be fetched over
+	// HTTP rather than HTTPS. Once a cluster config has been obtained the SDK will (re)build all connections to use TLS.
+	// Internal: This should never be used and is not supported.
+	InitialBootstrapNonTLS bool
+
 	Auth AuthProvider
 
 	// AuthMechanisms is the list of mechanisms that the SDK can use to attempt authentication.

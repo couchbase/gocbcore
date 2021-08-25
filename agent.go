@@ -185,10 +185,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	var httpEpList []string
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if !c.IsSecure() {
-			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
-		} else {
+		if c.IsSecure() && !config.SecurityConfig.InitialBootstrapNonTLS {
 			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+		} else {
+			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
 		}
 	}
 
@@ -217,13 +217,14 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
-			ServerWaitTimeout:    serverWaitTimeout,
-			KVConnectTimeout:     kvConnectTimeout,
-			ClientID:             c.clientID,
-			TLSConfig:            c.tlsConfig,
-			CompressionMinSize:   compressionMinSize,
-			CompressionMinRatio:  compressionMinRatio,
-			DisableDecompression: disableDecompression,
+			ServerWaitTimeout:      serverWaitTimeout,
+			KVConnectTimeout:       kvConnectTimeout,
+			ClientID:               c.clientID,
+			TLSConfig:              c.tlsConfig,
+			CompressionMinSize:     compressionMinSize,
+			CompressionMinRatio:    compressionMinRatio,
+			DisableDecompression:   disableDecompression,
+			InitialBootstrapNonTLS: config.SecurityConfig.InitialBootstrapNonTLS,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{

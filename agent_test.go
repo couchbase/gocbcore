@@ -2517,6 +2517,72 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 	s.Wait(6)
 }
 
+// This test tests that given an address with the nonTLS port but setting UseTLS to true is still able to connect
+// to the cluster when InitialBootstrapNonTLS is set to true.
+func (suite *StandardTestSuite) TestAgentMemcachedOnlyUseTLSBootstrapWithout() {
+	suite.EnsureSupportsFeature(TestFeatureSsl)
+
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.SeedConfig.MemdAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no memd addresses")
+	}
+
+	addr1 := cfg.SeedConfig.MemdAddrs[0]
+	parts := strings.Split(addr1, ":")
+	if parts[1] != "11210" {
+		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
+	}
+
+	cfg.SeedConfig.HTTPAddrs = []string{}
+	cfg.SeedConfig.MemdAddrs = []string{addr1}
+	cfg.SecurityConfig.InitialBootstrapNonTLS = true
+	cfg.SecurityConfig.UseTLS = true
+	// SkipVerify
+	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentMemcachedOnlyUseTLSBootstrapWithout")
+}
+
+// This test tests that given an address with the nonTLS port but setting UseTLS to true is still able to connect
+// to the cluster when InitialBootstrapNonTLS is set to true.
+func (suite *StandardTestSuite) TestAgentHTTPOnlyUseTLSBootstrapWithout() {
+	suite.EnsureSupportsFeature(TestFeatureSsl)
+
+	cfg := suite.makeAgentConfig(globalTestConfig)
+	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+
+	addr1 := cfg.SeedConfig.HTTPAddrs[0]
+	parts := strings.Split(addr1, ":")
+	if parts[1] != "8091" {
+		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
+	}
+
+	cfg.SeedConfig.HTTPAddrs = []string{addr1}
+	cfg.SeedConfig.MemdAddrs = []string{}
+	cfg.SecurityConfig.InitialBootstrapNonTLS = true
+	cfg.SecurityConfig.UseTLS = true
+	// SkipVerify
+	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentHTTPOnlyUseTLSBootstrapWithout")
+}
+
 // These functions are likely temporary.
 
 type testManifestWithError struct {
