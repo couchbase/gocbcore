@@ -276,28 +276,28 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *se
 		if ports.KvSsl > 0 {
 			lists.kvServer = fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl)
 		}
-		if ports.Capi > 0 {
+		if ports.CapiSsl > 0 {
 			lists.capiEp = fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl)
 		}
-		if ports.Mgmt > 0 {
+		if ports.MgmtSsl > 0 {
 			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
 		}
-		if ports.N1ql > 0 {
+		if ports.N1qlSsl > 0 {
 			lists.n1qlEp = fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl)
 		}
-		if ports.Fts > 0 {
+		if ports.FtsSsl > 0 {
 			lists.ftsEp = fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl)
 		}
-		if ports.Cbas > 0 {
+		if ports.CbasSsl > 0 {
 			lists.cbasEp = fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl)
 		}
-		if ports.Eventing > 0 {
+		if ports.EventingSsl > 0 {
 			lists.eventingEp = fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl)
 		}
-		if ports.GSI > 0 {
+		if ports.GSISsl > 0 {
 			lists.gsiEp = fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl)
 		}
-		if ports.Backup > 0 {
+		if ports.BackupSsl > 0 {
 			lists.backupEp = fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl)
 		}
 	} else {
