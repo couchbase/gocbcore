@@ -249,19 +249,19 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, name, hostname strin
 		if ports.KvSsl > 0 {
 			lists.kvServer = fmt.Sprintf("%s:%d", hostname, ports.KvSsl)
 		}
-		if ports.Capi > 0 {
+		if ports.CapiSsl > 0 {
 			lists.capiEp = fmt.Sprintf("https://%s:%d/%s", hostname, ports.CapiSsl, url.PathEscape(name))
 		}
-		if ports.Mgmt > 0 {
+		if ports.MgmtSsl > 0 {
 			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
 		}
-		if ports.N1ql > 0 {
+		if ports.N1qlSsl > 0 {
 			lists.n1qlEp = fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl)
 		}
-		if ports.Fts > 0 {
+		if ports.FtsSsl > 0 {
 			lists.ftsEp = fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl)
 		}
-		if ports.Cbas > 0 {
+		if ports.CbasSsl > 0 {
 			lists.cbasEp = fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl)
 		}
 	} else {
