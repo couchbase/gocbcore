@@ -124,7 +124,8 @@ var (
 	// Uncommitted: This API may change in the future.
 	BucketNotReadyReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "BUCKET_NOT_FOUND"}
 
-	// ConnectionErrorRetryReason indicates that there were errors reported by underlying connections
+	// ConnectionErrorRetryReason indicates that there were errors reported by underlying connections.
+	// Check server ports and cluster encryption setting.
 	ConnectionErrorRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "CONNECTION_ERROR"}
 
 	// MemdWriteFailure indicates that the operation failed because the write failed on the connection.

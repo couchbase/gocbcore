@@ -180,7 +180,10 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			err = errRequestCanceled
+		} else {
+			err = wrapError(err, "check server ports and cluster encryption setting")
 		}
+
 		logDebugf("Failed to connect. %v", err)
 		return nil, err
 	}
