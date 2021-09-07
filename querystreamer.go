@@ -34,15 +34,19 @@ func newQueryStreamer(stream io.ReadCloser, rowsAttrib string) (*queryStreamer, 
 	}, nil
 }
 
-// Next assigns the next result from the results into the value pointer, returning whether the read was successful.
+// NextRow returns the next row from the results, returning nil when the rows are exhausted.
 func (r *queryStreamer) NextRow() []byte {
+	if r.streamer == nil {
+		return nil
+	}
+
 	rowBytes, err := r.streamer.NextRowBytes()
 	if err != nil {
 		r.finishWithError(err)
 		return nil
 	}
 
-	// Check if there was any rows left
+	// Check if there were any rows left
 	if rowBytes == nil {
 		r.finishWithoutError()
 		return nil
@@ -73,7 +77,7 @@ func (r *queryStreamer) finishWithoutError() {
 		return
 	}
 
-	// Streamer is no longer valid now that its been Finalized
+	// Streamer is no longer valid now that it's been Finalized
 	r.streamer = nil
 
 	// Close the stream now that we are done with it
