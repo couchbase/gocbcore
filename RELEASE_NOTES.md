@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 9.1.7 (21 September 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1162](GOCBC-1162):
+  Added support for initially bootstrapping the SDK over nonTLS when TLS is in use.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1163](GOCBC-1163):
+  Fixed issue where cluster config parsing would check existence of wrong ports for TLS (although then assign correct ports).
+
 ## Version 9.1.6 (17 August 2021)
 
 ###New Features and Behavioral Changes
