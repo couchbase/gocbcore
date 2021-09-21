@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 10.0.3 (21 September 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1162](GOCBC-1162):
+  Added support for initially bootstrapping the SDK over nonTLS when TLS is in use.
+* [https://issues.couchbase.com/browse/GOCBC-1169](GOCBC-1169):
+  Updated query streamer so that additional calls to `NextRow` return nil rather than panic.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1160](GOCBC-1160):
+  Fixed issue where HTTP header used for user impersonation was incorrect.
+* [https://issues.couchbase.com/browse/GOCBC-1163](GOCBC-1163):
+  Fixed issue where cluster config parsing would check existence of wrong ports for TLS (although then assign correct ports).
+
 ## Version 10.0.2 (17 August 2021)
 
 ###New Features and Behavioral Changes
