@@ -604,29 +604,31 @@ var (
 // to ensure no users inadvertently rely on direct comparisons.
 // nolint: deadcode,varcheck
 var (
-	errTimeout               = ncError{ErrTimeout}
-	errRequestCanceled       = ncError{ErrRequestCanceled}
-	errInvalidArgument       = ncError{ErrInvalidArgument}
-	errServiceNotAvailable   = ncError{ErrServiceNotAvailable}
-	errInternalServerFailure = ncError{ErrInternalServerFailure}
-	errAuthenticationFailure = ncError{ErrAuthenticationFailure}
-	errTemporaryFailure      = ncError{ErrTemporaryFailure}
-	errParsingFailure        = ncError{ErrParsingFailure}
-	errCasMismatch           = ncError{ErrCasMismatch}
-	errBucketNotFound        = ncError{ErrBucketNotFound}
-	errCollectionNotFound    = ncError{ErrCollectionNotFound}
-	errEncodingFailure       = ncError{ErrEncodingFailure}
-	errDecodingFailure       = ncError{ErrDecodingFailure}
-	errUnsupportedOperation  = ncError{ErrUnsupportedOperation}
-	errAmbiguousTimeout      = ncError{ErrAmbiguousTimeout}
-	errUnambiguousTimeout    = ncError{ErrUnambiguousTimeout}
-	errFeatureNotAvailable   = ncError{ErrFeatureNotAvailable}
-	errScopeNotFound         = ncError{ErrScopeNotFound}
-	errIndexNotFound         = ncError{ErrIndexNotFound}
-	errIndexExists           = ncError{ErrIndexExists}
-	errGCCCPInUse            = ncError{ErrGCCCPInUse}
-	errNotMyVBucket          = ncError{ErrNotMyVBucket}
-	errDMLFailure            = ncError{ErrDMLFailure}
+	errTimeout                  = ncError{ErrTimeout}
+	errRequestCanceled          = ncError{ErrRequestCanceled}
+	errInvalidArgument          = ncError{ErrInvalidArgument}
+	errServiceNotAvailable      = ncError{ErrServiceNotAvailable}
+	errInternalServerFailure    = ncError{ErrInternalServerFailure}
+	errAuthenticationFailure    = ncError{ErrAuthenticationFailure}
+	errTemporaryFailure         = ncError{ErrTemporaryFailure}
+	errParsingFailure           = ncError{ErrParsingFailure}
+	errCasMismatch              = ncError{ErrCasMismatch}
+	errBucketNotFound           = ncError{ErrBucketNotFound}
+	errCollectionNotFound       = ncError{ErrCollectionNotFound}
+	errEncodingFailure          = ncError{ErrEncodingFailure}
+	errDecodingFailure          = ncError{ErrDecodingFailure}
+	errUnsupportedOperation     = ncError{ErrUnsupportedOperation}
+	errAmbiguousTimeout         = ncError{ErrAmbiguousTimeout}
+	errUnambiguousTimeout       = ncError{ErrUnambiguousTimeout}
+	errFeatureNotAvailable      = ncError{ErrFeatureNotAvailable}
+	errScopeNotFound            = ncError{ErrScopeNotFound}
+	errIndexNotFound            = ncError{ErrIndexNotFound}
+	errIndexExists              = ncError{ErrIndexExists}
+	errGCCCPInUse               = ncError{ErrGCCCPInUse}
+	errNotMyVBucket             = ncError{ErrNotMyVBucket}
+	errDMLFailure               = ncError{ErrDMLFailure}
+	errMemdClientClosed         = ncError{ErrMemdClientClosed}
+	errRequestAlreadyDispatched = ncError{ErrRequestAlreadyDispatched}
 
 	errDocumentNotFound                  = ncError{ErrDocumentNotFound}
 	errDocumentUnretrievable             = ncError{ErrDocumentUnretrievable}

@@ -87,13 +87,15 @@ var (
 	// ErrTimeout occurs when an operation does not receive a response in a timely manner.
 	ErrTimeout = errors.New("operation has timed out")
 
-	ErrRequestCanceled       = errors.New("request canceled")
-	ErrInvalidArgument       = errors.New("invalid argument")
-	ErrServiceNotAvailable   = errors.New("service not available")
-	ErrInternalServerFailure = errors.New("internal server failure")
-	ErrAuthenticationFailure = errors.New("authentication failure")
-	ErrTemporaryFailure      = errors.New("temporary failure")
-	ErrParsingFailure        = errors.New("parsing failure")
+	ErrRequestCanceled          = errors.New("request canceled")
+	ErrInvalidArgument          = errors.New("invalid argument")
+	ErrServiceNotAvailable      = errors.New("service not available")
+	ErrInternalServerFailure    = errors.New("internal server failure")
+	ErrAuthenticationFailure    = errors.New("authentication failure")
+	ErrTemporaryFailure         = errors.New("temporary failure")
+	ErrParsingFailure           = errors.New("parsing failure")
+	ErrMemdClientClosed         = errors.New("memdclient closed")
+	ErrRequestAlreadyDispatched = errors.New("request already dispatched")
 
 	ErrCasMismatch          = errors.New("cas mismatch")
 	ErrBucketNotFound       = errors.New("bucket not found")

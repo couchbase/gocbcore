@@ -140,23 +140,26 @@ func (client *memdClient) CloseNotify() chan bool {
 	return client.closeNotify
 }
 
-func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
+func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
 	client.lock.Lock()
 	defer client.lock.Unlock()
 
 	if client.closed {
 		logDebugf("Attempted to put dispatched op in drained opmap")
-		return false
+		if client.closedError != nil {
+			return client.closedError
+		}
+		return errMemdClientClosed
 	}
 
 	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(client)) {
 		logDebugf("Attempted to put dispatched op in new opmap")
-		return false
+		return errRequestAlreadyDispatched
 	}
 
 	if req.isCancelled() {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
-		return false
+		return errRequestCanceled
 	}
 
 	connInfo := memdQRequestConnInfo{
@@ -167,7 +170,7 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) bool {
 	req.SetConnectionInfo(connInfo)
 
 	client.opList.Add(req)
-	return true
+	return nil
 }
 
 func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
@@ -206,9 +209,8 @@ func (client *memdClient) SendRequest(req *memdQRequest) error {
 }
 
 func (client *memdClient) internalSendRequest(req *memdQRequest) error {
-	addSuccess := client.takeRequestOwnership(req)
-	if !addSuccess {
-		return errRequestCanceled
+	if err := client.takeRequestOwnership(req); err != nil {
+		return err
 	}
 
 	packet := &req.Packet

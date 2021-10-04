@@ -139,7 +139,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 		} else {
 			// Collections support has changed so we need to reconnect all connections in order to support the new
 			// state.
-			mux.reconnectPipelines(oldMuxState, newMuxState, nil)
+			mux.reconnectPipelines(oldMuxState, newMuxState)
 		}
 
 		mux.requeueRequests(oldMuxState)
@@ -453,7 +453,7 @@ func (mux *kvMux) ForceReconnect() {
 
 	atomic.SwapPointer(&mux.muxPtr, unsafe.Pointer(newMuxState))
 
-	mux.reconnectPipelines(muxState, newMuxState, errForcedReconnect)
+	mux.reconnectPipelines(muxState, newMuxState)
 	mux.muxStateWriteLock.Unlock()
 }
 
@@ -588,15 +588,15 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 	return newKVMuxState(cfg, pipelines, newDeadPipeline(mux.queueSize))
 }
 
-func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState, closeErr error) {
+func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState) {
 	for _, pipeline := range oldMuxState.pipelines {
-		err := pipeline.Close(closeErr)
+		err := pipeline.Close(errForcedReconnect)
 		if err != nil {
 			logErrorf("failed to shut down pipeline: %s", err)
 		}
 	}
 
-	err := oldMuxState.deadPipe.Close(closeErr)
+	err := oldMuxState.deadPipe.Close(errForcedReconnect)
 	if err != nil {
 		logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 	}
