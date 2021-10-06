@@ -40,7 +40,6 @@ type memdClient struct {
 	closeNotify           chan bool
 	connID                string
 	closed                bool
-	closedError           error
 	conn                  memdConn
 	opList                *memdOpMap
 	features              []memd.HelloFeature
@@ -57,6 +56,8 @@ type memdClient struct {
 	disableDecompression bool
 
 	cancelBootstrapSig <-chan struct{}
+
+	gracefulCloseTriggered uint32
 }
 
 type dcpBuffer struct {
@@ -146,9 +147,11 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
 
 	if client.closed {
 		logDebugf("Attempted to put dispatched op in drained opmap")
-		if client.closedError != nil {
-			return client.closedError
-		}
+		return errMemdClientClosed
+	}
+
+	if atomic.LoadUint32(&client.gracefulCloseTriggered) == 1 {
+		logDebugf("Attempted to dispatch op from gracefully closing memdclient")
 		return errMemdClientClosed
 	}
 
@@ -251,6 +254,22 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	// closed so that we can handle orphaned responses.
 	req := client.opList.FindAndMaybeRemove(resp.Opaque, resp.Status != memd.StatusSuccess)
 	client.lock.Unlock()
+
+	if atomic.LoadUint32(&client.gracefulCloseTriggered) == 1 {
+		client.lock.Lock()
+		size := client.opList.Size()
+		client.lock.Unlock()
+
+		if size == 0 {
+			// Let's make sure that we don't somehow slow down returning to the user here.
+			go func() {
+				err := client.Close()
+				if err != nil {
+					logErrorf("failed to shutdown memdclient during graceful close: %s", err)
+				}
+			}()
+		}
+	}
 
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
@@ -431,7 +450,6 @@ func (client *memdClient) run() {
 			}
 		}
 
-		var closedError error
 		client.lock.Lock()
 		if !client.closed {
 			client.closed = true
@@ -443,7 +461,6 @@ func (client *memdClient) run() {
 				logWarnf("Failed to shut down client connection (%s)", err)
 			}
 		} else {
-			closedError = client.closedError
 			client.lock.Unlock()
 		}
 
@@ -455,16 +472,12 @@ func (client *memdClient) run() {
 		close(dcpBufferQ)
 		<-dcpProcDoneCh
 
-		if closedError == nil {
-			closedError = io.EOF
-		}
-
 		client.opList.Drain(func(req *memdQRequest) {
 			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {
 				logWarnf("Encountered an unowned request in a client opMap")
 			}
 
-			shortCircuited, routeErr := client.postErrHandler(nil, req, closedError)
+			shortCircuited, routeErr := client.postErrHandler(nil, req, io.EOF)
 			if shortCircuited {
 				return
 			}
@@ -480,10 +493,48 @@ func (client *memdClient) LocalAddress() string {
 	return client.conn.LocalAddr()
 }
 
-func (client *memdClient) Close(err error) error {
+func (client *memdClient) GracefulClose(err error) {
+	if atomic.CompareAndSwapUint32(&client.gracefulCloseTriggered, 0, 1) {
+		client.lock.Lock()
+		if client.closed {
+			client.lock.Unlock()
+			return
+		}
+		persistentReqs := client.opList.FindAndRemoveAllPersistent()
+		client.lock.Unlock()
+
+		if err == nil {
+			err = io.EOF
+		}
+
+		for _, req := range persistentReqs {
+			req.cancelWithCallback(err)
+		}
+
+		client.lock.Lock()
+		size := client.opList.Size()
+		client.lock.Unlock()
+		if size == 0 {
+			client.lock.Lock()
+			if client.closed {
+				client.lock.Unlock()
+				return
+			}
+			client.closed = true
+			client.lock.Unlock()
+
+			err := client.conn.Close()
+			if err != nil {
+				// Lets log a warning, as this is non-fatal
+				logWarnf("Failed to shut down client connection (%s)", err)
+			}
+		}
+	}
+}
+
+func (client *memdClient) Close() error {
 	client.lock.Lock()
 	client.closed = true
-	client.closedError = err
 	client.lock.Unlock()
 
 	return client.conn.Close()

@@ -45,6 +45,19 @@ func (m *memdOpMap) FindOpenStream(vbID uint16) *memdQRequest {
 	return nil
 }
 
+// FindAndRemoveAllPersistent - Find all persistent requests, removing them from the map and returning them all.
+func (m *memdOpMap) FindAndRemoveAllPersistent() []*memdQRequest {
+	var reqs []*memdQRequest
+	for _, req := range m.requests {
+		if req.Persistent {
+			reqs = append(reqs, req)
+			delete(m.requests, req.Opaque)
+		}
+	}
+
+	return reqs
+}
+
 // Find - Lookup a request using its opaque, note that this function by return a <nil> pointer.
 func (m *memdOpMap) Find(opaque uint32) *memdQRequest {
 	return m.requests[opaque]
@@ -63,6 +76,10 @@ func (m *memdOpMap) FindAndMaybeRemove(opaque uint32, force bool) *memdQRequest 
 	}
 
 	return req
+}
+
+func (m *memdOpMap) Size() int {
+	return len(m.requests)
 }
 
 // Drain - Remove all the requests from the map whilst running the provided callback for each request.

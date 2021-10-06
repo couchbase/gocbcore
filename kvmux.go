@@ -49,6 +49,9 @@ type kvMux struct {
 	// There is no need for read side locks as we are locking around an atomic and it is only the write sides that present
 	// a potential issue.
 	muxStateWriteLock sync.Mutex
+
+	shutdownSig   chan struct{}
+	clientCloseWg sync.WaitGroup
 }
 
 type kvMuxProps struct {
@@ -67,6 +70,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		errMapMgr:          errMapMgr,
 		tracer:             tracer,
 		dialer:             dialer,
+		shutdownSig:        make(chan struct{}),
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -415,11 +419,14 @@ func (mux *kvMux) Close() error {
 		return errShutdown
 	}
 
+	// Trigger any memdclients that are in graceful close to forcibly close.
+	close(mux.shutdownSig)
+
 	var muxErr error
 	// Shut down the client multiplexer which will close all its queues
 	// effectively causing all the clients to shut down.
 	for _, pipeline := range clientMux.pipelines {
-		err := pipeline.Close(nil)
+		err := pipeline.Close()
 		if err != nil {
 			logErrorf("failed to shut down pipeline: %s", err)
 			muxErr = errCliInternalError
@@ -427,7 +434,7 @@ func (mux *kvMux) Close() error {
 	}
 
 	if clientMux.deadPipe != nil {
-		err := clientMux.deadPipe.Close(nil)
+		err := clientMux.deadPipe.Close()
 		if err != nil {
 			logErrorf("failed to shut down deadpipe: %s", err)
 			muxErr = errCliInternalError
@@ -442,6 +449,8 @@ func (mux *kvMux) Close() error {
 
 	mux.drainPipelines(clientMux, cb)
 
+	mux.clientCloseWg.Wait()
+
 	return muxErr
 }
 
@@ -455,6 +464,28 @@ func (mux *kvMux) ForceReconnect() {
 
 	mux.reconnectPipelines(muxState, newMuxState)
 	mux.muxStateWriteLock.Unlock()
+}
+
+func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
+	}
+
+	return &pipelineSnapshot{
+		state: clientMux,
+	}, nil
+}
+
+func (mux *kvMux) ConfigSnapshot() (*ConfigSnapshot, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
+	}
+
+	return &ConfigSnapshot{
+		state: clientMux,
+	}, nil
 }
 
 func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, originalErr error) (bool, error) {
@@ -590,13 +621,14 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 
 func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState) {
 	for _, pipeline := range oldMuxState.pipelines {
-		err := pipeline.Close(errForcedReconnect)
-		if err != nil {
-			logErrorf("failed to shut down pipeline: %s", err)
+		clients := pipeline.GracefulClose()
+
+		for _, client := range clients {
+			mux.closeMemdClient(client, errForcedReconnect)
 		}
 	}
 
-	err := oldMuxState.deadPipe.Close(errForcedReconnect)
+	err := oldMuxState.deadPipe.Close()
 	if err != nil {
 		logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 	}
@@ -620,6 +652,30 @@ func (mux *kvMux) requeueRequests(oldMuxState *kvMuxState) {
 		stopCmdTrace(req)
 		mux.RequeueDirect(req, false)
 	}
+}
+
+// closeMemdClient will gracefully close the memdclient, spinning up a goroutine to watch for when the client
+// shuts down. The error provided is the error sent to any callback handlers for persistent operations which are
+// currently live in the client.
+func (mux *kvMux) closeMemdClient(client *memdClient, err error) {
+	mux.clientCloseWg.Add(1)
+	client.GracefulClose(err)
+	go func(client *memdClient) {
+		select {
+		case <-client.CloseNotify():
+			logDebugf("Memdclient %s/%p completed graceful shutdown", client.Address(), client)
+		case <-mux.shutdownSig:
+			logDebugf("Memdclient %s/%p being forcibly shutdown", client.Address(), client)
+			// Force the client to close even if there are requests in flight.
+			err := client.Close()
+			if err != nil {
+				logErrorf("failed to shutdown memdclient: %s", err)
+			}
+			<-client.CloseNotify()
+			logDebugf("Memdclient %s/%p completed shutdown", client.Address(), client)
+		}
+		mux.clientCloseWg.Done()
+	}(client)
 }
 
 func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
@@ -668,38 +724,16 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 			continue
 		}
 
-		err := pipeline.Close(nil)
-		if err != nil {
-			logErrorf("Failed to properly close abandoned pipeline (%s)", err)
+		clients := pipeline.GracefulClose()
+		for _, client := range clients {
+			mux.closeMemdClient(client, nil)
 		}
 	}
 
 	if oldMux != nil && oldMux.deadPipe != nil {
-		err := oldMux.deadPipe.Close(nil)
+		err := oldMux.deadPipe.Close()
 		if err != nil {
 			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 		}
 	}
-}
-
-func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return nil, errShutdown
-	}
-
-	return &pipelineSnapshot{
-		state: clientMux,
-	}, nil
-}
-
-func (mux *kvMux) ConfigSnapshot() (*ConfigSnapshot, error) {
-	clientMux := mux.getState()
-	if clientMux == nil {
-		return nil, errShutdown
-	}
-
-	return &ConfigSnapshot{
-		state: clientMux,
-	}, nil
 }
