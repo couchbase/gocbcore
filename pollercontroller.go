@@ -36,15 +36,15 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 	return pc
 }
 
-// We listen out for the first config that comes in so that we (re)start the cccp if applicable.
+// We listen out for every config that comes in so that we (re)start the cccp if applicable.
 func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	if cfg.bktType != bktTypeCouchbase && cfg.bktType != bktTypeMemcached {
 		return
 	}
 	atomic.SwapUint32(&pc.bucketConfigSeen, 1)
-	pc.cfgMgr.RemoveConfigWatcher(pc)
 
 	if cfg.bktType == bktTypeMemcached {
+		pc.cfgMgr.RemoveConfigWatcher(pc)
 		return
 	}
 
