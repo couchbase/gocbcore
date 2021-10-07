@@ -5,21 +5,26 @@ import (
 	"fmt"
 )
 
+type routeEndpoint struct {
+	Address   string
+	Encrypted bool
+}
+
 type routeConfig struct {
 	revID          int64
 	revEpoch       int64
 	uuid           string
 	name           string
 	bktType        bucketType
-	kvServerList   []string
-	capiEpList     []string
-	mgmtEpList     []string
-	n1qlEpList     []string
-	ftsEpList      []string
-	cbasEpList     []string
-	eventingEpList []string
-	gsiEpList      []string
-	backupEpList   []string
+	kvServerList   []routeEndpoint
+	capiEpList     []routeEndpoint
+	mgmtEpList     []routeEndpoint
+	n1qlEpList     []routeEndpoint
+	ftsEpList      []routeEndpoint
+	cbasEpList     []routeEndpoint
+	eventingEpList []routeEndpoint
+	gsiEpList      []routeEndpoint
+	backupEpList   []routeEndpoint
 	vbMap          *vbucketMap
 	ketamaMap      *ketamaContinuum
 
@@ -40,10 +45,10 @@ func (config *routeConfig) DebugString() string {
 		fmt.Fprintf(&buffer, "Bucket: %s\n", config.name)
 	}
 
-	addEps := func(title string, eps []string) {
+	addEps := func(title string, eps []routeEndpoint) {
 		fmt.Fprintf(&buffer, "%s Eps:\n", title)
 		for _, ep := range eps {
-			fmt.Fprintf(&buffer, "  - %s\n", ep)
+			fmt.Fprintf(&buffer, "  - %s\n", ep.Address)
 		}
 	}
 

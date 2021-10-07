@@ -56,12 +56,17 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
 
-	var httpEpList []string
+	var httpEpList []routeEndpoint
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
 		if c.tlsConfig == nil {
-			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address: fmt.Sprintf("http://%s", hostPort),
+			})
 		} else {
-			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address:   fmt.Sprintf("https://%s", hostPort),
+				Encrypted: true,
+			})
 		}
 	}
 

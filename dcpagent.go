@@ -14,7 +14,7 @@ type DCPAgent struct {
 	tlsConfig  *dynTLSConfig
 	initFn     memdInitFunc
 
-	pollerController *pollerController
+	pollerController configPollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
 	dialer           *memdClientDialerComponent
@@ -201,35 +201,48 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	authHandler := buildAuthHandler(auth)
 
-	var httpEpList []string
+	var httpEpList []routeEndpoint
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if !c.IsSecure() {
-			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
+		if c.IsSecure() && !config.SecurityConfig.NoTLSSeedNode {
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address:   fmt.Sprintf("https://%s", hostPort),
+				Encrypted: true,
+			})
 		} else {
-			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address: fmt.Sprintf("http://%s", hostPort),
+			})
 		}
+	}
+
+	var kvServerList []routeEndpoint
+	for _, seed := range config.SeedConfig.MemdAddrs {
+		kvServerList = append(kvServerList, routeEndpoint{
+			Address:   seed,
+			Encrypted: config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode,
+		})
 	}
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.IoConfig.NetworkType,
-			UseSSL:       config.SecurityConfig.UseTLS,
-			SrcMemdAddrs: config.SeedConfig.MemdAddrs,
-			SrcHTTPAddrs: []string{},
+			NetworkType:     config.IoConfig.NetworkType,
+			UseSSL:          config.SecurityConfig.UseTLS,
+			SrcMemdAddrs:    kvServerList,
+			SrcHTTPAddrs:    []routeEndpoint{},
+			noSSLSourceNode: config.SecurityConfig.NoTLSSeedNode,
 		},
 	)
 
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
-			ServerWaitTimeout:      serverWaitTimeout,
-			KVConnectTimeout:       kvConnectTimeout,
-			ClientID:               c.clientID,
-			TLSConfig:              c.tlsConfig,
-			DCPQueueSize:           dcpQueueSize,
-			CompressionMinSize:     compressionMinSize,
-			CompressionMinRatio:    compressionMinRatio,
-			DisableDecompression:   disableDecompression,
-			InitialBootstrapNonTLS: config.SecurityConfig.InitialBootstrapNonTLS,
+			ServerWaitTimeout:    serverWaitTimeout,
+			KVConnectTimeout:     kvConnectTimeout,
+			ClientID:             c.clientID,
+			TLSConfig:            c.tlsConfig,
+			DCPQueueSize:         dcpQueueSize,
+			CompressionMinSize:   compressionMinSize,
+			CompressionMinRatio:  compressionMinRatio,
+			DisableDecompression: disableDecompression,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
@@ -274,28 +287,40 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.tracer,
 	)
 
-	c.pollerController = newPollerController(
-		newCCCPConfigController(
-			cccpPollerProperties{
-				confCccpMaxWait:    confCccpMaxWait,
-				confCccpPollPeriod: confCccpPollPeriod,
-			},
-			c.kvMux,
-			c.cfgManager,
-		),
-		newHTTPConfigController(
-			c.bucketName,
+	var poller configPollerController
+	if config.SecurityConfig.NoTLSSeedNode {
+		poller = newSeedConfigController(httpEpList[0].Address, c.bucketName,
 			httpPollerProperties{
 				httpComponent:        c.http,
 				confHTTPRetryDelay:   confHTTPRetryDelay,
 				confHTTPRedialPeriod: confHTTPRedialPeriod,
 				confHTTPMaxWait:      confHTTPMaxWait,
-			},
-			c.httpMux,
+			}, c.cfgManager)
+	} else {
+		poller = newPollerController(
+			newCCCPConfigController(
+				cccpPollerProperties{
+					confCccpMaxWait:    confCccpMaxWait,
+					confCccpPollPeriod: confCccpPollPeriod,
+				},
+				c.kvMux,
+				c.cfgManager,
+			),
+			newHTTPConfigController(
+				c.bucketName,
+				httpPollerProperties{
+					httpComponent:        c.http,
+					confHTTPRetryDelay:   confHTTPRetryDelay,
+					confHTTPRedialPeriod: confHTTPRedialPeriod,
+					confHTTPMaxWait:      confHTTPMaxWait,
+				},
+				c.httpMux,
+				c.cfgManager,
+			),
 			c.cfgManager,
-		),
-		c.cfgManager,
-	)
+		)
+	}
+	c.pollerController = poller
 
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
 	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID)
@@ -305,7 +330,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	// Kick everything off.
 	cfg := &routeConfig{
-		kvServerList: config.SeedConfig.MemdAddrs,
+		kvServerList: kvServerList,
 		mgmtEpList:   httpEpList,
 		revID:        -1,
 	}

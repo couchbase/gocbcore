@@ -50,6 +50,7 @@ var (
 	TestFeatureReplaceBodyWithXattr = TestFeatureCode("replacebodywithxattr")
 	TestFeatureExpandMacros         = TestFeatureCode("expandmacros")
 	TestFeaturePreserveExpiry       = TestFeatureCode("preserveexpiry")
+	TestFeatureNSServer             = TestFeatureCode("nsserver")
 )
 
 type TestFeatureFlag struct {

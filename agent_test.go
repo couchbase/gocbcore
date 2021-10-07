@@ -1916,7 +1916,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1931,8 +1931,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -1943,7 +1943,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1957,8 +1957,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -1969,7 +1969,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
-		SrcMemdAddrs: []string{"172.17.0.4:11210"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "172.17.0.4:11210"}},
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1984,8 +1984,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -1996,7 +1996,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "default",
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2010,8 +2010,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -2022,7 +2022,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2036,8 +2036,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -2048,7 +2048,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2062,8 +2062,8 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
-		if server != cfgBkServer {
-			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
 	}
 }
@@ -2074,7 +2074,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "invalid",
-		SrcMemdAddrs: []string{"192.168.132.234:32799"},
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -2517,70 +2517,91 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 	s.Wait(6)
 }
 
-// This test tests that given an address with the nonTLS port but setting UseTLS to true is still able to connect
-// to the cluster when InitialBootstrapNonTLS is set to true.
-func (suite *StandardTestSuite) TestAgentMemcachedOnlyUseTLSBootstrapWithout() {
+// This test tests that given an address any connections to it will be made not using SSL whilst other connections will
+// be made using TLS.
+func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 
-	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.SeedConfig.MemdAddrs) == 0 {
-		suite.T().Skip("Skipping test due to no memd addresses")
-	}
-
-	addr1 := cfg.SeedConfig.MemdAddrs[0]
-	parts := strings.Split(addr1, ":")
-	if parts[1] != "11210" {
-		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
-	}
-
-	cfg.SeedConfig.HTTPAddrs = []string{}
-	cfg.SeedConfig.MemdAddrs = []string{addr1}
-	cfg.SecurityConfig.InitialBootstrapNonTLS = true
-	cfg.SecurityConfig.UseTLS = true
-	// SkipVerify
-	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
-		return nil
-	}
-	cfg.BucketName = globalTestConfig.BucketName
-	agent, err := CreateAgent(&cfg)
+	defaultAgent := suite.DefaultAgent()
+	snapshot, err := defaultAgent.kvMux.PipelineSnapshot()
 	suite.Require().Nil(err, err)
-	defer agent.Close()
-	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestAgentMemcachedOnlyUseTLSBootstrapWithout")
-}
+	if snapshot.NumPipelines() == 1 {
+		suite.T().Skip("Skipping test due to cluster only containing one node")
+	}
 
-// This test tests that given an address with the nonTLS port but setting UseTLS to true is still able to connect
-// to the cluster when InitialBootstrapNonTLS is set to true.
-func (suite *StandardTestSuite) TestAgentHTTPOnlyUseTLSBootstrapWithout() {
-	suite.EnsureSupportsFeature(TestFeatureSsl)
-
-	cfg := suite.makeAgentConfig(globalTestConfig)
-	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
+	srcCfg := suite.makeAgentConfig(globalTestConfig)
+	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
+	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
+	parts := strings.Split(seedAddr, ":")
 
-	addr1 := cfg.SeedConfig.HTTPAddrs[0]
-	parts := strings.Split(addr1, ":")
-	if parts[1] != "8091" {
-		suite.T().Skipf("Skipping test due to non default port %s", parts[1])
+	if parts[1] != "8091" && parts[1] != "11210" {
+		// This should work with non default ports but it makes the test logic too complicated.
+		// This implicitly means that if TLS is enabled then this test won't run.
+		suite.T().Skip("Skipping test due to non default ports have been supplied")
 	}
 
-	cfg.SeedConfig.HTTPAddrs = []string{addr1}
-	cfg.SeedConfig.MemdAddrs = []string{}
-	cfg.SecurityConfig.InitialBootstrapNonTLS = true
-	cfg.SecurityConfig.UseTLS = true
-	// SkipVerify
-	cfg.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+	connstr := fmt.Sprintf("ns_server://%s", seedAddr)
+	config := AgentConfig{}
+	err = config.FromConnStr(connstr)
+	suite.Require().Nil(err, err)
+
+	config.IoConfig = IoConfig{
+		UseDurations:           true,
+		UseMutationTokens:      true,
+		UseCollections:         true,
+		UseOutOfOrderResponses: true,
+	}
+
+	config.SecurityConfig.Auth = globalTestConfig.Authenticator
+	config.SecurityConfig.UseTLS = true
+
+	config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
 		return nil
 	}
-	cfg.BucketName = globalTestConfig.BucketName
-	agent, err := CreateAgent(&cfg)
+
+	config.BucketName = globalTestConfig.BucketName
+
+	agent, err := CreateAgent(&config)
 	suite.Require().Nil(err, err)
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestAgentHTTPOnlyUseTLSBootstrapWithout")
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentNSServerScheme")
+
+	kvMuxState := agent.kvMux.getState()
+	kvEps := kvMuxState.RouteConfig().kvServerList
+	for _, ep := range kvEps {
+		epParts := strings.Split(ep.Address, "://")
+		hostport := strings.Split(epParts[1], ":")
+		if hostport[0] == parts[0] {
+			suite.Assert().Equal("couchbase", epParts[0])
+			suite.Assert().False(ep.Encrypted)
+			suite.Assert().Equal(hostport[1], "11210")
+		} else {
+			suite.Assert().Equal("couchbases", epParts[0])
+			suite.Assert().True(ep.Encrypted)
+			suite.Assert().NotEqual(hostport[1], "11210")
+		}
+	}
+
+	httpMuxState := agent.httpMux.Get()
+	mgmtEps := httpMuxState.mgmtEpList
+	for _, ep := range mgmtEps {
+		epParts := strings.Split(ep.Address, "://")
+		hostport := strings.Split(epParts[1], ":")
+		if hostport[0] == parts[0] {
+			suite.Assert().Equal("http", epParts[0])
+			suite.Assert().False(ep.Encrypted)
+			suite.Assert().Equal(hostport[1], "8091")
+		} else {
+			suite.Assert().Equal("https", epParts[0])
+			suite.Assert().True(ep.Encrypted)
+			suite.Assert().NotEqual(hostport[1], "8091")
+		}
+	}
 }
 
 // These functions are likely temporary.

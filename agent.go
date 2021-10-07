@@ -23,7 +23,7 @@ type Agent struct {
 	initFn               memdInitFunc
 	defaultRetryStrategy RetryStrategy
 
-	pollerController *pollerController
+	pollerController configPollerController
 	kvMux            *kvMux
 	httpMux          *httpMux
 	dialer           *memdClientDialerComponent
@@ -183,12 +183,17 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	authHandler := buildAuthHandler(auth)
 
-	var httpEpList []string
+	var httpEpList []routeEndpoint
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if c.IsSecure() && !config.SecurityConfig.InitialBootstrapNonTLS {
-			httpEpList = append(httpEpList, fmt.Sprintf("https://%s", hostPort))
+		if c.IsSecure() && !config.SecurityConfig.NoTLSSeedNode {
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address:   fmt.Sprintf("https://%s", hostPort),
+				Encrypted: true,
+			})
 		} else {
-			httpEpList = append(httpEpList, fmt.Sprintf("http://%s", hostPort))
+			httpEpList = append(httpEpList, routeEndpoint{
+				Address: fmt.Sprintf("http://%s", hostPort),
+			})
 		}
 	}
 
@@ -206,25 +211,33 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		go c.zombieLogger.Start()
 	}
 
+	var kvServerList []routeEndpoint
+	for _, seed := range config.SeedConfig.MemdAddrs {
+		kvServerList = append(kvServerList, routeEndpoint{
+			Address:   seed,
+			Encrypted: config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode,
+		})
+	}
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.IoConfig.NetworkType,
-			UseSSL:       config.SecurityConfig.UseTLS,
-			SrcMemdAddrs: config.SeedConfig.MemdAddrs,
-			SrcHTTPAddrs: httpEpList,
+			NetworkType:     config.IoConfig.NetworkType,
+			UseSSL:          config.SecurityConfig.UseTLS,
+			SrcMemdAddrs:    kvServerList,
+			SrcHTTPAddrs:    httpEpList,
+			noSSLSourceNode: config.SecurityConfig.NoTLSSeedNode,
 		},
 	)
 
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
-			ServerWaitTimeout:      serverWaitTimeout,
-			KVConnectTimeout:       kvConnectTimeout,
-			ClientID:               c.clientID,
-			TLSConfig:              c.tlsConfig,
-			CompressionMinSize:     compressionMinSize,
-			CompressionMinRatio:    compressionMinRatio,
-			DisableDecompression:   disableDecompression,
-			InitialBootstrapNonTLS: config.SecurityConfig.InitialBootstrapNonTLS,
+			ServerWaitTimeout:    serverWaitTimeout,
+			KVConnectTimeout:     kvConnectTimeout,
+			ClientID:             c.clientID,
+			TLSConfig:            c.tlsConfig,
+			CompressionMinSize:   compressionMinSize,
+			CompressionMinRatio:  compressionMinRatio,
+			DisableDecompression: disableDecompression,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
@@ -287,28 +300,40 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, nil)
 	} else {
-		c.pollerController = newPollerController(
-			newCCCPConfigController(
-				cccpPollerProperties{
-					confCccpMaxWait:    confCccpMaxWait,
-					confCccpPollPeriod: confCccpPollPeriod,
-				},
-				c.kvMux,
-				c.cfgManager,
-			),
-			newHTTPConfigController(
-				c.bucketName,
+		var poller configPollerController
+		if config.SecurityConfig.NoTLSSeedNode {
+			poller = newSeedConfigController(httpEpList[0].Address, c.bucketName,
 				httpPollerProperties{
 					httpComponent:        c.http,
 					confHTTPRetryDelay:   confHTTPRetryDelay,
 					confHTTPRedialPeriod: confHTTPRedialPeriod,
 					confHTTPMaxWait:      confHTTPMaxWait,
-				},
-				c.httpMux,
+				}, c.cfgManager)
+		} else {
+			poller = newPollerController(
+				newCCCPConfigController(
+					cccpPollerProperties{
+						confCccpMaxWait:    confCccpMaxWait,
+						confCccpPollPeriod: confCccpPollPeriod,
+					},
+					c.kvMux,
+					c.cfgManager,
+				),
+				newHTTPConfigController(
+					c.bucketName,
+					httpPollerProperties{
+						httpComponent:        c.http,
+						confHTTPRetryDelay:   confHTTPRetryDelay,
+						confHTTPRedialPeriod: confHTTPRedialPeriod,
+						confHTTPMaxWait:      confHTTPMaxWait,
+					},
+					c.httpMux,
+					c.cfgManager,
+				),
 				c.cfgManager,
-			),
-			c.cfgManager,
-		)
+			)
+		}
+		c.pollerController = poller
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 	}
 	c.dialer.AddBootstrapFailHandler(c)
@@ -324,7 +349,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	// Kick everything off.
 	cfg := &routeConfig{
-		kvServerList: config.SeedConfig.MemdAddrs,
+		kvServerList: kvServerList,
 		mgmtEpList:   httpEpList,
 		revID:        -1,
 	}

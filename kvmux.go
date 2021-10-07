@@ -606,12 +606,15 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
 
 	pipelines := make([]*memdPipeline, len(cfg.kvServerList))
 	for i, hostPort := range cfg.kvServerList {
-		hostPort := trimSchemePrefix(hostPort)
+		trimmedHostPort := routeEndpoint{
+			Address:   trimSchemePrefix(hostPort.Address),
+			Encrypted: hostPort.Encrypted,
+		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, hostPort, mux.handleOpRoutingResp, cfg.revID == -1)
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, mux.handleOpRoutingResp)
 		}
-		pipeline := newPipeline(hostPort, poolSize, mux.queueSize, getCurClientFn)
+		pipeline := newPipeline(trimmedHostPort.Address, poolSize, mux.queueSize, getCurClientFn)
 
 		pipelines[i] = pipeline
 	}

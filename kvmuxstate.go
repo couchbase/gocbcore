@@ -79,7 +79,11 @@ func (mux *kvMuxState) BucketType() bucketType {
 }
 
 func (mux *kvMuxState) KVEps() []string {
-	return mux.routeCfg.kvServerList
+	var epList []string
+	for _, s := range mux.routeCfg.kvServerList {
+		epList = append(epList, s.Address)
+	}
+	return epList
 }
 
 func (mux *kvMuxState) NumPipelines() int {

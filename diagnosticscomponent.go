@@ -242,7 +242,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 	for {
 		clientMux := muxer.Get()
 		if clientMux.revID > -1 {
-			var epList []string
+			var epList []routeEndpoint
 			switch service {
 			case N1qlService:
 				epList = clientMux.n1qlEpList
@@ -316,7 +316,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 						State:    state,
 					})
 					op.lock.Unlock()
-				}(ep)
+				}(ep.Address)
 			}
 
 			wg.Wait()
@@ -663,7 +663,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 				logDebugf("No config seen yet in http muxer but no errors found.")
 			}
 		} else {
-			var epList []string
+			var epList []routeEndpoint
 			switch service {
 			case N1qlService:
 				epList = clientMux.n1qlEpList
@@ -724,7 +724,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 							// Cancel this run entirely, we've successfully satisfied the requirements
 							cancel()
 						}
-					}(ep)
+					}(ep.Address)
 				}
 
 				wg.Wait()

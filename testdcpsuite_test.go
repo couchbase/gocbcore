@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"regexp"
@@ -109,8 +110,14 @@ func (suite *DCPTestSuite) makeOpAgentConfig(testConfig *DCPTestConfig) AgentCon
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
 
-	if testConfig.CAProvider != nil {
-		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+	if config.SecurityConfig.UseTLS {
+		if testConfig.CAProvider == nil {
+			config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+				return nil
+			}
+		} else {
+			config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+		}
 	}
 
 	return config
@@ -155,8 +162,14 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
 
-	if testConfig.CAProvider != nil {
-		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+	if config.SecurityConfig.UseTLS {
+		if testConfig.CAProvider == nil {
+			config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+				return nil
+			}
+		} else {
+			config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+		}
 	}
 
 	return config

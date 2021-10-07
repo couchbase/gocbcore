@@ -55,6 +55,7 @@ type cfgNodeAltAddress struct {
 type cfgNodeExt struct {
 	Services     cfgNodeServices              `json:"services"`
 	Hostname     string                       `json:"hostname"`
+	ThisNode     bool                         `json:"thisNode"`
 	AltAddresses map[string]cfgNodeAltAddress `json:"alternateAddresses"`
 }
 
@@ -91,17 +92,17 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
-func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
+func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, noSourceSSL bool) *routeConfig {
 	var (
-		kvServerList   []string
-		capiEpList     []string
-		mgmtEpList     []string
-		n1qlEpList     []string
-		ftsEpList      []string
-		cbasEpList     []string
-		eventingEpList []string
-		gsiEpList      []string
-		backupEpList   []string
+		kvServerList   []routeEndpoint
+		capiEpList     []routeEndpoint
+		mgmtEpList     []routeEndpoint
+		n1qlEpList     []routeEndpoint
+		ftsEpList      []routeEndpoint
+		cbasEpList     []routeEndpoint
+		eventingEpList []routeEndpoint
+		gsiEpList      []routeEndpoint
+		backupEpList   []routeEndpoint
 		bktType        bucketType
 	)
 
@@ -139,38 +140,42 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 			}
 
+			useSSLThisNode := useSsl
+			if noSourceSSL && (node.ThisNode || len(node.Hostname) == 0) {
+				useSSLThisNode = false
+			}
 			hostname = getHostname(hostname, cfg.SourceHostname)
 
-			endpoints := endpointsFromPorts(useSsl, ports, hostname)
-			if endpoints.kvServer != "" {
+			endpoints := endpointsFromPorts(useSSLThisNode, ports, hostname)
+			if endpoints.kvServer.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer)
 				} else {
 					kvServerList = append(kvServerList, endpoints.kvServer)
 				}
 			}
-			if endpoints.capiEp != "" {
+			if endpoints.capiEp.Address != "" {
 				capiEpList = append(capiEpList, endpoints.capiEp)
 			}
-			if endpoints.mgmtEp != "" {
+			if endpoints.mgmtEp.Address != "" {
 				mgmtEpList = append(mgmtEpList, endpoints.mgmtEp)
 			}
-			if endpoints.n1qlEp != "" {
+			if endpoints.n1qlEp.Address != "" {
 				n1qlEpList = append(n1qlEpList, endpoints.n1qlEp)
 			}
-			if endpoints.ftsEp != "" {
+			if endpoints.ftsEp.Address != "" {
 				ftsEpList = append(ftsEpList, endpoints.ftsEp)
 			}
-			if endpoints.cbasEp != "" {
+			if endpoints.cbasEp.Address != "" {
 				cbasEpList = append(cbasEpList, endpoints.cbasEp)
 			}
-			if endpoints.eventingEp != "" {
+			if endpoints.eventingEp.Address != "" {
 				eventingEpList = append(eventingEpList, endpoints.eventingEp)
 			}
-			if endpoints.gsiEp != "" {
+			if endpoints.gsiEp.Address != "" {
 				gsiEpList = append(gsiEpList, endpoints.gsiEp)
 			}
-			if endpoints.backupEp != "" {
+			if endpoints.backupEp.Address != "" {
 				backupEpList = append(backupEpList, endpoints.backupEp)
 			}
 		}
@@ -181,7 +186,11 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		}
 
 		if bktType == bktTypeCouchbase {
-			kvServerList = cfg.VBucketServerMap.ServerList
+			for _, s := range cfg.VBucketServerMap.ServerList {
+				kvServerList = append(kvServerList, routeEndpoint{
+					Address: s,
+				})
+			}
 		}
 
 		for _, node := range cfg.Nodes {
@@ -189,10 +198,14 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				// Slice off the UUID as Go's HTTP client cannot handle being passed URL-Encoded path values.
 				capiEp := strings.SplitN(node.CouchAPIBase, "%2B", 2)[0]
 
-				capiEpList = append(capiEpList, capiEp)
+				capiEpList = append(capiEpList, routeEndpoint{
+					Address: capiEp,
+				})
 			}
 			if node.Hostname != "" {
-				mgmtEpList = append(mgmtEpList, fmt.Sprintf("http://%s", node.Hostname))
+				mgmtEpList = append(mgmtEpList, routeEndpoint{
+					Address: fmt.Sprintf("http://%s", node.Hostname),
+				})
 			}
 
 			if bktType == bktTypeMemcached {
@@ -204,7 +217,9 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 
 				curKvHost := fmt.Sprintf("%s:%d", host, node.Ports["direct"])
-				kvServerList = append(kvServerList, curKvHost)
+				kvServerList = append(kvServerList, routeEndpoint{
+					Address: curKvHost,
+				})
 			}
 		}
 	}
@@ -242,15 +257,15 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 }
 
 type serverEps struct {
-	kvServer   string
-	capiEp     string
-	mgmtEp     string
-	n1qlEp     string
-	ftsEp      string
-	cbasEp     string
-	eventingEp string
-	gsiEp      string
-	backupEp   string
+	kvServer   routeEndpoint
+	capiEp     routeEndpoint
+	mgmtEp     routeEndpoint
+	n1qlEp     routeEndpoint
+	ftsEp      routeEndpoint
+	cbasEp     routeEndpoint
+	eventingEp routeEndpoint
+	gsiEp      routeEndpoint
+	backupEp   routeEndpoint
 }
 
 func getHostname(hostname, sourceHostname string) string {
@@ -274,59 +289,113 @@ func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *se
 
 	if useSsl {
 		if ports.KvSsl > 0 {
-			lists.kvServer = fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl)
+			lists.kvServer = routeEndpoint{
+				Address:   fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.CapiSsl > 0 {
-			lists.capiEp = fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl)
+			lists.capiEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.MgmtSsl > 0 {
-			lists.mgmtEp = fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl)
+			lists.mgmtEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.N1qlSsl > 0 {
-			lists.n1qlEp = fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl)
+			lists.n1qlEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.FtsSsl > 0 {
-			lists.ftsEp = fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl)
+			lists.ftsEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.CbasSsl > 0 {
-			lists.cbasEp = fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl)
+			lists.cbasEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.EventingSsl > 0 {
-			lists.eventingEp = fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl)
+			lists.eventingEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
+				Encrypted: true,
+			}
 		}
 		if ports.GSISsl > 0 {
-			lists.gsiEp = fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl)
+			lists.gsiEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
+				Encrypted: true,
+			}
 		}
 		if ports.BackupSsl > 0 {
-			lists.backupEp = fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl)
+			lists.backupEp = routeEndpoint{
+				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
+				Encrypted: true,
+			}
 		}
 	} else {
 		if ports.Kv > 0 {
-			lists.kvServer = fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv)
+			lists.kvServer = routeEndpoint{
+				Address:   fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
+				Encrypted: false,
+			}
 		}
 		if ports.Capi > 0 {
-			lists.capiEp = fmt.Sprintf("http://%s:%d", hostname, ports.Capi)
+			lists.capiEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
+				Encrypted: false,
+			}
 		}
 		if ports.Mgmt > 0 {
-			lists.mgmtEp = fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt)
+			lists.mgmtEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
+				Encrypted: false,
+			}
 		}
 		if ports.N1ql > 0 {
-			lists.n1qlEp = fmt.Sprintf("http://%s:%d", hostname, ports.N1ql)
+			lists.n1qlEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
+				Encrypted: false,
+			}
 		}
 		if ports.Fts > 0 {
-			lists.ftsEp = fmt.Sprintf("http://%s:%d", hostname, ports.Fts)
+			lists.ftsEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
+				Encrypted: false,
+			}
 		}
 		if ports.Cbas > 0 {
-			lists.cbasEp = fmt.Sprintf("http://%s:%d", hostname, ports.Cbas)
+			lists.cbasEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
+				Encrypted: false,
+			}
 		}
 		if ports.Eventing > 0 {
-			lists.eventingEp = fmt.Sprintf("http://%s:%d", hostname, ports.Eventing)
+			lists.eventingEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
+				Encrypted: false,
+			}
 		}
 		if ports.GSI > 0 {
-			lists.gsiEp = fmt.Sprintf("http://%s:%d", hostname, ports.GSI)
+			lists.gsiEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
+				Encrypted: false,
+			}
 		}
 		if ports.Backup > 0 {
-			lists.backupEp = fmt.Sprintf("http://%s:%d", hostname, ports.Backup)
+			lists.backupEp = routeEndpoint{
+				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
+				Encrypted: false,
+			}
 		}
 	}
 	return lists

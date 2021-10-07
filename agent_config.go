@@ -98,13 +98,11 @@ type SecurityConfig struct {
 	UseTLS            bool
 	TLSRootCAProvider func() *x509.CertPool
 
-	// InitialBootstrapNonTLS indicates that, even with UseTLS set to true, the SDK should fetch the first cluster
-	// config object over a non TLS connection. That is, if memcached protocol is in use then the first connection(s)
-	// to the cluster will be done to the address seeds without TLS enabled, and thus the first cluster config object
-	// fetched on a non TLS connection. If HTTP protocol is used then the cluster config object will be fetched over
-	// HTTP rather than HTTPS. Once a cluster config has been obtained the SDK will (re)build all connections to use TLS.
+	// NoTLSSeedNode indicates that, even with UseTLS set to true, the SDK should always connect to the seed node
+	// over a non TLS connection. This means that the seed node should ALWAYS be localhost.
+	// This option must be used with the ConfigPollerConfig UseSeedPoller set to true.
 	// Internal: This should never be used and is not supported.
-	InitialBootstrapNonTLS bool
+	NoTLSSeedNode bool
 
 	Auth AuthProvider
 
@@ -140,6 +138,10 @@ func (config SecurityConfig) fromSpec(spec connstr.ResolvedConnSpec) (SecurityCo
 		}
 
 		config.UseTLS = true
+	}
+
+	if spec.NSServerHost != nil {
+		config.NoTLSSeedNode = true
 	}
 
 	return config, nil
@@ -386,6 +388,19 @@ func (config SeedConfig) fromSpec(spec connstr.ResolvedConnSpec) (SeedConfig, er
 		memdHosts = append(memdHosts, fmt.Sprintf("%s:%d", specHost.Host, specHost.Port))
 	}
 
+	var nsServerHost string
+	if spec.NSServerHost != nil {
+		nsServerHost = fmt.Sprintf("%s:%d", spec.NSServerHost.Host, spec.NSServerHost.Port)
+	}
+
+	if nsServerHost != "" {
+		if len(httpHosts) > 0 || len(memdHosts) > 0 {
+			return SeedConfig{}, errors.New("ns_server host cannot be used alongside http or memd hosts")
+		}
+
+		httpHosts = append(httpHosts, nsServerHost)
+	}
+
 	// Get bootstrap_on option to determine which, if any, of the bootstrap nodes should be cleared
 	switch val, _ := fetchOption(spec, "bootstrap_on"); val {
 	case "http":
@@ -399,10 +414,14 @@ func (config SeedConfig) fromSpec(spec connstr.ResolvedConnSpec) (SeedConfig, er
 			return SeedConfig{}, errors.New("bootstrap_on=cccp but no CCCP/Memcached hosts in connection string")
 		}
 	case "both":
+		if nsServerHost != "" {
+			return SeedConfig{}, errors.New("bootstrap_on=both but ns_server host in connection string")
+		}
 	case "":
 		// Do nothing
 		break
 	default:
+		// Don't advertise ns_server as an option
 		return SeedConfig{}, errors.New("bootstrap_on={http,cccp,both}")
 	}
 	config.MemdAddrs = memdHosts

@@ -7,7 +7,7 @@ import (
 )
 
 type pollerController struct {
-	activeController configPollerController
+	activeController configPoller
 	controllerLock   sync.Mutex
 	stopped          bool
 	bucketConfigSeen uint32
@@ -18,6 +18,15 @@ type pollerController struct {
 }
 
 type configPollerController interface {
+	Start()
+	Pause(paused bool)
+	Stop()
+	Done() chan struct{}
+	PollerError() error
+	ForceHTTPPoller()
+}
+
+type configPoller interface {
 	Pause(paused bool)
 	Done() chan struct{}
 	Stop()

@@ -20,9 +20,7 @@ func resolveOrDie(t *testing.T, connSpec ConnSpec) ResolvedConnSpec {
 	return rcs
 }
 
-func checkSpec(t *testing.T, connStr string, expectedSpec ConnSpec,
-	expectMemdHosts []Address, expectHttpHosts []Address, useSsl bool,
-	checkHosts bool, checkStr bool) {
+func checkSpec(t *testing.T, connStr string, expectedSpec ConnSpec, expectMemdHosts []Address, expectHttpHosts []Address, expectNSServerHost *Address, useSsl bool, checkHosts bool, checkStr bool) {
 	cs := parseOrDie(t, connStr)
 
 	if checkStr && cs.String() != connStr {
@@ -96,8 +94,8 @@ func checkSpec(t *testing.T, connStr string, expectedSpec ConnSpec,
 			}
 		}
 
-		if len(rcs.MemdHosts) != len(expectMemdHosts) {
-			t.Fatalf("Some memd hosts were missing")
+		if len(rcs.HttpHosts) != len(expectHttpHosts) {
+			t.Fatalf("Some http hosts were missing")
 		}
 
 		for i, host := range rcs.HttpHosts {
@@ -109,6 +107,20 @@ func checkSpec(t *testing.T, connStr string, expectedSpec ConnSpec,
 
 			if host.Port != expectHost.Port {
 				t.Fatalf("Resolved incorrect http port. %d != %d", host.Port, expectHost.Port)
+			}
+		}
+
+		if (rcs.NSServerHost == nil) != (expectNSServerHost == nil) {
+			t.Fatalf("Some ns_server hosts were missing")
+		}
+
+		if expectNSServerHost != nil {
+			if rcs.NSServerHost.Host != expectNSServerHost.Host {
+				t.Fatalf("Resolved incorrect ns_server host. %s != %s", rcs.NSServerHost.Host, expectNSServerHost.Host)
+			}
+
+			if rcs.NSServerHost.Port != expectNSServerHost.Port {
+				t.Fatalf("Resolved incorrect ns_server port. %d != %d", rcs.NSServerHost.Port, expectNSServerHost.Port)
 			}
 		}
 	}
@@ -123,7 +135,7 @@ func TestParseBasic(t *testing.T) {
 		{"1.2.3.4", DefaultMemdPort},
 	}, []Address{
 		{"1.2.3.4", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "couchbase://[2001:4860:4860::8888]", ConnSpec{
 		Scheme: "couchbase",
@@ -133,7 +145,7 @@ func TestParseBasic(t *testing.T) {
 		{"[2001:4860:4860::8888]", DefaultMemdPort},
 	}, []Address{
 		{"[2001:4860:4860::8888]", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	_, err := Parse("blah://foo.com")
 	if err == nil {
@@ -146,7 +158,7 @@ func TestParseBasic(t *testing.T) {
 		{"127.0.0.1", DefaultMemdPort},
 	}, []Address{
 		{"127.0.0.1", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "couchbase://?", ConnSpec{
 		Scheme: "couchbase",
@@ -154,7 +166,7 @@ func TestParseBasic(t *testing.T) {
 		{"127.0.0.1", DefaultMemdPort},
 	}, []Address{
 		{"127.0.0.1", DefaultHttpPort},
-	}, false, true, false)
+	}, nil, false, true, false)
 
 	checkSpec(t, "1.2.3.4", ConnSpec{
 		Addresses: []Address{
@@ -164,7 +176,7 @@ func TestParseBasic(t *testing.T) {
 		{"1.2.3.4", DefaultMemdPort},
 	}, []Address{
 		{"1.2.3.4", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "[2001:4860:4860::8888]", ConnSpec{
 		Addresses: []Address{
@@ -173,7 +185,7 @@ func TestParseBasic(t *testing.T) {
 		{"[2001:4860:4860::8888]", DefaultMemdPort},
 	}, []Address{
 		{"[2001:4860:4860::8888]", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "1.2.3.4:8091", ConnSpec{
 		Addresses: []Address{
@@ -183,7 +195,7 @@ func TestParseBasic(t *testing.T) {
 		{"1.2.3.4", DefaultMemdPort},
 	}, []Address{
 		{"1.2.3.4", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	cs := parseOrDie(t, "1.2.3.4:999")
 	_, err = Resolve(cs)
@@ -208,7 +220,7 @@ func TestParseHosts(t *testing.T) {
 		{"foo.com", DefaultHttpPort},
 		{"bar.com", DefaultHttpPort},
 		{"baz.com", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "couchbase://[2001:4860:4860::8822],[2001:4860:4860::8833]:888", ConnSpec{
 		Scheme: "couchbase",
@@ -221,7 +233,7 @@ func TestParseHosts(t *testing.T) {
 		{"[2001:4860:4860::8833]", 888},
 	}, []Address{
 		{"[2001:4860:4860::8822]", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	// Parse using legacy format
 	cs := parseOrDie(t, "couchbase://foo.com:8091")
@@ -237,7 +249,7 @@ func TestParseHosts(t *testing.T) {
 		},
 	}, []Address{
 		{"foo.com", 4444},
-	}, nil, false, true, true)
+	}, nil, nil, false, true, true)
 
 	checkSpec(t, "couchbases://foo.com:4444", ConnSpec{
 		Scheme: "couchbases",
@@ -246,9 +258,7 @@ func TestParseHosts(t *testing.T) {
 		},
 	}, []Address{
 		{"foo.com", 4444},
-	}, []Address{
-		{"foo.com", 4444},
-	}, true, true, true)
+	}, []Address{}, nil, true, true, true)
 
 	checkSpec(t, "couchbases://", ConnSpec{
 		Scheme: "couchbases",
@@ -256,7 +266,7 @@ func TestParseHosts(t *testing.T) {
 		{"127.0.0.1", DefaultSslMemdPort},
 	}, []Address{
 		{"127.0.0.1", DefaultSslHttpPort},
-	}, true, true, true)
+	}, nil, true, true, true)
 
 	checkSpec(t, "couchbase://foo.com,bar.com:4444", ConnSpec{
 		Scheme: "couchbase",
@@ -269,7 +279,7 @@ func TestParseHosts(t *testing.T) {
 		{"bar.com", 4444},
 	}, []Address{
 		{"foo.com", DefaultHttpPort},
-	}, false, true, true)
+	}, nil, false, true, true)
 
 	checkSpec(t, "couchbase://foo.com;bar.com;baz.com", ConnSpec{
 		Scheme: "couchbase",
@@ -286,7 +296,7 @@ func TestParseHosts(t *testing.T) {
 		{"foo.com", DefaultHttpPort},
 		{"bar.com", DefaultHttpPort},
 		{"baz.com", DefaultHttpPort},
-	}, false, true, false)
+	}, nil, false, true, false)
 }
 
 func TestParseBucket(t *testing.T) {
@@ -296,7 +306,7 @@ func TestParseBucket(t *testing.T) {
 			{"foo.com", -1},
 		},
 		Bucket: "user",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase://foo.com/user/", ConnSpec{
 		Scheme: "couchbase",
@@ -304,32 +314,32 @@ func TestParseBucket(t *testing.T) {
 			{"foo.com", -1},
 		},
 		Bucket: "user/",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase:///default", ConnSpec{
 		Scheme: "couchbase",
 		Bucket: "default",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase:///default", ConnSpec{
 		Scheme: "couchbase",
 		Bucket: "default",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase:///default", ConnSpec{
 		Scheme: "couchbase",
 		Bucket: "default",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase:///default?", ConnSpec{
 		Scheme: "couchbase",
 		Bucket: "default",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase:///%2FUsers%2F?", ConnSpec{
 		Scheme: "couchbase",
 		Bucket: "/Users/",
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 }
 
 func TestOptionsPassthrough(t *testing.T) {
@@ -338,14 +348,14 @@ func TestOptionsPassthrough(t *testing.T) {
 		Options: map[string][]string{
 			"foo": {"bar"},
 		},
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase://?foo=bar", ConnSpec{
 		Scheme: "couchbase",
 		Options: map[string][]string{
 			"foo": {"bar"},
 		},
-	}, nil, nil, false, false, true)
+	}, nil, nil, nil, false, false, true)
 
 	checkSpec(t, "couchbase://?foo=fooval&bar=barval", ConnSpec{
 		Scheme: "couchbase",
@@ -353,7 +363,7 @@ func TestOptionsPassthrough(t *testing.T) {
 			"foo": {"fooval"},
 			"bar": {"barval"},
 		},
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase://?foo=fooval&bar=barval&", ConnSpec{
 		Scheme: "couchbase",
@@ -361,12 +371,51 @@ func TestOptionsPassthrough(t *testing.T) {
 			"foo": {"fooval"},
 			"bar": {"barval"},
 		},
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
 
 	checkSpec(t, "couchbase://?foo=val1&foo=val2&", ConnSpec{
 		Scheme: "couchbase",
 		Options: map[string][]string{
 			"foo": {"val1", "val2"},
 		},
-	}, nil, nil, false, false, false)
+	}, nil, nil, nil, false, false, false)
+}
+
+func TestParseNSServer(t *testing.T) {
+	checkSpec(t, "ns_server://1.2.3.4", ConnSpec{
+		Scheme: "ns_server",
+		Addresses: []Address{
+			{"1.2.3.4", -1}},
+	}, []Address{}, []Address{}, &Address{
+		"1.2.3.4", DefaultHttpPort,
+	}, true, true, true)
+
+	checkSpec(t, "ns_server://", ConnSpec{
+		Scheme: "ns_server",
+	}, []Address{}, []Address{}, &Address{
+		"127.0.0.1", DefaultHttpPort,
+	}, true, true, true)
+
+	checkSpec(t, "ns_server://1.2.3.4:1234", ConnSpec{
+		Scheme: "ns_server",
+		Addresses: []Address{
+			{"1.2.3.4", 1234}},
+	}, []Address{}, []Address{}, &Address{
+		"1.2.3.4", 1234,
+	}, true, true, true)
+
+	_, err := Parse("ns_server://1.2.3.4,1.2.3.5")
+	if err == nil {
+		t.Fatalf("Parse should fail for more than 1 address with ns_server scheme")
+	}
+
+	checkSpec(t, "ns_server://1.2.3.4:8091", ConnSpec{
+		Scheme: "ns_server",
+		Addresses: []Address{
+			{"1.2.3.4", 8091},
+		},
+	}, []Address{}, []Address{}, &Address{
+		"1.2.3.4", DefaultHttpPort,
+	}, true, true, true)
+
 }

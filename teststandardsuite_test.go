@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -176,6 +177,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer450)
 	case TestFeaturePreserveExpiry:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
+	case TestFeatureNSServer:
+		return !suite.IsMockServer()
 	}
 
 	panic("found unsupported feature code")
@@ -257,8 +260,14 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
 
-	if testConfig.CAProvider != nil {
-		config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+	if config.SecurityConfig.UseTLS {
+		if testConfig.CAProvider == nil {
+			config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+				return nil
+			}
+		} else {
+			config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
+		}
 	}
 
 	return config

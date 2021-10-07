@@ -13,8 +13,10 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndStopRace() {
 		looperDoneSig: make(chan struct{}),
 	}
 	htt := &httpConfigController{
-		looperStopSig: make(chan struct{}),
-		looperDoneSig: make(chan struct{}),
+		baseHTTPConfigController: &baseHTTPConfigController{
+			looperStopSig: make(chan struct{}),
+			looperDoneSig: make(chan struct{}),
+		},
 	}
 
 	poller := newPollerController(ccp, htt, &configManagementComponent{})
@@ -64,8 +66,10 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 		confCccpMaxWait:    5 * time.Second,
 	}
 	htt := &httpConfigController{
-		looperStopSig: make(chan struct{}),
-		looperDoneSig: make(chan struct{}),
+		baseHTTPConfigController: &baseHTTPConfigController{
+			looperStopSig: make(chan struct{}),
+			looperDoneSig: make(chan struct{}),
+		},
 	}
 
 	poller := newPollerController(ccp, htt, cfgMgr)

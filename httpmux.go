@@ -67,8 +67,7 @@ func (mux *httpMux) CapiEps() []string {
 
 	var epList []string
 	for _, ep := range clientMux.capiEpList {
-		ep = ep + "/" + url.PathEscape(clientMux.bucket)
-		epList = append(epList, ep)
+		epList = append(epList, ep.Address+"/"+url.PathEscape(clientMux.bucket))
 	}
 
 	return epList
@@ -80,7 +79,12 @@ func (mux *httpMux) MgmtEps() []string {
 		return nil
 	}
 
-	return clientMux.mgmtEpList
+	var epList []string
+	for _, ep := range clientMux.mgmtEpList {
+		epList = append(epList, ep.Address)
+	}
+
+	return epList
 }
 
 func (mux *httpMux) N1qlEps() []string {
@@ -89,7 +93,12 @@ func (mux *httpMux) N1qlEps() []string {
 		return nil
 	}
 
-	return clientMux.n1qlEpList
+	var epList []string
+	for _, ep := range clientMux.n1qlEpList {
+		epList = append(epList, ep.Address)
+	}
+
+	return epList
 }
 
 func (mux *httpMux) CbasEps() []string {
@@ -98,7 +107,12 @@ func (mux *httpMux) CbasEps() []string {
 		return nil
 	}
 
-	return clientMux.cbasEpList
+	var epList []string
+	for _, ep := range clientMux.cbasEpList {
+		epList = append(epList, ep.Address)
+	}
+
+	return epList
 }
 
 func (mux *httpMux) FtsEps() []string {
@@ -107,12 +121,22 @@ func (mux *httpMux) FtsEps() []string {
 		return nil
 	}
 
-	return clientMux.ftsEpList
+	var epList []string
+	for _, ep := range clientMux.ftsEpList {
+		epList = append(epList, ep.Address)
+	}
+
+	return epList
 }
 
 func (mux *httpMux) EventingEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		return cMux.eventingEpList
+		var epList []string
+		for _, ep := range cMux.eventingEpList {
+			epList = append(epList, ep.Address)
+		}
+
+		return epList
 	}
 
 	return nil
@@ -120,7 +144,12 @@ func (mux *httpMux) EventingEps() []string {
 
 func (mux *httpMux) GSIEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		return cMux.gsiEpList
+		var epList []string
+		for _, ep := range cMux.gsiEpList {
+			epList = append(epList, ep.Address)
+		}
+
+		return epList
 	}
 
 	return nil
@@ -128,7 +157,12 @@ func (mux *httpMux) GSIEps() []string {
 
 func (mux *httpMux) BackupEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		return cMux.backupEpList
+		var epList []string
+		for _, ep := range cMux.backupEpList {
+			epList = append(epList, ep.Address)
+		}
+
+		return epList
 	}
 
 	return nil

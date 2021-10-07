@@ -1,14 +1,14 @@
 package gocbcore
 
 type httpClientMux struct {
-	capiEpList     []string
-	mgmtEpList     []string
-	n1qlEpList     []string
-	ftsEpList      []string
-	cbasEpList     []string
-	eventingEpList []string
-	gsiEpList      []string
-	backupEpList   []string
+	capiEpList     []routeEndpoint
+	mgmtEpList     []routeEndpoint
+	n1qlEpList     []routeEndpoint
+	ftsEpList      []routeEndpoint
+	cbasEpList     []routeEndpoint
+	eventingEpList []routeEndpoint
+	gsiEpList      []routeEndpoint
+	backupEpList   []routeEndpoint
 
 	bucket string
 

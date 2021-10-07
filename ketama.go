@@ -33,8 +33,13 @@ func ketamaHash(key []byte) uint32 {
 		(uint32(digest[0]) & 0xFF)) & 0xffffffff
 }
 
-func newKetamaContinuum(serverList []string) *ketamaContinuum {
+func newKetamaContinuum(endpointList []routeEndpoint) *ketamaContinuum {
 	continuum := ketamaContinuum{}
+
+	var serverList []string
+	for _, s := range endpointList {
+		serverList = append(serverList, s.Address)
+	}
 
 	// Libcouchbase presorts this. Might not strictly be required..
 	sort.Strings(serverList)
