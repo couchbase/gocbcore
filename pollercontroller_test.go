@@ -36,11 +36,11 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	config, err := suite.LoadRawTestDataset("bucket_config_with_external_addresses")
 	suite.Require().Nil(err)
 
-	pipeline := newPipeline("127.0.0.1:11210", 1, 10, nil)
+	pipeline := newPipeline(routeEndpoint{Address: "127.0.0.1:11210"}, 1, 10, nil)
 	muxer := new(mockDispatcher)
 	muxer.On("PipelineSnapshot").Return(&pipelineSnapshot{
 		state: &kvMuxState{
-			routeCfg: &routeConfig{
+			routeCfg: routeConfig{
 				revID:   1,
 				bktType: bktTypeCouchbase,
 			},

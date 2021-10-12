@@ -2,7 +2,8 @@ package gocbcore
 
 type seedConfigController struct {
 	*baseHTTPConfigController
-	seed string
+	seed    string
+	iterNum uint64
 }
 
 func newSeedConfigController(seed, bucketName string, props httpPollerProperties,
@@ -15,7 +16,12 @@ func newSeedConfigController(seed, bucketName string, props httpPollerProperties
 	return scc
 }
 
-func (scc *seedConfigController) GetEndpoint(_ uint64) string {
+func (scc *seedConfigController) GetEndpoint(iterNum uint64) string {
+	if scc.iterNum == iterNum {
+		return ""
+	}
+
+	scc.iterNum = iterNum
 	return scc.seed
 }
 

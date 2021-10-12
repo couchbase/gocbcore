@@ -1917,6 +1917,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 	mgr := &testAlternateAddressesRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1927,7 +1928,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
@@ -1944,6 +1945,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -1953,7 +1955,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
@@ -1970,6 +1972,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []routeEndpoint{{Address: "172.17.0.4:11210"}},
+		UseTLS:       false,
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -1980,7 +1983,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
@@ -1997,6 +2000,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "default",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2006,7 +2010,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
@@ -2023,6 +2027,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2032,7 +2037,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.AltAddresses["external"].Ports.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
@@ -2049,6 +2054,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 	cfgManager.AddConfigWatcher(mgr)
 	cfgManager.OnNewConfig(cfgBk)
@@ -2058,7 +2064,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
 	}
 
-	for i, server := range mgr.cfg.kvServerList {
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
 		cfgBkNode := cfgBk.NodesExt[i]
 		port := cfgBkNode.Services.Kv
 		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
@@ -2075,6 +2081,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "invalid",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
 	})
 
 	cfgManager.AddConfigWatcher(mgr)
@@ -2121,7 +2128,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	s.Wait(0)
 }
 
-func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSubHarness, test string) {
+func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSubHarness, test, collection, scope string) {
 	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -2134,13 +2141,43 @@ func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSub
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte(test),
 		Value:          []byte("{}"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
+		CollectionName: collection,
+		ScopeName:      scope,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("Got error for Set: %v", err)
 			}
+		})
+	}))
+	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) VerifyConnectedToBucketHTTP(agent *Agent, bucket string, s *TestSubHarness, test string) {
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
+	req := &HTTPRequest{
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s", bucket),
+		Method:   "GET",
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(2 * time.Second),
+	}
+
+	s.PushOp(agent.DoHTTPRequest(req, func(res *HTTPResponse, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Got error for HTTP request: %v", err)
+			}
+
+			res.Body.Close()
 		})
 	}))
 	s.Wait(0)
@@ -2154,7 +2191,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestAgentWaitUntilReadyBucket")
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentWaitUntilReadyBucket", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
@@ -2204,7 +2241,7 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 	agent := ag.GetAgent("default")
 	suite.Require().NotNil(agent)
 
-	suite.VerifyConnectedToBucket(agent, s, "TestAgentGroupWaitUntilReadyBucket")
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentGroupWaitUntilReadyBucket", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
@@ -2227,7 +2264,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPort")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPort", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
@@ -2257,7 +2294,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPortSSL")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyDefaultPortSSL", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBucket() {
@@ -2323,7 +2360,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyNonDefaultPort")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectHTTPOnlyNonDefaultPort", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
@@ -2418,7 +2455,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPort() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPort")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPort", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
@@ -2448,7 +2485,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPortSSL")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyDefaultPortSSL", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
@@ -2471,7 +2508,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyNonDefaultPort")
+	suite.VerifyConnectedToBucket(agent, s, "TestConnectMemdOnlyNonDefaultPort", suite.CollectionName, suite.ScopeName)
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBucket() {
@@ -2569,21 +2606,19 @@ func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestAgentNSServerScheme")
+	suite.VerifyConnectedToBucket(agent, s, "TestAgentNSServerScheme", suite.CollectionName, suite.ScopeName)
 
 	kvMuxState := agent.kvMux.getState()
-	kvEps := kvMuxState.RouteConfig().kvServerList
+	kvEps := kvMuxState.kvServerList
 	for _, ep := range kvEps {
 		epParts := strings.Split(ep.Address, "://")
 		hostport := strings.Split(epParts[1], ":")
-		if hostport[0] == parts[0] {
+		if parts[0] == hostport[0] {
 			suite.Assert().Equal("couchbase", epParts[0])
-			suite.Assert().False(ep.Encrypted)
-			suite.Assert().Equal(hostport[1], "11210")
+			suite.Assert().Equal("11210", hostport[1])
 		} else {
 			suite.Assert().Equal("couchbases", epParts[0])
-			suite.Assert().True(ep.Encrypted)
-			suite.Assert().NotEqual(hostport[1], "11210")
+			suite.Assert().Equal("11207", hostport[1])
 		}
 	}
 
@@ -2594,11 +2629,9 @@ func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 		hostport := strings.Split(epParts[1], ":")
 		if hostport[0] == parts[0] {
 			suite.Assert().Equal("http", epParts[0])
-			suite.Assert().False(ep.Encrypted)
 			suite.Assert().Equal(hostport[1], "8091")
 		} else {
 			suite.Assert().Equal("https", epParts[0])
-			suite.Assert().True(ep.Encrypted)
 			suite.Assert().NotEqual(hostport[1], "8091")
 		}
 	}

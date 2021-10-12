@@ -17,7 +17,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 		revID: -1,
 	}
 	// Mux state as if we haven't received a config yet.
-	muxState := newKVMuxState(cfg, nil, nil)
+	muxState := newKVMuxState(cfg, nil, nil, nil, nil, nil, nil)
 
 	mux := kvMux{}
 	mux.updateState(nil, muxState)
@@ -33,7 +33,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
-		routeCfg: &routeConfig{
+		routeCfg: routeConfig{
 			revID: 1,
 		},
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
@@ -55,7 +55,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported()
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
-		routeCfg: &routeConfig{
+		routeCfg: routeConfig{
 			revID: 1,
 		},
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{

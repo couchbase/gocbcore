@@ -92,17 +92,17 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
-func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, noSourceSSL bool) *routeConfig {
+func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
 	var (
-		kvServerList   []routeEndpoint
-		capiEpList     []routeEndpoint
-		mgmtEpList     []routeEndpoint
-		n1qlEpList     []routeEndpoint
-		ftsEpList      []routeEndpoint
-		cbasEpList     []routeEndpoint
-		eventingEpList []routeEndpoint
-		gsiEpList      []routeEndpoint
-		backupEpList   []routeEndpoint
+		kvServerList   = routeEndpoints{}
+		capiEpList     = routeEndpoints{}
+		mgmtEpList     = routeEndpoints{}
+		n1qlEpList     = routeEndpoints{}
+		ftsEpList      = routeEndpoints{}
+		cbasEpList     = routeEndpoints{}
+		eventingEpList = routeEndpoints{}
+		gsiEpList      = routeEndpoints{}
+		backupEpList   = routeEndpoints{}
 		bktType        bucketType
 	)
 
@@ -140,43 +140,72 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 			}
 
-			useSSLThisNode := useSsl
-			if noSourceSSL && (node.ThisNode || len(node.Hostname) == 0) {
-				useSSLThisNode = false
-			}
+			isSeedNode := node.ThisNode || len(node.Hostname) == 0
 			hostname = getHostname(hostname, cfg.SourceHostname)
 
-			endpoints := endpointsFromPorts(useSSLThisNode, ports, hostname)
+			endpoints := endpointsFromPorts(ports, hostname, isSeedNode)
 			if endpoints.kvServer.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer)
 				} else {
-					kvServerList = append(kvServerList, endpoints.kvServer)
+					kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, endpoints.kvServer)
 				}
 			}
 			if endpoints.capiEp.Address != "" {
-				capiEpList = append(capiEpList, endpoints.capiEp)
+				capiEpList.NonSSLEndpoints = append(capiEpList.NonSSLEndpoints, endpoints.capiEp)
 			}
 			if endpoints.mgmtEp.Address != "" {
-				mgmtEpList = append(mgmtEpList, endpoints.mgmtEp)
+				mgmtEpList.NonSSLEndpoints = append(mgmtEpList.NonSSLEndpoints, endpoints.mgmtEp)
 			}
 			if endpoints.n1qlEp.Address != "" {
-				n1qlEpList = append(n1qlEpList, endpoints.n1qlEp)
+				n1qlEpList.NonSSLEndpoints = append(n1qlEpList.NonSSLEndpoints, endpoints.n1qlEp)
 			}
 			if endpoints.ftsEp.Address != "" {
-				ftsEpList = append(ftsEpList, endpoints.ftsEp)
+				ftsEpList.NonSSLEndpoints = append(ftsEpList.NonSSLEndpoints, endpoints.ftsEp)
 			}
 			if endpoints.cbasEp.Address != "" {
-				cbasEpList = append(cbasEpList, endpoints.cbasEp)
+				cbasEpList.NonSSLEndpoints = append(cbasEpList.NonSSLEndpoints, endpoints.cbasEp)
 			}
 			if endpoints.eventingEp.Address != "" {
-				eventingEpList = append(eventingEpList, endpoints.eventingEp)
+				eventingEpList.NonSSLEndpoints = append(eventingEpList.NonSSLEndpoints, endpoints.eventingEp)
 			}
 			if endpoints.gsiEp.Address != "" {
-				gsiEpList = append(gsiEpList, endpoints.gsiEp)
+				gsiEpList.NonSSLEndpoints = append(gsiEpList.NonSSLEndpoints, endpoints.gsiEp)
 			}
 			if endpoints.backupEp.Address != "" {
-				backupEpList = append(backupEpList, endpoints.backupEp)
+				backupEpList.NonSSLEndpoints = append(backupEpList.NonSSLEndpoints, endpoints.backupEp)
+			}
+
+			if endpoints.kvServerSSL.Address != "" {
+				if bktType > bktTypeInvalid && i >= lenNodes {
+					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServerSSL)
+				} else {
+					kvServerList.SSLEndpoints = append(kvServerList.SSLEndpoints, endpoints.kvServerSSL)
+				}
+			}
+			if endpoints.capiEpSSL.Address != "" {
+				capiEpList.SSLEndpoints = append(capiEpList.SSLEndpoints, endpoints.capiEpSSL)
+			}
+			if endpoints.mgmtEpSSL.Address != "" {
+				mgmtEpList.SSLEndpoints = append(mgmtEpList.SSLEndpoints, endpoints.mgmtEpSSL)
+			}
+			if endpoints.n1qlEpSSL.Address != "" {
+				n1qlEpList.SSLEndpoints = append(n1qlEpList.SSLEndpoints, endpoints.n1qlEpSSL)
+			}
+			if endpoints.ftsEpSSL.Address != "" {
+				ftsEpList.SSLEndpoints = append(ftsEpList.SSLEndpoints, endpoints.ftsEpSSL)
+			}
+			if endpoints.cbasEpSSL.Address != "" {
+				cbasEpList.SSLEndpoints = append(cbasEpList.SSLEndpoints, endpoints.cbasEpSSL)
+			}
+			if endpoints.eventingEpSSL.Address != "" {
+				eventingEpList.SSLEndpoints = append(eventingEpList.SSLEndpoints, endpoints.eventingEpSSL)
+			}
+			if endpoints.gsiEpSSL.Address != "" {
+				gsiEpList.SSLEndpoints = append(gsiEpList.SSLEndpoints, endpoints.gsiEpSSL)
+			}
+			if endpoints.backupEpSSL.Address != "" {
+				backupEpList.SSLEndpoints = append(backupEpList.SSLEndpoints, endpoints.backupEpSSL)
 			}
 		}
 	} else {
@@ -187,7 +216,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 
 		if bktType == bktTypeCouchbase {
 			for _, s := range cfg.VBucketServerMap.ServerList {
-				kvServerList = append(kvServerList, routeEndpoint{
+				kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, routeEndpoint{
 					Address: s,
 				})
 			}
@@ -198,12 +227,12 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				// Slice off the UUID as Go's HTTP client cannot handle being passed URL-Encoded path values.
 				capiEp := strings.SplitN(node.CouchAPIBase, "%2B", 2)[0]
 
-				capiEpList = append(capiEpList, routeEndpoint{
+				capiEpList.NonSSLEndpoints = append(capiEpList.NonSSLEndpoints, routeEndpoint{
 					Address: capiEp,
 				})
 			}
 			if node.Hostname != "" {
-				mgmtEpList = append(mgmtEpList, routeEndpoint{
+				mgmtEpList.NonSSLEndpoints = append(mgmtEpList.NonSSLEndpoints, routeEndpoint{
 					Address: fmt.Sprintf("http://%s", node.Hostname),
 				})
 			}
@@ -217,7 +246,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 
 				curKvHost := fmt.Sprintf("%s:%d", host, node.Ports["direct"])
-				kvServerList = append(kvServerList, routeEndpoint{
+				kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, routeEndpoint{
 					Address: curKvHost,
 				})
 			}
@@ -250,22 +279,37 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		numReplicas := cfg.VBucketServerMap.NumReplicas
 		rc.vbMap = newVbucketMap(vbMap, numReplicas)
 	} else if bktType == bktTypeMemcached {
-		rc.ketamaMap = newKetamaContinuum(kvServerList)
+		var endpoints []routeEndpoint
+		if useSsl {
+			endpoints = kvServerList.SSLEndpoints
+		} else {
+			endpoints = kvServerList.NonSSLEndpoints
+		}
+		rc.ketamaMap = newKetamaContinuum(endpoints)
 	}
 
 	return rc
 }
 
 type serverEps struct {
-	kvServer   routeEndpoint
-	capiEp     routeEndpoint
-	mgmtEp     routeEndpoint
-	n1qlEp     routeEndpoint
-	ftsEp      routeEndpoint
-	cbasEp     routeEndpoint
-	eventingEp routeEndpoint
-	gsiEp      routeEndpoint
-	backupEp   routeEndpoint
+	kvServerSSL   routeEndpoint
+	capiEpSSL     routeEndpoint
+	mgmtEpSSL     routeEndpoint
+	n1qlEpSSL     routeEndpoint
+	ftsEpSSL      routeEndpoint
+	cbasEpSSL     routeEndpoint
+	eventingEpSSL routeEndpoint
+	gsiEpSSL      routeEndpoint
+	backupEpSSL   routeEndpoint
+	kvServer      routeEndpoint
+	capiEp        routeEndpoint
+	mgmtEp        routeEndpoint
+	n1qlEp        routeEndpoint
+	ftsEp         routeEndpoint
+	cbasEp        routeEndpoint
+	eventingEp    routeEndpoint
+	gsiEp         routeEndpoint
+	backupEp      routeEndpoint
 }
 
 func getHostname(hostname, sourceHostname string) string {
@@ -284,118 +328,115 @@ func getHostname(hostname, sourceHostname string) string {
 	return hostname
 }
 
-func endpointsFromPorts(useSsl bool, ports cfgNodeServices, hostname string) *serverEps {
+func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool) *serverEps {
 	lists := &serverEps{}
 
-	if useSsl {
-		if ports.KvSsl > 0 {
-			lists.kvServer = routeEndpoint{
-				Address:   fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
-				Encrypted: true,
-			}
+	if ports.KvSsl > 0 {
+		lists.kvServerSSL = routeEndpoint{
+			Address:    fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.CapiSsl > 0 {
-			lists.capiEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.CapiSsl > 0 {
+		lists.capiEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.MgmtSsl > 0 {
-			lists.mgmtEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.MgmtSsl > 0 {
+		lists.mgmtEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.N1qlSsl > 0 {
-			lists.n1qlEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.N1qlSsl > 0 {
+		lists.n1qlEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.FtsSsl > 0 {
-			lists.ftsEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.FtsSsl > 0 {
+		lists.ftsEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.CbasSsl > 0 {
-			lists.cbasEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.CbasSsl > 0 {
+		lists.cbasEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.EventingSsl > 0 {
-			lists.eventingEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.EventingSsl > 0 {
+		lists.eventingEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.GSISsl > 0 {
-			lists.gsiEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
-				Encrypted: true,
-			}
+	}
+	if ports.GSISsl > 0 {
+		lists.gsiEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.BackupSsl > 0 {
-			lists.backupEp = routeEndpoint{
-				Address:   fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
-				Encrypted: true,
-			}
+	}
+	if ports.BackupSsl > 0 {
+		lists.backupEpSSL = routeEndpoint{
+			Address:    fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
+			IsSeedNode: isSeedNode,
 		}
-	} else {
-		if ports.Kv > 0 {
-			lists.kvServer = routeEndpoint{
-				Address:   fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
-				Encrypted: false,
-			}
+	}
+	if ports.Kv > 0 {
+		lists.kvServer = routeEndpoint{
+			Address:    fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Capi > 0 {
-			lists.capiEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
-				Encrypted: false,
-			}
+	}
+	if ports.Capi > 0 {
+		lists.capiEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Mgmt > 0 {
-			lists.mgmtEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
-				Encrypted: false,
-			}
+	}
+	if ports.Mgmt > 0 {
+		lists.mgmtEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.N1ql > 0 {
-			lists.n1qlEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
-				Encrypted: false,
-			}
+	}
+	if ports.N1ql > 0 {
+		lists.n1qlEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Fts > 0 {
-			lists.ftsEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
-				Encrypted: false,
-			}
+	}
+	if ports.Fts > 0 {
+		lists.ftsEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Cbas > 0 {
-			lists.cbasEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
-				Encrypted: false,
-			}
+	}
+	if ports.Cbas > 0 {
+		lists.cbasEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Eventing > 0 {
-			lists.eventingEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
-				Encrypted: false,
-			}
+	}
+	if ports.Eventing > 0 {
+		lists.eventingEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.GSI > 0 {
-			lists.gsiEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
-				Encrypted: false,
-			}
+	}
+	if ports.GSI > 0 {
+		lists.gsiEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
+			IsSeedNode: isSeedNode,
 		}
-		if ports.Backup > 0 {
-			lists.backupEp = routeEndpoint{
-				Address:   fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
-				Encrypted: false,
-			}
+	}
+	if ports.Backup > 0 {
+		lists.backupEp = routeEndpoint{
+			Address:    fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
+			IsSeedNode: isSeedNode,
 		}
 	}
 	return lists

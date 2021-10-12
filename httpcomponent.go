@@ -3,11 +3,14 @@ package gocbcore
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -22,7 +25,6 @@ type httpComponentInterface interface {
 type httpComponent struct {
 	cli                  *http.Client
 	muxer                *httpMux
-	auth                 AuthProvider
 	userAgent            string
 	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
@@ -33,16 +35,23 @@ type httpComponentProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newHTTPComponent(props httpComponentProps, cli *http.Client, muxer *httpMux, auth AuthProvider,
-	tracer *tracerComponent) *httpComponent {
-	return &httpComponent{
-		cli:                  cli,
+type httpClientProps struct {
+	maxIdleConns        int
+	maxIdleConnsPerHost int
+	idleTimeout         time.Duration
+}
+
+func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent) *httpComponent {
+	hc := &httpComponent{
 		muxer:                muxer,
-		auth:                 auth,
 		userAgent:            props.UserAgent,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		tracer:               tracer,
 	}
+
+	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.idleTimeout)
+
+	return hc
 }
 
 func (hc *httpComponent) Close() {
@@ -220,7 +229,12 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	if req.Username != "" || req.Password != "" {
 		hreq.SetBasicAuth(req.Username, req.Password)
 	} else {
-		creds, err := hc.auth.Credentials(AuthCredsRequest{
+		auth := hc.muxer.Auth()
+		if auth == nil {
+			// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
+			return nil, errCliInternalError
+		}
+		creds, err := auth.Credentials(AuthCredsRequest{
 			Service:  req.Service,
 			Endpoint: endpoint,
 		})
@@ -400,6 +414,88 @@ func (hc *httpComponent) getGSIEp() (string, error) {
 
 func (hc *httpComponent) getBackupEp() (string, error) {
 	return randFromServiceEndpoints(hc.muxer.BackupEps())
+}
+
+func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {
+	return &dynTLSConfig{
+		BaseConfig: &tls.Config{
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				cert, err := auth.Certificate(AuthCertRequest{})
+				if err != nil {
+					return nil, err
+				}
+
+				if cert == nil {
+					return &tls.Certificate{}, nil
+				}
+
+				return cert, nil
+			},
+			MinVersion: tls.VersionTLS12,
+		},
+		Provider: caProvider,
+	}
+}
+
+func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration) *http.Client {
+	httpDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// We set ForceAttemptHTTP2, which will update the base-config to support HTTP2
+	// automatically, so that all configs from it will look for that.
+	httpTransport := &http.Transport{
+		ForceAttemptHTTP2: true,
+
+		Dial: func(network, addr string) (net.Conn, error) {
+			return httpDialer.Dial(network, addr)
+		},
+		DialTLS: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// We set up the transport to point at the BaseConfig from the dynamic TLS system.
+			httpTLSConfig := hc.muxer.Get().tlsConfig
+			if httpTLSConfig == nil {
+				return nil, errors.New("TLS is not configured on this Agent")
+			}
+
+			srvTLSConfig, err := httpTLSConfig.MakeForAddr(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			tlsConn := tls.Client(tcpConn, srvTLSConfig)
+			return tlsConn, nil
+		},
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		IdleConnTimeout:     idleTimeout,
+	}
+
+	httpCli := &http.Client{
+		Transport: httpTransport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// All that we're doing here is setting auth on any redirects.
+			// For that reason we can just pull it off the oldest (first) request.
+			if len(via) >= 10 {
+				// Just duplicate the default behaviour for maximum redirects.
+				return errors.New("stopped after 10 redirects")
+			}
+
+			oldest := via[0]
+			auth := oldest.Header.Get("Authorization")
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+
+			return nil
+		},
+	}
+	return httpCli
 }
 
 /* #nosec G404 */

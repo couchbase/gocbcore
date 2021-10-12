@@ -7,7 +7,6 @@ import (
 )
 
 type clusterAgent struct {
-	tlsConfig            *dynTLSConfig
 	defaultRetryStrategy RetryStrategy
 
 	httpMux     *httpMux
@@ -27,13 +26,6 @@ type clusterAgent struct {
 }
 
 func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
-	var tlsConfig *dynTLSConfig
-	if config.SecurityConfig.UseTLS {
-		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
-	}
-
-	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
-		config.HTTPConfig.IdleConnectionTimeout, tlsConfig)
 
 	tracer := config.TracerConfig.Tracer
 	if tracer == nil {
@@ -43,42 +35,57 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 	tracerCmpt := newTracerComponent(tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter)
 
 	c := &clusterAgent{
-		tlsConfig: tlsConfig,
-		tracer:    tracerCmpt,
+		tracer: tracerCmpt,
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 	}
+
+	var tlsConfig *dynTLSConfig
+	if config.SecurityConfig.UseTLS {
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
+	}
+
 	if c.defaultRetryStrategy == nil {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
-	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
 
-	var httpEpList []routeEndpoint
+	httpEpList := routeEndpoints{}
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if c.tlsConfig == nil {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address: fmt.Sprintf("http://%s", hostPort),
-			})
+		if config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode {
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("https://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.SSLEndpoints = append(httpEpList.SSLEndpoints, ep)
 		} else {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address:   fmt.Sprintf("https://%s", hostPort),
-				Encrypted: true,
-			})
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("http://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.NonSSLEndpoints = append(httpEpList.NonSSLEndpoints, ep)
 		}
 	}
 
-	c.httpMux = newHTTPMux(circuitBreakerConfig, c)
+	c.httpMux = newHTTPMux(
+		circuitBreakerConfig,
+		c,
+		&httpClientMux{tlsConfig: tlsConfig, auth: config.SecurityConfig.Auth},
+		config.SecurityConfig.NoTLSSeedNode,
+	)
 	c.http = newHTTPComponent(
 		httpComponentProps{
 			UserAgent:            userAgent,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
 		},
-		httpCli,
+		httpClientProps{
+			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
+			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
+			idleTimeout:         config.HTTPConfig.IdleConnectionTimeout,
+		},
 		c.httpMux,
-		auth,
 		c.tracer,
 	)
 	c.n1ql = newN1QLQueryComponent(c.http, c, c.tracer)

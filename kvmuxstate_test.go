@@ -5,7 +5,7 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities_InitialConfig(
 		revID: -1,
 	}
 
-	muxState := newKVMuxState(cfg, nil, nil)
+	muxState := newKVMuxState(cfg, nil, nil, nil, nil, nil, nil)
 
 	suite.Assert().Equal(map[BucketCapability]BucketCapabilityStatus{
 		BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
@@ -20,7 +20,7 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities() {
 		bucketCapabilities: []string{"durableWrite"},
 	}
 
-	muxState := newKVMuxState(cfg, nil, nil)
+	muxState := newKVMuxState(cfg, nil, nil, nil, nil, nil, nil)
 
 	suite.Assert().Equal(map[BucketCapability]BucketCapabilityStatus{
 		BucketCapabilityDurableWrites:        BucketCapabilityStatusSupported,

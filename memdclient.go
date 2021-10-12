@@ -663,23 +663,21 @@ type helloProps struct {
 }
 
 type bootstrapProps struct {
-	Bucket         string
-	UserAgent      string
-	AuthMechanisms []AuthMechanism
-	AuthHandler    authFuncHandler
-	ErrMapManager  *errMapComponent
-	HelloProps     helloProps
+	Bucket        string
+	UserAgent     string
+	ErrMapManager *errMapComponent
+	HelloProps    helloProps
 }
 
 type memdInitFunc func(*memdClient, time.Time) error
 
-func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time, cb memdInitFunc) error {
+func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time,
+	authMechanisms []AuthMechanism, authHandler authFuncHandler, cb memdInitFunc) error {
 	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
 
 	bucket := settings.Bucket
 	features := client.helloFeatures(settings.HelloProps)
 	clientInfoStr := clientInfoString(client.connID, settings.UserAgent)
-	authMechanisms := settings.AuthMechanisms
 	client.cancelBootstrapSig = cancelSig
 
 	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
@@ -695,7 +693,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
-	firstAuthMethod := settings.AuthHandler(client, deadline, authMechanisms[0])
+	firstAuthMethod := authHandler(client, deadline, authMechanisms[0])
 	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 	if firstAuthMethod != nil {
 		listMechsCh = make(chan SaslListMechsCompleted, 1)
@@ -798,7 +796,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				}
 
 				logDebugf("Memdclient `%s/%p` Retrying authentication with found supported mechanism: %s", client.Address(), client, mech)
-				nextAuthFunc := settings.AuthHandler(client, deadline, mech)
+				nextAuthFunc := authHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
 					logInfof("Memdclient `%p` Failed to authenticate, no available credentials", client)

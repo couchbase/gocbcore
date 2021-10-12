@@ -1,21 +1,26 @@
 package gocbcore
 
 import (
+	"bytes"
+	"fmt"
 	"net/url"
 	"sync/atomic"
 	"unsafe"
 )
 
 type httpMux struct {
-	muxPtr     unsafe.Pointer
-	breakerCfg CircuitBreakerConfig
-	cfgMgr     configManager
+	muxPtr        unsafe.Pointer
+	breakerCfg    CircuitBreakerConfig
+	cfgMgr        configManager
+	noSeedNodeTLS bool
 }
 
-func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr configManager) *httpMux {
+func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr configManager, muxState *httpClientMux, noSeedNodeTLS bool) *httpMux {
 	mux := &httpMux{
-		breakerCfg: breakerCfg,
-		cfgMgr:     cfgMgr,
+		breakerCfg:    breakerCfg,
+		cfgMgr:        cfgMgr,
+		muxPtr:        unsafe.Pointer(muxState),
+		noSeedNodeTLS: noSeedNodeTLS,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -53,9 +58,44 @@ func (mux *httpMux) Clear() *httpClientMux {
 func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 	oldHTTPMux := mux.Get()
 
-	newHTTPMux := newHTTPClientMux(cfg, mux.breakerCfg)
+	endpoints := mux.buildEndpoints(cfg, oldHTTPMux.tlsConfig != nil)
+
+	var buffer bytes.Buffer
+	addEps := func(title string, eps []routeEndpoint) {
+		fmt.Fprintf(&buffer, "%s Eps:\n", title)
+		for _, ep := range eps {
+			fmt.Fprintf(&buffer, "  - %s\n", ep.Address)
+		}
+	}
+
+	buffer.WriteString(fmt.Sprintln("HTTP muxer applying endpoints:"))
+	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))
+	addEps("Capi", endpoints.capiEpList)
+	addEps("Mgmt", endpoints.mgmtEpList)
+	addEps("N1ql", endpoints.n1qlEpList)
+	addEps("FTS", endpoints.ftsEpList)
+	addEps("CBAS", endpoints.cbasEpList)
+	addEps("Eventing", endpoints.eventingEpList)
+	addEps("GSI", endpoints.gsiEpList)
+	addEps("Backup", endpoints.backupEpList)
+
+	logDebugf(buffer.String())
+
+	newHTTPMux := newHTTPClientMux(cfg, endpoints, oldHTTPMux.tlsConfig, oldHTTPMux.auth, mux.breakerCfg)
 
 	mux.Update(oldHTTPMux, newHTTPMux)
+}
+
+func (mux *httpMux) UpdateTLS(tlsConfig *dynTLSConfig, auth AuthProvider) {
+	oldMux := mux.Get()
+
+	endpoints := mux.buildEndpoints(&oldMux.srcConfig, tlsConfig != nil)
+
+	newMux := newHTTPClientMux(&oldMux.srcConfig, endpoints, tlsConfig, auth, oldMux.breakerCfg)
+	if !atomic.CompareAndSwapPointer(&mux.muxPtr, unsafe.Pointer(oldMux), unsafe.Pointer(newMux)) {
+		// A new config must have come in so let's try again.
+		mux.UpdateTLS(tlsConfig, auth)
+	}
 }
 
 // CapiEps returns the capi endpoints with the path escaped bucket name appended.
@@ -181,4 +221,72 @@ func (mux *httpMux) Close() error {
 	mux.cfgMgr.RemoveConfigWatcher(mux)
 	mux.Clear()
 	return nil
+}
+
+func (mux *httpMux) Auth() AuthProvider {
+	clientMux := mux.Get()
+	if clientMux == nil {
+		return nil
+	}
+
+	return clientMux.auth
+}
+
+func (mux *httpMux) buildEndpoints(config *routeConfig, useTLS bool) httpClientMuxEndpoints {
+	var endpoints httpClientMuxEndpoints
+	if useTLS {
+		if mux.noSeedNodeTLS {
+			endpoints = httpClientMuxEndpoints{
+				capiEpList:     mux.buildSSLEpListWithNoSSLSeed(config.capiEpList),
+				mgmtEpList:     mux.buildSSLEpListWithNoSSLSeed(config.mgmtEpList),
+				n1qlEpList:     mux.buildSSLEpListWithNoSSLSeed(config.n1qlEpList),
+				ftsEpList:      mux.buildSSLEpListWithNoSSLSeed(config.ftsEpList),
+				cbasEpList:     mux.buildSSLEpListWithNoSSLSeed(config.cbasEpList),
+				eventingEpList: mux.buildSSLEpListWithNoSSLSeed(config.eventingEpList),
+				gsiEpList:      mux.buildSSLEpListWithNoSSLSeed(config.gsiEpList),
+				backupEpList:   mux.buildSSLEpListWithNoSSLSeed(config.backupEpList),
+			}
+		} else {
+			endpoints = httpClientMuxEndpoints{
+				capiEpList:     config.capiEpList.SSLEndpoints,
+				mgmtEpList:     config.mgmtEpList.SSLEndpoints,
+				n1qlEpList:     config.n1qlEpList.SSLEndpoints,
+				ftsEpList:      config.ftsEpList.SSLEndpoints,
+				cbasEpList:     config.cbasEpList.SSLEndpoints,
+				eventingEpList: config.eventingEpList.SSLEndpoints,
+				gsiEpList:      config.gsiEpList.SSLEndpoints,
+				backupEpList:   config.backupEpList.SSLEndpoints,
+			}
+		}
+	} else {
+		endpoints = httpClientMuxEndpoints{
+			capiEpList:     config.capiEpList.NonSSLEndpoints,
+			mgmtEpList:     config.mgmtEpList.NonSSLEndpoints,
+			n1qlEpList:     config.n1qlEpList.NonSSLEndpoints,
+			ftsEpList:      config.ftsEpList.NonSSLEndpoints,
+			cbasEpList:     config.cbasEpList.NonSSLEndpoints,
+			eventingEpList: config.eventingEpList.NonSSLEndpoints,
+			gsiEpList:      config.gsiEpList.NonSSLEndpoints,
+			backupEpList:   config.backupEpList.NonSSLEndpoints,
+		}
+	}
+
+	return endpoints
+}
+
+func (mux *httpMux) buildSSLEpListWithNoSSLSeed(list routeEndpoints) []routeEndpoint {
+	var newlist []routeEndpoint
+	for _, ep := range list.SSLEndpoints {
+		if !ep.IsSeedNode {
+			newlist = append(newlist, ep)
+		}
+	}
+	for _, ep := range list.NonSSLEndpoints {
+		if ep.IsSeedNode {
+			newlist = append(newlist, ep)
+			break
+		}
+	}
+
+	return newlist
 }

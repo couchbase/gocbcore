@@ -179,7 +179,7 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentNoRoot() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestBasicOpsTracingParentNoRoot")
+	suite.VerifyConnectedToBucket(agent, s, "TestBasicOpsTracingParentNoRoot", suite.CollectionName, suite.ScopeName)
 
 	// Set
 	s.PushOp(agent.Set(SetOptions{
@@ -218,7 +218,7 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentRoot() {
 	defer agent.Close()
 	s := suite.GetHarness()
 
-	suite.VerifyConnectedToBucket(agent, s, "TestBasicOpsTracingParentRoot")
+	suite.VerifyConnectedToBucket(agent, s, "TestBasicOpsTracingParentRoot", suite.CollectionName, suite.ScopeName)
 
 	// Set
 	s.PushOp(agent.Set(SetOptions{

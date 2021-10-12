@@ -13,7 +13,6 @@ type memdClientDialerComponent struct {
 	serverWaitTimeout time.Duration
 	clientID          string
 	breakerCfg        CircuitBreakerConfig
-	tlsConfig         *dynTLSConfig
 
 	dcpQueueSize         int
 	compressionMinSize   int
@@ -31,17 +30,19 @@ type memdClientDialerComponent struct {
 
 	bootstrapFailHandlersLock sync.Mutex
 	bootstrapFailHandlers     []memdBoostrapFailHandler
+
+	noTLSSeedNode bool
 }
 
 type memdClientDialerProps struct {
 	KVConnectTimeout     time.Duration
 	ServerWaitTimeout    time.Duration
 	ClientID             string
-	TLSConfig            *dynTLSConfig
 	DCPQueueSize         int
 	CompressionMinSize   int
 	CompressionMinRatio  float64
 	DisableDecompression bool
+	NoTLSSeedNode        bool
 }
 
 type memdBoostrapFailHandler interface {
@@ -54,7 +55,6 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
 		clientID:          props.ClientID,
-		tlsConfig:         props.TLSConfig,
 		breakerCfg:        breakerCfg,
 		zombieLogger:      zLogger,
 		tracer:            tracer,
@@ -67,6 +67,7 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		compressionMinSize:   props.CompressionMinSize,
 		compressionMinRatio:  props.CompressionMinRatio,
 		disableDecompression: props.DisableDecompression,
+		noTLSSeedNode:        props.NoTLSSeedNode,
 	}
 }
 
@@ -93,8 +94,8 @@ func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoo
 	mcc.bootstrapFailHandlersLock.Unlock()
 }
 
-func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address routeEndpoint,
-	postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, tlsConfig *dynTLSConfig,
+	auth authFuncHandler, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
 	mcc.serverFailuresLock.Lock()
 	failureTime := mcc.serverFailures[address.Address]
 	mcc.serverFailuresLock.Unlock()
@@ -111,7 +112,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 	}
 
 	deadline := time.Now().Add(mcc.kvConnectTimeout)
-	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler)
+	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler, tlsConfig)
 	if err != nil {
 		if !errors.Is(err, ErrRequestCanceled) {
 			mcc.serverFailuresLock.Lock()
@@ -122,7 +123,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		return nil, err
 	}
 
-	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, mcc.bootstrapInitFunc)
+	err = client.Bootstrap(cancelSig, mcc.bootstrapProps, deadline, authMechanisms, auth, mcc.bootstrapInitFunc)
 	if err != nil {
 		closeErr := client.Close()
 		if closeErr != nil {
@@ -149,12 +150,12 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 }
 
 func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, deadline time.Time,
-	postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+	postCompleteHandler postCompleteErrorHandler, dynTls *dynTLSConfig) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config
-	if mcc.tlsConfig != nil && address.Encrypted {
-		srvTLSConfig, err := mcc.tlsConfig.MakeForAddr(address.Address)
+	if dynTls != nil && !(mcc.noTLSSeedNode && address.IsSeedNode) {
+		srvTLSConfig, err := dynTls.MakeForAddr(address.Address)
 		if err != nil {
 			return nil, err
 		}

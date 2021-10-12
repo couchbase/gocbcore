@@ -1,7 +1,9 @@
 package gocbcore
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -11,7 +13,6 @@ import (
 type DCPAgent struct {
 	clientID   string
 	bucketName string
-	tlsConfig  *dynTLSConfig
 	initFn     memdInitFunc
 
 	pollerController configPollerController
@@ -25,6 +26,12 @@ type DCPAgent struct {
 	diagnostics *diagnosticsComponent
 	dcp         *dcpComponent
 	http        *httpComponent
+
+	// These connection settings are only ever changed when ForceReconnect or ReconfigureSecurity are called.
+	connectionSettingsLock sync.Mutex
+	auth                   AuthProvider
+	authMechanisms         []AuthMechanism
+	tlsConfig              *dynTLSConfig
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
@@ -32,7 +39,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new dcp agent: %+v", config)
 
-	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
 	disableDecompression := config.CompressionConfig.DisableDecompression
 	useCompression := config.CompressionConfig.Enabled
@@ -122,16 +128,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		dcpBackfillOrderStr = "sequential"
 	}
 
-	authMechanisms := authMechanismsFromConfig(config.SecurityConfig)
-
-	var tlsConfig *dynTLSConfig
-	if config.SecurityConfig.UseTLS {
-		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
-	}
-
-	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
-		config.HTTPConfig.IdleConnectionTimeout, tlsConfig)
-
 	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, nil)
 
 	// We wrap the authorization system to force DCP channel opening
@@ -188,48 +184,69 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	c := &DCPAgent{
 		clientID:   formatCbUID(randomCbUID()),
 		bucketName: config.BucketName,
-		tlsConfig:  tlsConfig,
 		initFn:     initFn,
 		tracer:     tracerCmpt,
 
 		errMap: newErrMapManager(config.BucketName),
+		auth:   config.SecurityConfig.Auth,
 	}
+
+	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
+
+	var tlsConfig *dynTLSConfig
+	if config.SecurityConfig.UseTLS {
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
+	}
+	c.tlsConfig = tlsConfig
 
 	circuitBreakerConfig := CircuitBreakerConfig{
 		Enabled: false,
 	}
 
-	authHandler := buildAuthHandler(auth)
-
-	var httpEpList []routeEndpoint
+	httpEpList := routeEndpoints{}
+	var srcHTTPAddrs []routeEndpoint
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if c.IsSecure() && !config.SecurityConfig.NoTLSSeedNode {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address:   fmt.Sprintf("https://%s", hostPort),
-				Encrypted: true,
-			})
+		if config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode {
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("https://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.SSLEndpoints = append(httpEpList.SSLEndpoints, ep)
+			srcHTTPAddrs = append(srcHTTPAddrs, ep)
 		} else {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address: fmt.Sprintf("http://%s", hostPort),
-			})
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("http://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.NonSSLEndpoints = append(httpEpList.NonSSLEndpoints, ep)
+			srcHTTPAddrs = append(srcHTTPAddrs, ep)
 		}
 	}
 
-	var kvServerList []routeEndpoint
+	kvServerList := routeEndpoints{}
+	var srcMemdAddrs []routeEndpoint
 	for _, seed := range config.SeedConfig.MemdAddrs {
-		kvServerList = append(kvServerList, routeEndpoint{
-			Address:   seed,
-			Encrypted: config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode,
-		})
+		if config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode {
+			kvServerList.SSLEndpoints = append(kvServerList.SSLEndpoints, routeEndpoint{
+				Address:    seed,
+				IsSeedNode: true,
+			})
+			srcMemdAddrs = kvServerList.SSLEndpoints
+		} else {
+			kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, routeEndpoint{
+				Address:    seed,
+				IsSeedNode: true,
+			})
+			srcMemdAddrs = kvServerList.NonSSLEndpoints
+		}
 	}
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:     config.IoConfig.NetworkType,
-			UseSSL:          config.SecurityConfig.UseTLS,
-			SrcMemdAddrs:    kvServerList,
-			SrcHTTPAddrs:    []routeEndpoint{},
-			noSSLSourceNode: config.SecurityConfig.NoTLSSeedNode,
+			NetworkType:  config.IoConfig.NetworkType,
+			SrcMemdAddrs: srcMemdAddrs,
+			SrcHTTPAddrs: srcHTTPAddrs,
+			UseTLS:       tlsConfig != nil,
 		},
 	)
 
@@ -238,11 +255,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			ServerWaitTimeout:    serverWaitTimeout,
 			KVConnectTimeout:     kvConnectTimeout,
 			ClientID:             c.clientID,
-			TLSConfig:            c.tlsConfig,
 			DCPQueueSize:         dcpQueueSize,
 			CompressionMinSize:   compressionMinSize,
 			CompressionMinRatio:  compressionMinRatio,
 			DisableDecompression: disableDecompression,
+			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
@@ -253,11 +270,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				XErrorFeatureEnabled:   useXErrorHello,
 				SyncReplicationEnabled: useSyncReplicationHello,
 			},
-			Bucket:         c.bucketName,
-			UserAgent:      userAgent,
-			AuthMechanisms: authMechanisms,
-			AuthHandler:    authHandler,
-			ErrMapManager:  c.errMap,
+			Bucket:        c.bucketName,
+			UserAgent:     userAgent,
+			ErrMapManager: c.errMap,
 		},
 		circuitBreakerConfig,
 		nil,
@@ -274,22 +289,34 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.errMap,
 		c.tracer,
 		c.dialer,
+		&kvMuxState{
+			tlsConfig:      tlsConfig,
+			authMechanisms: c.authMechanisms,
+			auth:           config.SecurityConfig.Auth,
+		},
 	)
-	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
+	c.httpMux = newHTTPMux(
+		circuitBreakerConfig,
+		c.cfgManager,
+		&httpClientMux{tlsConfig: tlsConfig, auth: config.SecurityConfig.Auth},
+		config.SecurityConfig.NoTLSSeedNode,
+	)
 	c.http = newHTTPComponent(
 		httpComponentProps{
-			UserAgent:            userAgent,
-			DefaultRetryStrategy: &failFastRetryStrategy{},
+			UserAgent: userAgent,
 		},
-		httpCli,
+		httpClientProps{
+			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
+			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
+			idleTimeout:         config.HTTPConfig.IdleConnectionTimeout,
+		},
 		c.httpMux,
-		auth,
 		c.tracer,
 	)
 
 	var poller configPollerController
 	if config.SecurityConfig.NoTLSSeedNode {
-		poller = newSeedConfigController(httpEpList[0].Address, c.bucketName,
+		poller = newSeedConfigController(srcHTTPAddrs[0].Address, c.bucketName,
 			httpPollerProperties{
 				httpComponent:        c.http,
 				confHTTPRetryDelay:   confHTTPRetryDelay,
@@ -345,7 +372,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 // IsSecure returns whether this client is connected via SSL.
 func (agent *DCPAgent) IsSecure() bool {
-	return agent.tlsConfig != nil
+	return agent.kvMux.IsSecure()
 }
 
 // Close shuts down the agent, disconnecting from all servers and failing
@@ -403,11 +430,64 @@ func (agent *DCPAgent) ConfigSnapshot() (*ConfigSnapshot, error) {
 	return agent.kvMux.ConfigSnapshot()
 }
 
-// ForceReconnect rebuilds all connections being used by the agent.
-// Any connected DCP streams will be terminated with EOF.
-// Uncommitted: This API may change in the future.
+// ForceReconnect gracefully rebuilds all connections being used by the agent.
+// Any persistent in flight requests (e.g. DCP) will be terminated with ErrForcedReconnect.
+//
+// Internal: This should never be used and is not supported.
 func (agent *DCPAgent) ForceReconnect() {
-	agent.kvMux.ForceReconnect()
+	agent.connectionSettingsLock.Lock()
+	auth := agent.auth
+	mechs := agent.authMechanisms
+	tlsConfig := agent.tlsConfig
+	agent.connectionSettingsLock.Unlock()
+	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, true)
+}
+
+// ReconfigureSecurity updates the security configuration being used by the agent. This includes the ability to
+// toggle TLS on and off.
+//
+// Calling this function will cause all underlying connections to be reconnected. The exception to this is the
+// connection to the seed node (usually localhost), which will only be reconnected if the AuthProvider is provided
+// on the options.
+//
+// This function can only be called when the seed poller is in use i.e. when the ns_server scheme is used.
+// Internal: This should never be used and is not supported.
+func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
+	_, ok := agent.pollerController.(*seedConfigController)
+	if !ok {
+		return errors.New("reconfigure tls is only supported when the agent is in ns server mode")
+	}
+
+	var authProvided bool
+	auth := opts.Auth
+	mechs := opts.AuthMechanisms
+	agent.connectionSettingsLock.Lock()
+	if auth == nil {
+		auth = agent.auth
+	} else {
+		authProvided = true
+	}
+	if len(mechs) == 0 {
+		mechs = agent.authMechanisms
+	}
+
+	var tlsConfig *dynTLSConfig
+	if opts.UseTLS {
+		if opts.TLSRootCAProvider == nil {
+			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
+		}
+		tlsConfig = createTLSConfig(auth, opts.TLSRootCAProvider)
+	}
+
+	agent.auth = auth
+	agent.authMechanisms = mechs
+	agent.tlsConfig = tlsConfig
+	agent.connectionSettingsLock.Unlock()
+
+	agent.cfgManager.UseTLS(tlsConfig != nil)
+	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided)
+	agent.httpMux.UpdateTLS(tlsConfig, auth)
+	return nil
 }
 
 func (agent *DCPAgent) onBootstrapFail(err error) {

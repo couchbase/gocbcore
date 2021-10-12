@@ -2,13 +2,12 @@ package gocbcore
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 type configManagementComponent struct {
-	useSSL      bool
+	useSSL      uint32
 	networkType string
-	// noSSLSourceNode instructs the config manager to not set TLS on the endpoint that used for the config fetch.
-	noSSLSourceNode bool
 
 	currentConfig *routeConfig
 
@@ -21,11 +20,10 @@ type configManagementComponent struct {
 }
 
 type configManagerProperties struct {
-	UseSSL          bool
-	NetworkType     string
-	SrcMemdAddrs    []routeEndpoint
-	SrcHTTPAddrs    []routeEndpoint
-	noSSLSourceNode bool
+	UseTLS       bool
+	NetworkType  string
+	SrcMemdAddrs []routeEndpoint
+	SrcHTTPAddrs []routeEndpoint
 }
 
 type routeConfigWatcher interface {
@@ -38,23 +36,36 @@ type configManager interface {
 }
 
 func newConfigManager(props configManagerProperties) *configManagementComponent {
+	useSSL := uint32(0)
+	if props.UseTLS {
+		useSSL = 1
+	}
 	return &configManagementComponent{
-		useSSL:      props.UseSSL,
+		useSSL:      useSSL,
 		networkType: props.NetworkType,
 		srcServers:  append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
-		noSSLSourceNode: props.noSSLSourceNode,
 	}
+}
+
+func (cm *configManagementComponent) UseTLS(use bool) {
+	useTLS := uint32(0)
+	if use {
+		useTLS = 1
+	}
+
+	atomic.StoreUint32(&cm.useSSL, useTLS)
 }
 
 func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
+	useSSL := atomic.LoadUint32(&cm.useSSL) == 1
 	if cm.seenConfig {
-		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false, cm.noSSLSourceNode)
+		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false)
 	} else {
-		routeCfg = cm.buildFirstRouteConfig(cfg)
+		routeCfg = cm.buildFirstRouteConfig(cfg, useSSL)
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
@@ -67,10 +78,11 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 		return
 	}
 
+	cm.currentConfig = routeCfg
+	cm.seenConfig = true
+
 	logDebugf("Sending out mux routing data (update)...")
 	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
-
-	cm.seenConfig = true
 
 	// We can end up deadlocking if we iterate whilst in the lock and a watcher decides to remove itself.
 	cm.watchersLock.Lock()
@@ -131,43 +143,40 @@ func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 	// than the old one then we ignore it, if it's newer then we apply the new config.
 	if cfg.bktType != oldCfg.bktType {
 		logDebugf("Configuration data changed bucket type, switching.")
-	} else if cfg.revEpoch < oldCfg.revEpoch {
-		logDebugf("Ignoring new configuration as it has an older revision epoch")
+	} else if !cfg.IsNewerThan(oldCfg) {
 		return false
-	} else if cfg.revEpoch == oldCfg.revEpoch {
-		if cfg.revID == 0 {
-			logDebugf("Unversioned configuration data, switching.")
-		} else if cfg.revID == oldCfg.revID {
-			logDebugf("Ignoring configuration with identical revision number")
-			return false
-		} else if cfg.revID < oldCfg.revID {
-			logDebugf("Ignoring new configuration as it has an older revision id")
-			return false
-		}
 	}
-
-	cm.currentConfig = cfg
 
 	return true
 }
 
-func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket) *routeConfig {
+func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, useSSL bool) *routeConfig {
 	if cm.networkType != "" && cm.networkType != "auto" {
-		return config.BuildRouteConfig(cm.useSSL, cm.networkType, true, cm.noSSLSourceNode)
+		return config.BuildRouteConfig(useSSL, cm.networkType, true)
 	}
 
-	defaultRouteConfig := config.BuildRouteConfig(cm.useSSL, "default", true, cm.noSSLSourceNode)
+	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true)
 
-	// Iterate over all of the source servers and check if any addresses match as default or external network types
+	var kvServerList []routeEndpoint
+	var mgmtEpList []routeEndpoint
+	if useSSL {
+		kvServerList = defaultRouteConfig.kvServerList.SSLEndpoints
+		mgmtEpList = defaultRouteConfig.mgmtEpList.SSLEndpoints
+	} else {
+		kvServerList = defaultRouteConfig.kvServerList.NonSSLEndpoints
+		mgmtEpList = defaultRouteConfig.mgmtEpList.NonSSLEndpoints
+	}
+
+	// Iterate over all the source servers and check if any addresses match as default or external network types
 	for _, srcServer := range cm.srcServers {
 		// First we check if the source server is from the defaults list
 		srcInDefaultConfig := false
-		for _, endpoint := range defaultRouteConfig.kvServerList {
+		for _, endpoint := range kvServerList {
 			if trimSchemePrefix(endpoint.Address) == srcServer.Address {
 				srcInDefaultConfig = true
 			}
 		}
-		for _, endpoint := range defaultRouteConfig.mgmtEpList {
+		for _, endpoint := range mgmtEpList {
 			if endpoint == srcServer {
 				srcInDefaultConfig = true
 			}
@@ -178,7 +187,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket) *r
 		}
 
 		// Next lets see if we have an external config, if so, default to that
-		externalRouteCfg := config.BuildRouteConfig(cm.useSSL, "external", true, cm.noSSLSourceNode)
+		externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true)
 		if externalRouteCfg.IsValid() {
 			cm.networkType = "external"
 			return externalRouteCfg

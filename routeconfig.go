@@ -5,9 +5,14 @@ import (
 	"fmt"
 )
 
+type routeEndpoints struct {
+	SSLEndpoints    []routeEndpoint
+	NonSSLEndpoints []routeEndpoint
+}
+
 type routeEndpoint struct {
-	Address   string
-	Encrypted bool
+	Address    string
+	IsSeedNode bool
 }
 
 type routeConfig struct {
@@ -16,15 +21,15 @@ type routeConfig struct {
 	uuid           string
 	name           string
 	bktType        bucketType
-	kvServerList   []routeEndpoint
-	capiEpList     []routeEndpoint
-	mgmtEpList     []routeEndpoint
-	n1qlEpList     []routeEndpoint
-	ftsEpList      []routeEndpoint
-	cbasEpList     []routeEndpoint
-	eventingEpList []routeEndpoint
-	gsiEpList      []routeEndpoint
-	backupEpList   []routeEndpoint
+	kvServerList   routeEndpoints
+	capiEpList     routeEndpoints
+	mgmtEpList     routeEndpoints
+	n1qlEpList     routeEndpoints
+	ftsEpList      routeEndpoints
+	cbasEpList     routeEndpoints
+	eventingEpList routeEndpoints
+	gsiEpList      routeEndpoints
+	backupEpList   routeEndpoints
 	vbMap          *vbucketMap
 	ketamaMap      *ketamaContinuum
 
@@ -45,13 +50,17 @@ func (config *routeConfig) DebugString() string {
 		fmt.Fprintf(&buffer, "Bucket: %s\n", config.name)
 	}
 
-	addEps := func(title string, eps []routeEndpoint) {
+	addEps := func(title string, eps routeEndpoints) {
 		fmt.Fprintf(&buffer, "%s Eps:\n", title)
-		for _, ep := range eps {
-			fmt.Fprintf(&buffer, "  - %s\n", ep.Address)
+		fmt.Fprintln(&buffer, "  TLS:")
+		for _, ep := range eps.NonSSLEndpoints {
+			fmt.Fprintf(&buffer, "  - %s seed: %t\n", ep.Address, ep.IsSeedNode)
+		}
+		fmt.Fprintln(&buffer, "  Non-TLS:")
+		for _, ep := range eps.SSLEndpoints {
+			fmt.Fprintf(&buffer, "  - %s seed: %t\n", ep.Address, ep.IsSeedNode)
 		}
 	}
-
 	addEps("Capi", config.capiEpList)
 	addEps("Mgmt", config.mgmtEpList)
 	addEps("N1ql", config.n1qlEpList)
@@ -79,7 +88,8 @@ func (config *routeConfig) DebugString() string {
 }
 
 func (config *routeConfig) IsValid() bool {
-	if len(config.kvServerList) == 0 || len(config.mgmtEpList) == 0 {
+	if (len(config.kvServerList.SSLEndpoints) == 0 || len(config.mgmtEpList.SSLEndpoints) == 0) &&
+		(len(config.kvServerList.NonSSLEndpoints) == 0 || len(config.mgmtEpList.NonSSLEndpoints) == 0) {
 		return false
 	}
 	switch config.bktType {
@@ -129,4 +139,23 @@ func (config *routeConfig) ContainsBucketCapability(needleCap string) bool {
 		}
 	}
 	return false
+}
+
+func (config *routeConfig) IsNewerThan(oldCfg *routeConfig) bool {
+	if config.revEpoch < oldCfg.revEpoch {
+		logDebugf("Ignoring new configuration as it has an older revision epoch")
+		return false
+	} else if config.revEpoch == oldCfg.revEpoch {
+		if config.revID == 0 {
+			logDebugf("Unversioned configuration data, switching.")
+		} else if config.revID == oldCfg.revID {
+			logDebugf("Ignoring configuration with identical revision number")
+			return false
+		} else if config.revID < oldCfg.revID {
+			logDebugf("Ignoring new configuration as it has an older revision id")
+			return false
+		}
+	}
+
+	return true
 }

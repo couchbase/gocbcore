@@ -333,7 +333,8 @@ func (config HTTPConfig) fromSpec(spec connstr.ResolvedConnSpec) (HTTPConfig, er
 
 // KVConfig specifies kv related configuration options.
 type KVConfig struct {
-	ConnectTimeout time.Duration
+	ConnectTimeout    time.Duration
+	ServerWaitBackoff time.Duration
 
 	PoolSize     int
 	MaxQueueSize int

@@ -230,11 +230,10 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
-	httpCpt := newHTTPComponent(
+	httpCpt := newHTTPComponentWithClient(
 		httpComponentProps{},
 		&http.Client{Transport: rt},
 		agent.httpMux,
-		agent.http.auth,
 		agent.tracer,
 	)
 	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})

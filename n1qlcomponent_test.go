@@ -335,11 +335,10 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
-	httpCpt := newHTTPComponent(
+	httpCpt := newHTTPComponentWithClient(
 		httpComponentProps{},
 		&http.Client{Transport: rt},
 		agent.httpMux,
-		agent.http.auth,
 		agent.tracer,
 	)
 	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
@@ -473,11 +472,10 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 	agent := suite.DefaultAgent()
 
 	rt := &roundTripper{delay: 1 * time.Second, tsport: agent.http.cli.Transport}
-	httpCpt := newHTTPComponent(
+	httpCpt := newHTTPComponentWithClient(
 		httpComponentProps{},
 		&http.Client{Transport: rt},
 		agent.httpMux,
-		agent.http.auth,
 		agent.tracer,
 	)
 	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})

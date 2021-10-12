@@ -21,20 +21,22 @@ type memdPipeline struct {
 	maxClients  int
 	clients     []*memdPipelineClient
 	clientsLock sync.Mutex
+	isSeedNode  bool
 }
 
-func newPipeline(address string, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
+func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
 	return &memdPipeline{
-		address:     address,
+		address:     endpoint.Address,
 		getClientFn: getClientFn,
 		maxClients:  maxClients,
 		maxItems:    maxItems,
 		queue:       newMemdOpQueue(),
+		isSeedNode:  endpoint.IsSeedNode,
 	}
 }
 
 func newDeadPipeline(maxItems int) *memdPipeline {
-	return newPipeline("", 0, maxItems, nil)
+	return newPipeline(routeEndpoint{}, 0, maxItems, nil)
 }
 
 // nolint: unused
@@ -54,6 +56,10 @@ func (pipeline *memdPipeline) debugString() string {
 	outStr += reindentLog("  ", pipeline.queue.debugString())
 
 	return outStr
+}
+
+func (pipeline *memdPipeline) IsSeedNode() bool {
+	return pipeline.isSeedNode
 }
 
 func (pipeline *memdPipeline) Clients() []*memdPipelineClient {

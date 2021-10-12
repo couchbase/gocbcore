@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -298,6 +299,21 @@ func (suite *StandardTestSuite) tryAtMost(times int, interval time.Duration, fn 
 	}
 }
 
+func (suite *StandardTestSuite) tryUntil(deadline time.Time, interval time.Duration, fn func() bool) bool {
+	for {
+		success := fn()
+		if success {
+			return true
+		}
+
+		sleepDeadline := time.Now().Add(interval)
+		if sleepDeadline.After(deadline) {
+			return false
+		}
+		time.Sleep(sleepDeadline.Sub(time.Now()))
+	}
+}
+
 func (suite *StandardTestSuite) mustMarshal(content interface{}) []byte {
 	b, err := json.Marshal(content)
 	suite.Require().Nil(err, err)
@@ -390,6 +406,52 @@ func (suite *StandardTestSuite) mutateIn(agent *Agent, s *TestSubHarness, ops []
 	}))
 	s.Wait(0)
 	return
+}
+
+func (suite *StandardTestSuite) CreateNSAgentConfig() (*AgentConfig, string) {
+	defaultAgent := suite.DefaultAgent()
+	snapshot, err := defaultAgent.kvMux.PipelineSnapshot()
+	suite.Require().Nil(err, err)
+
+	if snapshot.NumPipelines() == 1 {
+		suite.T().Skip("Skipping test due to cluster only containing one node")
+	}
+
+	srcCfg := suite.makeAgentConfig(globalTestConfig)
+	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
+	parts := strings.Split(seedAddr, ":")
+
+	if parts[1] != "8091" && parts[1] != "11210" {
+		// This should work with non default ports but it makes the test logic too complicated.
+		// This implicitly means that if TLS is enabled then this test won't run.
+		suite.T().Skip("Skipping test due to non default ports have been supplied")
+	}
+
+	connstr := fmt.Sprintf("ns_server://%s", seedAddr)
+	config := &AgentConfig{}
+	err = config.FromConnStr(connstr)
+	suite.Require().Nil(err, err)
+
+	config.IoConfig = IoConfig{
+		UseDurations:           true,
+		UseMutationTokens:      true,
+		UseCollections:         true,
+		UseOutOfOrderResponses: true,
+	}
+
+	config.SecurityConfig.Auth = globalTestConfig.Authenticator
+	config.SecurityConfig.UseTLS = true
+
+	config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+
+	config.BucketName = globalTestConfig.BucketName
+
+	return config, seedAddr
 }
 
 func (suite *StandardTestSuite) VerifyKVMetrics(operation string, num int, atLeastNum bool) {

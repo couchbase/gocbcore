@@ -709,6 +709,27 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 	}
 }
 
+func (suite *DCPTestSuite) TestNSAgentReconfigureSecurity() {
+	mutations, deletionKeys := suite.runMutations("", "")
+
+	suite.runDCPStream()
+
+	// Compaction can run and cause expirations to be hidden from us
+	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations))
+	suite.Assert().Equal(suite.NumDeletions, len(suite.so.counter.deletions))
+	suite.Assert().InDelta(suite.NumExpirations, len(suite.so.counter.expirations), float64(suite.NumExpirations))
+
+	for key, val := range mutations {
+		if suite.Assert().Contains(suite.so.counter.mutations, key) {
+			suite.Assert().Equal(string(suite.so.counter.mutations[key].Value), val)
+		}
+	}
+
+	for _, key := range deletionKeys {
+		suite.Assert().Contains(suite.so.counter.deletions, key)
+	}
+}
+
 func (suite *DCPTestSuite) makeScopes(n int, prefix, bucketName string, agent *Agent) []ManifestScope {
 	var scopes []string
 	var err error

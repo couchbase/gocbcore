@@ -28,7 +28,9 @@ func (hcc *httpConfigController) GetEndpoint(iterNum uint64) string {
 		break
 	}
 
-	hcc.seenNodes[pickedSrv] = iterNum
+	if pickedSrv != "" {
+		hcc.seenNodes[pickedSrv] = iterNum
+	}
 
 	return pickedSrv
 }

@@ -3,13 +3,11 @@
 package gocbcore
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -19,7 +17,6 @@ import (
 type Agent struct {
 	clientID             string
 	bucketName           string
-	tlsConfig            *dynTLSConfig
 	initFn               memdInitFunc
 	defaultRetryStrategy RetryStrategy
 
@@ -42,6 +39,12 @@ type Agent struct {
 	search       *searchQueryComponent
 	views        *viewQueryComponent
 	zombieLogger *zombieLoggerComponent
+
+	// These connection settings are only ever changed when ForceReconnect or ReconfigureSecurity are called.
+	connectionSettingsLock sync.Mutex
+	auth                   AuthProvider
+	authMechanisms         []AuthMechanism
+	tlsConfig              *dynTLSConfig
 }
 
 // HTTPClient returns a pre-configured HTTP Client for communicating with
@@ -76,19 +79,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new agent: %+v", config)
 
-	var tlsConfig *dynTLSConfig
-	if config.SecurityConfig.UseTLS {
-		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
-	}
-
-	httpIdleConnTimeout := 4500 * time.Millisecond
-	if config.HTTPConfig.IdleConnectionTimeout > 0 {
-		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
-	}
-
-	httpCli := createHTTPClient(config.HTTPConfig.MaxIdleConns, config.HTTPConfig.MaxIdleConnsPerHost,
-		httpIdleConnTimeout, tlsConfig)
-
 	tracer := config.TracerConfig.Tracer
 	if tracer == nil {
 		tracer = noopTracer{}
@@ -99,17 +89,30 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),
 		bucketName: config.BucketName,
-		tlsConfig:  tlsConfig,
 		initFn:     initFn,
 		tracer:     tracerCmpt,
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 
 		errMap: newErrMapManager(config.BucketName),
+		auth:   config.SecurityConfig.Auth,
+	}
+
+	var tlsConfig *dynTLSConfig
+	if config.SecurityConfig.UseTLS {
+		if config.SecurityConfig.TLSRootCAProvider == nil {
+			return nil, wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTls is true")
+		}
+		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
+	}
+	c.tlsConfig = tlsConfig
+
+	httpIdleConnTimeout := 4500 * time.Millisecond
+	if config.HTTPConfig.IdleConnectionTimeout > 0 {
+		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
-	auth := config.SecurityConfig.Auth
 	userAgent := config.UserAgent
 	useMutationTokens := config.IoConfig.UseMutationTokens
 	disableDecompression := config.CompressionConfig.DisableDecompression
@@ -130,6 +133,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	serverWaitTimeout := 5 * time.Second
+	if config.KVConfig.ServerWaitBackoff > 0 {
+		serverWaitTimeout = config.KVConfig.ServerWaitBackoff
+	}
 
 	kvPoolSize := 1
 	if config.KVConfig.PoolSize > 0 {
@@ -179,21 +185,25 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
-	authMechanisms := authMechanismsFromConfig(config.SecurityConfig)
+	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, tlsConfig != nil)
 
-	authHandler := buildAuthHandler(auth)
-
-	var httpEpList []routeEndpoint
+	httpEpList := routeEndpoints{}
+	var srcHTTPAddrs []routeEndpoint
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
-		if c.IsSecure() && !config.SecurityConfig.NoTLSSeedNode {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address:   fmt.Sprintf("https://%s", hostPort),
-				Encrypted: true,
-			})
+		if config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode {
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("https://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.SSLEndpoints = append(httpEpList.SSLEndpoints, ep)
+			srcHTTPAddrs = append(srcHTTPAddrs, ep)
 		} else {
-			httpEpList = append(httpEpList, routeEndpoint{
-				Address: fmt.Sprintf("http://%s", hostPort),
-			})
+			ep := routeEndpoint{
+				Address:    fmt.Sprintf("http://%s", hostPort),
+				IsSeedNode: true,
+			}
+			httpEpList.NonSSLEndpoints = append(httpEpList.NonSSLEndpoints, ep)
+			srcHTTPAddrs = append(srcHTTPAddrs, ep)
 		}
 	}
 
@@ -211,21 +221,30 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		go c.zombieLogger.Start()
 	}
 
-	var kvServerList []routeEndpoint
+	kvServerList := routeEndpoints{}
+	var srcMemdAddrs []routeEndpoint
 	for _, seed := range config.SeedConfig.MemdAddrs {
-		kvServerList = append(kvServerList, routeEndpoint{
-			Address:   seed,
-			Encrypted: config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode,
-		})
+		if config.SecurityConfig.UseTLS && !config.SecurityConfig.NoTLSSeedNode {
+			kvServerList.SSLEndpoints = append(kvServerList.SSLEndpoints, routeEndpoint{
+				Address:    seed,
+				IsSeedNode: true,
+			})
+			srcMemdAddrs = kvServerList.SSLEndpoints
+		} else {
+			kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, routeEndpoint{
+				Address:    seed,
+				IsSeedNode: true,
+			})
+			srcMemdAddrs = kvServerList.NonSSLEndpoints
+		}
 	}
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:     config.IoConfig.NetworkType,
-			UseSSL:          config.SecurityConfig.UseTLS,
-			SrcMemdAddrs:    kvServerList,
-			SrcHTTPAddrs:    httpEpList,
-			noSSLSourceNode: config.SecurityConfig.NoTLSSeedNode,
+			NetworkType:  config.IoConfig.NetworkType,
+			SrcMemdAddrs: srcMemdAddrs,
+			SrcHTTPAddrs: srcHTTPAddrs,
+			UseTLS:       tlsConfig != nil,
 		},
 	)
 
@@ -234,10 +253,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			ServerWaitTimeout:    serverWaitTimeout,
 			KVConnectTimeout:     kvConnectTimeout,
 			ClientID:             c.clientID,
-			TLSConfig:            c.tlsConfig,
 			CompressionMinSize:   compressionMinSize,
 			CompressionMinRatio:  compressionMinRatio,
 			DisableDecompression: disableDecompression,
+			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
@@ -251,11 +270,9 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				SyncReplicationEnabled: useSyncReplicationHello,
 				PITRFeatureEnabled:     usePITRHello,
 			},
-			Bucket:         c.bucketName,
-			UserAgent:      userAgent,
-			AuthMechanisms: authMechanisms,
-			AuthHandler:    authHandler,
-			ErrMapManager:  c.errMap,
+			Bucket:        c.bucketName,
+			UserAgent:     userAgent,
+			ErrMapManager: c.errMap,
 		},
 		circuitBreakerConfig,
 		c.zombieLogger,
@@ -267,11 +284,17 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			QueueSize:          maxQueueSize,
 			PoolSize:           kvPoolSize,
 			CollectionsEnabled: useCollections,
+			NoTLSSeedNode:      config.SecurityConfig.NoTLSSeedNode,
 		},
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
 		c.dialer,
+		&kvMuxState{
+			tlsConfig:      tlsConfig,
+			authMechanisms: c.authMechanisms,
+			auth:           config.SecurityConfig.Auth,
+		},
 	)
 	c.collections = newCollectionIDManager(
 		collectionIDProps{
@@ -282,15 +305,23 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		c.tracer,
 		c.cfgManager,
 	)
-	c.httpMux = newHTTPMux(circuitBreakerConfig, c.cfgManager)
+	c.httpMux = newHTTPMux(
+		circuitBreakerConfig,
+		c.cfgManager,
+		&httpClientMux{tlsConfig: tlsConfig, auth: config.SecurityConfig.Auth},
+		config.SecurityConfig.NoTLSSeedNode,
+	)
 	c.http = newHTTPComponent(
 		httpComponentProps{
 			UserAgent:            userAgent,
 			DefaultRetryStrategy: c.defaultRetryStrategy,
 		},
-		httpCli,
+		httpClientProps{
+			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
+			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
+			idleTimeout:         httpIdleConnTimeout,
+		},
 		c.httpMux,
-		auth,
 		c.tracer,
 	)
 
@@ -302,7 +333,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	} else {
 		var poller configPollerController
 		if config.SecurityConfig.NoTLSSeedNode {
-			poller = newSeedConfigController(httpEpList[0].Address, c.bucketName,
+			poller = newSeedConfigController(srcHTTPAddrs[0].Address, c.bucketName,
 				httpPollerProperties{
 					httpComponent:        c.http,
 					confHTTPRetryDelay:   confHTTPRetryDelay,
@@ -362,133 +393,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	}
 
 	return c, nil
-}
-
-func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {
-	return &dynTLSConfig{
-		BaseConfig: &tls.Config{
-			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				cert, err := auth.Certificate(AuthCertRequest{})
-				if err != nil {
-					return nil, err
-				}
-
-				if cert == nil {
-					return &tls.Certificate{}, nil
-				}
-
-				return cert, nil
-			},
-			MinVersion: tls.VersionTLS12,
-		},
-		Provider: caProvider,
-	}
-}
-
-func createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, tlsConfig *dynTLSConfig) *http.Client {
-	httpDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-
-	// We set up the transport to point at the BaseConfig from the dynamic TLS system.
-	// We also set ForceAttemptHTTP2, which will update the base-config to support HTTP2
-	// automatically, so that all configs from it will look for that.
-
-	var httpTLSConfig *dynTLSConfig
-	var httpBaseTLSConfig *tls.Config
-	if tlsConfig != nil {
-		httpTLSConfig = tlsConfig.Clone()
-		httpBaseTLSConfig = httpTLSConfig.BaseConfig
-	}
-
-	httpTransport := &http.Transport{
-		TLSClientConfig:   httpBaseTLSConfig,
-		ForceAttemptHTTP2: true,
-
-		Dial: func(network, addr string) (net.Conn, error) {
-			return httpDialer.Dial(network, addr)
-		},
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			tcpConn, err := httpDialer.Dial(network, addr)
-			if err != nil {
-				return nil, err
-			}
-
-			if httpTLSConfig == nil {
-				return nil, errors.New("TLS was not configured on this Agent")
-			}
-			srvTLSConfig, err := httpTLSConfig.MakeForAddr(addr)
-			if err != nil {
-				return nil, err
-			}
-
-			tlsConn := tls.Client(tcpConn, srvTLSConfig)
-			return tlsConn, nil
-		},
-		MaxIdleConns:        maxIdleConns,
-		MaxIdleConnsPerHost: maxIdleConnsPerHost,
-		IdleConnTimeout:     idleTimeout,
-	}
-
-	httpCli := &http.Client{
-		Transport: httpTransport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// All that we're doing here is setting auth on any redirects.
-			// For that reason we can just pull it off the oldest (first) request.
-			if len(via) >= 10 {
-				// Just duplicate the default behaviour for maximum redirects.
-				return errors.New("stopped after 10 redirects")
-			}
-
-			oldest := via[0]
-			auth := oldest.Header.Get("Authorization")
-			if auth != "" {
-				req.Header.Set("Authorization", auth)
-			}
-
-			return nil
-		},
-	}
-	return httpCli
-}
-
-func buildAuthHandler(auth AuthProvider) authFuncHandler {
-	return func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc {
-		creds, err := getKvAuthCreds(auth, client.Address())
-		if err != nil {
-			return nil
-		}
-
-		if creds.Username != "" || creds.Password != "" {
-			return func() (chan BytesAndError, chan bool, error) {
-				continueCh := make(chan bool, 1)
-				completedCh := make(chan BytesAndError, 1)
-				hasContinued := int32(0)
-				callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
-					// hasContinued should never be 1 here but let's guard against it.
-					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
-						continueCh <- true
-					}
-				}, func(err error) {
-					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
-						sendContinue := true
-						if err != nil {
-							sendContinue = false
-						}
-						continueCh <- sendContinue
-					}
-					completedCh <- BytesAndError{Err: err}
-				})
-				if callErr != nil {
-					return nil, nil, callErr
-				}
-				return completedCh, continueCh, nil
-			}
-		}
-
-		return nil
-	}
 }
 
 // Close shuts down the agent, disconnecting from all servers and failing
@@ -588,7 +492,7 @@ func (agent *Agent) HasCollectionsSupport() bool {
 
 // IsSecure returns whether this client is connected via SSL.
 func (agent *Agent) IsSecure() bool {
-	return agent.tlsConfig != nil
+	return agent.kvMux.IsSecure()
 }
 
 // UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
@@ -624,11 +528,80 @@ func (agent *Agent) BucketName() string {
 	return agent.bucketName
 }
 
-// ForceReconnect rebuilds all connections being used by the agent.
-// Any in flight requests will be terminated with EOF.
-// Uncommitted: This API may change in the future.
+// ForceReconnect gracefully rebuilds all connections being used by the agent.
+// Any persistent in flight requests (e.g. DCP) will be terminated with ErrForcedReconnect.
+//
+// Internal: This should never be used and is not supported.
 func (agent *Agent) ForceReconnect() {
-	agent.kvMux.ForceReconnect()
+	agent.connectionSettingsLock.Lock()
+	auth := agent.auth
+	mechs := agent.authMechanisms
+	tlsConfig := agent.tlsConfig
+	agent.connectionSettingsLock.Unlock()
+	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, true)
+}
+
+// ReconfigureSecurityOptions are the options available to the ReconfigureSecurity function.
+type ReconfigureSecurityOptions struct {
+	UseTLS bool
+	// If is nil will default to the TLSRootCAProvider already in use by the agent.
+	TLSRootCAProvider func() *x509.CertPool
+
+	Auth AuthProvider
+
+	// AuthMechanisms is the list of mechanisms that the SDK can use to attempt authentication.
+	// Note that if you add PLAIN to the list, this will cause credential leakage on the network
+	// since PLAIN sends the credentials in cleartext. It is disabled by default to prevent downgrade attacks. We
+	// recommend using a TLS connection if using PLAIN.
+	// If is nil will default to the AuthMechanisms already in use by the Agent.
+	AuthMechanisms []AuthMechanism
+}
+
+// ReconfigureSecurity updates the security configuration being used by the agent. This includes the ability to
+// toggle TLS on and off.
+//
+// Calling this function will cause all underlying connections to be reconnected. The exception to this is the
+// connection to the seed node (usually localhost), which will only be reconnected if the AuthProvider is provided
+// on the options.
+//
+// This function can only be called when the seed poller is in use i.e. when the ns_server scheme is used.
+// Internal: This should never be used and is not supported.
+func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
+	_, ok := agent.pollerController.(*seedConfigController)
+	if !ok {
+		return errors.New("reconfigure tls is only supported when the agent is in ns server mode")
+	}
+
+	var authProvided bool
+	auth := opts.Auth
+	mechs := opts.AuthMechanisms
+	agent.connectionSettingsLock.Lock()
+	if auth == nil {
+		auth = agent.auth
+	} else {
+		authProvided = true
+	}
+	if len(mechs) == 0 {
+		mechs = agent.authMechanisms
+	}
+
+	var tlsConfig *dynTLSConfig
+	if opts.UseTLS {
+		if opts.TLSRootCAProvider == nil {
+			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
+		}
+		tlsConfig = createTLSConfig(auth, opts.TLSRootCAProvider)
+	}
+
+	agent.auth = auth
+	agent.authMechanisms = mechs
+	agent.tlsConfig = tlsConfig
+	agent.connectionSettingsLock.Unlock()
+
+	agent.cfgManager.UseTLS(tlsConfig != nil)
+	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided)
+	agent.httpMux.UpdateTLS(tlsConfig, auth)
+	return nil
 }
 
 func (agent *Agent) onBootstrapFail(err error) {
@@ -638,10 +611,9 @@ func (agent *Agent) onBootstrapFail(err error) {
 	}
 }
 
-func authMechanismsFromConfig(config SecurityConfig) []AuthMechanism {
-	authMechanisms := config.AuthMechanisms
+func authMechanismsFromConfig(authMechanisms []AuthMechanism, useTLS bool) []AuthMechanism {
 	if len(authMechanisms) == 0 {
-		if config.UseTLS {
+		if useTLS {
 			authMechanisms = []AuthMechanism{PlainAuthMechanism}
 		} else {
 			// No user specified auth mechanisms so set our defaults.
@@ -650,7 +622,7 @@ func authMechanismsFromConfig(config SecurityConfig) []AuthMechanism {
 				ScramSha256AuthMechanism,
 				ScramSha1AuthMechanism}
 		}
-	} else if !config.UseTLS {
+	} else if !useTLS {
 		// The user has specified their own mechanisms and not using TLS so we check if they've set PLAIN.
 		for _, mech := range authMechanisms {
 			if mech == PlainAuthMechanism {

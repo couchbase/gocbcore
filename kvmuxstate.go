@@ -8,18 +8,24 @@ type kvMuxState struct {
 	pipelines []*memdPipeline
 	deadPipe  *memdPipeline
 
-	routeCfg *routeConfig
+	routeCfg routeConfig
 
 	bucketCapabilities   map[BucketCapability]BucketCapabilityStatus
 	collectionsSupported bool
+
+	kvServerList   []routeEndpoint
+	tlsConfig      *dynTLSConfig
+	authMechanisms []AuthMechanism
+	auth           AuthProvider
 }
 
-func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
+func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dynTLSConfig,
+	authMechanisms []AuthMechanism, auth AuthProvider, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
 	mux := &kvMuxState{
 		pipelines: pipelines,
 		deadPipe:  deadpipe,
 
-		routeCfg: cfg,
+		routeCfg: *cfg,
 
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
 			BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
@@ -28,6 +34,11 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 		},
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
+
+		kvServerList:   kvServerList,
+		tlsConfig:      tlsConfig,
+		authMechanisms: authMechanisms,
+		auth:           auth,
 	}
 
 	// We setup with a fake config, this means that durability support is still unknown.
@@ -55,7 +66,7 @@ func newKVMuxState(cfg *routeConfig, pipelines []*memdPipeline, deadpipe *memdPi
 }
 
 func (mux *kvMuxState) RouteConfig() *routeConfig {
-	return mux.routeCfg
+	return &mux.routeCfg
 }
 
 func (mux *kvMuxState) RevID() int64 {
@@ -80,7 +91,7 @@ func (mux *kvMuxState) BucketType() bucketType {
 
 func (mux *kvMuxState) KVEps() []string {
 	var epList []string
-	for _, s := range mux.routeCfg.kvServerList {
+	for _, s := range mux.kvServerList {
 		epList = append(epList, s.Address)
 	}
 	return epList

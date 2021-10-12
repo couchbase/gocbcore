@@ -1,8 +1,10 @@
 package gocbcore
 
 import (
+	"bytes"
 	"container/list"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -52,16 +54,19 @@ type kvMux struct {
 
 	shutdownSig   chan struct{}
 	clientCloseWg sync.WaitGroup
+
+	noTLSSeedNode bool
 }
 
 type kvMuxProps struct {
 	CollectionsEnabled bool
 	QueueSize          int
 	PoolSize           int
+	NoTLSSeedNode      bool
 }
 
 func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *errMapComponent, tracer *tracerComponent,
-	dialer *memdClientDialerComponent) *kvMux {
+	dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,
 		poolSize:           props.PoolSize,
@@ -71,6 +76,8 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		tracer:             tracer,
 		dialer:             dialer,
 		shutdownSig:        make(chan struct{}),
+		noTLSSeedNode:      props.NoTLSSeedNode,
+		muxPtr:             unsafe.Pointer(muxState),
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -116,7 +123,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	mux.muxStateWriteLock.Lock()
 	defer mux.muxStateWriteLock.Unlock()
 	oldMuxState := mux.getState()
-	newMuxState := mux.newKVMuxState(cfg)
+	newMuxState := mux.newKVMuxState(cfg, oldMuxState.tlsConfig, oldMuxState.authMechanisms, oldMuxState.auth)
 
 	// Attempt to atomically update the routing data
 	if !mux.updateState(oldMuxState, newMuxState) {
@@ -143,7 +150,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 		} else {
 			// Collections support has changed so we need to reconnect all connections in order to support the new
 			// state.
-			mux.reconnectPipelines(oldMuxState, newMuxState)
+			mux.reconnectPipelines(oldMuxState, newMuxState, true)
 		}
 
 		mux.requeueRequests(oldMuxState)
@@ -222,6 +229,10 @@ func (mux *kvMux) NumPipelines() int {
 // CollectionsEnaled returns whether or not the kv mux was created with collections enabled.
 func (mux *kvMux) CollectionsEnabled() bool {
 	return mux.collectionsEnabled
+}
+
+func (mux *kvMux) IsSecure() bool {
+	return mux.getState().tlsConfig != nil
 }
 
 // SupportsCollections returns whether or not collections are enabled AND supported by the server.
@@ -454,15 +465,16 @@ func (mux *kvMux) Close() error {
 	return muxErr
 }
 
-func (mux *kvMux) ForceReconnect() {
+func (mux *kvMux) ForceReconnect(tlsConfig *dynTLSConfig, authMechanisms []AuthMechanism, auth AuthProvider,
+	reconnectLocal bool) {
 	logDebugf("Forcing reconnect of all connections")
 	mux.muxStateWriteLock.Lock()
 	muxState := mux.getState()
-	newMuxState := mux.newKVMuxState(muxState.RouteConfig())
+	newMuxState := mux.newKVMuxState(muxState.RouteConfig(), tlsConfig, authMechanisms, auth)
 
 	atomic.SwapPointer(&mux.muxPtr, unsafe.Pointer(newMuxState))
 
-	mux.reconnectPipelines(muxState, newMuxState)
+	mux.reconnectPipelines(muxState, newMuxState, reconnectLocal)
 	mux.muxStateWriteLock.Unlock()
 }
 
@@ -598,46 +610,106 @@ func (mux *kvMux) drainPipelines(clientMux *kvMuxState, cb func(req *memdQReques
 	}
 }
 
-func (mux *kvMux) newKVMuxState(cfg *routeConfig) *kvMuxState {
+func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authMechanisms []AuthMechanism,
+	auth AuthProvider) *kvMuxState {
 	poolSize := 1
 	if !cfg.IsGCCCPConfig() {
 		poolSize = mux.poolSize
 	}
 
-	pipelines := make([]*memdPipeline, len(cfg.kvServerList))
-	for i, hostPort := range cfg.kvServerList {
+	useTls := tlsConfig != nil
+
+	var kvServerList []routeEndpoint
+	if mux.noTLSSeedNode {
+		// The order of the kv server list matters, so we need to maintain the same order and just replace the seed
+		// node.
+		kvServerList = make([]routeEndpoint, len(cfg.kvServerList.SSLEndpoints))
+		if useTls {
+			for i, ep := range cfg.kvServerList.NonSSLEndpoints {
+				if ep.IsSeedNode {
+					kvServerList[i] = ep
+					break
+				}
+			}
+			for i, ep := range cfg.kvServerList.SSLEndpoints {
+				if !ep.IsSeedNode {
+					kvServerList[i] = ep
+				}
+			}
+		} else {
+			kvServerList = cfg.kvServerList.NonSSLEndpoints
+		}
+	} else {
+		if useTls {
+			kvServerList = cfg.kvServerList.SSLEndpoints
+		} else {
+			kvServerList = cfg.kvServerList.NonSSLEndpoints
+		}
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintln("KV muxer applying endpoints:"))
+	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))
+	for _, ep := range kvServerList {
+		buffer.WriteString(fmt.Sprintf("  - %s\n", ep.Address))
+	}
+
+	logDebugf(buffer.String())
+
+	authHandler := mux.buildAuthHandler(auth)
+
+	pipelines := make([]*memdPipeline, len(kvServerList))
+	for i, hostPort := range kvServerList {
 		trimmedHostPort := routeEndpoint{
-			Address:   trimSchemePrefix(hostPort.Address),
-			Encrypted: hostPort.Encrypted,
+			Address:    trimSchemePrefix(hostPort.Address),
+			IsSeedNode: hostPort.IsSeedNode,
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, mux.handleOpRoutingResp)
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, authHandler, authMechanisms, mux.handleOpRoutingResp)
 		}
-		pipeline := newPipeline(trimmedHostPort.Address, poolSize, mux.queueSize, getCurClientFn)
+		pipeline := newPipeline(trimmedHostPort, poolSize, mux.queueSize, getCurClientFn)
 
 		pipelines[i] = pipeline
 	}
 
-	return newKVMuxState(cfg, pipelines, newDeadPipeline(mux.queueSize))
+	return newKVMuxState(cfg, kvServerList, tlsConfig, authMechanisms, auth, pipelines,
+		newDeadPipeline(mux.queueSize))
 }
 
-func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState) {
+func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState, reconnectSeed bool) {
+	oldPipelines := list.New()
+
 	for _, pipeline := range oldMuxState.pipelines {
+		oldPipelines.PushBack(pipeline)
+	}
+
+	for _, pipeline := range newMuxState.pipelines {
+		// If we aren't reconnecting the seed node then we need to take its clients and make sure we don't
+		// end up closing it down.
+		if pipeline.isSeedNode && !reconnectSeed {
+			oldPipeline := mux.stealPipeline(pipeline.Address(), oldPipelines)
+
+			if oldPipeline != nil {
+				pipeline.Takeover(oldPipeline)
+			}
+		}
+
+		pipeline.StartClients()
+	}
+
+	for e := oldPipelines.Front(); e != nil; e = e.Next() {
+		pipeline, ok := e.Value.(*memdPipeline)
+		if !ok {
+			logErrorf("Failed to cast old pipeline")
+			continue
+		}
+
 		clients := pipeline.GracefulClose()
 
 		for _, client := range clients {
 			mux.closeMemdClient(client, errForcedReconnect)
 		}
-	}
-
-	err := oldMuxState.deadPipe.Close()
-	if err != nil {
-		logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
-	}
-
-	for _, pipeline := range newMuxState.pipelines {
-		pipeline.StartClients()
 	}
 }
 
@@ -681,6 +753,23 @@ func (mux *kvMux) closeMemdClient(client *memdClient, err error) {
 	}(client)
 }
 
+func (mux *kvMux) stealPipeline(address string, oldPipelines *list.List) *memdPipeline {
+	for e := oldPipelines.Front(); e != nil; e = e.Next() {
+		pipeline, ok := e.Value.(*memdPipeline)
+		if !ok {
+			logErrorf("Failed to cast old pipeline")
+			continue
+		}
+
+		if pipeline.Address() == address {
+			oldPipelines.Remove(e)
+			return pipeline
+		}
+	}
+
+	return nil
+}
+
 func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 	oldPipelines := list.New()
 
@@ -691,27 +780,9 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 		}
 	}
 
-	// Build a function to find an existing pipeline
-	stealPipeline := func(address string) *memdPipeline {
-		for e := oldPipelines.Front(); e != nil; e = e.Next() {
-			pipeline, ok := e.Value.(*memdPipeline)
-			if !ok {
-				logErrorf("Failed to cast old pipeline")
-				continue
-			}
-
-			if pipeline.Address() == address {
-				oldPipelines.Remove(e)
-				return pipeline
-			}
-		}
-
-		return nil
-	}
-
 	// Initialize new pipelines (possibly with a takeover)
 	for _, pipeline := range newMux.pipelines {
-		oldPipeline := stealPipeline(pipeline.Address())
+		oldPipeline := mux.stealPipeline(pipeline.Address(), oldPipelines)
 		if oldPipeline != nil {
 			pipeline.Takeover(oldPipeline)
 		}
@@ -738,5 +809,43 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 		if err != nil {
 			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 		}
+	}
+}
+
+func (mux *kvMux) buildAuthHandler(auth AuthProvider) authFuncHandler {
+	return func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc {
+		creds, err := getKvAuthCreds(auth, client.Address())
+		if err != nil {
+			return nil
+		}
+
+		if creds.Username != "" || creds.Password != "" {
+			return func() (chan BytesAndError, chan bool, error) {
+				continueCh := make(chan bool, 1)
+				completedCh := make(chan BytesAndError, 1)
+				hasContinued := int32(0)
+				callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
+					// hasContinued should never be 1 here but let's guard against it.
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						continueCh <- true
+					}
+				}, func(err error) {
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						sendContinue := true
+						if err != nil {
+							sendContinue = false
+						}
+						continueCh <- sendContinue
+					}
+					completedCh <- BytesAndError{Err: err}
+				})
+				if callErr != nil {
+					return nil, nil, callErr
+				}
+				return completedCh, continueCh, nil
+			}
+		}
+
+		return nil
 	}
 }
