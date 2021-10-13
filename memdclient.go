@@ -637,7 +637,7 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		return err
 	}
 
-	errMapCh, err := client.ExecGetErrorMap(1, deadline)
+	errMapCh, err := client.ExecGetErrorMap(2, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
 		logDebugf("Memdclient `%s/%p`Failed to execute Get error map (%v)", client.Address(), client, err)

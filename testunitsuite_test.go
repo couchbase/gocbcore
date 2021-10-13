@@ -22,3 +22,7 @@ func TestUnitSuite(t *testing.T) {
 func (suite *UnitTestSuite) LoadRawTestDataset(dataset string) ([]byte, error) {
 	return ioutil.ReadFile("testdata/" + dataset + ".json")
 }
+
+func loadRawTestDataset(dataset string) ([]byte, error) {
+	return ioutil.ReadFile("testdata/" + dataset + ".json")
+}

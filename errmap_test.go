@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"github.com/couchbase/gocbcore/v10/memd"
 	"testing"
 	"time"
 
@@ -149,4 +150,48 @@ func (suite *StandardTestSuite) TestKvErrorMap7ff1() {
 
 func (suite *StandardTestSuite) TestKvErrorMap7ff2() {
 	suite.testKvErrorMapGeneric(0x7ff2)
+}
+
+func (suite *UnitTestSuite) TestStoreKVErrorMapV1() {
+	data, err := loadRawTestDataset("err_map70_v1")
+	suite.Require().Nil(err, err)
+
+	errMgr := newErrMapManager("test")
+	errMgr.StoreErrorMap(data)
+
+	errMap := errMgr.kvErrorMap.Get()
+	suite.Require().NotNil(errMap)
+	suite.Assert().Equal(1, errMap.Version)
+	suite.Assert().Equal(2, errMap.Revision)
+	suite.Assert().Len(errMap.Errors, 58)
+	entry := errMgr.getKvErrMapData(memd.StatusLocked)
+	suite.Require().NotNil(entry)
+	suite.Assert().Equal("LOCKED", entry.Name)
+	suite.Assert().Equal("Requested resource is locked", entry.Description)
+	suite.Assert().Len(entry.Attributes, 3)
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("item-locked"))
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("item-only"))
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("retry-now"))
+}
+
+func (suite *UnitTestSuite) TestStoreKVErrorMapV2() {
+	data, err := loadRawTestDataset("err_map71_v2")
+	suite.Require().Nil(err, err)
+
+	errMgr := newErrMapManager("test")
+	errMgr.StoreErrorMap(data)
+
+	errMap := errMgr.kvErrorMap.Get()
+	suite.Require().NotNil(errMap)
+	suite.Assert().Equal(2, errMap.Version)
+	suite.Assert().Equal(1, errMap.Revision)
+	suite.Assert().Len(errMap.Errors, 65)
+	entry := errMgr.getKvErrMapData(memd.StatusLocked)
+	suite.Require().NotNil(entry)
+	suite.Assert().Equal("LOCKED", entry.Name)
+	suite.Assert().Equal("Requested resource is locked", entry.Description)
+	suite.Assert().Len(entry.Attributes, 3)
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("item-locked"))
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("item-only"))
+	suite.Assert().Contains(entry.Attributes, kvErrorMapAttribute("retry-now"))
 }
