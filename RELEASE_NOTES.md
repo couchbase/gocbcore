@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 10.0.4 (19 October 2021)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1178](GOCBC-1178):
+  Don't remove poller controller watcher from cluster config updates.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1177](GOCBC-1177):
+  Fixed issue where a connection being closed by the server during bootstrap could cause the SDK to loop reconnect without backoff.
+
+
 ## Version 10.0.3 (21 September 2021)
 
 ###New Features and Behavioral Changes
