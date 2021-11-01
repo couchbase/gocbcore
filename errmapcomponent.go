@@ -198,6 +198,16 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errXattrInvalidOrder
 	case ErrMemdNotMyVBucket:
 		return errNotMyVBucket
+	case ErrMemdRateLimitedNetworkIngress:
+		return errRateLimitingFailure
+	case ErrMemdRateLimitedNetworkEgress:
+		return errRateLimitingFailure
+	case ErrMemdRateLimitedMaxConnections:
+		return errQuotaLimitingFailure
+	case ErrMemdRateLimitedMaxCommands:
+		return errRateLimitingFailure
+	case ErrMemdRateLimitedScopeSizeLimitExceeded:
+		return errQuotaLimitingFailure
 	}
 
 	return err

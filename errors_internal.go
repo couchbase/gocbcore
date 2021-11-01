@@ -692,4 +692,7 @@ var (
 	errOverload               = ncError{ErrOverload}
 	errStreamIDNotEnabled     = ncError{ErrStreamIDNotEnabled}
 	errForcedReconnect        = ncError{ErrForcedReconnect}
+
+	errRateLimitingFailure  = ncError{ErrRateLimitingFailure}
+	errQuotaLimitingFailure = ncError{ErrQuotaLimitingFailure}
 )

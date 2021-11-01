@@ -200,4 +200,22 @@ var (
 	// ErrMemdSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
 	// a soft-deleted document.
 	ErrMemdSubDocMultiPathFailureDeleted = makeKvStatusError(memd.StatusSubDocMultiPathFailureDeleted)
+
+	// ErrMemdRateLimitedNetworkIngress occurs when the server rate limits due to network ingress.
+	ErrMemdRateLimitedNetworkIngress = makeKvStatusError(memd.StatusRateLimitedNetworkIngress)
+
+	// ErrMemdRateLimitedNetworkEgress occurs when the server rate limits due to network egress.
+	ErrMemdRateLimitedNetworkEgress = makeKvStatusError(memd.StatusRateLimitedNetworkEgress)
+
+	// ErrMemdRateLimitedMaxConnections occurs when the server rate limits due to the application reaching the maximum
+	// number of allowed connections.
+	ErrMemdRateLimitedMaxConnections = makeKvStatusError(memd.StatusRateLimitedMaxConnections)
+
+	// ErrMemdRateLimitedMaxCommands occurs when the server rate limits due to the application reaching the maximum
+	// number of allowed operations.
+	ErrMemdRateLimitedMaxCommands = makeKvStatusError(memd.StatusRateLimitedMaxCommands)
+
+	// ErrMemdRateLimitedScopeSizeLimitExceeded occurs when the server rate limits due to the application reaching the maximum
+	// data size allowed for the scope.
+	ErrMemdRateLimitedScopeSizeLimitExceeded = makeKvStatusError(memd.StatusRateLimitedScopeSizeLimitExceeded)
 )

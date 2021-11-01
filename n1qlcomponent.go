@@ -156,11 +156,22 @@ func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
 		if errCodeGroup == 4 {
 			err = errPlanningFailure
 		}
+		if errCodeGroup == 5 {
+			err = errInternalServerFailure
+		}
 		if errCodeGroup == 12 || errCodeGroup == 14 && errCode != 12004 && errCode != 12016 {
 			err = errIndexFailure
 		}
 		if errCode == 4040 || errCode == 4050 || errCode == 4060 || errCode == 4070 || errCode == 4080 || errCode == 4090 {
 			err = errPreparedStatementFailure
+		}
+
+		if errCode == 1191 || errCode == 1192 || errCode == 1193 || errCode == 1194 {
+			err = errRateLimitingFailure
+		}
+		if errCode == 5000 && strings.Contains(strings.ToLower(firstErr.Message),
+			"limit for number of indexes that can be created per scope has been reached") {
+			err = errQuotaLimitingFailure
 		}
 
 		if errCode == 3000 {
@@ -175,10 +186,6 @@ func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
 		}
 		if errCode == 13014 {
 			err = errAuthenticationFailure
-		}
-
-		if errCodeGroup == 5 {
-			err = errInternalServerFailure
 		}
 		if errCodeGroup == 10 {
 			err = errAuthenticationFailure

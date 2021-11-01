@@ -62,6 +62,24 @@ const (
 	// yet ready to accept operations on behalf of a particular bucket.
 	StatusNotInitialized = StatusCode(0x25)
 
+	// StatusRateLimitedNetworkIngress occurs when the server rate limits due to network ingress.
+	StatusRateLimitedNetworkIngress = StatusCode(0x30)
+
+	// StatusRateLimitedNetworkEgress occurs when the server rate limits due to network egress.
+	StatusRateLimitedNetworkEgress = StatusCode(0x31)
+
+	// StatusRateLimitedMaxConnections occurs when the server rate limits due to the application reaching the maximum
+	// number of allowed connections.
+	StatusRateLimitedMaxConnections = StatusCode(0x32)
+
+	// StatusRateLimitedMaxCommands occurs when the server rate limits due to the application reaching the maximum
+	// number of allowed operations.
+	StatusRateLimitedMaxCommands = StatusCode(0x33)
+
+	// StatusRateLimitedScopeSizeLimitExceeded occurs when the server rate limits due to the application reaching the maximum
+	// data size allowed for the scope.
+	StatusRateLimitedScopeSizeLimitExceeded = StatusCode(0x34)
+
 	// StatusUnknownCommand occurs when an unknown operation is sent to a server.
 	StatusUnknownCommand = StatusCode(0x81)
 

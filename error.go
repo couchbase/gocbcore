@@ -7,7 +7,7 @@ import (
 
 // dwError is a special error used for the purposes of rewrapping
 // another error to provide more detailed information inherently
-// with the error type itself.  Mainly used for timeout.
+// with the error type itself.  Mainly used for timeout and rate limiting.
 type dwError struct {
 	InnerError error
 	Message    string
@@ -113,6 +113,9 @@ var (
 	ErrIndexNotFound       = errors.New("index not found")
 
 	ErrIndexExists = errors.New("index exists")
+
+	ErrRateLimitingFailure  = errors.New("rate limiting failure")
+	ErrQuotaLimitingFailure = errors.New("quota limiting failure")
 )
 
 // Key Value Error Definitions RFC#58@15
