@@ -209,6 +209,29 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		var err error
+		switch req.Service {
+		case MgmtService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
+		case CapiService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
+		case N1qlService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
+		case FtsService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
+		case CbasService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
+		case EventingService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
+		case GSIService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
+		case BackupService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Generate a request URI
@@ -414,6 +437,16 @@ func (hc *httpComponent) getGSIEp() (string, error) {
 
 func (hc *httpComponent) getBackupEp() (string, error) {
 	return randFromServiceEndpoints(hc.muxer.BackupEps())
+}
+
+func (hc *httpComponent) validateEndpoint(endpoint string, endpoints []string) error {
+	for _, ep := range endpoints {
+		if ep == endpoint {
+			return nil
+		}
+	}
+
+	return errInvalidServer
 }
 
 func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {

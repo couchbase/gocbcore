@@ -14,6 +14,7 @@ import (
 // N1QLRowReader providers access to the rows of a n1ql query
 type N1QLRowReader struct {
 	streamer *queryStreamer
+	endpoint string
 }
 
 // NextRow reads the next rows bytes from the stream
@@ -78,6 +79,12 @@ func (q N1QLRowReader) PreparedName() (string, error) {
 	return name, nil
 }
 
+// Endpoint returns the address that this query was run against.
+// Internal: This should never be used and is not supported.
+func (q *N1QLRowReader) Endpoint() string {
+	return q.endpoint
+}
+
 // N1QLQueryOptions represents the various options available for a n1ql query.
 type N1QLQueryOptions struct {
 	Payload       []byte
@@ -86,6 +93,8 @@ type N1QLQueryOptions struct {
 
 	// Internal: This should never be used and is not supported.
 	User string
+	// Internal: This should never be used and is not supported.
+	Endpoint string
 
 	TraceContext RequestSpanContext
 }
@@ -270,6 +279,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 		Context:          ctx,
 		CancelFunc:       cancel,
 		User:             opts.User,
+		Endpoint:         opts.Endpoint,
 	}
 
 	go func() {
@@ -339,6 +349,7 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 				RootTraceContext: tracer.RootContext(),
 				Context:          ctx,
 				CancelFunc:       cancel,
+				Endpoint:         opts.Endpoint,
 			}
 
 			results, err := nqc.execute(ireq, payloadMap, statement)
@@ -435,6 +446,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 				Context:          ctx,
 				CancelFunc:       cancel,
 				User:             opts.User,
+				Endpoint:         opts.Endpoint,
 			}
 
 			results, err := nqc.execute(ireq, payloadMap, statement)
@@ -607,6 +619,7 @@ ExecuteLoop:
 
 		return &N1QLRowReader{
 			streamer: streamer,
+			endpoint: resp.Endpoint,
 		}, nil
 	}
 }

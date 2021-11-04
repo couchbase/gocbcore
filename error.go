@@ -41,8 +41,8 @@ var (
 	// ErrInvalidCredentials is returned when an invalid set of credentials is provided for a service.
 	ErrInvalidCredentials = errors.New("an invalid set of credentials was provided")
 
-	// ErrInvalidServer occurs when an explicit, but invalid server index is specified.
-	ErrInvalidServer = errors.New("specific server index is invalid")
+	// ErrInvalidServer occurs when an explicit, but invalid server is specified.
+	ErrInvalidServer = errors.New("specific server is invalid")
 
 	// ErrInvalidVBucket occurs when an explicit, but invalid vbucket index is specified.
 	ErrInvalidVBucket = errors.New("specific vbucket index is invalid")
