@@ -1,11 +1,9 @@
 package gocbcore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -35,7 +33,7 @@ func (q N1QLRowReader) Err() error {
 		return metaErr
 	}
 
-	descs, err := parseN1QLError(bytes.NewReader(meta))
+	descs, err := parseN1QLError(meta)
 	if err != nil {
 		return &N1QLError{
 			InnerError: err,
@@ -68,13 +66,13 @@ func (q *N1QLRowReader) Close() error {
 func (q N1QLRowReader) PreparedName() (string, error) {
 	val := q.streamer.EarlyMetadata("prepared")
 	if val == nil {
-		return "", wrapN1QLError(nil, "", errors.New("prepared name not found in metadata"))
+		return "", wrapN1QLError(nil, "", errors.New("prepared name not found in metadata"), nil)
 	}
 
 	var name string
 	err := json.Unmarshal(val, &name)
 	if err != nil {
-		return "", wrapN1QLError(nil, "", errors.New("failed to parse prepared name"))
+		return "", wrapN1QLError(nil, "", errors.New("failed to parse prepared name"), nil)
 	}
 
 	return name, nil
@@ -92,7 +90,7 @@ type N1QLQueryOptions struct {
 	TraceContext RequestSpanContext
 }
 
-func wrapN1QLError(req *httpRequest, statement string, err error) *N1QLError {
+func wrapN1QLError(req *httpRequest, statement string, err error, respBody []byte) *N1QLError {
 	if err == nil {
 		err = errors.New("query error")
 	}
@@ -108,6 +106,7 @@ func wrapN1QLError(req *httpRequest, statement string, err error) *N1QLError {
 		ierr.RetryReasons = req.RetryReasons()
 	}
 
+	ierr.ResponseBody = string(respBody)
 	ierr.Statement = statement
 
 	return ierr
@@ -123,28 +122,29 @@ type jsonN1QLErrorResponse struct {
 }
 
 func parseN1QLErrorResp(req *httpRequest, statement string, resp *HTTPResponse) *N1QLError {
-	errorDescs, err := parseN1QLError(resp.Body)
-	errOut := wrapN1QLError(req, statement, err)
+	var errorDescs []N1QLErrorDesc
+	var err error
+	respBody, readErr := ioutil.ReadAll(resp.Body)
+	if readErr == nil {
+		errorDescs, err = parseN1QLError(respBody)
+	}
+	errOut := wrapN1QLError(req, statement, err, respBody)
 	errOut.Errors = errorDescs
 	return errOut
 }
 
-func parseN1QLError(data io.Reader) ([]N1QLErrorDesc, error) {
+func parseN1QLError(respBody []byte) ([]N1QLErrorDesc, error) {
 	var err error
 	var errorDescs []N1QLErrorDesc
 
-	respBody, readErr := ioutil.ReadAll(data)
-	if readErr == nil {
-		var respParse jsonN1QLErrorResponse
-		parseErr := json.Unmarshal(respBody, &respParse)
-		if parseErr == nil {
-
-			for _, jsonErr := range respParse.Errors {
-				errorDescs = append(errorDescs, N1QLErrorDesc{
-					Code:    jsonErr.Code,
-					Message: jsonErr.Msg,
-				})
-			}
+	var respParse jsonN1QLErrorResponse
+	parseErr := json.Unmarshal(respBody, &respParse)
+	if parseErr == nil {
+		for _, jsonErr := range respParse.Errors {
+			errorDescs = append(errorDescs, N1QLErrorDesc{
+				Code:    jsonErr.Code,
+				Message: jsonErr.Msg,
+			})
 		}
 	}
 
@@ -250,7 +250,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
-		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"), nil)
 	}
 
 	statement := getMapValueString(payloadMap, "statement", "")
@@ -304,7 +304,7 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(opts N1QLQueryOptions, tracer 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
-		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"), nil)
 	}
 
 	statement := getMapValueString(payloadMap, "statement", "")
@@ -399,7 +399,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
-		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"))
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"), nil)
 	}
 
 	statement := getMapValueString(payloadMap, "statement", "")
@@ -478,17 +478,17 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 			var n1qlError *N1QLError
 			meta, metaErr := cacheRes.MetaData()
 			if metaErr == nil {
-				descs, err := parseN1QLError(bytes.NewReader(meta))
+				descs, err := parseN1QLError(meta)
 				if err != nil {
-					n1qlError = wrapN1QLError(ireq, statement, err)
+					n1qlError = wrapN1QLError(ireq, statement, err, nil)
 					n1qlError.Errors = descs
 				} else if len(descs) > 0 {
-					n1qlError = wrapN1QLError(ireq, statement, errors.New("query error"))
+					n1qlError = wrapN1QLError(ireq, statement, nil, nil)
 					n1qlError.Errors = descs
 				}
 			}
 			if n1qlError == nil {
-				n1qlError = wrapN1QLError(ireq, statement, errCliInternalError)
+				n1qlError = wrapN1QLError(ireq, statement, errCliInternalError, nil)
 			}
 
 			cb(nil, n1qlError)
@@ -499,7 +499,7 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(opts N1QLQueryOptions, tracer 
 		err = json.Unmarshal(b, &prepData)
 		if err != nil {
 			cancel()
-			cb(nil, wrapN1QLError(ireq, statement, err))
+			cb(nil, wrapN1QLError(ireq, statement, err, nil))
 			return
 		}
 
@@ -539,7 +539,7 @@ ExecuteLoop:
 
 			newPayload, err := json.Marshal(payloadMap)
 			if err != nil {
-				return nil, wrapN1QLError(nil, "", wrapError(err, "failed to produce payload"))
+				return nil, wrapN1QLError(nil, "", wrapError(err, "failed to produce payload"), nil)
 			}
 			ireq.Body = newPayload
 		}
@@ -551,7 +551,7 @@ ExecuteLoop:
 			}
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
-			return nil, wrapN1QLError(ireq, statementForErr, err)
+			return nil, wrapN1QLError(ireq, statementForErr, err, nil)
 		}
 
 		if resp.StatusCode != 200 {
@@ -596,13 +596,13 @@ ExecuteLoop:
 					RetryAttempts:    ireq.retryCount,
 					LastDispatchedTo: ireq.Endpoint,
 				}
-				return nil, wrapN1QLError(ireq, statementForErr, err)
+				return nil, wrapN1QLError(ireq, statementForErr, err, nil)
 			}
 		}
 
 		streamer, err := newQueryStreamer(resp.Body, "results")
 		if err != nil {
-			return nil, wrapN1QLError(ireq, statementForErr, err)
+			return nil, wrapN1QLError(ireq, statementForErr, err, nil)
 		}
 
 		return &N1QLRowReader{
