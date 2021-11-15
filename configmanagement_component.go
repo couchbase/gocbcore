@@ -185,13 +185,13 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, us
 			cm.networkType = "default"
 			return defaultRouteConfig
 		}
+	}
 
-		// Next lets see if we have an external config, if so, default to that
-		externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true)
-		if externalRouteCfg.IsValid() {
-			cm.networkType = "external"
-			return externalRouteCfg
-		}
+	// Next lets see if we have an external config, if so, default to that
+	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true)
+	if externalRouteCfg.IsValid() {
+		cm.networkType = "external"
+		return externalRouteCfg
 	}
 
 	// If all else fails, default to the implicit default config
