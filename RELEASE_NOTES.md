@@ -1,8 +1,28 @@
 # Release Notes
 
+## Version 10.0.5 (16 November 2021)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1179](GOCBC-1179):
+  Gracefully close memdclients on pipeline shutdown/reconnect.
+* [https://issues.couchbase.com/browse/GOCBC-1180](GOCBC-1180):
+  Added support for the ns_server connection string scheme and seed (i.e. localhost) poller.
+* [https://issues.couchbase.com/browse/GOCBC-1181](GOCBC-1181):
+  Added support for `ReconfigureSecurity` function.
+* [https://issues.couchbase.com/browse/GOCBC-1182](GOCBC-1182):
+  Request error map v2 from the server.
+* [https://issues.couchbase.com/browse/GOCBC-1193](GOCBC-1193):
+  Added the response body to query errors.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1194](GOCBC-1194):
+  Fixed issue where we wouldn't try to build a route config with all seed nodes for default network type before trying external network type.
+
 ## Version 10.0.4 (19 October 2021)
 
-###New Features and Behavioral Changes
+### New Features and Behavioral Changes
 
 * [https://issues.couchbase.com/browse/GOCBC-1178](GOCBC-1178):
   Don't remove poller controller watcher from cluster config updates.
