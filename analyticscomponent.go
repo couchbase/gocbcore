@@ -11,7 +11,9 @@ import (
 
 // AnalyticsRowReader providers access to the rows of a analytics query
 type AnalyticsRowReader struct {
-	streamer *queryStreamer
+	streamer   *queryStreamer
+	statement  string
+	statusCode int
 }
 
 // NextRow reads the next rows bytes from the stream
@@ -21,7 +23,37 @@ func (q *AnalyticsRowReader) NextRow() []byte {
 
 // Err returns any errors that occurred during streaming.
 func (q AnalyticsRowReader) Err() error {
-	return q.streamer.Err()
+	err := q.streamer.Err()
+	if err != nil {
+		return err
+	}
+
+	meta, metaErr := q.streamer.MetaData()
+	if metaErr != nil {
+		return metaErr
+	}
+
+	raw, descs, err := parseAnalyticsError(meta)
+	if err != nil {
+		return &AnalyticsError{
+			InnerError:       err,
+			Errors:           descs,
+			ErrorText:        raw,
+			Statement:        q.statement,
+			HTTPResponseCode: q.statusCode,
+		}
+	}
+	if len(descs) > 0 {
+		return &AnalyticsError{
+			InnerError:       errors.New("analytics error"),
+			Errors:           descs,
+			ErrorText:        raw,
+			Statement:        q.statement,
+			HTTPResponseCode: q.statusCode,
+		}
+	}
+
+	return nil
 }
 
 // MetaData fetches the non-row bytes streamed in the response.
@@ -47,7 +79,7 @@ type AnalyticsQueryOptions struct {
 	TraceContext RequestSpanContext
 }
 
-func wrapAnalyticsError(req *httpRequest, statement string, err error) *AnalyticsError {
+func wrapAnalyticsError(req *httpRequest, statement string, err error, errBody string, statusCode int) *AnalyticsError {
 	if err == nil {
 		err = errors.New("analytics error")
 	}
@@ -63,7 +95,9 @@ func wrapAnalyticsError(req *httpRequest, statement string, err error) *Analytic
 		ierr.RetryReasons = req.RetryReasons()
 	}
 
+	ierr.ErrorText = errBody
 	ierr.Statement = statement
+	ierr.HTTPResponseCode = statusCode
 
 	return ierr
 }
@@ -74,25 +108,40 @@ type jsonAnalyticsError struct {
 }
 
 type jsonAnalyticsErrorResponse struct {
-	Errors []jsonAnalyticsError
+	Errors json.RawMessage
 }
 
-func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse) *AnalyticsError {
+func parseAnalyticsErrorResp(req *httpRequest, statement string, resp *HTTPResponse) *AnalyticsError {
+	var errorDescs []AnalyticsErrorDesc
+	var err error
+	var raw string
+	respBody, readErr := ioutil.ReadAll(resp.Body)
+	if readErr == nil {
+		raw, errorDescs, err = parseAnalyticsError(respBody)
+	}
+	errOut := wrapAnalyticsError(req, statement, err, raw, resp.StatusCode)
+	errOut.Errors = errorDescs
+	return errOut
+}
+
+func parseAnalyticsError(respBody []byte) (string, []AnalyticsErrorDesc, error) {
 	var err error
 	var errorDescs []AnalyticsErrorDesc
 
-	respBody, readErr := ioutil.ReadAll(resp.Body)
-	if readErr == nil {
-		var respParse jsonAnalyticsErrorResponse
-		parseErr := json.Unmarshal(respBody, &respParse)
-		if parseErr == nil {
+	var rawRespParse jsonAnalyticsErrorResponse
+	parseErr := json.Unmarshal(respBody, &rawRespParse)
+	if parseErr != nil {
+		return "", nil, nil
+	}
 
-			for _, jsonErr := range respParse.Errors {
-				errorDescs = append(errorDescs, AnalyticsErrorDesc{
-					Code:    jsonErr.Code,
-					Message: jsonErr.Msg,
-				})
-			}
+	var respParse []jsonAnalyticsError
+	parseErr = json.Unmarshal(rawRespParse.Errors, &respParse)
+	if parseErr == nil {
+		for _, jsonErr := range respParse {
+			errorDescs = append(errorDescs, AnalyticsErrorDesc{
+				Code:    jsonErr.Code,
+				Message: jsonErr.Msg,
+			})
 		}
 	}
 
@@ -142,10 +191,13 @@ func parseAnalyticsError(req *httpRequest, statement string, resp *HTTPResponse)
 			err = errLinkNotFound
 		}
 	}
+	var rawErrors string
+	if err == nil && len(rawRespParse.Errors) > 0 {
+		// Only populate if this is an error that we don't recognise.
+		rawErrors = string(rawRespParse.Errors)
+	}
 
-	errOut := wrapAnalyticsError(req, statement, err)
-	errOut.Errors = errorDescs
-	return errOut
+	return rawErrors, errorDescs, err
 }
 
 type analyticsQueryComponent struct {
@@ -170,7 +222,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
-		return nil, wrapAnalyticsError(nil, "", wrapError(err, "expected a JSON payload"))
+		return nil, wrapAnalyticsError(nil, "", wrapError(err, "expected a JSON payload"), "", 0)
 	}
 
 	statement := getMapValueString(payloadMap, "statement", "")
@@ -206,7 +258,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 				newPayload, err := json.Marshal(payloadMap)
 				if err != nil {
 					cancel()
-					cb(nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload")))
+					cb(nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload"), "", 0))
 					return
 				}
 				ireq.Body = newPayload
@@ -221,12 +273,12 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 				}
 				// execHTTPRequest will handle retrying due to in-flight socket close based
 				// on whether or not IsIdempotent is set on the httpRequest
-				cb(nil, wrapAnalyticsError(ireq, statement, err))
+				cb(nil, wrapAnalyticsError(ireq, statement, err, "", 0))
 				return
 			}
 
 			if resp.StatusCode != 200 {
-				analyticsErr := parseAnalyticsError(ireq, statement, resp)
+				analyticsErr := parseAnalyticsErrorResp(ireq, statement, resp)
 
 				var retryReason RetryReason
 				if len(analyticsErr.Errors) >= 1 {
@@ -270,7 +322,7 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 						RetryAttempts:    ireq.retryCount,
 						LastDispatchedTo: ireq.Endpoint,
 					}
-					cb(nil, wrapAnalyticsError(ireq, statement, err))
+					cb(nil, wrapAnalyticsError(ireq, statement, err, "", 0))
 					return
 				}
 			}
@@ -278,7 +330,11 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 			streamer, err := newQueryStreamer(resp.Body, "results")
 			if err != nil {
 				cancel()
-				cb(nil, wrapAnalyticsError(ireq, statement, err))
+				respBody, readErr := ioutil.ReadAll(resp.Body)
+				if readErr != nil {
+					logDebugf("Failed to read response body: %v", readErr)
+				}
+				cb(nil, wrapAnalyticsError(ireq, statement, err, string(respBody), resp.StatusCode))
 				return
 			}
 

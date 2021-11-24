@@ -51,7 +51,7 @@ type ViewQueryOptions struct {
 	TraceContext RequestSpanContext
 }
 
-func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) *ViewError {
+func wrapViewQueryError(req *httpRequest, ddoc, view string, err error, errBody string, statusCode int) *ViewError {
 	if err == nil {
 		err = errors.New("view error")
 	}
@@ -66,6 +66,8 @@ func wrapViewQueryError(req *httpRequest, ddoc, view string, err error) *ViewErr
 		ierr.RetryReasons = req.RetryReasons()
 	}
 
+	ierr.ErrorText = errBody
+	ierr.HTTPResponseCode = statusCode
 	ierr.DesignDocumentName = ddoc
 	ierr.ViewName = view
 
@@ -113,7 +115,12 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 		}
 	}
 
-	errOut := wrapViewQueryError(req, ddoc, view, err)
+	var errText string
+	if err == nil {
+		errText = string(respBody)
+	}
+
+	errOut := wrapViewQueryError(req, ddoc, view, err, errText, resp.StatusCode)
 	errOut.Errors = errorDescs
 	return errOut
 }
@@ -167,7 +174,7 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 			}
 			// execHTTPRequest will handle retrying due to in-flight socket close based
 			// on whether or not IsIdempotent is set on the httpRequest
-			cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
+			cb(nil, wrapViewQueryError(ireq, ddoc, view, err, "", 0))
 			return
 		}
 
@@ -183,7 +190,11 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 		streamer, err := newQueryStreamer(resp.Body, "rows")
 		if err != nil {
 			cancel()
-			cb(nil, wrapViewQueryError(ireq, ddoc, view, err))
+			respBody, readErr := ioutil.ReadAll(resp.Body)
+			if readErr != nil {
+				logDebugf("Failed to read response body: %v", readErr)
+			}
+			cb(nil, wrapViewQueryError(ireq, ddoc, view, err, string(respBody), resp.StatusCode))
 			return
 		}
 

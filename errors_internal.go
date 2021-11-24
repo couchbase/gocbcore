@@ -184,6 +184,10 @@ type ViewError struct {
 	Endpoint           string
 	RetryReasons       []RetryReason
 	RetryAttempts      uint32
+	// Uncommitted: This API may change in the future.
+	ErrorText string
+	// Uncommitted: This API may change in the future.
+	HTTPResponseCode int
 }
 
 // MarshalJSON implements the Marshaler interface.
@@ -196,6 +200,7 @@ func (e ViewError) MarshalJSON() ([]byte, error) {
 		Endpoint           string               `json:"endpoint,omitempty"`
 		RetryReasons       []RetryReason        `json:"retry_reasons,omitempty"`
 		RetryAttempts      uint32               `json:"retry_attempts,omitempty"`
+		HTTPResponseCode   int                  `json:"status_code,omitempty"`
 	}{
 		InnerError:         e.InnerError.Error(),
 		DesignDocumentName: e.DesignDocumentName,
@@ -204,6 +209,7 @@ func (e ViewError) MarshalJSON() ([]byte, error) {
 		Endpoint:           e.Endpoint,
 		RetryReasons:       e.RetryReasons,
 		RetryAttempts:      e.RetryAttempts,
+		HTTPResponseCode:   e.HTTPResponseCode,
 	})
 }
 
@@ -217,6 +223,8 @@ func (e ViewError) Error() string {
 		Endpoint           string               `json:"endpoint,omitempty"`
 		RetryReasons       []RetryReason        `json:"retry_reasons,omitempty"`
 		RetryAttempts      uint32               `json:"retry_attempts,omitempty"`
+		ErrorText          string               `json:"error_text,omitempty"`
+		HTTPResponseCode   int                  `json:"status_code,omitempty"`
 	}{
 		InnerError:         e.InnerError,
 		DesignDocumentName: e.DesignDocumentName,
@@ -225,6 +233,8 @@ func (e ViewError) Error() string {
 		Endpoint:           e.Endpoint,
 		RetryReasons:       e.RetryReasons,
 		RetryAttempts:      e.RetryAttempts,
+		ErrorText:          e.ErrorText,
+		HTTPResponseCode:   e.HTTPResponseCode,
 	})
 	if serErr != nil {
 		logErrorf("failed to serialize error to json: %s", serErr.Error())
@@ -253,52 +263,57 @@ type N1QLError struct {
 	Endpoint        string
 	RetryReasons    []RetryReason
 	RetryAttempts   uint32
-	ResponseBody    string
+	// Uncommitted: This API may change in the future.
+	ErrorText string
+	// Uncommitted: This API may change in the future.
+	HTTPResponseCode int
 }
 
 // MarshalJSON implements the Marshaler interface.
 func (e N1QLError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		InnerError      string          `json:"msg,omitempty"`
-		Statement       string          `json:"statement,omitempty"`
-		ClientContextID string          `json:"client_context_id,omitempty"`
-		Errors          []N1QLErrorDesc `json:"errors,omitempty"`
-		Endpoint        string          `json:"endpoint,omitempty"`
-		RetryReasons    []RetryReason   `json:"retry_reasons,omitempty"`
-		RetryAttempts   uint32          `json:"retry_attempts,omitempty"`
-		ResponseBody    string          `json:"response_body,omitempty"`
+		InnerError       string          `json:"msg,omitempty"`
+		Statement        string          `json:"statement,omitempty"`
+		ClientContextID  string          `json:"client_context_id,omitempty"`
+		Errors           []N1QLErrorDesc `json:"errors,omitempty"`
+		Endpoint         string          `json:"endpoint,omitempty"`
+		RetryReasons     []RetryReason   `json:"retry_reasons,omitempty"`
+		RetryAttempts    uint32          `json:"retry_attempts,omitempty"`
+		HTTPResponseCode int             `json:"status_code,omitempty"`
 	}{
-		InnerError:      e.InnerError.Error(),
-		Statement:       e.Statement,
-		ClientContextID: e.ClientContextID,
-		Errors:          e.Errors,
-		Endpoint:        e.Endpoint,
-		RetryReasons:    e.RetryReasons,
-		RetryAttempts:   e.RetryAttempts,
-		ResponseBody:    e.ResponseBody,
+		InnerError:       e.InnerError.Error(),
+		Statement:        e.Statement,
+		ClientContextID:  e.ClientContextID,
+		Errors:           e.Errors,
+		Endpoint:         e.Endpoint,
+		RetryReasons:     e.RetryReasons,
+		RetryAttempts:    e.RetryAttempts,
+		HTTPResponseCode: e.HTTPResponseCode,
 	})
 }
 
 // Error returns the string representation of this error.
 func (e N1QLError) Error() string {
 	errBytes, serErr := json.Marshal(struct {
-		InnerError      error           `json:"-"`
-		Statement       string          `json:"statement,omitempty"`
-		ClientContextID string          `json:"client_context_id,omitempty"`
-		Errors          []N1QLErrorDesc `json:"errors,omitempty"`
-		Endpoint        string          `json:"endpoint,omitempty"`
-		RetryReasons    []RetryReason   `json:"retry_reasons,omitempty"`
-		RetryAttempts   uint32          `json:"retry_attempts,omitempty"`
-		ResponseBody    string          `json:"response_body,omitempty"`
+		InnerError       error           `json:"-"`
+		Statement        string          `json:"statement,omitempty"`
+		ClientContextID  string          `json:"client_context_id,omitempty"`
+		Errors           []N1QLErrorDesc `json:"errors,omitempty"`
+		Endpoint         string          `json:"endpoint,omitempty"`
+		RetryReasons     []RetryReason   `json:"retry_reasons,omitempty"`
+		RetryAttempts    uint32          `json:"retry_attempts,omitempty"`
+		ErrorText        string          `json:"error_text,omitempty"`
+		HTTPResponseCode int             `json:"status_code,omitempty"`
 	}{
-		InnerError:      e.InnerError,
-		Statement:       e.Statement,
-		ClientContextID: e.ClientContextID,
-		Errors:          e.Errors,
-		Endpoint:        e.Endpoint,
-		RetryReasons:    e.RetryReasons,
-		RetryAttempts:   e.RetryAttempts,
-		ResponseBody:    e.ResponseBody,
+		InnerError:       e.InnerError,
+		Statement:        e.Statement,
+		ClientContextID:  e.ClientContextID,
+		Errors:           e.Errors,
+		Endpoint:         e.Endpoint,
+		RetryReasons:     e.RetryReasons,
+		RetryAttempts:    e.RetryAttempts,
+		ErrorText:        e.ErrorText,
+		HTTPResponseCode: e.HTTPResponseCode,
 	})
 	if serErr != nil {
 		logErrorf("failed to serialize error to json: %s", serErr.Error())
@@ -327,47 +342,57 @@ type AnalyticsError struct {
 	Endpoint        string
 	RetryReasons    []RetryReason
 	RetryAttempts   uint32
+	// Uncommitted: This API may change in the future.
+	ErrorText string
+	// Uncommitted: This API may change in the future.
+	HTTPResponseCode int
 }
 
 // MarshalJSON implements the Marshaler interface.
 func (e AnalyticsError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		InnerError      string               `json:"msg,omitempty"`
-		Statement       string               `json:"statement,omitempty"`
-		ClientContextID string               `json:"client_context_id,omitempty"`
-		Errors          []AnalyticsErrorDesc `json:"errors,omitempty"`
-		Endpoint        string               `json:"endpoint,omitempty"`
-		RetryReasons    []RetryReason        `json:"retry_reasons,omitempty"`
-		RetryAttempts   uint32               `json:"retry_attempts,omitempty"`
+		InnerError       string               `json:"msg,omitempty"`
+		Statement        string               `json:"statement,omitempty"`
+		ClientContextID  string               `json:"client_context_id,omitempty"`
+		Errors           []AnalyticsErrorDesc `json:"errors,omitempty"`
+		Endpoint         string               `json:"endpoint,omitempty"`
+		RetryReasons     []RetryReason        `json:"retry_reasons,omitempty"`
+		RetryAttempts    uint32               `json:"retry_attempts,omitempty"`
+		HTTPResponseCode int                  `json:"status_code,omitempty"`
 	}{
-		InnerError:      e.InnerError.Error(),
-		Statement:       e.Statement,
-		ClientContextID: e.ClientContextID,
-		Errors:          e.Errors,
-		Endpoint:        e.Endpoint,
-		RetryReasons:    e.RetryReasons,
-		RetryAttempts:   e.RetryAttempts,
+		InnerError:       e.InnerError.Error(),
+		Statement:        e.Statement,
+		ClientContextID:  e.ClientContextID,
+		Errors:           e.Errors,
+		Endpoint:         e.Endpoint,
+		RetryReasons:     e.RetryReasons,
+		RetryAttempts:    e.RetryAttempts,
+		HTTPResponseCode: e.HTTPResponseCode,
 	})
 }
 
 // Error returns the string representation of this error.
 func (e AnalyticsError) Error() string {
 	errBytes, serErr := json.Marshal(struct {
-		InnerError      error                `json:"-"`
-		Statement       string               `json:"statement,omitempty"`
-		ClientContextID string               `json:"client_context_id,omitempty"`
-		Errors          []AnalyticsErrorDesc `json:"errors,omitempty"`
-		Endpoint        string               `json:"endpoint,omitempty"`
-		RetryReasons    []RetryReason        `json:"retry_reasons,omitempty"`
-		RetryAttempts   uint32               `json:"retry_attempts,omitempty"`
+		InnerError       error                `json:"-"`
+		Statement        string               `json:"statement,omitempty"`
+		ClientContextID  string               `json:"client_context_id,omitempty"`
+		Errors           []AnalyticsErrorDesc `json:"errors,omitempty"`
+		Endpoint         string               `json:"endpoint,omitempty"`
+		RetryReasons     []RetryReason        `json:"retry_reasons,omitempty"`
+		RetryAttempts    uint32               `json:"retry_attempts,omitempty"`
+		ErrorText        string               `json:"error_text,omitempty"`
+		HTTPResponseCode int                  `json:"status_code,omitempty"`
 	}{
-		InnerError:      e.InnerError,
-		Statement:       e.Statement,
-		ClientContextID: e.ClientContextID,
-		Errors:          e.Errors,
-		Endpoint:        e.Endpoint,
-		RetryReasons:    e.RetryReasons,
-		RetryAttempts:   e.RetryAttempts,
+		InnerError:       e.InnerError,
+		Statement:        e.Statement,
+		ClientContextID:  e.ClientContextID,
+		Errors:           e.Errors,
+		Endpoint:         e.Endpoint,
+		RetryReasons:     e.RetryReasons,
+		RetryAttempts:    e.RetryAttempts,
+		ErrorText:        e.ErrorText,
+		HTTPResponseCode: e.HTTPResponseCode,
 	})
 	if serErr != nil {
 		logErrorf("failed to serialize error to json: %s", serErr.Error())

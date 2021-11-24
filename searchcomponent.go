@@ -52,7 +52,7 @@ type jsonSearchErrorResponse struct {
 	Error string
 }
 
-func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, query interface{}, err error) *SearchError {
+func wrapSearchError(req *httpRequest, indexName string, query interface{}, err error, statusCode int) *SearchError {
 	if err == nil {
 		err = errors.New("search error")
 	}
@@ -67,10 +67,7 @@ func wrapSearchError(req *httpRequest, resp *HTTPResponse, indexName string, que
 		ierr.RetryReasons = req.RetryReasons()
 	}
 
-	if resp != nil {
-		ierr.HTTPResponseCode = resp.StatusCode
-	}
-
+	ierr.HTTPResponseCode = statusCode
 	ierr.IndexName = indexName
 	ierr.Query = query
 
@@ -111,7 +108,7 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 		}
 	}
 
-	errOut := wrapSearchError(req, resp, indexName, query, err)
+	errOut := wrapSearchError(req, indexName, query, err, resp.StatusCode)
 	errOut.ErrorText = errMsg
 	return errOut
 }
@@ -138,7 +135,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
-		return nil, wrapSearchError(nil, nil, "", nil, wrapError(err, "expected a JSON payload"))
+		return nil, wrapSearchError(nil, "", nil, wrapError(err, "expected a JSON payload"), 0)
 	}
 
 	var ctlMap map[string]interface{}
@@ -146,8 +143,8 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 		if coercedCtlMap, ok := foundCtlMap.(map[string]interface{}); ok {
 			ctlMap = coercedCtlMap
 		} else {
-			return nil, wrapSearchError(nil, nil, "", nil,
-				wrapError(errInvalidArgument, "expected ctl to be a map"))
+			return nil, wrapSearchError(nil, "", nil,
+				wrapError(errInvalidArgument, "expected ctl to be a map"), 0)
 		}
 	} else {
 		ctlMap = make(map[string]interface{})
@@ -184,8 +181,8 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 				newPayload, err := json.Marshal(payloadMap)
 				if err != nil {
 					cancel()
-					cb(nil, wrapSearchError(nil, nil, indexName, query,
-						wrapError(err, "failed to produce payload")))
+					cb(nil, wrapSearchError(nil, indexName, query,
+						wrapError(err, "failed to produce payload"), 0))
 					return
 				}
 				ireq.Body = newPayload
@@ -200,7 +197,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 				}
 				// execHTTPRequest will handle retrying due to in-flight socket close based
 				// on whether or not IsIdempotent is set on the httpRequest
-				cb(nil, wrapSearchError(ireq, nil, indexName, query, err))
+				cb(nil, wrapSearchError(ireq, indexName, query, err, 0))
 				return
 			}
 
@@ -241,7 +238,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 						RetryAttempts:    ireq.retryCount,
 						LastDispatchedTo: ireq.Endpoint,
 					}
-					cb(nil, wrapSearchError(ireq, nil, indexName, query, err))
+					cb(nil, wrapSearchError(ireq, indexName, query, err, 0))
 					return
 				}
 			}
@@ -249,7 +246,13 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 			streamer, err := newQueryStreamer(resp.Body, "hits")
 			if err != nil {
 				cancel()
-				cb(nil, wrapSearchError(ireq, resp, indexName, query, err))
+				respBody, readErr := ioutil.ReadAll(resp.Body)
+				if readErr != nil {
+					logDebugf("Failed to read response body: %v", readErr)
+				}
+				sErr := wrapSearchError(ireq, indexName, query, err, resp.StatusCode)
+				sErr.ErrorText = string(respBody)
+				cb(nil, sErr)
 				return
 			}
 
