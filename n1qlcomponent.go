@@ -176,11 +176,11 @@ func parseN1QLError(respBody []byte) ([]N1QLErrorDesc, error) {
 		}
 
 		if errCode == 1191 || errCode == 1192 || errCode == 1193 || errCode == 1194 {
-			err = errRateLimitingFailure
+			err = errRateLimitedFailure
 		}
 		if errCode == 5000 && strings.Contains(strings.ToLower(firstErr.Message),
 			"limit for number of indexes that can be created per scope has been reached") {
-			err = errQuotaLimitingFailure
+			err = errQuotaLimitedFailure
 		}
 
 		if errCode == 3000 {

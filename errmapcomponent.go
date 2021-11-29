@@ -199,15 +199,15 @@ func translateMemdError(err error, req *memdQRequest) error {
 	case ErrMemdNotMyVBucket:
 		return errNotMyVBucket
 	case ErrMemdRateLimitedNetworkIngress:
-		return errRateLimitingFailure
+		return errRateLimitedFailure
 	case ErrMemdRateLimitedNetworkEgress:
-		return errRateLimitingFailure
+		return errRateLimitedFailure
 	case ErrMemdRateLimitedMaxConnections:
-		return errQuotaLimitingFailure
+		return errQuotaLimitedFailure
 	case ErrMemdRateLimitedMaxCommands:
-		return errRateLimitingFailure
+		return errRateLimitedFailure
 	case ErrMemdRateLimitedScopeSizeLimitExceeded:
-		return errQuotaLimitingFailure
+		return errQuotaLimitedFailure
 	}
 
 	return err

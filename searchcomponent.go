@@ -101,13 +101,13 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 	}
 	if resp.StatusCode == 429 {
 		if strings.Contains(errMsg, "num_concurrent_requests") {
-			err = errRateLimitingFailure
+			err = errRateLimitedFailure
 		} else if strings.Contains(errMsg, "num_queries_per_min") {
-			err = errRateLimitingFailure
+			err = errRateLimitedFailure
 		} else if strings.Contains(errMsg, "ingress_mib_per_min") {
-			err = errRateLimitingFailure
+			err = errRateLimitedFailure
 		} else if strings.Contains(errMsg, "egress_mib_per_min") {
-			err = errRateLimitingFailure
+			err = errRateLimitedFailure
 		}
 	}
 
@@ -208,7 +208,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 				searchErr := parseSearchError(ireq, indexName, query, resp)
 
 				var retryReason RetryReason
-				if searchErr.HTTPResponseCode == 429 && !errors.Is(searchErr, ErrRateLimitingFailure) {
+				if searchErr.HTTPResponseCode == 429 && !errors.Is(searchErr, ErrRateLimitedFailure) {
 					retryReason = SearchTooManyRequestsRetryReason
 				}
 

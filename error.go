@@ -114,8 +114,10 @@ var (
 
 	ErrIndexExists = errors.New("index exists")
 
-	ErrRateLimitingFailure  = errors.New("rate limiting failure")
-	ErrQuotaLimitingFailure = errors.New("quota limiting failure")
+	// Uncommitted: This API may change in the future.
+	ErrRateLimitedFailure = errors.New("rate limited failure")
+	// Uncommitted: This API may change in the future.
+	ErrQuotaLimitedFailure = errors.New("quota limited failure")
 )
 
 // Key Value Error Definitions RFC#58@15
