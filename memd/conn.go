@@ -439,6 +439,12 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 					pkt.OpenTracingFrame = &OpenTracingFrame{
 						TraceContext: frameBody,
 					}
+				} else if frType == frameTypeReqPreserveExpiry {
+					pkt.PreserveExpiryFrame = &PreserveExpiryFrame{}
+				} else if frType == frameTypeReqUserImpersonation {
+					pkt.UserImpersonationFrame = &UserImpersonationFrame{
+						User: frameBody,
+					}
 				} else {
 					// If we don't understand this frame type, we record it as an
 					// UnsupportedFrame (as opposed to dropping it blindly)

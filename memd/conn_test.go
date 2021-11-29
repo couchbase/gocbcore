@@ -66,6 +66,7 @@ var allFeatures = []HelloFeature{
 	FeatureSyncReplication,
 	FeatureCollections,
 	FeatureOpenTracing,
+	FeaturePreserveExpiry,
 }
 
 func TestPktRtBasicReq(t *testing.T) {
@@ -121,6 +122,10 @@ func TestPktRtBasicReqExt(t *testing.T) {
 		OpenTracingFrame: &OpenTracingFrame{
 			TraceContext: []byte("This is some data longer than 15bytes"),
 		},
+		UserImpersonationFrame: &UserImpersonationFrame{
+			User: []byte("barry"),
+		},
+		PreserveExpiryFrame: &PreserveExpiryFrame{},
 	}, allFeatures)
 }
 
