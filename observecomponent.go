@@ -30,9 +30,7 @@ func newObserveComponent(cidMgr *collectionsComponent, defaultRetryStrategy Retr
 }
 
 func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (PendingOp, error) {
-	start := time.Now()
-	defer oc.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Observe", start)
-	tracer := oc.tracer.CreateOpTrace("Observe", opts.TraceContext)
+	tracer := oc.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Observe", opts.TraceContext)
 
 	if oc.bucketUtils.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
@@ -77,6 +75,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 
 	vbID, err := oc.bucketUtils.KeyToVbucket(opts.Key)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 	keyLen := len(opts.Key)
@@ -113,6 +112,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 
 	op, err := oc.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -121,7 +121,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "Unlock",
 				Opaque:             req.Identifier(),
@@ -131,7 +131,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -139,9 +139,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 }
 
 func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallback) (PendingOp, error) {
-	start := time.Now()
-	defer oc.tracer.ResponseValueRecord(metricValueServiceKeyValue, "ObserveVb", start)
-	tracer := oc.tracer.CreateOpTrace("ObserveVb", nil)
+	tracer := oc.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "ObserveVb", opts.TraceContext)
 
 	if oc.bucketUtils.BucketType() != bktTypeCouchbase {
 		tracer.Finish()
@@ -250,6 +248,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 
 	op, err := oc.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -258,7 +257,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "Unlock",
 				Opaque:             req.Identifier(),
@@ -268,7 +267,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 

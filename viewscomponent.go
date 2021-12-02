@@ -139,10 +139,7 @@ func newViewQueryComponent(httpComponent *httpComponent, tracer *tracerComponent
 
 // ViewQuery executes a view query
 func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
-	start := time.Now()
-	defer vqc.tracer.ResponseValueRecord(metricValueServiceViewsValue, "ViewQuery", start)
-	tracer := vqc.tracer.CreateOpTrace("ViewQuery", opts.TraceContext)
-	defer tracer.Finish()
+	tracer := vqc.tracer.StartTelemeteryHandler(metricValueServiceViewsValue, "ViewQuery", opts.TraceContext)
 
 	reqURI := fmt.Sprintf("/_design/%s/%s/%s?%s",
 		opts.DesignDocumentName, opts.ViewType, opts.ViewName, opts.Options.Encode())
@@ -165,43 +162,49 @@ func (vqc *viewQueryComponent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCall
 	view := opts.ViewName
 
 	go func() {
-		resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
+		res, err := vqc.viewQuery(ireq, ddoc, view)
 		if err != nil {
 			cancel()
-			if errors.Is(err, ErrRequestCanceled) {
-				cb(nil, err)
-				return
-			}
-			// execHTTPRequest will handle retrying due to in-flight socket close based
-			// on whether or not IsIdempotent is set on the httpRequest
-			cb(nil, wrapViewQueryError(ireq, ddoc, view, err, "", 0))
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
 
-		if resp.StatusCode != 200 {
-			viewErr := parseViewQueryError(ireq, ddoc, view, resp)
-
-			cancel()
-			// viewErr is already wrapped here
-			cb(nil, viewErr)
-			return
-		}
-
-		streamer, err := newQueryStreamer(resp.Body, "rows")
-		if err != nil {
-			cancel()
-			respBody, readErr := ioutil.ReadAll(resp.Body)
-			if readErr != nil {
-				logDebugf("Failed to read response body: %v", readErr)
-			}
-			cb(nil, wrapViewQueryError(ireq, ddoc, view, err, string(respBody), resp.StatusCode))
-			return
-		}
-
-		cb(&ViewQueryRowReader{
-			streamer: streamer,
-		}, nil)
+		tracer.Finish()
+		cb(res, nil)
 	}()
 
 	return ireq, nil
+}
+
+func (vqc *viewQueryComponent) viewQuery(ireq *httpRequest, ddoc, view string) (*ViewQueryRowReader, error) {
+	resp, err := vqc.httpComponent.DoInternalHTTPRequest(ireq, false)
+	if err != nil {
+		if errors.Is(err, ErrRequestCanceled) {
+			return nil, err
+		}
+		// execHTTPRequest will handle retrying due to in-flight socket close based
+		// on whether or not IsIdempotent is set on the httpRequest
+		return nil, wrapViewQueryError(ireq, ddoc, view, err, "", 0)
+	}
+
+	if resp.StatusCode != 200 {
+		viewErr := parseViewQueryError(ireq, ddoc, view, resp)
+
+		// viewErr is already wrapped here
+		return nil, viewErr
+	}
+
+	streamer, err := newQueryStreamer(resp.Body, "rows")
+	if err != nil {
+		respBody, readErr := ioutil.ReadAll(resp.Body)
+		if readErr != nil {
+			logDebugf("Failed to read response body: %v", readErr)
+		}
+		return nil, wrapViewQueryError(ireq, ddoc, view, err, string(respBody), resp.StatusCode)
+	}
+
+	return &ViewQueryRowReader{
+		streamer: streamer,
+	}, nil
 }

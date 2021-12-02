@@ -72,15 +72,6 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 	return tracer.parentContext
 }
 
-type tracerManager interface {
-	CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer
-	StartHTTPDispatchSpan(req *httpRequest, name string) RequestSpan
-	StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32)
-	StartCmdTrace(req *memdQRequest)
-	StartNetTrace(req *memdQRequest)
-	ResponseValueRecord(service, operation string, start time.Time)
-}
-
 type tracerComponent struct {
 	tracer                    RequestTracer
 	bucket                    string
@@ -190,6 +181,7 @@ func (tc *tracerComponent) ResponseValueRecord(service, operation string, start 
 	recorder, err := tc.metrics.ValueRecorder(meterNameCBOperations, attribs.(map[string]string))
 	if err != nil {
 		logDebugf("Failed to get value recorder: %v", err)
+		return
 	}
 
 	recorder.RecordValue(uint64(time.Since(start).Microseconds()))
@@ -258,4 +250,35 @@ func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAd
 
 	req.netTraceSpan.End()
 	req.netTraceSpan = nil
+}
+
+type opTelemetryHandler struct {
+	tracer            *opTracer
+	service           string
+	operation         string
+	start             time.Time
+	metricsCompleteFn func(string, string, time.Time)
+}
+
+func (tc *tracerComponent) StartTelemeteryHandler(service, operation string, traceContext RequestSpanContext) *opTelemetryHandler {
+	return &opTelemetryHandler{
+		tracer:            tc.CreateOpTrace(operation, traceContext),
+		service:           service,
+		operation:         operation,
+		start:             time.Now(),
+		metricsCompleteFn: tc.ResponseValueRecord,
+	}
+}
+
+func (oth *opTelemetryHandler) RootContext() RequestSpanContext {
+	return oth.tracer.RootContext()
+}
+
+func (oth *opTelemetryHandler) StartTime() time.Time {
+	return oth.start
+}
+
+func (oth *opTelemetryHandler) Finish() {
+	oth.tracer.Finish()
+	oth.metricsCompleteFn(oth.service, oth.operation, oth.start)
 }

@@ -214,14 +214,12 @@ func newAnalyticsQueryComponent(httpComponent *httpComponent, tracer *tracerComp
 
 // AnalyticsQuery executes an analytics query
 func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, cb AnalyticsQueryCallback) (PendingOp, error) {
-	start := time.Now()
-	defer aqc.tracer.ResponseValueRecord(metricValueServiceAnalyticsValue, "AnalyticsQuery", start)
-	tracer := aqc.tracer.CreateOpTrace("AnalyticsQuery", opts.TraceContext)
-	defer tracer.Finish()
+	tracer := aqc.tracer.StartTelemeteryHandler(metricValueServiceAnalyticsValue, "AnalyticsQuery", opts.TraceContext)
 
 	var payloadMap map[string]interface{}
 	err := json.Unmarshal(opts.Payload, &payloadMap)
 	if err != nil {
+		tracer.Finish()
 		return nil, wrapAnalyticsError(nil, "", wrapError(err, "expected a JSON payload"), "", 0)
 	}
 
@@ -249,101 +247,100 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 	}
 
 	go func() {
-	ExecuteLoop:
-		for {
-			{ // Produce an updated payload with the appropriate timeout
-				timeoutLeft := time.Until(ireq.Deadline)
-				payloadMap["timeout"] = timeoutLeft.String()
-
-				newPayload, err := json.Marshal(payloadMap)
-				if err != nil {
-					cancel()
-					cb(nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload"), "", 0))
-					return
-				}
-				ireq.Body = newPayload
-			}
-
-			resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq, false)
-			if err != nil {
-				cancel()
-				if errors.Is(err, ErrRequestCanceled) {
-					cb(nil, err)
-					return
-				}
-				// execHTTPRequest will handle retrying due to in-flight socket close based
-				// on whether or not IsIdempotent is set on the httpRequest
-				cb(nil, wrapAnalyticsError(ireq, statement, err, "", 0))
-				return
-			}
-
-			if resp.StatusCode != 200 {
-				analyticsErr := parseAnalyticsErrorResp(ireq, statement, resp)
-
-				var retryReason RetryReason
-				if len(analyticsErr.Errors) >= 1 {
-					firstErrDesc := analyticsErr.Errors[0]
-
-					if firstErrDesc.Code == 23000 {
-						retryReason = AnalyticsTemporaryFailureRetryReason
-					} else if firstErrDesc.Code == 23003 {
-						retryReason = AnalyticsTemporaryFailureRetryReason
-					} else if firstErrDesc.Code == 23007 {
-						retryReason = AnalyticsTemporaryFailureRetryReason
-					}
-				}
-
-				if retryReason == nil {
-					cancel()
-					// analyticsErr is already wrapped here
-					cb(nil, analyticsErr)
-					return
-				}
-
-				shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
-				if !shouldRetry {
-					cancel()
-					// analyticsErr is already wrapped here
-					cb(nil, analyticsErr)
-					return
-				}
-
-				select {
-				case <-time.After(time.Until(retryTime)):
-					continue ExecuteLoop
-				case <-time.After(time.Until(ireq.Deadline)):
-					cancel()
-					err := &TimeoutError{
-						InnerError:       errUnambiguousTimeout,
-						OperationID:      "http",
-						Opaque:           ireq.Identifier(),
-						TimeObserved:     time.Since(start),
-						RetryReasons:     ireq.retryReasons,
-						RetryAttempts:    ireq.retryCount,
-						LastDispatchedTo: ireq.Endpoint,
-					}
-					cb(nil, wrapAnalyticsError(ireq, statement, err, "", 0))
-					return
-				}
-			}
-
-			streamer, err := newQueryStreamer(resp.Body, "results")
-			if err != nil {
-				cancel()
-				respBody, readErr := ioutil.ReadAll(resp.Body)
-				if readErr != nil {
-					logDebugf("Failed to read response body: %v", readErr)
-				}
-				cb(nil, wrapAnalyticsError(ireq, statement, err, string(respBody), resp.StatusCode))
-				return
-			}
-
-			cb(&AnalyticsRowReader{
-				streamer: streamer,
-			}, nil)
+		res, err := aqc.analyticsQuery(ireq, payloadMap, statement, tracer.StartTime())
+		if err != nil {
+			cancel()
+			tracer.Finish()
+			cb(nil, err)
 			return
 		}
+
+		tracer.Finish()
+		cb(res, nil)
 	}()
 
 	return ireq, nil
+}
+
+func (aqc *analyticsQueryComponent) analyticsQuery(ireq *httpRequest, payloadMap map[string]interface{},
+	statement string, startTime time.Time) (*AnalyticsRowReader, error) {
+	for {
+		{ // Produce an updated payload with the appropriate timeout
+			timeoutLeft := time.Until(ireq.Deadline)
+			payloadMap["timeout"] = timeoutLeft.String()
+
+			newPayload, err := json.Marshal(payloadMap)
+			if err != nil {
+				return nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload"), "", 0)
+			}
+			ireq.Body = newPayload
+		}
+
+		resp, err := aqc.httpComponent.DoInternalHTTPRequest(ireq, false)
+		if err != nil {
+			if errors.Is(err, ErrRequestCanceled) {
+				return nil, err
+			}
+			// execHTTPRequest will handle retrying due to in-flight socket close based
+			// on whether or not IsIdempotent is set on the httpRequest
+			return nil, wrapAnalyticsError(ireq, statement, err, "", 0)
+		}
+
+		if resp.StatusCode != 200 {
+			analyticsErr := parseAnalyticsErrorResp(ireq, statement, resp)
+
+			var retryReason RetryReason
+			if len(analyticsErr.Errors) >= 1 {
+				firstErrDesc := analyticsErr.Errors[0]
+
+				if firstErrDesc.Code == 23000 {
+					retryReason = AnalyticsTemporaryFailureRetryReason
+				} else if firstErrDesc.Code == 23003 {
+					retryReason = AnalyticsTemporaryFailureRetryReason
+				} else if firstErrDesc.Code == 23007 {
+					retryReason = AnalyticsTemporaryFailureRetryReason
+				}
+			}
+
+			if retryReason == nil {
+				// analyticsErr is already wrapped here
+				return nil, analyticsErr
+			}
+
+			shouldRetry, retryTime := retryOrchMaybeRetry(ireq, retryReason)
+			if !shouldRetry {
+				// analyticsErr is already wrapped here
+				return nil, analyticsErr
+			}
+
+			select {
+			case <-time.After(time.Until(retryTime)):
+				continue
+			case <-time.After(time.Until(ireq.Deadline)):
+				err := &TimeoutError{
+					InnerError:       errUnambiguousTimeout,
+					OperationID:      "http",
+					Opaque:           ireq.Identifier(),
+					TimeObserved:     time.Since(startTime),
+					RetryReasons:     ireq.retryReasons,
+					RetryAttempts:    ireq.retryCount,
+					LastDispatchedTo: ireq.Endpoint,
+				}
+				return nil, wrapAnalyticsError(ireq, statement, err, "", 0)
+			}
+		}
+
+		streamer, err := newQueryStreamer(resp.Body, "results")
+		if err != nil {
+			respBody, readErr := ioutil.ReadAll(resp.Body)
+			if readErr != nil {
+				logDebugf("Failed to read response body: %v", readErr)
+			}
+			return nil, wrapAnalyticsError(ireq, statement, err, string(respBody), resp.StatusCode)
+		}
+
+		return &AnalyticsRowReader{
+			streamer: streamer,
+		}, nil
+	}
 }

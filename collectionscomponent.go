@@ -20,7 +20,7 @@ type collectionsComponent struct {
 	mapLock              sync.Mutex
 	dispatcher           dispatcher
 	maxQueueSize         int
-	tracer               tracerManager
+	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
 	cfgMgr               configManager
 
@@ -35,7 +35,7 @@ type collectionIDProps struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
-func newCollectionIDManager(props collectionIDProps, dispatcher dispatcher, tracer tracerManager,
+func newCollectionIDManager(props collectionIDProps, dispatcher dispatcher, tracer *tracerComponent,
 	cfgMgr configManager) *collectionsComponent {
 	cidMgr := &collectionsComponent{
 		dispatcher:           dispatcher,
@@ -101,9 +101,7 @@ func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req
 }
 
 func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionManifestOptions, cb GetCollectionManifestCallback) (PendingOp, error) {
-	start := time.Now()
-	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_collection_manifest", start)
-	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionManifest", opts.TraceContext)
+	tracer := cidMgr.tracer.StartTelemeteryHandler(metricValueServiceAnalyticsValue, "GetCollectionManifest", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -139,13 +137,17 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 		RootTraceContext: opts.TraceContext,
 	}
 
-	return cidMgr.dispatcher.DispatchDirect(req)
+	op, err := cidMgr.dispatcher.DispatchDirect(req)
+	if err != nil {
+		tracer.Finish()
+		return nil, err
+	}
+
+	return op, nil
 }
 
 func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollectionManifestsOptions, cb GetAllCollectionManifestsCallback) (PendingOp, error) {
-	start := time.Now()
-	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_all_collection_manifests", start)
-	tracer := cidMgr.tracer.CreateOpTrace("GetAllCollectionManifests", opts.TraceContext)
+	tracer := cidMgr.tracer.StartTelemeteryHandler(metricValueServiceAnalyticsValue, "GetAllCollectionManifests", opts.TraceContext)
 
 	if opts.RetryStrategy == nil {
 		opts.RetryStrategy = cidMgr.defaultRetryStrategy
@@ -153,6 +155,7 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 
 	iter, err := cidMgr.dispatcher.PipelineSnapshot()
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -220,9 +223,7 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 // name in the key rather than in the corresponding fields.
 func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collectionName string, opts GetCollectionIDOptions,
 	cb GetCollectionIDCallback) (PendingOp, error) {
-	start := time.Now()
-	defer cidMgr.tracer.ResponseValueRecord(metricValueServiceKeyValue, "get_collection_id", start)
-	tracer := cidMgr.tracer.CreateOpTrace("GetCollectionID", opts.TraceContext)
+	tracer := cidMgr.tracer.StartTelemeteryHandler(metricValueServiceAnalyticsValue, "GetCollectionID", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -276,7 +277,13 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 
 	req.Callback = handler
 
-	return cidMgr.dispatcher.DispatchDirect(req)
+	op, err := cidMgr.dispatcher.DispatchDirect(req)
+	if err != nil {
+		tracer.Finish()
+		return nil, err
+	}
+
+	return op, nil
 }
 
 func (cidMgr *collectionsComponent) upsert(scopeName, collectionName string, value uint32) *collectionIDCache {

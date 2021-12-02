@@ -31,9 +31,7 @@ func (sol *subdocOpList) Reorder(ops []SubDocOp) {
 	sol.indexes = append(xAttrIndexes, opIndexes...)
 }
 func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "LookupIn", start)
-	tracer := crud.tracer.CreateOpTrace("LookupIn", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "LookupIn", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
 	var subdocs subdocOpList
@@ -153,6 +151,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -161,7 +160,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "LookupIn",
 				Opaque:             req.Identifier(),
@@ -171,7 +170,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -183,9 +182,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		return nil, wrapError(errInvalidArgument, "at least one op must be present")
 	}
 
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "MutateIn", start)
-	tracer := crud.tracer.CreateOpTrace("MutateIn", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "MutateIn", opts.TraceContext)
 
 	results := make([]SubDocResult, len(opts.Ops))
 	var subdocs subdocOpList
@@ -369,6 +366,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -377,7 +375,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "MutateIn",
 				Opaque:             req.Identifier(),
@@ -387,7 +385,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 

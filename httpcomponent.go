@@ -63,10 +63,7 @@ func (hc *httpComponent) Close() {
 }
 
 func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallback) (PendingOp, error) {
-	start := time.Now()
-	defer hc.tracer.ResponseValueRecord(metricValueServiceHTTPValue, "http", start)
-	tracer := hc.tracer.CreateOpTrace("http", req.TraceContext)
-	defer tracer.Finish()
+	tracer := hc.tracer.StartTelemeteryHandler(metricValueServiceHTTPValue, "http", req.TraceContext)
 
 	retryStrategy := hc.defaultRetryStrategy
 	if req.RetryStrategy != nil {
@@ -104,10 +101,12 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 				return
 			}
 
+			tracer.Finish()
 			cb(nil, wrapHTTPError(ireq, err))
 			return
 		}
 
+		tracer.Finish()
 		cb(resp, nil)
 	}()
 

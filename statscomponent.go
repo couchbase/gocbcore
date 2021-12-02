@@ -22,7 +22,7 @@ func newStatsComponent(kvMux *kvMux, defaultRetry RetryStrategy, tracer *tracerC
 }
 
 func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp, error) {
-	tracer := sc.tracer.CreateOpTrace("Stats", opts.TraceContext)
+	tracer := sc.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Stats", opts.TraceContext)
 
 	iter, err := sc.kvMux.PipelineSnapshot()
 	if err != nil {
@@ -170,7 +170,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 			req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 				connInfo := req.ConnectionInfo()
 				count, reasons := req.Retries()
-				req.cancelWithCallback(&TimeoutError{
+				req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 					InnerError:         errAmbiguousTimeout,
 					OperationID:        "Unlock",
 					Opaque:             req.Identifier(),
@@ -180,7 +180,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 					LastDispatchedTo:   connInfo.lastDispatchedTo,
 					LastDispatchedFrom: connInfo.lastDispatchedFrom,
 					LastConnectionID:   connInfo.lastConnectionID,
-				})
+				}, tracer)
 			}))
 		}
 

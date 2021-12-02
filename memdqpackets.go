@@ -242,6 +242,16 @@ func (req *memdQRequest) cancelWithCallback(err error) {
 	}
 }
 
+func (req *memdQRequest) cancelWithCallbackAndFinishTracer(err error, tracer *opTelemetryHandler) {
+	// Try to perform the cancellation, if it succeeds, we call the
+	// callback immediately on the users behalf.
+	// Only if cancel succeeds we also finish the tracer.
+	if req.internalCancel(err) {
+		tracer.Finish()
+		req.Callback(nil, req, err)
+	}
+}
+
 func (req *memdQRequest) Cancel() {
 	// Try to perform the cancellation, if it succeeds, we call the
 	// callback immediately on the users behalf.

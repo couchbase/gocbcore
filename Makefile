@@ -18,7 +18,6 @@ check: lint
 
 updatemocks:
 	mockery -name dispatcher -output . -testonly -inpkg
-	mockery -name tracerManager -output . -testonly -inpkg
 	mockery -name configManager -output . -testonly -inpkg
 	mockery -name httpComponentInterface -output . -testonly -inpkg
 

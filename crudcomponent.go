@@ -27,9 +27,7 @@ func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetrySt
 }
 
 func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Get", start)
-	tracer := crud.tracer.CreateOpTrace("Get", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Get", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -86,6 +84,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -94,7 +93,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "Get",
 				Opaque:             req.Identifier(),
@@ -104,7 +103,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -112,9 +111,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 }
 
 func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetAndTouch", start)
-	tracer := crud.tracer.CreateOpTrace("GetAndTouch", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetAndTouch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -175,6 +172,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -183,7 +181,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "GetAndTouch",
 				Opaque:             req.Identifier(),
@@ -193,7 +191,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -201,9 +199,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 }
 
 func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetAndLock", start)
-	tracer := crud.tracer.CreateOpTrace("GetAndLock", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetAndLock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -264,6 +260,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -272,7 +269,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "GetAndLock",
 				Opaque:             req.Identifier(),
@@ -282,7 +279,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -290,9 +287,7 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 }
 
 func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetOneReplica", start)
-	tracer := crud.tracer.CreateOpTrace("GetOneReplica", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetOneReplica", opts.TraceContext)
 
 	if opts.ReplicaIdx <= 0 {
 		tracer.Finish()
@@ -356,6 +351,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -364,7 +360,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetOneReplica",
 				Opaque:             req.Identifier(),
@@ -374,7 +370,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -382,9 +378,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 }
 
 func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Touch", start)
-	tracer := crud.tracer.CreateOpTrace("Touch", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Touch", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -442,6 +436,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -450,7 +445,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Touch",
 				Opaque:             req.Identifier(),
@@ -460,7 +455,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -468,9 +463,7 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 }
 
 func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Unlock", start)
-	tracer := crud.tracer.CreateOpTrace("Unlock", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Unlock", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -525,6 +518,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -533,7 +527,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Unlock",
 				Opaque:             req.Identifier(),
@@ -543,7 +537,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -551,9 +545,7 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 }
 
 func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "Delete", start)
-	tracer := crud.tracer.CreateOpTrace("Delete", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "Delete", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -624,6 +616,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -632,7 +625,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "Delete",
 				Opaque:             req.Identifier(),
@@ -642,7 +635,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -650,9 +643,7 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 }
 
 func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeOptions, cb StoreCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
-	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -732,6 +723,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -740,7 +732,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
@@ -750,7 +742,7 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -806,9 +798,7 @@ func (crud *crudComponent) Replace(opts ReplaceOptions, cb StoreCallback) (Pendi
 }
 
 func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts AdjoinOptions, cb AdjoinCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
-	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -885,6 +875,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -893,7 +884,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
@@ -903,7 +894,7 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -919,9 +910,7 @@ func (crud *crudComponent) Prepend(opts AdjoinOptions, cb AdjoinCallback) (Pendi
 }
 
 func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts CounterOptions, cb CounterCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, opName, start)
-	tracer := crud.tracer.CreateOpTrace(opName, opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, opName, opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1020,6 +1009,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -1028,7 +1018,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        opName,
 				Opaque:             req.Identifier(),
@@ -1038,7 +1028,7 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -1054,9 +1044,7 @@ func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterCallback) (P
 }
 
 func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetRandom", start)
-	tracer := crud.tracer.CreateOpTrace("GetRandom", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetRandom", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
 		if err != nil {
@@ -1115,6 +1103,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -1123,7 +1112,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetRandom",
 				Opaque:             req.Identifier(),
@@ -1133,7 +1122,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -1141,9 +1130,7 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 }
 
 func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "GetMeta", start)
-	tracer := crud.tracer.CreateOpTrace("GetMeta", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1211,6 +1198,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -1219,7 +1207,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errUnambiguousTimeout,
 				OperationID:        "GetMeta",
 				Opaque:             req.Identifier(),
@@ -1229,7 +1217,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -1237,9 +1225,7 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "SetMeta", start)
-	tracer := crud.tracer.CreateOpTrace("SetMeta", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "SetMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1303,6 +1289,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -1311,7 +1298,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "SetMeta",
 				Opaque:             req.Identifier(),
@@ -1321,7 +1308,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
@@ -1329,9 +1316,7 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 }
 
 func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallback) (PendingOp, error) {
-	start := time.Now()
-	defer crud.tracer.ResponseValueRecord(metricValueServiceKeyValue, "DeleteMeta", start)
-	tracer := crud.tracer.CreateOpTrace("DeleteMeta", opts.TraceContext)
+	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "DeleteMeta", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -1395,6 +1380,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 
 	op, err := crud.cidMgr.Dispatch(req)
 	if err != nil {
+		tracer.Finish()
 		return nil, err
 	}
 
@@ -1403,7 +1389,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 			connInfo := req.ConnectionInfo()
 			count, reasons := req.Retries()
-			req.cancelWithCallback(&TimeoutError{
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
 				InnerError:         errAmbiguousTimeout,
 				OperationID:        "DeleteMeta",
 				Opaque:             req.Identifier(),
@@ -1413,7 +1399,7 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 				LastDispatchedTo:   connInfo.lastDispatchedTo,
 				LastDispatchedFrom: connInfo.lastDispatchedFrom,
 				LastConnectionID:   connInfo.lastConnectionID,
-			})
+			}, tracer)
 		}))
 	}
 
