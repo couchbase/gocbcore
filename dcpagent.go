@@ -284,6 +284,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			QueueSize:          maxQueueSize,
 			PoolSize:           kvPoolSize,
 			CollectionsEnabled: useCollections,
+			NoTLSSeedNode:      config.SecurityConfig.NoTLSSeedNode,
 		},
 		c.cfgManager,
 		c.errMap,

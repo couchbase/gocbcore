@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -76,6 +77,7 @@ func (suite *DCPTestSuite) SetupSuite() {
 
 	suite.dcpAgent, err = suite.initDCPAgent(
 		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry)),
+		"test-stream",
 		flags,
 	)
 	suite.Require().Nil(err, err)
@@ -175,8 +177,8 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 	return config
 }
 
-func (suite *DCPTestSuite) initDCPAgent(config DCPAgentConfig, openFlags memd.DcpOpenFlag) (*DCPAgent, error) {
-	agent, err := CreateDcpAgent(&config, "test-stream", openFlags)
+func (suite *DCPTestSuite) initDCPAgent(config DCPAgentConfig, streamName string, openFlags memd.DcpOpenFlag) (*DCPAgent, error) {
+	agent, err := CreateDcpAgent(&config, streamName, openFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +334,7 @@ func (suite *DCPTestSuite) runMutations(collection, scope string) (map[string]st
 	return mutations, deletionKeys
 }
 
-func (suite *DCPTestSuite) getFailoverLogs(nVB int) (map[int]FailoverEntry, error) {
+func (suite *DCPTestSuite) getFailoverLogs(nVB int, dcpAgent *DCPAgent) (map[int]FailoverEntry, error) {
 	ch := make(chan error)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -344,7 +346,7 @@ func (suite *DCPTestSuite) getFailoverLogs(nVB int) (map[int]FailoverEntry, erro
 
 	for i := 0; i < nVB; i++ {
 		go func(vbId uint16) {
-			op, err := suite.dcpAgent.GetFailoverLog(vbId, func(entries []FailoverEntry, err error) {
+			op, err := dcpAgent.GetFailoverLog(vbId, func(entries []FailoverEntry, err error) {
 				for _, en := range entries {
 					lock.Lock()
 					failOverEntries[int(vbId)] = en
@@ -391,9 +393,9 @@ func (suite *DCPTestSuite) getFailoverLogs(nVB int) (map[int]FailoverEntry, erro
 }
 
 //Runs a dcp stream on all VBs from the last snapshot to the current seqno
-func (suite *DCPTestSuite) runDCPStream() int {
+func (suite *DCPTestSuite) runDCPStream(dcpAgent *DCPAgent) int {
 	suite.so.newCounter()
-	seqnos, err := suite.getCurrentSeqNos()
+	seqnos, err := suite.getCurrentSeqNos(dcpAgent)
 	suite.Require().Nil(err, err)
 
 	suite.so.endWg.Add(len(seqnos))
@@ -404,7 +406,7 @@ func (suite *DCPTestSuite) runDCPStream() int {
 	var openWg sync.WaitGroup
 	openWg.Add(len(seqnos))
 
-	fo, err := suite.getFailoverLogs(len(seqnos))
+	fo, err := suite.getFailoverLogs(len(seqnos), dcpAgent)
 	suite.Require().Nil(err, err)
 
 	//Start streaming from all VBs from the latest snapshot, until the current seqno
@@ -415,7 +417,7 @@ func (suite *DCPTestSuite) runDCPStream() int {
 			snapshot := suite.so.snapshots[en.VbID]
 			suite.so.lock.Unlock()
 
-			op, err := suite.dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(en.VbID)].VbUUID, SeqNo(snapshot.EndSeqNo), en.SeqNo,
+			op, err := dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(en.VbID)].VbUUID, SeqNo(snapshot.EndSeqNo), en.SeqNo,
 				SeqNo(snapshot.StartSeqNo), SeqNo(snapshot.EndSeqNo), suite.so, OpenStreamOptions{}, func(entries []FailoverEntry, err error) {
 					ch <- err
 				},
@@ -474,18 +476,18 @@ func (suite *DCPTestSuite) runDCPStream() int {
 	return len(seqnos)
 }
 
-func (suite *DCPTestSuite) getCurrentSeqNos() ([]VbSeqNoEntry, error) {
+func (suite *DCPTestSuite) getCurrentSeqNos(dcpAgent *DCPAgent) ([]VbSeqNoEntry, error) {
 	h := makeTestSubHarness(suite.T())
 
 	var seqnos []VbSeqNoEntry
-	snapshot, err := suite.dcpAgent.ConfigSnapshot()
+	snapshot, err := dcpAgent.ConfigSnapshot()
 	suite.Require().Nil(err, err)
 
 	numNodes, err := snapshot.NumServers()
 	suite.Require().Nil(err, err)
 	//Get all SeqNos
 	for i := 1; i < numNodes+1; i++ {
-		h.PushOp(suite.dcpAgent.GetVbucketSeqnos(i, memd.VbucketStateActive, GetVbucketSeqnoOptions{},
+		h.PushOp(dcpAgent.GetVbucketSeqnos(i, memd.VbucketStateActive, GetVbucketSeqnoOptions{},
 			func(entries []VbSeqNoEntry, err error) {
 				h.Wrap(func() {
 					if err != nil {
@@ -504,7 +506,7 @@ func (suite *DCPTestSuite) getCurrentSeqNos() ([]VbSeqNoEntry, error) {
 func (suite *DCPTestSuite) TestBasic() {
 	mutations, deletionKeys := suite.runMutations("", "")
 
-	suite.runDCPStream()
+	suite.runDCPStream(suite.dcpAgent)
 
 	// Compaction can run and cause expirations to be hidden from us
 	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations))
@@ -528,7 +530,7 @@ func (suite *DCPTestSuite) TestScopesBasic() {
 	prefix := "dcp_scope_sbasic"
 	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
-	nVB := suite.runDCPStream()
+	nVB := suite.runDCPStream(suite.dcpAgent)
 
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	suite.Assert().Equal(len(pScopes), len(suite.so.counter.scopes))
@@ -550,7 +552,7 @@ func (suite *DCPTestSuite) TestScopesDrops() {
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	suite.dropScopes(pScopes, suite.BucketName, suite.opAgent)
 
-	nVB := suite.runDCPStream()
+	nVB := suite.runDCPStream(suite.dcpAgent)
 
 	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopesDeleted)) {
 		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
@@ -578,7 +580,7 @@ func (suite *DCPTestSuite) TestCollectionsBasic() {
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, "dcp_collection_cbasic", pScopes, suite.BucketName, suite.opAgent)
 	pScopes = suite.getPrunedScopeManifests(prefix, lastScopeManifest)
 
-	nVB := suite.runDCPStream()
+	nVB := suite.runDCPStream(suite.dcpAgent)
 
 	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes)) {
 		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopes, suite.so.counter.collections)
@@ -615,7 +617,7 @@ func (suite *DCPTestSuite) TestCollectionsScopeDrop() {
 	//Drop all scopes created in this test, implicitly dropping all the collections
 	suite.dropScopes(pScopes, suite.BucketName, suite.opAgent)
 
-	nVB := suite.runDCPStream()
+	nVB := suite.runDCPStream(suite.dcpAgent)
 
 	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopesDeleted)) {
 		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
@@ -653,7 +655,7 @@ func (suite *DCPTestSuite) TestCollectionsDrop() {
 	//Drop all collections created in this test
 	suite.dropCollections(pScopes, suite.BucketName, suite.opAgent)
 
-	nVB := suite.runDCPStream()
+	nVB := suite.runDCPStream(suite.dcpAgent)
 
 	if !suite.Assert().Equal(suite.NumScopes, len(suite.so.counter.scopes)) {
 		suite.T().Logf("Scopes: %+v, Collections: %+v", suite.so.counter.scopesDeleted, suite.so.counter.collectionsDeleted)
@@ -691,7 +693,7 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 	time.Sleep(5 * time.Second) // Needed to ensure collection ready before performing mutations.
 	mutations, deletionKeys := suite.runMutations(cPrefix+"0", sPrefix+"0")
 
-	suite.runDCPStream()
+	suite.runDCPStream(suite.dcpAgent)
 
 	// Compaction can run and cause expirations to be hidden from us
 	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations))
@@ -709,10 +711,48 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 	}
 }
 
-func (suite *DCPTestSuite) TestNSAgentReconfigureSecurity() {
+func (suite *DCPTestSuite) TestNSAgent() {
+	flags := memd.DcpOpenFlagProducer
+
+	if suite.SupportsFeature(TestFeatureDCPDeleteTimes) {
+		flags |= memd.DcpOpenFlagIncludeDeleteTimes
+	}
+
+	srcCfg := suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry))
+	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
+		suite.T().Skip("Skipping test due to no HTTP addresses")
+	}
+	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
+	parts := strings.Split(seedAddr, ":")
+
+	if parts[1] != "8091" && parts[1] != "11210" {
+		// This should work with non default ports but it makes the test logic too complicated.
+		// This implicitly means that if TLS is enabled then this test won't run.
+		suite.T().Skip("Skipping test due to non default ports have been supplied")
+	}
+
+	connstr := fmt.Sprintf("ns_server://%s", seedAddr)
+	config := DCPAgentConfig{
+		BucketName: srcCfg.BucketName,
+	}
+	err := config.FromConnStr(connstr)
+	suite.Require().Nil(err, err)
+
+	config.IoConfig = srcCfg.IoConfig
+	config.DCPConfig = srcCfg.DCPConfig
+	config.SecurityConfig.TLSRootCAProvider = func() *x509.CertPool {
+		return nil
+	}
+	config.SecurityConfig.Auth = srcCfg.SecurityConfig.Auth
+	config.SecurityConfig.AuthMechanisms = srcCfg.SecurityConfig.AuthMechanisms
+
+	dcpAgent, err := suite.initDCPAgent(config, "ns-stream", flags)
+	suite.Require().Nil(err, err)
+	defer dcpAgent.Close()
+
 	mutations, deletionKeys := suite.runMutations("", "")
 
-	suite.runDCPStream()
+	suite.runDCPStream(dcpAgent)
 
 	// Compaction can run and cause expirations to be hidden from us
 	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations))
