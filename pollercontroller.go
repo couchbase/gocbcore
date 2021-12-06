@@ -15,6 +15,8 @@ type pollerController struct {
 	cccpPoller *cccpConfigController
 	httpPoller *httpConfigController
 	cfgMgr     configManager
+
+	isFallbackErrorFn func(error) bool
 }
 
 type configPollerController interface {
@@ -34,11 +36,13 @@ type configPoller interface {
 	Error() error
 }
 
-func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfigController, cfgMgr configManager) *pollerController {
+func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfigController, cfgMgr configManager,
+	errorFn func(error) bool) *pollerController {
 	pc := &pollerController{
-		cccpPoller: cccpPoller,
-		httpPoller: httpPoller,
-		cfgMgr:     cfgMgr,
+		cccpPoller:        cccpPoller,
+		httpPoller:        httpPoller,
+		cfgMgr:            cfgMgr,
+		isFallbackErrorFn: errorFn,
 	}
 	cfgMgr.AddConfigWatcher(pc)
 
@@ -104,7 +108,7 @@ func (pc *pollerController) Start() {
 			logErrorf("CCCP poller has exited for http fallback but no http poller is configured")
 			return
 		}
-		if isPollingFallbackError(err) {
+		if pc.isFallbackErrorFn(err) {
 			pc.controllerLock.Lock()
 			// We can get into a weird race where the poller controller sent stop to the active controller but we then
 			// swap to a different one and so the Done() function never completes.
@@ -170,6 +174,10 @@ func (pc *pollerController) PollerError() error {
 }
 
 func (pc *pollerController) ForceHTTPPoller() {
+	if pc.httpPoller == nil {
+		logErrorf("Attempting to force http poller but no http poller is configured")
+		return
+	}
 	go func() {
 		if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
 			logInfof("Config already seen, not forcing HTTP")
@@ -216,7 +224,10 @@ func (pc *pollerController) ForceHTTPPoller() {
 	}()
 }
 
-func isPollingFallbackError(err error) bool {
+func isPollingFallbackError(err error, bucket string) bool {
+	if bucket == "" {
+		return false
+	}
 	return errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrUnsupportedOperation) ||
 		errors.Is(err, errNoCCCPHosts) || errors.Is(err, ErrBucketNotFound)
 }

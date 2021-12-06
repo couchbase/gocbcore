@@ -324,16 +324,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				confHTTPMaxWait:      confHTTPMaxWait,
 			}, c.cfgManager)
 	} else {
-		poller = newPollerController(
-			newCCCPConfigController(
-				cccpPollerProperties{
-					confCccpMaxWait:    confCccpMaxWait,
-					confCccpPollPeriod: confCccpPollPeriod,
-				},
-				c.kvMux,
-				c.cfgManager,
-			),
-			newHTTPConfigController(
+		var httpPoller *httpConfigController
+		if c.bucketName != "" {
+			httpPoller = newHTTPConfigController(
 				c.bucketName,
 				httpPollerProperties{
 					httpComponent:        c.http,
@@ -343,8 +336,21 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				},
 				c.httpMux,
 				c.cfgManager,
+			)
+		}
+		poller = newPollerController(
+			newCCCPConfigController(
+				cccpPollerProperties{
+					confCccpMaxWait:    confCccpMaxWait,
+					confCccpPollPeriod: confCccpPollPeriod,
+				},
+				c.kvMux,
+				c.cfgManager,
+				c.isPollingFallbackError,
 			),
+			httpPoller,
 			c.cfgManager,
+			c.isPollingFallbackError,
 		)
 	}
 	c.pollerController = poller
@@ -492,7 +498,11 @@ func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) erro
 
 func (agent *DCPAgent) onBootstrapFail(err error) {
 	// If this error is a legitimate fallback reason then we should immediately start the http poller.
-	if agent.pollerController != nil && isPollingFallbackError(err) {
+	if agent.pollerController != nil && agent.isPollingFallbackError(err) {
 		agent.pollerController.ForceHTTPPoller()
 	}
+}
+
+func (agent *DCPAgent) isPollingFallbackError(err error) bool {
+	return isPollingFallbackError(err, agent.bucketName)
 }

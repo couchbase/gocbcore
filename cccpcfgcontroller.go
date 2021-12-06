@@ -24,9 +24,12 @@ type cccpConfigController struct {
 
 	fetchErr error
 	errLock  sync.Mutex
+
+	isFallbackErrorFn func(error) bool
 }
 
-func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMgr *configManagementComponent) *cccpConfigController {
+func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMgr *configManagementComponent,
+	isFallbackErrorFn func(error) bool) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,
@@ -36,6 +39,8 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		looperPauseSig: make(chan bool),
 		looperStopSig:  make(chan struct{}),
 		looperDoneSig:  make(chan struct{}),
+
+		isFallbackErrorFn: isFallbackErrorFn,
 	}
 }
 
@@ -123,7 +128,7 @@ Looper:
 			nodeIdx = (nodeIdx + 1) % numNodes
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
-				if isPollingFallbackError(err) {
+				if ccc.isFallbackErrorFn(err) {
 					// This error is indicative of a memcached bucket which we can't handle so return the error.
 					logInfof("CCCPPOLL: CCCP not supported, returning error upstream.")
 					foundErr = err

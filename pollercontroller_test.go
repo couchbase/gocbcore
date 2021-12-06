@@ -19,7 +19,9 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndStopRace() {
 		},
 	}
 
-	poller := newPollerController(ccp, htt, &configManagementComponent{})
+	poller := newPollerController(ccp, htt, &configManagementComponent{}, func(err error) bool {
+		return false
+	})
 	poller.activeController = ccp
 
 	poller.Stop()
@@ -64,6 +66,9 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 		muxer:              muxer,
 		confCccpPollPeriod: 10 * time.Second,
 		confCccpMaxWait:    5 * time.Second,
+		isFallbackErrorFn: func(err error) bool {
+			return false
+		},
 	}
 	htt := &httpConfigController{
 		baseHTTPConfigController: &baseHTTPConfigController{
@@ -72,7 +77,9 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 		},
 	}
 
-	poller := newPollerController(ccp, htt, cfgMgr)
+	poller := newPollerController(ccp, htt, cfgMgr, func(err error) bool {
+		return false
+	})
 	poller.activeController = ccp
 
 	go ccp.DoLoop()
