@@ -454,11 +454,11 @@ func (suite *StandardTestSuite) CreateNSAgentConfig() (*AgentConfig, string) {
 	return config, seedAddr
 }
 
-func (suite *StandardTestSuite) VerifyKVMetrics(operation string, num int, atLeastNum bool) {
-	suite.VerifyMetrics(makeMetricsKey("kv", operation), num, atLeastNum)
+func (suite *StandardTestSuite) VerifyKVMetrics(operation string, num int, atLeastNum bool, zeroLenAllowed bool) {
+	suite.VerifyMetrics(makeMetricsKey("kv", operation), num, atLeastNum, zeroLenAllowed)
 }
 
-func (suite *StandardTestSuite) VerifyMetrics(key string, num int, atLeastNum bool) {
+func (suite *StandardTestSuite) VerifyMetrics(key string, num int, atLeastNum bool, zeroLenAllowed bool) {
 	suite.meter.lock.Lock()
 	defer suite.meter.lock.Unlock()
 	recorders := suite.meter.recorders
@@ -469,7 +469,9 @@ func (suite *StandardTestSuite) VerifyMetrics(key string, num int, atLeastNum bo
 			suite.Assert().Len(recorders[key].values, num)
 		}
 		for _, val := range recorders[key].values {
-			suite.Assert().NotZero(val)
+			if !zeroLenAllowed {
+				suite.Assert().NotZero(val)
+			}
 		}
 	}
 }

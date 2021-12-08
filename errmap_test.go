@@ -129,7 +129,7 @@ func (suite *StandardTestSuite) testKvErrorMapGeneric(errCode uint16) {
 		}
 	}
 
-	suite.VerifyKVMetrics("Get", 1, false)
+	suite.VerifyKVMetrics("Get", 1, false, false)
 
 	suite.mockInst.Control(jcbmock.NewCommand(jcbmock.COpFail, map[string]interface{}{
 		"bucket": suite.BucketName,

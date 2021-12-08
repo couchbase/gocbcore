@@ -110,9 +110,9 @@ func (suite *StandardTestSuite) TestSubdocXattrs() {
 	}))
 	s.Wait(0)
 
-	suite.VerifyKVMetrics("Set", 1, false)
-	suite.VerifyKVMetrics("MutateIn", 1, false)
-	suite.VerifyKVMetrics("LookupIn", 1, false)
+	suite.VerifyKVMetrics("Set", 1, false, false)
+	suite.VerifyKVMetrics("MutateIn", 1, false, false)
+	suite.VerifyKVMetrics("LookupIn", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestSubdocXattrsReorder() {
@@ -1428,9 +1428,9 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testmutateinpreserveExpiry")
 		}
 	}
-	suite.VerifyKVMetrics("Set", 1, false)
-	suite.VerifyKVMetrics("MutateIn", 1, false)
-	suite.VerifyKVMetrics("GetMeta", 1, false)
+	suite.VerifyKVMetrics("Set", 1, false, false)
+	suite.VerifyKVMetrics("MutateIn", 1, false, false)
+	suite.VerifyKVMetrics("GetMeta", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestSubdocCasMismatch() {
