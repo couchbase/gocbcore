@@ -203,7 +203,7 @@ func translateMemdError(err error, req *memdQRequest) error {
 	case ErrMemdRateLimitedNetworkEgress:
 		return errRateLimitedFailure
 	case ErrMemdRateLimitedMaxConnections:
-		return errQuotaLimitedFailure
+		return errRateLimitedFailure
 	case ErrMemdRateLimitedMaxCommands:
 		return errRateLimitedFailure
 	case ErrMemdRateLimitedScopeSizeLimitExceeded:
