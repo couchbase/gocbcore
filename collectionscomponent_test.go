@@ -653,6 +653,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	cfgMgr := new(mockConfigManager)
 	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
+	initialDispatchesDoneCh := make(chan struct{})
+
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
 	dispatcher.On("CollectionsEnabled").Return(true).Times(3)
@@ -674,9 +676,10 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 			binary.BigEndian.PutUint64(extras[0:], 1)
 			binary.BigEndian.PutUint32(extras[8:], 8)
 
-			time.AfterFunc(time.Millisecond, func() {
+			go func() {
+				<-initialDispatchesDoneCh
 				req.Callback(&memdQResponse{Packet: &memd.Packet{Extras: extras}}, req, nil)
-			})
+			}()
 		}).Once()
 	// The second request should be queued due to cid being pending so it should get requeued.
 	dispatcher.On("RequeueDirect", mock.AnythingOfType("*gocbcore.memdQRequest"), false).Return(&memdQRequest{}, nil).
@@ -761,6 +764,8 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	})
 	suite.Require().Nil(err, err)
 	suite.Assert().NotNil(op)
+
+	close(initialDispatchesDoneCh)
 
 	select {
 	case <-time.After(1 * time.Second):
