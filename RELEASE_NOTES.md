@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 10.0.6 (14 December 2021)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1190](GOCBC-1190):
+  Added internal stability support for sending queries to specific nodes.
+* [https://issues.couchbase.com/browse/GOCBC-1196](GOCBC-1196):
+* Added error body and status code to analytics, query, search, view errors.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1205](GOCBC-1205):
+  Fixed issue where tracer spans were not always being finished.
+* [https://issues.couchbase.com/browse/GOCBC-1206](GOCBC-1206):
+  Fixed issue where metrics were always incorrectly reporting very short durations for operations.
+* [https://issues.couchbase.com/browse/GOCBC-1208](GOCBC-1208):
+  Fixed issue where cluster config polling would fallback to HTTP polling even when there was no bucket.
+* [https://issues.couchbase.com/browse/GOCBC-1209](GOCBC-1209):
+  Fixed issue where the ns server connection string scheme wouldn't work for DCP.
+
+
 ## Version 10.0.5 (16 November 2021)
 
 ### New Features and Behavioral Changes
