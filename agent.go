@@ -241,10 +241,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.IoConfig.NetworkType,
-			SrcMemdAddrs: srcMemdAddrs,
-			SrcHTTPAddrs: srcHTTPAddrs,
-			UseTLS:       tlsConfig != nil,
+			NetworkType:   config.IoConfig.NetworkType,
+			SrcMemdAddrs:  srcMemdAddrs,
+			SrcHTTPAddrs:  srcHTTPAddrs,
+			UseTLS:        tlsConfig != nil,
+			NoTLSSeedNode: config.SecurityConfig.NoTLSSeedNode,
 		},
 	)
 

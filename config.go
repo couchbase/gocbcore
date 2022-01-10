@@ -92,7 +92,10 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
-func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool) *routeConfig {
+// BuildRouteConfig builds a new route config from this config.
+// overwriteSeedNode indicates that we should set the hostname for a node to the cfg.SourceHostname when the config has
+// been sourced from that node.
+func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, overwriteSeedNode bool) *routeConfig {
 	var (
 		kvServerList   = routeEndpoints{}
 		capiEpList     = routeEndpoints{}
@@ -141,7 +144,12 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			}
 
 			isSeedNode := node.ThisNode || len(node.Hostname) == 0
-			hostname = getHostname(hostname, cfg.SourceHostname)
+			if isSeedNode && overwriteSeedNode {
+				logSchedf("Seed node detected and set to overwrite, setting hostname to %s", cfg.SourceHostname)
+				hostname = cfg.SourceHostname
+			} else {
+				hostname = getHostname(hostname, cfg.SourceHostname)
+			}
 
 			endpoints := endpointsFromPorts(ports, hostname, isSeedNode)
 			if endpoints.kvServer.Address != "" {

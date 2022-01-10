@@ -6,8 +6,9 @@ import (
 )
 
 type configManagementComponent struct {
-	useSSL      uint32
-	networkType string
+	useSSL        uint32
+	networkType   string
+	noTLSSeedNode bool
 
 	currentConfig *routeConfig
 
@@ -20,10 +21,11 @@ type configManagementComponent struct {
 }
 
 type configManagerProperties struct {
-	UseTLS       bool
-	NetworkType  string
-	SrcMemdAddrs []routeEndpoint
-	SrcHTTPAddrs []routeEndpoint
+	UseTLS        bool
+	NoTLSSeedNode bool
+	NetworkType   string
+	SrcMemdAddrs  []routeEndpoint
+	SrcHTTPAddrs  []routeEndpoint
 }
 
 type routeConfigWatcher interface {
@@ -41,9 +43,10 @@ func newConfigManager(props configManagerProperties) *configManagementComponent 
 		useSSL = 1
 	}
 	return &configManagementComponent{
-		useSSL:      useSSL,
-		networkType: props.NetworkType,
-		srcServers:  append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
+		useSSL:        useSSL,
+		noTLSSeedNode: props.NoTLSSeedNode,
+		networkType:   props.NetworkType,
+		srcServers:    append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
@@ -63,7 +66,7 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	useSSL := atomic.LoadUint32(&cm.useSSL) == 1
 	if cm.seenConfig {
-		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false)
+		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false, cm.noTLSSeedNode)
 	} else {
 		routeCfg = cm.buildFirstRouteConfig(cfg, useSSL)
 		logDebugf("Using network type %s for connections", cm.networkType)
@@ -152,10 +155,10 @@ func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 
 func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, useSSL bool) *routeConfig {
 	if cm.networkType != "" && cm.networkType != "auto" {
-		return config.BuildRouteConfig(useSSL, cm.networkType, true)
+		return config.BuildRouteConfig(useSSL, cm.networkType, true, cm.noTLSSeedNode)
 	}
 
-	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true)
+	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true, cm.noTLSSeedNode)
 
 	var kvServerList []routeEndpoint
 	var mgmtEpList []routeEndpoint
@@ -188,7 +191,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, us
 	}
 
 	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true)
+	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true, cm.noTLSSeedNode)
 	if externalRouteCfg.IsValid() {
 		cm.networkType = "external"
 		return externalRouteCfg

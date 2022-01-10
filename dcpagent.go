@@ -243,10 +243,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:  config.IoConfig.NetworkType,
-			SrcMemdAddrs: srcMemdAddrs,
-			SrcHTTPAddrs: srcHTTPAddrs,
-			UseTLS:       tlsConfig != nil,
+			NetworkType:   config.IoConfig.NetworkType,
+			SrcMemdAddrs:  srcMemdAddrs,
+			SrcHTTPAddrs:  srcHTTPAddrs,
+			UseTLS:        tlsConfig != nil,
+			NoTLSSeedNode: config.SecurityConfig.NoTLSSeedNode,
 		},
 	)
 
