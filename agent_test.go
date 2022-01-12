@@ -1031,25 +1031,15 @@ func (suite *StandardTestSuite) TestBasicInsert() {
 }
 
 func (suite *StandardTestSuite) TestBasicSetGet() {
-	agent, s := suite.GetAgentAndHarness()
-
-	s.PushOp(agent.Delete(DeleteOptions{
-		Key:            []byte("test-doc"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-	}, func(res *DeleteResult, err error) {
-		s.Continue()
-	}))
-	s.Wait(0)
-
-	_, err := suite.mockInst.StartTest(suite.runID, "kv/crud/SetGet")
-	suite.Require().Nil(err, err)
+	spec := suite.StartTest("kv/crud/SetGet")
+	agent := spec.Agent
+	s := suite.GetHarness()
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte("test-doc"),
 		Value:          []byte("{}"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1064,8 +1054,8 @@ func (suite *StandardTestSuite) TestBasicSetGet() {
 
 	s.PushOp(agent.Get(GetOptions{
 		Key:            []byte("test-doc"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
+		CollectionName: spec.Collection,
+		ScopeName:      spec.Scope,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1081,20 +1071,17 @@ func (suite *StandardTestSuite) TestBasicSetGet() {
 	}))
 	s.Wait(0)
 
-	err = suite.mockInst.EndTest(suite.runID)
-	suite.Require().Nil(err, err)
+	suite.EndTest(spec)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
-		if suite.Assert().Equal(3, len(nilParents)) {
-			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "test-doc")
-			suite.AssertOpSpan(nilParents[1], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test-doc")
-			suite.AssertOpSpan(nilParents[2], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test-doc")
+	if suite.Assert().Contains(spec.Tracer.Spans, nil) {
+		nilParents := spec.Tracer.Spans[nil]
+		if suite.Assert().Equal(2, len(nilParents)) {
+			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test-doc")
+			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test-doc")
 		}
 	}
-	suite.VerifyKVMetrics(suite.meter, "Delete", 1, false, false)
-	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
-	suite.VerifyKVMetrics(suite.meter, "Get", 1, false, false)
+	suite.VerifyKVMetrics(spec.Meter, "Set", 1, false, false)
+	suite.VerifyKVMetrics(spec.Meter, "Get", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestBasicCounters() {

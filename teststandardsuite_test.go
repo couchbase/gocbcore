@@ -214,37 +214,72 @@ type TestSpec struct {
 }
 
 func (suite *StandardTestSuite) StartTest(name TestName) TestSpec {
-	spec, err := suite.mockInst.StartTest(suite.runID, string(name))
-	suite.Require().Nil(err)
 
-	if spec.ConnStr == "" {
-		return TestSpec{
-			Agent:      suite.DefaultAgent(),
-			Collection: globalTestConfig.CollectionName,
-			Scope:      globalTestConfig.ScopeName,
-			Tracer:     suite.tracer,
-			Meter:      suite.meter,
+	var connStr, bucket, scope, collection string
+	if suite.IsMockServer() {
+		spec, err := suite.mockInst.StartTest(suite.runID, string(name))
+		suite.Require().Nil(err)
+
+		if spec.ConnStr == "" {
+			return TestSpec{
+				Agent:      suite.DefaultAgent(),
+				Collection: globalTestConfig.CollectionName,
+				Scope:      globalTestConfig.ScopeName,
+				Tracer:     suite.tracer,
+				Meter:      suite.meter,
+			}
 		}
+
+		connStr = spec.ConnStr
+		bucket = spec.BucketName
+		scope = spec.ScopeName
+		collection = spec.CollectionName
+	} else {
+		if name != TestNameMemcachedBasic {
+			return TestSpec{
+				Agent:      suite.DefaultAgent(),
+				Collection: globalTestConfig.CollectionName,
+				Scope:      globalTestConfig.ScopeName,
+				Tracer:     suite.tracer,
+				Meter:      suite.meter,
+			}
+		}
+
+		connStr = globalTestConfig.ConnStr
+		bucket = "memd"
+		scope = "_default"
+		collection = "_default"
 	}
 
 	baseCfg := globalTestConfig.Clone()
-	baseCfg.ConnStr = spec.ConnStr
+	baseCfg.ConnStr = connStr
 
 	tracer := newTestTracer()
 	meter := newTestMeter()
 
 	cfg := suite.makeAgentConfig(baseCfg)
-	cfg.BucketName = spec.BucketName
+	cfg.BucketName = bucket
 	cfg.TracerConfig.Tracer = tracer
 	cfg.MeterConfig.Meter = meter
 
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
 
+	// Prime the agent to ensure that operations are clear to send without messing with tracing spans.
+	s := suite.GetHarness()
+	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitUntilReady failed with error: %v", err)
+			}
+		})
+	}))
+	s.Wait(6)
+
 	return TestSpec{
 		Agent:      agent,
-		Scope:      spec.ScopeName,
-		Collection: spec.CollectionName,
+		Scope:      scope,
+		Collection: collection,
 		Tracer:     tracer,
 		Meter:      meter,
 	}
@@ -259,8 +294,10 @@ func (suite *StandardTestSuite) EndTest(spec TestSpec) {
 	err := agent.Close()
 	suite.Assert().Nil(err, err)
 
-	err = suite.mockInst.EndTest(suite.runID)
-	suite.Require().Nil(err, err)
+	if suite.IsMockServer() {
+		err = suite.mockInst.EndTest(suite.runID)
+		suite.Require().Nil(err, err)
+	}
 }
 
 func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBucket) {
