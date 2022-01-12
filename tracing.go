@@ -184,7 +184,12 @@ func (tc *tracerComponent) ResponseValueRecord(service, operation string, start 
 		return
 	}
 
-	recorder.RecordValue(uint64(time.Since(start).Microseconds()))
+	duration := uint64(time.Since(start).Microseconds())
+	if duration == 0 {
+		duration = uint64(1 * time.Microsecond)
+	}
+
+	recorder.RecordValue(duration)
 }
 
 func stopCmdTrace(req *memdQRequest) {
