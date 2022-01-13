@@ -91,6 +91,9 @@ const (
 	// StatusScopeUnknown occurs when a Scope cannot be found.
 	StatusScopeUnknown = StatusCode(0x8c)
 
+	// StatusDCPStreamIDInvalid occurs when a dcp stream ID is invalid.
+	StatusDCPStreamIDInvalid = StatusCode(0x8d)
+
 	// StatusDurabilityInvalidLevel occurs when an invalid durability level was requested.
 	StatusDurabilityInvalidLevel = StatusCode(0xa0)
 
@@ -236,6 +239,8 @@ func (code StatusCode) KVText() string {
 		return "the requested collection cannot be found"
 	case StatusScopeUnknown:
 		return "the requested scope cannot be found."
+	case StatusDCPStreamIDInvalid:
+		return "the provided stream ID is invalid"
 	case StatusDurabilityInvalidLevel:
 		return "invalid request, invalid durability level specified."
 	case StatusDurabilityImpossible:
