@@ -52,4 +52,7 @@ var (
 
 	// ErrStreamIDNotEnabled occurs when dcp operations are performed using a stream ID when stream IDs are not enabled.
 	ErrStreamIDNotEnabled = errors.New("stream IDs have not been enabled on this stream")
+
+	// ErrDCPStreamIDInvalid occurs when a dcp stream ID is invalid.
+	ErrDCPStreamIDInvalid = errors.New("stream ID invalid")
 )

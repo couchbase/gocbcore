@@ -721,6 +721,7 @@ var (
 	errShutdown               = ncError{ErrShutdown}
 	errOverload               = ncError{ErrOverload}
 	errStreamIDNotEnabled     = ncError{ErrStreamIDNotEnabled}
+	errDCPStreamIDInvalid     = ncError{ErrDCPStreamIDInvalid}
 	errForcedReconnect        = ncError{ErrForcedReconnect}
 
 	errRateLimitedFailure  = ncError{ErrRateLimitedFailure}

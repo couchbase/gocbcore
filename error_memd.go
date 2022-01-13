@@ -105,8 +105,11 @@ var (
 	// ErrMemdCollectionNotFound occurs when a Collection cannot be found.
 	ErrMemdCollectionNotFound = makeKvStatusError(memd.StatusCollectionUnknown)
 
-	// ErrMemdScopeNotFound occurs when a Collection cannot be found.
+	// ErrMemdScopeNotFound occurs when a Scope cannot be found.
 	ErrMemdScopeNotFound = makeKvStatusError(memd.StatusScopeUnknown)
+
+	// ErrMemdDCPStreamIDInvalid occurs when a dcp stream ID is invalid.
+	ErrMemdDCPStreamIDInvalid = makeKvStatusError(memd.StatusDCPStreamIDInvalid)
 
 	// ErrMemdDurabilityInvalidLevel occurs when an invalid durability level was requested.
 	ErrMemdDurabilityInvalidLevel = makeKvStatusError(memd.StatusDurabilityInvalidLevel)

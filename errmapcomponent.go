@@ -138,6 +138,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errUnsupportedOperation
 	case ErrMemdNotSupported:
 		return errUnsupportedOperation
+	case ErrMemdDCPStreamIDInvalid:
+		return errDCPStreamIDInvalid
 
 	case ErrMemdKeyNotFound:
 		return errDocumentNotFound
