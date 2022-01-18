@@ -252,6 +252,23 @@ func (e ViewError) Unwrap() error {
 type N1QLErrorDesc struct {
 	Code    uint32
 	Message string
+	Retry   bool
+	Reason  map[string]interface{}
+}
+
+// MarshalJSON implements the Marshaler interface.
+func (e N1QLErrorDesc) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Code    uint32                 `json:"code"`
+		Message string                 `json:"message"`
+		Retry   bool                   `json:"retry,omitempty"`
+		Reason  map[string]interface{} `json:"reason,omitempty"`
+	}{
+		Code:    e.Code,
+		Message: e.Message,
+		Retry:   e.Retry,
+		Reason:  e.Reason,
+	})
 }
 
 // N1QLError represents an error returned from a n1ql query.

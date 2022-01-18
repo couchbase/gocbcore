@@ -107,6 +107,9 @@ var (
 	// QueryPreparedStatementFailureRetryReason indicates that the operation failed due to a prepared statement failure
 	QueryPreparedStatementFailureRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "QUERY_PREPARED_STATEMENT_FAILURE"}
 
+	// QueryErrorRetryable indicates that the operation is retryable as indicated by the query engine.
+	QueryErrorRetryable = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "QUERY_ERROR_RETRYABLE"}
+
 	// AnalyticsTemporaryFailureRetryReason indicates that an analytics operation failed due to a temporary failure
 	AnalyticsTemporaryFailureRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: false, description: "ANALYTICS_TEMPORARY_FAILURE"}
 

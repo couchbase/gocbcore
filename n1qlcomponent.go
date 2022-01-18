@@ -131,12 +131,38 @@ func wrapN1QLError(req *httpRequest, statement string, err error, errBody string
 }
 
 type jsonN1QLError struct {
-	Code uint32 `json:"code"`
-	Msg  string `json:"msg"`
+	Code   uint32                 `json:"code"`
+	Msg    string                 `json:"msg"`
+	Reason map[string]interface{} `json:"reason"`
+	Retry  bool                   `json:"retry"`
 }
 
 type jsonN1QLErrorResponse struct {
 	Errors json.RawMessage
+}
+
+func extractN1QL12009Error(err N1QLErrorDesc) error {
+	if len(err.Reason) > 0 {
+		if code, ok := err.Reason["code"]; ok {
+			// sad panda
+			code = int(code.(float64))
+			if code == 12033 {
+				return errCasMismatch
+			} else if code == 17014 {
+				return errDocumentNotFound
+			} else if code == 17012 {
+				return errDocumentExists
+			}
+		}
+
+		return errDMLFailure
+	}
+
+	if strings.Contains(strings.ToLower(err.Message), "cas mismatch") {
+		return errCasMismatch
+	}
+	return errDMLFailure
+
 }
 
 func parseN1QLErrorResp(req *httpRequest, statement string, resp *HTTPResponse) *N1QLError {
@@ -169,6 +195,8 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 			errorDescs = append(errorDescs, N1QLErrorDesc{
 				Code:    jsonErr.Code,
 				Message: jsonErr.Msg,
+				Reason:  jsonErr.Reason,
+				Retry:   jsonErr.Retry,
 			})
 		}
 	}
@@ -203,11 +231,7 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 			err = errParsingFailure
 		}
 		if errCode == 12009 {
-			if strings.Contains(strings.ToLower(firstErr.Message), "cas mismatch") {
-				err = errCasMismatch
-			} else {
-				err = errDMLFailure
-			}
+			err = extractN1QL12009Error(firstErr)
 		}
 		if errCode == 13014 {
 			err = errAuthenticationFailure
@@ -560,14 +584,19 @@ func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]
 			if len(n1qlErr.Errors) >= 1 {
 				firstErrDesc := n1qlErr.Errors[0]
 
-				if firstErrDesc.Code == 4040 {
-					retryReason = QueryPreparedStatementFailureRetryReason
-				} else if firstErrDesc.Code == 4050 {
-					retryReason = QueryPreparedStatementFailureRetryReason
-				} else if firstErrDesc.Code == 4070 {
-					retryReason = QueryPreparedStatementFailureRetryReason
-				} else if strings.Contains(firstErrDesc.Message, "queryport.indexNotFound") {
-					retryReason = QueryIndexNotFoundRetryReason
+				// See MB-50643 for why this code check is here.
+				if firstErrDesc.Retry && firstErrDesc.Code != 12016 {
+					retryReason = QueryErrorRetryable
+				} else {
+					if firstErrDesc.Code == 4040 {
+						retryReason = QueryPreparedStatementFailureRetryReason
+					} else if firstErrDesc.Code == 4050 {
+						retryReason = QueryPreparedStatementFailureRetryReason
+					} else if firstErrDesc.Code == 4070 {
+						retryReason = QueryPreparedStatementFailureRetryReason
+					} else if strings.Contains(firstErrDesc.Message, "queryport.indexNotFound") {
+						retryReason = QueryIndexNotFoundRetryReason
+					}
 				}
 			}
 

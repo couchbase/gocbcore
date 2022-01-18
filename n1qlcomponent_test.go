@@ -581,6 +581,69 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	suite.VerifyMetrics(suite.meter, "n1ql:PreparedN1QLQuery", 1, true, false)
 }
 
+func (suite *StandardTestSuite) TestN1QLErrorReasonDocumentExists() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
+	suite.EnsureSupportsFeature(TestFeatureN1qlReasons)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	collection := suite.CollectionName
+	if collection == "" {
+		collection = "_default"
+	}
+	scope := suite.ScopeName
+	if scope == "" {
+		scope = "_default"
+	}
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("n1qldocumentexists"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set returned error %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	payloadStr := fmt.Sprintf(
+		`{"statement":"INSERT INTO %s.%s.%s (KEY, VALUE) VALUES (\"n1qldocumentexists\", {\"type\": \"hotel\"})"}`,
+		suite.BucketName,
+		scope,
+		collection,
+	)
+	s.PushOp(agent.N1QLQuery(N1QLQueryOptions{
+		Payload:  []byte(payloadStr),
+		Deadline: time.Now().Add(10 * time.Second),
+	}, func(reader *N1QLRowReader, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("N1QLQuery operation failed: %v", err)
+			}
+
+			for {
+				row := reader.NextRow()
+				if row == nil {
+					break
+				}
+			}
+
+			err = reader.Err()
+			if !errors.Is(err, ErrDocumentExists) {
+				s.Fatalf("N1QLQuery should failed with document exists, was: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 // TestN1QLErrorsAndResults tests the case where we receive both errors and results from the server meaning
 // that we cannot immediately return an error and must surface it through Err instead.
 func (suite *UnitTestSuite) TestN1QLErrorsAndResults() {
@@ -789,4 +852,264 @@ func (suite *UnitTestSuite) TestN1QLErrUnknownErrorsAndResults() {
 	firstErr := nErr.Errors[0]
 	suite.Assert().Equal(uint32(13014), firstErr.Code)
 	suite.Assert().NotEmpty(firstErr.Message)
+}
+
+type readerAndError struct {
+	reader *N1QLRowReader
+	err    error
+}
+
+type n1qlHTTPComponent struct {
+	Endpoint   string
+	StatusCode int
+	Body       []byte
+}
+
+func (nhc *n1qlHTTPComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck bool) (*HTTPResponse, error) {
+	body := ioutil.NopCloser(bytes.NewReader(nhc.Body))
+	return &HTTPResponse{
+		Endpoint:      nhc.Endpoint,
+		StatusCode:    nhc.StatusCode,
+		Body:          body,
+		ContentLength: int64(len(nhc.Body)),
+	}, nil
+}
+
+func (suite *UnitTestSuite) doN1QLRequest(respData []byte, statusCode int, retryStrat RetryStrategy) readerAndError {
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := &n1qlHTTPComponent{
+		Endpoint:   "whatever",
+		StatusCode: statusCode,
+		Body:       respData,
+	}
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan readerAndError)
+	_, err = n1qlC.N1QLQuery(N1QLQueryOptions{
+		Payload:       payload,
+		RetryStrategy: retryStrat,
+		Deadline:      time.Now().Add(1 * time.Second),
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- readerAndError{reader: reader, err: err}
+	})
+	suite.Require().Nil(err, err)
+
+	return <-waitCh
+}
+
+type n1qlRetryStrategy struct {
+	maxAttempts uint32
+	retries     int
+}
+
+func (mrs *n1qlRetryStrategy) RetryAfter(req RetryRequest, reason RetryReason) RetryAction {
+	if req.RetryAttempts() >= mrs.maxAttempts {
+		return &NoRetryRetryAction{}
+	}
+	mrs.retries++
+
+	return &WithDurationRetryAction{WithDuration: 1 * time.Millisecond}
+}
+
+func (suite *UnitTestSuite) TestN1QLRetryTrueErrorReadOnly() {
+	d, err := suite.LoadRawTestDataset("query_failure_retry_true")
+	suite.Require().Nil(err)
+
+	mrs := &n1qlRetryStrategy{maxAttempts: 3}
+	reader := suite.doN1QLRequest(d, 500, mrs)
+	suite.Assert().Nil(reader.reader)
+
+	err = reader.err
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(99999), firstErr.Code)
+	suite.Assert().Equal("some nonsense", firstErr.Message)
+	suite.Assert().True(firstErr.Retry)
+	suite.Assert().NotNil(firstErr.Reason)
+
+	suite.Assert().Equal(3, mrs.retries)
+}
+
+func (suite *UnitTestSuite) TestN1QLCasMismatch() {
+	d, err := suite.LoadRawTestDataset("query_failure_cas_mismatch_71")
+	suite.Require().Nil(err)
+
+	result := suite.doN1QLRequest(d, 200, nil)
+	suite.Require().Nil(result.err, result.err)
+
+	reader := result.reader
+
+	numRows := 0
+	for reader.NextRow() != nil {
+		numRows++
+	}
+	suite.Assert().Zero(numRows)
+
+	err = reader.Err()
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().Equal("some other message not matching on cas...", firstErr.Message)
+	suite.Assert().False(firstErr.Retry)
+	suite.Assert().NotNil(firstErr.Reason)
+
+	suite.Assert().True(errors.Is(err, ErrCasMismatch), "Expected doc not found but was %s", err)
+}
+
+func (suite *UnitTestSuite) TestN1QLDocExists() {
+	d, err := suite.LoadRawTestDataset("query_failure_doc_exists_71")
+	suite.Require().Nil(err)
+
+	result := suite.doN1QLRequest(d, 200, nil)
+	suite.Require().Nil(result.err, result.err)
+
+	reader := result.reader
+
+	numRows := 0
+	for reader.NextRow() != nil {
+		numRows++
+	}
+	suite.Assert().Zero(numRows)
+
+	err = reader.Err()
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().Equal("some message", firstErr.Message)
+	suite.Assert().False(firstErr.Retry)
+	suite.Assert().NotNil(firstErr.Reason)
+
+	suite.Assert().True(errors.Is(err, ErrDocumentExists), "Expected doc not found but was %s", err)
+}
+
+func (suite *UnitTestSuite) TestN1QLDocNotFound() {
+	d, err := suite.LoadRawTestDataset("query_failure_doc_not_found_71")
+	suite.Require().Nil(err)
+
+	result := suite.doN1QLRequest(d, 200, nil)
+	suite.Require().Nil(result.err, result.err)
+
+	reader := result.reader
+
+	numRows := 0
+	for reader.NextRow() != nil {
+		numRows++
+	}
+	suite.Assert().Zero(numRows)
+
+	err = reader.Err()
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12009), firstErr.Code)
+	suite.Assert().Equal("some message", firstErr.Message)
+	suite.Assert().False(firstErr.Retry)
+	suite.Assert().NotNil(firstErr.Reason)
+
+	suite.Assert().True(errors.Is(err, ErrDocumentNotFound), "Expected doc not found but was %s", err)
+}
+
+type n1qlBodyErrDesc struct {
+	Code    uint32
+	Message string `json:"msg"`
+	Retry   bool
+	Reason  map[string]interface{}
+}
+
+type n1qlBody struct {
+	RequestID       string            `json:"requestID"`
+	ClientContextID string            `json:"clientContextID"`
+	Signature       map[string]string `json:"signature"`
+	Results         []interface{}     `json:"results"`
+	Errors          []n1qlBodyErrDesc `json:"errors"`
+	Status          string            `json:"status"`
+	Metrics         struct {
+		ElapsedTime   int `json:"elapsedTime"`
+		ExecutionTime int `json:"executionTime"`
+		ResultCount   int `json:"resultCount"`
+		ResultSize    int `json:"resultSize"`
+		ErrorCount    int `json:"errorCount"`
+	} `json:"metrics"`
+}
+
+func (suite *UnitTestSuite) TestN1QLMB50643() {
+	body := n1qlBody{
+		RequestID:       "1234",
+		ClientContextID: "12345",
+		Signature:       map[string]string{"*": "*"},
+		Results:         []interface{}{},
+		Errors: []n1qlBodyErrDesc{
+			{
+				Code:    12016,
+				Message: "MB50643",
+				Retry:   true,
+				Reason: map[string]interface{}{
+					"name": "#primary",
+				},
+			},
+		},
+		Status: "errors",
+		Metrics: struct {
+			ElapsedTime   int `json:"elapsedTime"`
+			ExecutionTime int `json:"executionTime"`
+			ResultCount   int `json:"resultCount"`
+			ResultSize    int `json:"resultSize"`
+			ErrorCount    int `json:"errorCount"`
+		}{
+			ErrorCount: 1,
+		},
+	}
+
+	d, err := json.Marshal(body)
+	suite.Require().Nil(err)
+
+	mrs := &n1qlRetryStrategy{maxAttempts: 3}
+	reader := suite.doN1QLRequest(d, 500, mrs)
+	suite.Assert().Nil(reader.reader)
+
+	err = reader.err
+	suite.Require().NotNil(err)
+
+	var nErr *N1QLError
+	suite.Require().True(errors.As(err, &nErr))
+
+	suite.Require().Len(nErr.Errors, 1)
+	firstErr := nErr.Errors[0]
+	suite.Assert().Equal(uint32(12016), firstErr.Code)
+	suite.Assert().Equal("MB50643", firstErr.Message)
+	suite.Assert().True(firstErr.Retry)
+	suite.Assert().NotNil(firstErr.Reason)
+
+	suite.Assert().Equal(0, mrs.retries)
+
+	suite.Assert().True(errors.Is(err, ErrIndexFailure), "Expected doc not found but was %s", err)
 }

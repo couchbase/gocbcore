@@ -180,6 +180,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureTransactions:
 		// Caves has a couple of subdoc bugs which cause issue with txns tests.
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
+	case TestFeatureN1qlReasons:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer710)
 	}
 
 	panic("found unsupported feature code")
