@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 9.1.8 (18 January 2022)
+
+###New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1216](GOCBC-1216):
+  Added support for memcached status code 0x8d.
+
 ## Version 9.1.7 (21 September 2021)
 
 ###New Features and Behavioral Changes
