@@ -49,6 +49,7 @@ var (
 	TestFeaturePreserveExpiry       = TestFeatureCode("preserveexpiry")
 	TestFeatureNSServer             = TestFeatureCode("nsserver")
 	TestFeatureExpandMacrosSeqNo    = TestFeatureCode("expandmacrosseqno")
+	TestFeatureTransactions         = TestFeatureCode("transactions")
 )
 
 type TestFeatureFlag struct {
@@ -151,26 +152,16 @@ func MakeDistKeys(agent *Agent, deadline time.Time) (keys []string, errOut error
 	return
 }
 
-type TestSubHarness struct {
+type TestSubHarnessBase struct {
 	sigT  *testing.T
 	sigCh chan int
-	sigOp PendingOp
 }
 
-func makeTestSubHarness(t *testing.T) *TestSubHarness {
-	// Note that the signaling channel here must have a queue of
-	// at least 1 to avoid deadlocks during cancellations.
-	return &TestSubHarness{
-		sigT:  t,
-		sigCh: make(chan int, 1),
-	}
-}
-
-func (h *TestSubHarness) Continue() {
+func (h *TestSubHarnessBase) Continue() {
 	h.sigCh <- 0
 }
 
-func (h *TestSubHarness) Wrap(fn func()) {
+func (h *TestSubHarnessBase) Wrap(fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Rethrow actual panics
@@ -183,7 +174,7 @@ func (h *TestSubHarness) Wrap(fn func()) {
 	h.sigCh <- 0
 }
 
-func (h *TestSubHarness) Fatalf(fmt string, args ...interface{}) {
+func (h *TestSubHarnessBase) Fatalf(fmt string, args ...interface{}) {
 	h.sigT.Helper()
 
 	h.sigT.Logf(fmt, args...)
@@ -191,7 +182,7 @@ func (h *TestSubHarness) Fatalf(fmt string, args ...interface{}) {
 	panic(h)
 }
 
-func (h *TestSubHarness) Skipf(fmt string, args ...interface{}) {
+func (h *TestSubHarnessBase) Skipf(fmt string, args ...interface{}) {
 	h.sigT.Helper()
 
 	h.sigT.Logf(fmt, args...)
@@ -199,36 +190,92 @@ func (h *TestSubHarness) Skipf(fmt string, args ...interface{}) {
 	panic(h)
 }
 
-func (h *TestSubHarness) Wait(waitSecs int) {
-	if h.sigOp == nil {
-		panic("Cannot wait if there is no op set on signaler")
-	}
+func (h *TestSubHarnessBase) Wait(waitSecs int, cb func(bool)) {
 	if waitSecs <= 0 {
 		waitSecs = 5
 	}
 
 	select {
 	case v := <-h.sigCh:
-		h.sigOp = nil
+		cb(true)
 		if v == 1 {
 			h.sigT.FailNow()
 		} else if v == 2 {
 			h.sigT.SkipNow()
 		}
 	case <-time.After(time.Duration(waitSecs) * time.Second):
-		h.sigOp.Cancel()
+		cb(false)
 		<-h.sigCh
 		h.sigT.FailNow()
 	}
 }
 
-func (h *TestSubHarness) PushOp(op PendingOp, err error) {
+func (h *TestSubHarnessBase) VerifyOpSent(err error) {
 	if err != nil {
 		h.sigT.Fatal(err.Error())
 		return
 	}
+}
+
+type TestSubHarness struct {
+	TestSubHarnessBase
+	sigOp PendingOp
+}
+
+func makeTestSubHarness(t *testing.T) *TestSubHarness {
+	// Note that the signaling channel here must have a queue of
+	// at least 1 to avoid deadlocks during cancellations.
+	h := &TestSubHarness{
+		TestSubHarnessBase: TestSubHarnessBase{
+			sigT:  t,
+			sigCh: make(chan int, 1),
+		},
+	}
+
+	return h
+}
+
+func (h *TestSubHarness) Wait(waitSecs int) {
+	if h.sigOp == nil {
+		panic("Cannot wait if there is no op set on signaler")
+	}
+
+	h.TestSubHarnessBase.Wait(waitSecs, func(success bool) {
+		if success {
+			h.sigOp = nil
+			return
+		}
+
+		h.sigOp.Cancel()
+	})
+}
+
+func (h *TestSubHarness) PushOp(op PendingOp, err error) {
+	h.TestSubHarnessBase.VerifyOpSent(err)
+
 	if h.sigOp != nil {
 		panic("Can only set one op on the signaler at a time")
 	}
 	h.sigOp = op
+}
+
+type TestTxnsSubHarness struct {
+	TestSubHarnessBase
+}
+
+func makeTestTxnsSubHarness(t *testing.T) *TestTxnsSubHarness {
+	// Note that the signaling channel here must have a queue of
+	// at least 1 to avoid deadlocks during cancellations.
+	h := &TestTxnsSubHarness{
+		TestSubHarnessBase: TestSubHarnessBase{
+			sigT:  t,
+			sigCh: make(chan int, 1),
+		},
+	}
+
+	return h
+}
+
+func (h *TestTxnsSubHarness) Wait(waitSecs int) {
+	h.TestSubHarnessBase.Wait(waitSecs, func(success bool) {})
 }

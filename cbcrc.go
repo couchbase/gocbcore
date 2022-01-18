@@ -73,3 +73,7 @@ func cbCrc(key []byte) uint32 {
 	}
 	return (^crc) >> 16
 }
+
+func cbcVbMap(key []byte, numVbs uint32) uint16 {
+	return uint16(cbCrc(key) % numVbs)
+}

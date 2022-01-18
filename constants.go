@@ -130,3 +130,9 @@ const (
 	SpanStatusOK    SpanStatus = "Ok"
 	SpanStatusError SpanStatus = "Error"
 )
+
+var crc32cMacro = []byte("\"${Mutation.value_crc32c}\"")
+var revidMacro = []byte("\"${$document.revid}\"")
+var exptimeMacro = []byte("\"${$document.exptime}\"")
+var casMacro = []byte("\"${$document.CAS}\"")
+var hlcMacro = "$vbucket.HLC"

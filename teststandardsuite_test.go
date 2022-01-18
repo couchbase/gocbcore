@@ -177,6 +177,9 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureNSServer:
 		return !suite.IsMockServer()
+	case TestFeatureTransactions:
+		// Caves has a couple of subdoc bugs which cause issue with txns tests.
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
 	}
 
 	panic("found unsupported feature code")
@@ -194,8 +197,17 @@ func (suite *StandardTestSuite) GetHarness() *TestSubHarness {
 	return makeTestSubHarness(suite.T())
 }
 
+func (suite *StandardTestSuite) GetTxnHarness() *TestTxnsSubHarness {
+	return makeTestTxnsSubHarness(suite.T())
+}
+
 func (suite *StandardTestSuite) GetAgentAndHarness() (*Agent, *TestSubHarness) {
 	h := suite.GetHarness()
+	return suite.DefaultAgent(), h
+}
+
+func (suite *StandardTestSuite) GetAgentAndTxnHarness() (*Agent, *TestTxnsSubHarness) {
+	h := suite.GetTxnHarness()
 	return suite.DefaultAgent(), h
 }
 
