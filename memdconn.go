@@ -16,6 +16,7 @@ type memdConn interface {
 	WritePacket(*memd.Packet) error
 	ReadPacket() (*memd.Packet, int, error)
 	Close() error
+	Release()
 
 	EnableFeature(feature memd.HelloFeature)
 	IsFeatureEnabled(feature memd.HelloFeature) bool
@@ -54,6 +55,13 @@ func (s *memdConnWrap) IsFeatureEnabled(feature memd.HelloFeature) bool {
 
 func (s *memdConnWrap) Close() error {
 	return s.baseConn.Close()
+}
+
+// Release is not thread safe and should not be called whilst there are pending calls, such as ReadPacket.
+func (s *memdConnWrap) Release() {
+	if err := s.conn.Release(); err != nil {
+		logDebugf("Failed to release memd conn %s: %v", s.LocalAddr(), err)
+	}
 }
 
 func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {

@@ -38,6 +38,8 @@ type memdClient struct {
 	dcpAckSize            int
 	dcpFlowRecv           int
 	closeNotify           chan bool
+	connReleaseNotify     chan struct{}
+	connReleasedNotify    chan struct{}
 	connID                string
 	closed                bool
 	conn                  memdConn
@@ -78,13 +80,15 @@ type memdClientProps struct {
 func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
 	tracer *tracerComponent, zombieLogger *zombieLoggerComponent) *memdClient {
 	client := memdClient{
-		closeNotify:    make(chan bool),
-		connID:         props.ClientID + "/" + formatCbUID(randomCbUID()),
-		postErrHandler: postErrHandler,
-		tracer:         tracer,
-		zombieLogger:   zombieLogger,
-		conn:           conn,
-		opList:         newMemdOpMap(),
+		closeNotify:        make(chan bool),
+		connReleaseNotify:  make(chan struct{}),
+		connReleasedNotify: make(chan struct{}),
+		connID:             props.ClientID + "/" + formatCbUID(randomCbUID()),
+		postErrHandler:     postErrHandler,
+		tracer:             tracer,
+		zombieLogger:       zombieLogger,
+		conn:               conn,
+		opList:             newMemdOpMap(),
 
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinRatio:  props.CompressionMinRatio,
@@ -455,7 +459,7 @@ func (client *memdClient) run() {
 			client.closed = true
 			client.lock.Unlock()
 
-			err := client.conn.Close()
+			err := client.closeConn(true)
 			if err != nil {
 				// Lets log a warning, as this is non-fatal
 				logWarnf("Failed to shut down client connection (%s)", err)
@@ -472,6 +476,8 @@ func (client *memdClient) run() {
 		close(dcpBufferQ)
 		<-dcpProcDoneCh
 
+		close(client.connReleaseNotify)
+
 		client.opList.Drain(func(req *memdQRequest) {
 			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {
 				logWarnf("Encountered an unowned request in a client opMap")
@@ -484,6 +490,8 @@ func (client *memdClient) run() {
 
 			req.tryCallback(nil, routeErr)
 		})
+
+		<-client.connReleasedNotify
 
 		close(client.closeNotify)
 	}()
@@ -523,7 +531,7 @@ func (client *memdClient) GracefulClose(err error) {
 			client.closed = true
 			client.lock.Unlock()
 
-			err := client.conn.Close()
+			err := client.closeConn(false)
 			if err != nil {
 				// Lets log a warning, as this is non-fatal
 				logWarnf("Failed to shut down client connection (%s)", err)
@@ -532,12 +540,28 @@ func (client *memdClient) GracefulClose(err error) {
 	}
 }
 
+func (client *memdClient) closeConn(internalTrigger bool) error {
+	if err := client.conn.Close(); err != nil {
+		client.conn.Release()
+		close(client.connReleasedNotify)
+		return err
+	}
+
+	if !internalTrigger {
+		<-client.connReleaseNotify
+	}
+
+	client.conn.Release()
+	close(client.connReleasedNotify)
+	return nil
+}
+
 func (client *memdClient) Close() error {
 	client.lock.Lock()
 	client.closed = true
 	client.lock.Unlock()
 
-	return client.conn.Close()
+	return client.closeConn(false)
 }
 
 func (client *memdClient) sendCanary() {
