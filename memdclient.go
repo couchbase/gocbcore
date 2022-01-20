@@ -558,6 +558,10 @@ func (client *memdClient) closeConn(internalTrigger bool) error {
 
 func (client *memdClient) Close() error {
 	client.lock.Lock()
+	if client.closed {
+		client.lock.Unlock()
+		return nil
+	}
 	client.closed = true
 	client.lock.Unlock()
 
