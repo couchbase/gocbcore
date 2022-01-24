@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 10.0.7 (24 January 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1216](GOCBC-1216):
+  Add support for missing memcached status code 0x8d
+* [https://issues.couchbase.com/browse/GOCBC-1222](GOCBC-1222):
+  Updated memcached connections to use a `sync.Pool` for buffers for readers, to help reduce memory footprint.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1214](GOCBC-1214):
+  Fixed issue where nodes "actual" IP could be used for internal config instead of seed address when `NoTLSSeedNode` in use.
+
 ## Version 10.0.6 (14 December 2021)
 
 ### New Features and Behavioral Changes
