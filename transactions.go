@@ -149,6 +149,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		enableExplicitATRs:      t.config.Internal.EnableExplicitATRs,
 		enableMutationCaching:   t.config.Internal.EnableMutationCaching,
 		bucketAgentProvider:     bucketAgentProvider,
+		addLostCleanupLocation:  t.addLostCleanupLocation,
 	}, nil
 }
 
@@ -265,6 +266,20 @@ func (t *TransactionsManager) Close() error {
 
 func (t *TransactionsManager) addCleanupRequest(req *TransactionsCleanupRequest) bool {
 	return t.cleaner.AddRequest(req)
+}
+
+func (t *TransactionsManager) addLostCleanupLocation(bucket, scope, collection string) {
+	if !t.config.CleanupWatchATRs {
+		return
+	}
+
+	go func() {
+		t.lostCleanup.AddATRLocation(TransactionLostATRLocation{
+			BucketName:     bucket,
+			ScopeName:      scope,
+			CollectionName: collection,
+		})
+	}()
 }
 
 // TransactionsManagerInternal exposes internal methods that are useful for testing and/or

@@ -213,6 +213,8 @@ func (t *transactionAttempt) setATRPendingLocked(
 						return
 					}
 
+					t.addLostCleanupLocation(t.atrAgent.BucketName(), t.atrScopeName, t.atrCollectionName)
+
 					ecCb(nil)
 				})
 			})

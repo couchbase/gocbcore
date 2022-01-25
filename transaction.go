@@ -24,6 +24,7 @@ import (
 )
 
 type addCleanupRequest func(req *TransactionsCleanupRequest) bool
+type addLostCleanupLocation func(bucket, scope, collection string)
 
 // Transaction represents a single active transaction, it can be used to
 // stage mutations and finally commit them.
@@ -45,7 +46,8 @@ type Transaction struct {
 	attempt       *transactionAttempt
 	hooks         TransactionHooks
 
-	addCleanupRequest addCleanupRequest
+	addCleanupRequest      addCleanupRequest
+	addLostCleanupLocation addLostCleanupLocation
 }
 
 // ID returns the transaction ID of this transaction.
@@ -88,7 +90,8 @@ func (t *Transaction) NewAttempt() error {
 		atrKey:            nil,
 		hooks:             t.hooks,
 
-		addCleanupRequest: t.addCleanupRequest,
+		addCleanupRequest:      t.addCleanupRequest,
+		addLostCleanupLocation: t.addLostCleanupLocation,
 	}
 
 	return nil

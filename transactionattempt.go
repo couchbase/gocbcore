@@ -51,8 +51,9 @@ type transactionAttempt struct {
 	lock  asyncMutex
 	opsWg asyncWaitGroup
 
-	hasCleanupRequest bool
-	addCleanupRequest addCleanupRequest
+	hasCleanupRequest      bool
+	addCleanupRequest      addCleanupRequest
+	addLostCleanupLocation addLostCleanupLocation
 }
 
 func (t *transactionAttempt) State() TransactionAttempt {
