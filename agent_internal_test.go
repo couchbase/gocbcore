@@ -9,4 +9,5 @@ func (suite *StandardTestSuite) TestInternalBucketCapabilityStatus() {
 	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityReplaceBodyWithXattr], internal.BucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr))
 	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityCreateAsDeleted], internal.BucketCapabilityStatus(BucketCapabilityCreateAsDeleted))
 	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityDurableWrites], internal.BucketCapabilityStatus(BucketCapabilityDurableWrites))
+	suite.Assert().Equal(state.bucketCapabilities[BucketCapabilityReviveDocument], internal.BucketCapabilityStatus(BucketCapabilityReviveDocument))
 }

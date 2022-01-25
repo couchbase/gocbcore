@@ -244,6 +244,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errRangeScanComplete
 	case ErrMemdRangeScanVbUUIDNotEqual:
 		return errRangeScanVbUUIDNotEqual
+	case ErrMemdSubDocCanOnlyReviveDeletedDocuments:
+		return errDocumentAlreadyAlive
 	}
 
 	return err

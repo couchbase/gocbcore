@@ -313,7 +313,7 @@ const (
 	SubDocOpDeleteDoc = SubDocOpType(CmdDelete)
 
 	// SubDocOpReplaceBodyWithXattr represents a replace body with xattr op.
-	// Uncommitted: This API may change in the future.
+	// Internal: This should never be used and is not supported.
 	SubDocOpReplaceBodyWithXattr = SubDocOpType(CmdSubDocReplaceBodyWithXattr)
 )
 
@@ -416,6 +416,11 @@ const (
 	// Internal: This should never be used and is not supported.
 	SubdocDocFlagCreateAsDeleted = SubdocDocFlag(0x08)
 
+	// SubdocDocFlagReviveDocument indicates that the document should be revived from a tombstone.
+	// Internal: This should never be used and is not supported.
+	SubdocDocFlagReviveDocument = SubdocDocFlag(0x10)
+
+	// SubdocDocFlagReplicaRead indicates that the document should be read from a replica.
 	SubdocDocFlagReplicaRead = SubdocDocFlag(0x20)
 )
 

@@ -772,6 +772,7 @@ var (
 	errXattrUnknownVirtualAttribute      = ncError{ErrXattrUnknownVirtualAttribute}
 	errXattrCannotModifyVirtualAttribute = ncError{ErrXattrCannotModifyVirtualAttribute}
 	errXattrInvalidOrder                 = ncError{ErrXattrInvalidOrder}
+	errDocumentAlreadyAlive              = ncError{ErrDocumentAlreadyAlive}
 
 	errPlanningFailure          = ncError{ErrPlanningFailure}
 	errIndexFailure             = ncError{ErrIndexFailure}

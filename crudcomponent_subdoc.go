@@ -405,6 +405,14 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		}
 	}
 
+	if opts.Flags&memd.SubdocDocFlagReviveDocument != 0 {
+		// We can get here before support status is actually known, we'll send the request unless we know for a fact
+		// that this is unsupported.
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReviveDocument, BucketCapabilityStatusUnsupported) {
+			return nil, errFeatureNotAvailable
+		}
+	}
+
 	subdocs.Reorder(opts.Ops)
 
 	pathBytesList := make([][]byte, len(opts.Ops))

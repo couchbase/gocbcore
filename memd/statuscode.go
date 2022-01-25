@@ -223,6 +223,9 @@ const (
 	// StatusSubDocMultiPathFailureDeleted occurs when a Multi Path Failure occurs on
 	// a soft-deleted document.
 	StatusSubDocMultiPathFailureDeleted = StatusCode(0xd3)
+
+	// StatusSubDocCanOnlyReviveDeletedDocuments occurs when revive document is used on a document that is not deleted.
+	StatusSubDocCanOnlyReviveDeletedDocuments = StatusCode(0xd6)
 )
 
 // String returns the textual representation of this StatusCode.
@@ -341,6 +344,8 @@ func (code StatusCode) String() string {
 		return "range scan more"
 	case StatusRangeScanVbUUIDNotEqual:
 		return "range scan vb-uuid not equal"
+	case StatusSubDocCanOnlyReviveDeletedDocuments:
+		return "document already alive"
 	default:
 		return fmt.Sprintf("unknown kv status code (%d)", code)
 	}

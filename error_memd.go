@@ -219,6 +219,9 @@ var (
 	// a soft-deleted document.
 	ErrMemdSubDocMultiPathFailureDeleted = makeKvStatusError(memd.StatusSubDocMultiPathFailureDeleted)
 
+	// ErrMemdSubDocCanOnlyReviveDeletedDocuments occurs when revive document is used on a document that is not deleted.
+	ErrMemdSubDocCanOnlyReviveDeletedDocuments = makeKvStatusError(memd.StatusSubDocCanOnlyReviveDeletedDocuments)
+
 	// ErrMemdRateLimitedNetworkIngress occurs when the server rate limits due to network ingress.
 	ErrMemdRateLimitedNetworkIngress = makeKvStatusError(memd.StatusRateLimitedNetworkIngress)
 

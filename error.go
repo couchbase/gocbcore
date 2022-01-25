@@ -163,6 +163,8 @@ var (
 	ErrXattrUnknownVirtualAttribute      = errors.New("xattr unknown virtual attribute")
 	ErrXattrCannotModifyVirtualAttribute = errors.New("xattr cannot modify virtual attribute")
 	ErrXattrInvalidOrder                 = errors.New("xattr invalid order")
+	// Uncommitted: This API may change in the future.
+	ErrDocumentAlreadyAlive = errors.New("document already alive")
 
 	ErrRangeScanCancelled      = errors.New("range scan cancelled")
 	ErrRangeScanMore           = errors.New("range scan more")
