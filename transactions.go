@@ -24,7 +24,6 @@ import (
 
 // TransactionsManager is the top level wrapper object for all transactions
 // handling.  It also manages the cleanup process in the background.
-// Uncommitted: This API may change in the future.
 type TransactionsManager struct {
 	config      TransactionsConfig
 	cleaner     TransactionsCleaner
@@ -33,7 +32,6 @@ type TransactionsManager struct {
 
 // InitTransactions will initialize the transactions library and return a TransactionsManager
 // object which can be used to perform transactions.
-// Uncommitted: This API may change in the future.
 func InitTransactions(config *TransactionsConfig) (*TransactionsManager, error) {
 	defaultConfig := &TransactionsConfig{
 		ExpirationTime:        10000 * time.Millisecond,
