@@ -1117,6 +1117,12 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 	}
 
 	req.Callback = handler
+
+	err := client.SendRequest(req)
+	if err != nil {
+		return err
+	}
+
 	start := time.Now()
 	req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
 		connInfo := req.ConnectionInfo()
@@ -1144,11 +1150,6 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 			return
 		}
 	}()
-
-	err := client.SendRequest(req)
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
