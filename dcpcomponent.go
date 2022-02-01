@@ -240,8 +240,9 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			if resp.StreamIDFrame != nil {
 				end.StreamID = resp.StreamIDFrame.StreamID
 			}
-			evtHandler.End(end, getStreamEndStatusError(code))
-			req.internalCancel(err)
+			if req.internalCancel(err) {
+				evtHandler.End(end, getStreamEndStatusError(code))
+			}
 		case memd.CmdDcpOsoSnapshot:
 			snapshot := DcpOSOSnapshot{
 				VbID:         resp.Vbucket,
