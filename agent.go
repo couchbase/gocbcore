@@ -147,6 +147,11 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		maxQueueSize = config.KVConfig.MaxQueueSize
 	}
 
+	kvBufferSize := uint(0)
+	if config.KVConfig.ConnectionBufferSize > 0 {
+		kvBufferSize = config.KVConfig.ConnectionBufferSize
+	}
+
 	confHTTPRetryDelay := 10 * time.Second
 	if config.ConfigPollerConfig.HTTPRetryDelay > 0 {
 		confHTTPRetryDelay = config.ConfigPollerConfig.HTTPRetryDelay
@@ -258,6 +263,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			CompressionMinRatio:  compressionMinRatio,
 			DisableDecompression: disableDecompression,
 			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
+			ConnBufSize:          kvBufferSize,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{

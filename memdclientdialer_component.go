@@ -18,6 +18,7 @@ type memdClientDialerComponent struct {
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
+	connBufSize          uint
 
 	serverFailuresLock sync.Mutex
 	serverFailures     map[string]time.Time
@@ -43,6 +44,7 @@ type memdClientDialerProps struct {
 	CompressionMinRatio  float64
 	DisableDecompression bool
 	NoTLSSeedNode        bool
+	ConnBufSize          uint
 }
 
 type memdBoostrapFailHandler interface {
@@ -68,6 +70,7 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		compressionMinRatio:  props.CompressionMinRatio,
 		disableDecompression: props.DisableDecompression,
 		noTLSSeedNode:        props.NoTLSSeedNode,
+		connBufSize:          props.ConnBufSize,
 	}
 }
 
@@ -173,7 +176,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 		}
 	}()
 
-	conn, err := dialMemdConn(ctx, address.Address, tlsConfig, deadline)
+	conn, err := dialMemdConn(ctx, address.Address, tlsConfig, deadline, mcc.connBufSize)
 	cancel()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
