@@ -1,14 +1,18 @@
 package gocbcore
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
+
+const defaultReaderBufSize = 20 * 1024 * 1024
 
 type memdConn interface {
 	LocalAddr() string
@@ -22,11 +26,65 @@ type memdConn interface {
 	IsFeatureEnabled(feature memd.HelloFeature) bool
 }
 
+type wrappedReadWriteCloser struct {
+	*bufio.Reader
+	io.Writer
+	io.Closer
+}
+
+// readerBufPools - Map of buffer size to thread safe pool containing packet reader buffers.
+var readerBufPools = map[int]*sync.Pool{}
+var readerBufPoolsLock sync.Mutex
+
+// acquireReadBuf - Returns a pointer to a read buffer which is ready to be used, ensure the buffer is released using
+// the 'releaseWriteBuf' function.
+func acquireReadBuf(stream io.Reader, bufSize int) *bufio.Reader {
+	readerBufPoolsLock.Lock()
+	bufPool, ok := readerBufPools[bufSize]
+	if !ok {
+		bufPool = &sync.Pool{}
+		readerBufPools[bufSize] = bufPool
+	}
+	readerBufPoolsLock.Unlock()
+
+	iReader := bufPool.Get()
+	var reader *bufio.Reader
+	if iReader == nil {
+		reader = bufio.NewReaderSize(stream, bufSize)
+	} else {
+		var ok bool
+		reader, ok = iReader.(*bufio.Reader)
+		if ok {
+			reader.Reset(stream)
+		} else {
+			reader = bufio.NewReaderSize(stream, bufSize)
+		}
+	}
+
+	return reader
+}
+
+// releaseReadBuf - Reset the buffer so that it's clean for the next user (note that this retains the underlying
+// storage for future reads) and then return it to the pool.
+func releaseReadBuf(buf *bufio.Reader, bufSize int) {
+	buf.Reset(nil)
+	readerBufPoolsLock.Lock()
+	bufPool, ok := readerBufPools[bufSize]
+	if !ok {
+		readerBufPoolsLock.Unlock()
+		logWarnf("Attempted to release a read buffer for a buffer size without a registered pool")
+		return
+	}
+	bufPool.Put(buf)
+	readerBufPoolsLock.Unlock()
+}
+
 type memdConnWrap struct {
 	localAddr  string
 	remoteAddr string
 	conn       *memd.Conn
-	baseConn   io.Closer
+	baseConn   *wrappedReadWriteCloser
+	bufSize    int
 }
 
 func (s *memdConnWrap) LocalAddr() string {
@@ -59,12 +117,11 @@ func (s *memdConnWrap) Close() error {
 
 // Release is not thread safe and should not be called whilst there are pending calls, such as ReadPacket.
 func (s *memdConnWrap) Release() {
-	if err := s.conn.Release(); err != nil {
-		logDebugf("Failed to release memd conn %s: %v", s.LocalAddr(), err)
-	}
+	releaseReadBuf(s.baseConn.Reader, s.bufSize)
+	s.baseConn = nil
 }
 
-func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, deadline time.Time) (memdConn, error) {
+func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, deadline time.Time, bufSize uint) (memdConn, error) {
 	d := net.Dialer{
 		Deadline: deadline,
 	}
@@ -95,10 +152,21 @@ func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, de
 		conn = tlsConn
 	}
 
+	if bufSize == 0 {
+		bufSize = defaultReaderBufSize
+	}
+
+	c := &wrappedReadWriteCloser{
+		Reader: acquireReadBuf(conn, int(bufSize)),
+		Writer: conn,
+		Closer: conn,
+	}
+
 	return &memdConnWrap{
-		conn:       memd.NewConn(conn),
-		baseConn:   conn,
+		conn:       memd.NewConn(c),
+		baseConn:   c,
 		localAddr:  baseConn.LocalAddr().String(),
 		remoteAddr: address,
+		bufSize:    int(bufSize),
 	}, nil
 }

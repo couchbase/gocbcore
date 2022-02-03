@@ -1,7 +1,6 @@
 package memd
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -9,8 +8,6 @@ import (
 	"sync"
 	"time"
 )
-
-const readerBufSize = 20 * 1024 * 1024
 
 // writerBufPool - Thread safe pool containing packet write buffers i.e. they should be used to write a single packet to the
 // TCP socket.
@@ -33,41 +30,9 @@ func releaseWriteBuf(buf *bytes.Buffer) {
 	writerBufPool.Put(buf)
 }
 
-// readerBufPool - Thread safe pool containing packet reader buffers i.e. they should be used to reader a single packet from the
-// TCP socket.
-var readerBufPool = sync.Pool{}
-
-// acquireReadBuf - Returns a pointer to a read buffer which is ready to be used, ensure the buffer is released using
-// the 'releaseWriteBuf' function.
-func acquireReadBuf(stream io.Reader) *bufio.Reader {
-	iReader := readerBufPool.Get()
-	var reader *bufio.Reader
-	if iReader == nil {
-		reader = bufio.NewReaderSize(stream, readerBufSize)
-	} else {
-		var ok bool
-		reader, ok = iReader.(*bufio.Reader)
-		if ok {
-			reader.Reset(stream)
-		} else {
-			reader = bufio.NewReaderSize(stream, readerBufSize)
-		}
-	}
-
-	return reader
-}
-
-// releaseReadBuf - Reset the buffer so that it's clean for the next user (note that this retains the underlying
-// storage for future reads) and then return it to the pool.
-func releaseReadBuf(buf *bufio.Reader) {
-	buf.Reset(nil)
-	readerBufPool.Put(buf)
-}
-
 // Conn represents a memcached protocol connection.
 type Conn struct {
-	reader *bufio.Reader
-	writer io.Writer
+	stream io.ReadWriter
 
 	headerBuf [24]byte
 
@@ -79,13 +44,7 @@ type Conn struct {
 // reading and writing of packets.
 func NewConn(stream io.ReadWriter) *Conn {
 	return &Conn{
-		// Use the provided writer directly without buffering writes; if we did so, we may end up writing packets into
-		// the buffer which remain in userspace indefinitely.
-		writer: stream,
-
-		// Wrap the provided reader with a buffer that's 20MB in size; this is the same size used for connections inside
-		// KV engine.
-		reader:          acquireReadBuf(stream),
+		stream:          stream,
 		enabledFeatures: make(map[HelloFeature]bool),
 	}
 }
@@ -360,7 +319,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 	// Copy the value into the body of the packet
 	buffer.Write(pkt.Value)
 
-	n, err := c.writer.Write(buffer.Bytes())
+	n, err := c.stream.Write(buffer.Bytes())
 	if err != nil {
 		return err
 	}
@@ -376,12 +335,12 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 func (c *Conn) ReadPacket() (*Packet, int, error) {
 	pkt := AcquirePacket()
 
-	if c.reader == nil {
+	if c.stream == nil {
 		return nil, 0, io.EOF
 	}
 
 	// Read the entire 24-byte header first
-	_, err := io.ReadFull(c.reader, c.headerBuf[:])
+	_, err := io.ReadFull(c.stream, c.headerBuf[:])
 	if err != nil {
 		return nil, 0, err
 	}
@@ -391,7 +350,7 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 
 	// Read the remaining bytes of the body
 	bodyBuf := make([]byte, bodyLen)
-	_, err = io.ReadFull(c.reader, bodyBuf)
+	_, err = io.ReadFull(c.stream, bodyBuf)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -534,15 +493,6 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 	}
 
 	return pkt, 24 + int(bodyLen), nil
-}
-
-// Release closes this connection object releasing any buffers that it holds.
-// It does not close the underlying stream, the underlying stream should be closed before Release is called.
-// This should not be called concurrently with ReadPacket.
-func (c *Conn) Release() error {
-	releaseReadBuf(c.reader)
-	c.reader = nil
-	return nil
 }
 
 // writeUint16 - Similar to 'bytes.BigEndian.PutUint16' accept we write directly into the provided buffer.

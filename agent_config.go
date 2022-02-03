@@ -338,6 +338,10 @@ type KVConfig struct {
 
 	PoolSize     int
 	MaxQueueSize int
+
+	// Note: if you create multiple agents with different buffer sizes within the same environment then you will
+	// get indeterminate behaviour, the connections may not even use the provided buffer size.
+	ConnectionBufferSize uint
 }
 
 func (config KVConfig) fromSpec(spec connstr.ResolvedConnSpec) (KVConfig, error) {
@@ -366,6 +370,15 @@ func (config KVConfig) fromSpec(spec connstr.ResolvedConnSpec) (KVConfig, error)
 			return KVConfig{}, fmt.Errorf("max queue size option must be a number")
 		}
 		config.MaxQueueSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "kv_buffer_size"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return KVConfig{}, fmt.Errorf("kv buffer size option must be a number")
+		}
+		config.ConnectionBufferSize = uint(val)
 	}
 
 	return config, nil

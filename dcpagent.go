@@ -70,6 +70,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		maxQueueSize = config.KVConfig.MaxQueueSize
 	}
 
+	kvBufferSize := uint(0)
+	if config.KVConfig.ConnectionBufferSize > 0 {
+		kvBufferSize = config.KVConfig.ConnectionBufferSize
+	}
+
 	confCccpMaxWait := 3 * time.Second
 	if config.ConfigPollerConfig.CccpMaxWait > 0 {
 		confCccpMaxWait = config.ConfigPollerConfig.CccpMaxWait
@@ -261,6 +266,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			CompressionMinRatio:  compressionMinRatio,
 			DisableDecompression: disableDecompression,
 			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
+			ConnBufSize:          kvBufferSize,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
