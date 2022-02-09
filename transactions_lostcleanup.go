@@ -78,7 +78,7 @@ type TransactionProcessATRStats struct {
 type LostTransactionCleaner interface {
 	ProcessClient(agent *Agent, oboUser string, collection, scope, uuid string, cb func(*TransactionClientRecordDetails, error))
 	ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats))
-	RemoveClientFromAllBuckets(uuid string) error
+	RemoveClientFromAllLocations(uuid string) error
 	Close()
 }
 
@@ -151,6 +151,7 @@ func startLostTransactionCleaner(config *TransactionsConfig) *stdLostTransaction
 }
 
 func (ltc *stdLostTransactionCleaner) start() {
+	logDebugf("Lost transactions %s starting", ltc.uuid)
 	go func() {
 		for {
 			ltc.pollForLocations()
@@ -189,7 +190,7 @@ func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATR
 	ch := make(chan struct{})
 	ltc.locations[location] = ch
 	ltc.locationsLock.Unlock()
-	logDebugf("Adding location %v to lost cleanup", location)
+	logDebugf("Adding location %v to lost cleanup for %s", location, ltc.uuid)
 	ltc.newLocationCh <- lostATRLocationWithShutdown{
 		location: location,
 		shutdown: ch,
@@ -197,21 +198,23 @@ func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATR
 }
 
 func (ltc *stdLostTransactionCleaner) Close() {
+	logDebugf("Lost transactions %p stopping", ltc)
 	close(ltc.stop)
-	err := ltc.RemoveClientFromAllBuckets(ltc.uuid)
+	err := ltc.RemoveClientFromAllLocations(ltc.uuid)
 	if err != nil {
 		logDebugf("Failed to remove client from all buckets: %v", err)
 	}
 }
 
-func (ltc *stdLostTransactionCleaner) RemoveClientFromAllBuckets(uuid string) error {
+func (ltc *stdLostTransactionCleaner) RemoveClientFromAllLocations(uuid string) error {
+	logDebugf("Removing %s from all locations", ltc.uuid)
 	ltc.locationsLock.Lock()
 	locations := ltc.locations
 	ltc.locationsLock.Unlock()
 	if ltc.atrLocationFinder != nil {
 		bs, err := ltc.atrLocationFinder()
 		if err != nil {
-			logDebugf("Failed to get atr locations: %v", err)
+			logDebugf("Failed to get atr locations for %s: %v", ltc.uuid, err)
 			return err
 		}
 
@@ -240,6 +243,7 @@ func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[Tr
 					logDebugf("Failed to unregister %s from cleanup record on from location %v", uuid, location)
 					err = unregErr
 				}
+				logDebugf("Unregistered %s from cleanup record for location %v", uuid, location)
 				wg.Done()
 			})
 		}(l)
@@ -389,6 +393,7 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 
 // We pass uuid to this so that it's testable externally.
 func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string, collection, scope, uuid string, cb func(*TransactionClientRecordDetails, error)) {
+	logSchedf("Processing client %s for %s.%s.%s", uuid, agent.BucketName(), scope, collection)
 	ltc.clientRecordHooks.BeforeGetRecord(func(err error) {
 		if err != nil {
 			ec := classifyHookError(err)
@@ -505,6 +510,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 }
 
 func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats)) {
+	logSchedf("Processing atr %s for %s.%s.%s", atrID, agent.BucketName(), scope, collection)
 	ltc.getATR(agent, oboUser, collection, scope, atrID, func(attempts map[string]jsonAtrAttempt, hlc int64, err error) {
 		if err != nil {
 			logDebugf("Failed to get atr %s on %s.%s.%s", atrID, agent.BucketName(), scope, collection)

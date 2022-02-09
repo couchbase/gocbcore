@@ -231,6 +231,7 @@ func (c *stdTransactionsCleaner) Close() {
 }
 
 func (c *stdTransactionsCleaner) processQ() {
+	logDebugf("Starting cleanup for %p", c)
 	for {
 		select {
 		case req := <-c.q:
@@ -278,6 +279,7 @@ func (c *stdTransactionsCleaner) checkForwardCompatability(
 }
 
 func (c *stdTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser string, req *TransactionsCleanupRequest, regular bool, cb func(attempt TransactionsCleanupAttempt)) {
+	logSchedf("Cleaning up attempt %s with %p", req.AttemptID, c)
 	c.checkForwardCompatability(forwardCompatStageGetsCleanupEntry, req.ForwardCompat, func(err error) {
 		if err != nil {
 			cb(TransactionsCleanupAttempt{
