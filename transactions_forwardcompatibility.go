@@ -23,7 +23,7 @@ import (
 
 // TransactionsProtocolVersion returns the protocol version that this library supports.
 func TransactionsProtocolVersion() string {
-	return "2.0"
+	return "2.1"
 }
 
 // TransactionsProtocolExtensions returns a list strings representing the various features
