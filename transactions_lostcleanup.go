@@ -152,17 +152,7 @@ func startLostTransactionCleaner(config *TransactionsConfig) *stdLostTransaction
 
 func (ltc *stdLostTransactionCleaner) start() {
 	logDebugf("Lost transactions %s starting", ltc.uuid)
-	go func() {
-		for {
-			ltc.pollForLocations()
-
-			select {
-			case <-ltc.stop:
-				return
-			case <-time.After(1 * time.Second):
-			}
-		}
-	}()
+	ltc.fetchExtraCleanupLocations()
 
 	for {
 		select {
@@ -176,7 +166,7 @@ func (ltc *stdLostTransactionCleaner) start() {
 				// We should probably do something here...
 				return
 			}
-			go ltc.perLocation(agent, oboUser, location.location.CollectionName, location.location.ScopeName, location.shutdown)
+			go ltc.perLocation(agent, oboUser, location)
 		}
 	}
 }
@@ -243,7 +233,7 @@ func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[Tr
 					logDebugf("Failed to unregister %s from cleanup record on from location %v", uuid, location)
 					err = unregErr
 				}
-				logDebugf("Unregistered %s from cleanup record for location %v", uuid, location)
+				logInfof("Unregistered %s from cleanup record for location %v", uuid, location)
 				wg.Done()
 			})
 		}(l)
@@ -333,16 +323,28 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 	})
 }
 
-func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, collection, scope string, shutdownCh chan struct{}) {
-	ltc.process(agent, oboUser, collection, scope, func(err error) {
+func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
+	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
 		if err != nil {
+			var coreErr *TimeoutError
+			if errors.As(err, &coreErr) {
+				for _, reason := range coreErr.RetryReasons {
+					if reason == KVCollectionOutdatedRetryReason {
+						close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
+						ltc.locationsLock.Lock()
+						delete(ltc.locations, location.location)
+						ltc.locationsLock.Unlock()
+						return
+					}
+				}
+			}
 			select {
 			case <-ltc.stop:
 				return
-			case <-shutdownCh:
+			case <-location.shutdown:
 				return
 			case <-time.After(1 * time.Second):
-				ltc.perLocation(agent, oboUser, collection, scope, shutdownCh)
+				ltc.perLocation(agent, oboUser, location)
 				return
 			}
 		}
@@ -350,11 +352,11 @@ func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, 
 		select {
 		case <-ltc.stop:
 			return
-		case <-shutdownCh:
+		case <-location.shutdown:
 			return
 		default:
 		}
-		ltc.perLocation(agent, oboUser, collection, scope, shutdownCh)
+		ltc.perLocation(agent, oboUser, location)
 	})
 }
 
@@ -912,7 +914,7 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 	})
 }
 
-func (ltc *stdLostTransactionCleaner) pollForLocations() {
+func (ltc *stdLostTransactionCleaner) fetchExtraCleanupLocations() {
 	if ltc.atrLocationFinder != nil {
 		locations, err := ltc.atrLocationFinder()
 		if err != nil {
@@ -925,18 +927,6 @@ func (ltc *stdLostTransactionCleaner) pollForLocations() {
 			ltc.AddATRLocation(location)
 			locationMap[location] = struct{}{}
 		}
-
-		ltc.locationsLock.Lock()
-		// Remove any locations that are no longer in the list and close down the associated cleanup goroutine.
-		for location, shutdown := range ltc.locations {
-			if _, ok := locationMap[location]; ok {
-				continue
-			}
-
-			close(shutdown)
-			delete(ltc.locations, location)
-		}
-		ltc.locationsLock.Unlock()
 	}
 
 }
