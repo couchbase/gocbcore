@@ -438,7 +438,7 @@ func (c *stdTransactionsCleaner) cleanupDocs(req *TransactionsCleanupRequest, cb
 
 		cb(nil)
 	case TransactionAttemptStateAborted:
-		waitCh := make(chan error, 3)
+		waitCh := make(chan error, 1)
 		c.rollbackInsDocs(req.AttemptID, req.Inserts, deadline, memdDuraLevel, duraTimeout, func(err error) {
 			waitCh <- err
 		})
@@ -484,7 +484,6 @@ func (c *stdTransactionsCleaner) cleanupDocs(req *TransactionsCleanupRequest, cb
 
 func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []TransactionsDocRecord, deadline time.Time, durability memd.DurabilityLevel,
 	duraTimeout time.Duration, cb func(err error)) {
-	var overallErr error
 
 	for _, doc := range docs {
 		waitCh := make(chan error, 1)
@@ -549,17 +548,17 @@ func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []Tra
 
 		err = <-waitCh
 
-		if err != nil && overallErr == nil {
-			overallErr = err
+		if err != nil {
+			cb(err)
+			return
 		}
 	}
 
-	cb(overallErr)
+	cb(nil)
 }
 
 func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []TransactionsDocRecord, deadline time.Time, durability memd.DurabilityLevel,
 	duraTimeout time.Duration, cb func(err error)) {
-	var overallErr error
 
 	for _, doc := range docs {
 		waitCh := make(chan error, 1)
@@ -649,17 +648,18 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 		})
 
 		err = <-waitCh
-		if err != nil && overallErr == nil {
-			overallErr = err
+		if err != nil {
+			cb(err)
+			return
 		}
 	}
 
-	cb(overallErr)
+	cb(nil)
 }
 
 func (c *stdTransactionsCleaner) commitRemDocs(attemptID string, docs []TransactionsDocRecord, deadline time.Time, durability memd.DurabilityLevel,
 	duraTimeout time.Duration, cb func(err error)) {
-	var overallErr error
+
 	for _, doc := range docs {
 		waitCh := make(chan error, 1)
 
@@ -718,17 +718,17 @@ func (c *stdTransactionsCleaner) commitRemDocs(attemptID string, docs []Transact
 			})
 		})
 		err = <-waitCh
-		if err != nil && overallErr == nil {
-			overallErr = err
+		if err != nil {
+			cb(err)
+			return
 		}
 	}
 
-	cb(overallErr)
+	cb(nil)
 }
 
 func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []TransactionsDocRecord, deadline time.Time, durability memd.DurabilityLevel,
 	duraTimeout time.Duration, cb func(err error)) {
-	var overallErr error
 
 	for _, doc := range docs {
 		waitCh := make(chan error, 1)
@@ -821,12 +821,13 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 			})
 		})
 		err = <-waitCh
-		if err != nil && overallErr == nil {
-			overallErr = err
+		if err != nil {
+			cb(err)
+			return
 		}
 	}
 
-	cb(overallErr)
+	cb(nil)
 }
 
 func (c *stdTransactionsCleaner) perDoc(crc32MatchStaging bool, attemptID string, dr TransactionsDocRecord, agent *Agent, oboUser string,
