@@ -52,7 +52,17 @@ type memdClient struct {
 	tracer                *tracerComponent
 	zombieLogger          *zombieLoggerComponent
 
-	dcpQueueSize         int
+	dcpQueueSize int
+
+	// When a close request comes in, we need to immediately stop processing all requests.  This
+	// includes immediately stopping the DCP queue rather than waiting for the application to
+	// flush that queue.  This means that we lose packets that were read but not processed, but
+	// this is not fundamentally different to if we had just not read them at all.  As a side
+	// effect of this, we need to use a separate kill signal on top of closing the queue.
+	// We need this to be owned by the client because we only use it when the client is closed,
+	// when the connection is closed from an external actor (e.g. server) we want to flush the queue.
+	shutdownDCP uint32
+
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
@@ -267,7 +277,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		if size == 0 {
 			// Let's make sure that we don't somehow slow down returning to the user here.
 			go func() {
-				err := client.Close()
+				err := client.closeConn(false)
 				if err != nil {
 					logErrorf("failed to shutdown memdclient during graceful close: %s", err)
 				}
@@ -346,13 +356,6 @@ func (client *memdClient) run() {
 		// processing without interfeering with the SDKs control commands (like config fetch).
 		dcpBufferQ = make(chan *dcpBuffer, client.dcpQueueSize)
 
-		// When a kill request comes in, we need to immediately stop processing all requests.  This
-		// includes immediately stopping the DCP queue rather than waiting for the application to
-		// flush that queue.  This means that we lose packets that were read but not processed, but
-		// this is not fundementally different to if we had just not read them at all.  As a side
-		// effect of this, we need to use a separate kill signal on top of closing the queue.
-		isShuttingDown = uint32(0)
-
 		// After we signal that DCP processing should stop, we need a notification so we know when
 		// it has been completed, we do this to prevent leaving the goroutine around, and we need to
 		// ensure that the application has finished with the last packet it received before we stop.
@@ -363,8 +366,10 @@ func (client *memdClient) run() {
 		defer close(dcpProcDoneCh)
 
 		for {
+			// If the client has been told to close then we need to finish ASAP, otherwise if the dcpBufferQ has been
+			// closed then we'll flush the queue first.
 			q, stillOpen := <-dcpBufferQ
-			if !stillOpen || atomic.LoadUint32(&isShuttingDown) != 0 {
+			if !stillOpen || atomic.LoadUint32(&client.shutdownDCP) != 0 {
 				return
 			}
 
@@ -468,11 +473,9 @@ func (client *memdClient) run() {
 			client.lock.Unlock()
 		}
 
-		// We first mark that we are shutting down to stop the DCP processor from running any
-		// additional packets up to the application.  We then close the buffer channel to wake
-		// the processor if its asleep (queue was empty).  We then wait to ensure it is finished
-		// with whatever packet was being processed.
-		atomic.StoreUint32(&isShuttingDown, 1)
+		// We close the buffer channel to wake the processor if its asleep (queue was empty).
+		// We then wait to ensure it is finished with whatever packet (or packets if the connection was closed by the
+		// server) was being processed.
 		close(dcpBufferQ)
 		<-dcpProcDoneCh
 
@@ -519,6 +522,10 @@ func (client *memdClient) GracefulClose(err error) {
 			req.cancelWithCallback(err)
 		}
 
+		// Close down the DCP worker, there can't be any future DCP messages. We don't
+		// strictly need to do this, as connection close will trigger it to close anyway.
+		atomic.StoreUint32(&client.shutdownDCP, 1)
+
 		client.lock.Lock()
 		size := client.opList.Size()
 		client.lock.Unlock()
@@ -557,6 +564,12 @@ func (client *memdClient) closeConn(internalTrigger bool) error {
 }
 
 func (client *memdClient) Close() error {
+	// We mark that we are shutting down to stop the DCP processor from running any
+	// additional packets up to the application. We do this before the closed check to
+	// force stop flushing. Rebalance etc... uses GracefulClose so if we received this Close
+	// then we do need to shutdown in a timely manner.
+	atomic.StoreUint32(&client.shutdownDCP, 1)
+
 	client.lock.Lock()
 	if client.closed {
 		client.lock.Unlock()
