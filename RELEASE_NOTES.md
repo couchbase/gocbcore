@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 10.0.8 (15 February 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1238](GOCBC-1238):
+  Add config option for setting connection reader buffer size.
+* [https://issues.couchbase.com/browse/GOCBC-1242](GOCBC-1242):
+  Update to flush the DCP buffer on EOF originating from remote, rather than failing the DCP requests with EOF straight away.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1232](GOCBC-1232):
+  Fixed issue where DCP stream End could race with request cancellation (due to rebalance, etc...).
+* [https://issues.couchbase.com/browse/GOCBC-1233](GOCBC-1233):
+  Fixed issue where Agent close could hang if called whilst auth request in flight.
+
 ## Version 10.0.7 (24 January 2022)
 
 ### New Features and Behavioral Changes
