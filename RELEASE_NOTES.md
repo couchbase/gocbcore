@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 10.1.0 (15 February 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/TXNG-127](TXNG-127):
+  Integrate transactions into SDK.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1232](GOCBC-1232):
+  Fixed issue where DCP stream End could race with request cancellation (due to rebalance, etc...).
+* [https://issues.couchbase.com/browse/GOCBC-1233](GOCBC-1233):
+  Fixed issue where Agent close could hang if called whilst auth request in flight.
+
 ## Version 10.0.7 (24 January 2022)
 
 ### New Features and Behavioral Changes
