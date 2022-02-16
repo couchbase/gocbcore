@@ -32,7 +32,7 @@ type TransactionsManager struct {
 
 // InitTransactions will initialize the transactions library and return a TransactionsManager
 // object which can be used to perform transactions.
-func InitTransactions(config *TransactionsConfig) (*TransactionsManager, error) {
+func InitTransactions(config *TransactionsConfig) *TransactionsManager {
 	defaultConfig := &TransactionsConfig{
 		ExpirationTime:        10000 * time.Millisecond,
 		DurabilityLevel:       TransactionDurabilityLevelMajority,
@@ -93,7 +93,7 @@ func InitTransactions(config *TransactionsConfig) (*TransactionsManager, error) 
 		t.lostCleanup = &noopLostTransactionCleaner{}
 	}
 
-	return t, nil
+	return t
 }
 
 // Config returns the config that was used during the initialization

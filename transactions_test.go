@@ -117,7 +117,7 @@ func (suite *StandardTestSuite) assertDocNotStaged(key string, agent *Agent, opH
 }
 
 func (suite *StandardTestSuite) initTransactionAndAttempt(agent *Agent) (*TransactionsManager, *Transaction) {
-	txns, err := InitTransactions(&TransactionsConfig{
+	txns := InitTransactions(&TransactionsConfig{
 		DurabilityLevel: TransactionDurabilityLevelNone,
 		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
 			// We can always return just this one agent as we only actually
@@ -126,7 +126,6 @@ func (suite *StandardTestSuite) initTransactionAndAttempt(agent *Agent) (*Transa
 		},
 		ExpirationTime: 60 * time.Second,
 	})
-	suite.Require().Nil(err, err)
 
 	txn, err := txns.BeginTransaction(nil)
 	suite.Require().Nil(err, err)
