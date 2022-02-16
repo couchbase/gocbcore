@@ -17,6 +17,7 @@ package gocbcore
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func (suite *StandardTestSuite) TestLostCleanupProcessClientSuccessfulTxn() {
 	}))
 	h.Wait(0)
 
-	transactions := InitTransactions(&TransactionsConfig{
+	transactions, err := InitTransactions(&TransactionsConfig{
 		DurabilityLevel: TransactionDurabilityLevelNone,
 		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
 			// We can always return just this one agent as we only actually
@@ -60,6 +61,10 @@ func (suite *StandardTestSuite) TestLostCleanupProcessClientSuccessfulTxn() {
 		KeyValueTimeout:     2500 * time.Millisecond,
 		CleanupLostAttempts: false,
 	})
+	if err != nil {
+		log.Printf("InitTransactions failed: %+v", err)
+		panic(err)
+	}
 
 	clientUUID := uuid.New().String()
 	config := &TransactionsConfig{}
