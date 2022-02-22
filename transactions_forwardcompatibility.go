@@ -44,6 +44,7 @@ func TransactionsProtocolExtensions() []string {
 		"BF_CBD_3791",
 		"BF_CBD_3794",
 		"EXT_QUERY",
+		"EXT_SDK_INTEGRATION",
 	}
 }
 
@@ -75,6 +76,7 @@ const (
 	forwardCompatExtensionBFCBD3838                forwardCompatExtension = "BF3838"
 	forwardCompatExtensionBFCBD3791                forwardCompatExtension = "BF3791"
 	forwardCompatExtensionBFCBD3794                forwardCompatExtension = "BF3794"
+	forwardCompatExtensionSDKIntegration           forwardCompatExtension = "SI"
 )
 
 type forwardCompatStage string
@@ -120,6 +122,7 @@ var supportedforwardCompatExtensions = []forwardCompatExtension{
 	forwardCompatExtensionBFCBD3838,
 	forwardCompatExtensionBFCBD3791,
 	forwardCompatExtensionBFCBD3794,
+	forwardCompatExtensionSDKIntegration,
 }
 
 func jsonForwardCompatToForwardCompat(fc map[string][]jsonForwardCompatibilityEntry) map[string][]TransactionForwardCompatibilityEntry {
