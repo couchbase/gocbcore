@@ -36,7 +36,7 @@ func (suite *StandardTestSuite) BeforeTest(suiteName, testName string) {
 func (suite *StandardTestSuite) SetupSuite() {
 	if globalTestConfig.ConnStr == "" {
 		m, err := cavescli.NewClient(cavescli.NewClientOptions{
-			Version: "v0.0.1-53",
+			Version: "v0.0.1-69",
 		})
 		if err != nil {
 			panic(err)
@@ -153,18 +153,14 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 			!suite.ClusterVersion.Equal(srvVer650DP)
 	case TestFeatureFts:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer551)
-	case TestFeatureAdjoin:
-		return !suite.IsMockServer()
 	case TestFeatureCollections:
-		return !suite.IsMockServer() && (suite.ClusterVersion.Equal(srvVer650DP) || !suite.ClusterVersion.Lower(srvVer700))
+		return suite.ClusterVersion.Equal(srvVer650DP) || !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureGetMeta:
 		return !suite.IsMockServer()
 	case TestFeatureGCCCP:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
-	case TestFeaturePingServices:
-		return !suite.IsMockServer()
 	case TestFeatureEnhancedDurability:
-		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer650)
+		return !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeatureCreateDeleted:
 		return !suite.ClusterVersion.Lower(srvVer660)
 	case TestFeatureReplaceBodyWithXattr:
@@ -175,11 +171,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer450)
 	case TestFeaturePreserveExpiry:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
-	case TestFeatureNSServer:
-		return !suite.IsMockServer()
 	case TestFeatureTransactions:
-		// Caves has a couple of subdoc bugs which cause issue with txns tests.
-		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
+		return !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureN1qlReasons:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer710)
 	}

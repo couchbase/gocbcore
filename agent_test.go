@@ -1176,8 +1176,6 @@ func (suite *StandardTestSuite) TestBasicCounters() {
 }
 
 func (suite *StandardTestSuite) TestBasicAdjoins() {
-	suite.EnsureSupportsFeature(TestFeatureAdjoin)
-
 	agent, s := suite.GetAgentAndHarness()
 
 	s.PushOp(agent.Set(SetOptions{
@@ -2324,8 +2322,6 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
 
 // This test cannot run against mock as the mock does not respond with 200 status code for all of the endpoints.
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
-	suite.EnsureSupportsFeature(TestFeaturePingServices)
-
 	cfg := suite.makeAgentGroupConfig(globalTestConfig)
 	ag, err := CreateAgentGroup(&cfg)
 	suite.Require().Nil(err, err)
