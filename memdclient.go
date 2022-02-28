@@ -277,9 +277,11 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		if size == 0 {
 			// Let's make sure that we don't somehow slow down returning to the user here.
 			go func() {
-				err := client.closeConn(false)
+				// We use the Close function rather than closeConn to ensure that we don't try to close the
+				// connection/client if someone else has already closed it.
+				err := client.Close()
 				if err != nil {
-					logErrorf("failed to shutdown memdclient during graceful close: %s", err)
+					logDebugf("failed to shutdown memdclient during graceful close: %s", err)
 				}
 			}()
 		}
@@ -528,27 +530,33 @@ func (client *memdClient) GracefulClose(err error) {
 
 		client.lock.Lock()
 		size := client.opList.Size()
-		client.lock.Unlock()
-		if size == 0 {
-			client.lock.Lock()
-			if client.closed {
-				client.lock.Unlock()
-				return
-			}
-			client.closed = true
+		if size > 0 {
+			// If there are items in the op list then we need to go into graceful shutdown mode, so don't close anything
+			// yet.
 			client.lock.Unlock()
-
-			err := client.closeConn(false)
-			if err != nil {
-				// Lets log a warning, as this is non-fatal
-				logWarnf("Failed to shut down client connection (%s)", err)
-			}
+			return
 		}
+
+		// If there are no items in the oplist then it's safe to close down the client and connection now.
+		if client.closed {
+			client.lock.Unlock()
+			return
+		}
+		client.closed = true
+		client.lock.Unlock()
+
+		err := client.closeConn(false)
+		if err != nil {
+			// Lets log a warning, as this is non-fatal
+			logWarnf("Failed to shut down client connection (%s)", err)
+		}
+
 	}
 }
 
 func (client *memdClient) closeConn(internalTrigger bool) error {
 	if err := client.conn.Close(); err != nil {
+		logDebugf("Failed to close memdconn: %v", err)
 		client.conn.Release()
 		close(client.connReleasedNotify)
 		return err

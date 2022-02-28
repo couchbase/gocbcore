@@ -117,6 +117,10 @@ func (s *memdConnWrap) Close() error {
 
 // Release is not thread safe and should not be called whilst there are pending calls, such as ReadPacket.
 func (s *memdConnWrap) Release() {
+	if s.baseConn == nil {
+		logWarnf("Release called on already released connection")
+		return
+	}
 	releaseReadBuf(s.baseConn.Reader, s.bufSize)
 	s.baseConn = nil
 }
