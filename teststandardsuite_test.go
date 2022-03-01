@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/couchbase/gocbcore/v10/memd"
+	cavescli "github.com/couchbaselabs/gocaves/client"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	cavescli "github.com/couchbaselabs/gocaves/client"
-	"github.com/stretchr/testify/suite"
 )
 
 type StandardTestSuite struct {
@@ -35,32 +34,7 @@ func (suite *StandardTestSuite) BeforeTest(suiteName, testName string) {
 
 func (suite *StandardTestSuite) SetupSuite() {
 	if globalTestConfig.ConnStr == "" {
-		m, err := cavescli.NewClient(cavescli.NewClientOptions{
-			Version: "v0.0.1-69",
-		})
-		if err != nil {
-			panic(err)
-		}
-
-		suite.mockInst = m
-		suite.runID = uuid.New().String()
-
-		connstr, err := m.StartTesting(suite.runID, "gocbcore-"+Version())
-		if err != nil {
-			panic(err)
-		}
-
-		globalTestConfig.ConnStr = connstr
-		globalTestConfig.BucketName = "default"
-		globalTestConfig.MemdBucketName = "memd"
-		globalTestConfig.Authenticator = &PasswordAuthProvider{
-			Username: "Administrator",
-			Password: "password",
-		}
-
-		// gocbcore itself doesn't use the default client but the mock downloader does so let's make sure that it
-		// doesn't hold any goroutines open which will affect our goroutine leak detector.
-		http.DefaultClient.CloseIdleConnections()
+		suite.mockInst, suite.runID = setupMock(false)
 	}
 
 	suite.TestConfig = globalTestConfig
@@ -264,7 +238,7 @@ func (suite *StandardTestSuite) StartTest(name TestName) TestSpec {
 	tracer := newTestTracer()
 	meter := newTestMeter()
 
-	cfg := suite.makeAgentConfig(baseCfg)
+	cfg := makeAgentConfig(baseCfg)
 	cfg.BucketName = bucket
 	cfg.TracerConfig.Tracer = tracer
 	cfg.MeterConfig.Meter = meter
@@ -321,7 +295,7 @@ func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBuc
 	return
 }
 
-func (suite *StandardTestSuite) makeAgentConfig(testConfig *TestConfig) AgentConfig {
+func makeAgentConfig(testConfig *TestConfig) AgentConfig {
 	config := AgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
@@ -512,7 +486,7 @@ func (suite *StandardTestSuite) CreateNSAgentConfig() (*AgentConfig, string) {
 		suite.T().Skip("Skipping test due to cluster only containing one node")
 	}
 
-	srcCfg := suite.makeAgentConfig(globalTestConfig)
+	srcCfg := makeAgentConfig(globalTestConfig)
 	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -569,6 +543,37 @@ func (suite *StandardTestSuite) VerifyMetrics(meter *testMeter, key string, num 
 			}
 		}
 	}
+}
+
+func setupMock(quiet bool) (*cavescli.Client, string) {
+	m, err := cavescli.NewClient(cavescli.NewClientOptions{
+		Version: "v0.0.1-69",
+		Quiet:   quiet,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	runID := uuid.New().String()
+
+	connstr, err := m.StartTesting(runID, "gocbcore-"+Version())
+	if err != nil {
+		panic(err)
+	}
+
+	globalTestConfig.ConnStr = connstr
+	globalTestConfig.BucketName = "default"
+	globalTestConfig.MemdBucketName = "memd"
+	globalTestConfig.Authenticator = &PasswordAuthProvider{
+		Username: "Administrator",
+		Password: "password",
+	}
+
+	// gocbcore itself doesn't use the default client but the mock downloader does so let's make sure that it
+	// doesn't hold any goroutines open which will affect our goroutine leak detector.
+	http.DefaultClient.CloseIdleConnections()
+
+	return m, runID
 }
 
 func TestStandardSuite(t *testing.T) {

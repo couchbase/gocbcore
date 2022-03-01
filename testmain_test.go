@@ -200,6 +200,13 @@ func TestMain(m *testing.M) {
 
 	result := m.Run()
 
+	if globalBenchSuite != nil {
+		if err := globalBenchSuite.Close(); err != nil {
+			log.Printf("Failed to close benchmarking suite, failing")
+			result = 1
+		}
+	}
+
 	if globalTestLogger != nil {
 		log.Printf("Log Messages Emitted:")
 		var preLogTotal uint64

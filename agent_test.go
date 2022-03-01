@@ -2195,7 +2195,7 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
 	defer agent.Close()
@@ -2279,7 +2279,7 @@ func (suite *StandardTestSuite) VerifyConnectedToBucketHTTP(agent *Agent, bucket
 }
 
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
 	suite.Require().Nil(err, err)
@@ -2338,7 +2338,7 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2363,7 +2363,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPort() {
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2391,7 +2391,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortSSL() {
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2434,7 +2434,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyDefaultPortFastFailInvalidBuc
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2457,7 +2457,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPort() {
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2486,7 +2486,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortNoBucket() {
 }
 
 func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalidBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}
@@ -2529,7 +2529,7 @@ func (suite *StandardTestSuite) TestConnectHTTPOnlyNonDefaultPortFastFailInvalid
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPort() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no Memd addresses")
 	}
@@ -2554,7 +2554,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPort() {
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
@@ -2582,7 +2582,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSL() {
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
@@ -2605,7 +2605,7 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyNonDefaultPort() {
 }
 
 func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBucket() {
-	cfg := suite.makeAgentConfig(globalTestConfig)
+	cfg := makeAgentConfig(globalTestConfig)
 	if len(cfg.SeedConfig.MemdAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no memd addresses")
 	}
@@ -2660,7 +2660,7 @@ func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 		suite.T().Skip("Skipping test due to cluster only containing one node")
 	}
 
-	srcCfg := suite.makeAgentConfig(globalTestConfig)
+	srcCfg := makeAgentConfig(globalTestConfig)
 	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}

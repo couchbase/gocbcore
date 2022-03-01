@@ -16,9 +16,12 @@ lint:
 check: lint
 	go test -cover -race ./...
 
+bench:
+	go test -run ^$$ -bench . --disable-logger
+
 updatemocks:
 	mockery -name dispatcher -output . -testonly -inpkg
 	mockery -name configManager -output . -testonly -inpkg
 	mockery -name httpComponentInterface -output . -testonly -inpkg
 
-.PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check updatemocks
+.PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check bench updatemocks

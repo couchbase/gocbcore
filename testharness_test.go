@@ -152,7 +152,7 @@ func MakeDistKeys(agent *Agent, deadline time.Time) (keys []string, errOut error
 }
 
 type TestSubHarnessBase struct {
-	sigT  *testing.T
+	sigT  testing.TB
 	sigCh chan int
 }
 
@@ -221,7 +221,7 @@ type TestSubHarness struct {
 	sigOp PendingOp
 }
 
-func makeTestSubHarness(t *testing.T) *TestSubHarness {
+func makeTestSubHarness(t testing.TB) *TestSubHarness {
 	// Note that the signaling channel here must have a queue of
 	// at least 1 to avoid deadlocks during cancellations.
 	h := &TestSubHarness{
