@@ -74,6 +74,8 @@ func (t *transactionAttempt) applyStateBits(stateBits uint32, errorBits uint32) 
 		if errorBits > ((oldStateBits & transactionStateBitsMaskFinalError) >> transactionStateBitsPositionFinalError) {
 			newStateBits = (newStateBits & transactionStateBitsMaskBits) | (errorBits << transactionStateBitsPositionFinalError)
 		}
+		t.logger.logInfof(t.id, "Applying state bits: %08b, error bits: %08b, old: %08b, new: %08b",
+			stateBits, errorBits, oldStateBits, newStateBits)
 		if atomic.CompareAndSwapUint32(&t.stateBits, oldStateBits, newStateBits) {
 			break
 		}
@@ -81,6 +83,8 @@ func (t *transactionAttempt) applyStateBits(stateBits uint32, errorBits uint32) 
 }
 
 func (t *transactionAttempt) operationFailed(def operationFailedDef) *TransactionOperationFailedError {
+	t.logger.logInfof(t.id, "Operation failed: can still commit: %t, should not rollback: %t, should not retry: %t, "+
+		"reason: %s", def.CanStillCommit, def.ShouldNotRollback, def.ShouldNotRetry, def.Reason)
 	err := &TransactionOperationFailedError{
 		shouldNotRetry:    def.ShouldNotRetry,
 		shouldNotRollback: def.ShouldNotRollback,
@@ -130,7 +134,6 @@ func classifyError(err error) *classifiedError {
 		ec = TransactionErrorClassFailAmbiguous
 	} else if errors.Is(err, ErrCasMismatch) {
 		ec = TransactionErrorClassFailCasMismatch
-
 	} else if errors.Is(err, ErrDocumentNotFound) {
 		ec = TransactionErrorClassFailDocNotFound
 	} else if errors.Is(err, ErrDocumentExists) {

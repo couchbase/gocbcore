@@ -175,6 +175,10 @@ type TransactionOptions struct {
 	// a particular bucket by name.
 	BucketAgentProvider TransactionsBucketAgentProviderFn
 
+	// TransactionLogger is the logger to use with this transaction.
+	// Uncommitted: This API may change in the future.
+	TransactionLogger TransactionLogger
+
 	// Internal specifies a set of options for internal use.
 	// Internal: This should never be used and is not supported.
 	Internal struct {

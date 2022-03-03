@@ -17,6 +17,7 @@ package gocbcore
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -48,6 +49,8 @@ type Transaction struct {
 
 	addCleanupRequest      addCleanupRequest
 	addLostCleanupLocation addLostCleanupLocation
+
+	logger *internalTransactionLogWrapper
 }
 
 // ID returns the transaction ID of this transaction.
@@ -92,6 +95,7 @@ func (t *Transaction) NewAttempt() error {
 
 		addCleanupRequest:      t.addCleanupRequest,
 		addLostCleanupLocation: t.addLostCleanupLocation,
+		logger:                 t.logger,
 	}
 
 	return nil
@@ -205,6 +209,8 @@ func (t *Transaction) resumeAttempt(txnData *jsonSerializedAttempt) error {
 
 		addCleanupRequest:      t.addCleanupRequest,
 		addLostCleanupLocation: t.addLostCleanupLocation,
+
+		logger: t.logger,
 	}
 
 	return nil
@@ -459,6 +465,11 @@ type TransactionUpdateStateOptions struct {
 	Reason            TransactionErrorReason
 }
 
+func (tuso TransactionUpdateStateOptions) String() string {
+	return fmt.Sprintf("Should not commit: %t, should not rollback: %t, should not retry: %t, state: %s, reason: %s",
+		tuso.ShouldNotCommit, tuso.ShouldNotRollback, tuso.ShouldNotRetry, tuso.State, tuso.Reason)
+}
+
 // UpdateState will update the internal state of the current attempt.
 // Internal: This should never be used and is not supported.
 func (t *Transaction) UpdateState(opts TransactionUpdateStateOptions) {
@@ -467,4 +478,10 @@ func (t *Transaction) UpdateState(opts TransactionUpdateStateOptions) {
 	}
 
 	t.attempt.UpdateState(opts)
+}
+
+// Logger returns the logger used by this transaction.
+// Uncommitted: This API may change in the future.
+func (t *Transaction) Logger() TransactionLogger {
+	return t.logger.wrapped
 }

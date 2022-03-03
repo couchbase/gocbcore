@@ -54,6 +54,8 @@ type transactionAttempt struct {
 	hasCleanupRequest      bool
 	addCleanupRequest      addCleanupRequest
 	addLostCleanupLocation addLostCleanupLocation
+
+	logger *internalTransactionLogWrapper
 }
 
 func (t *transactionAttempt) State() TransactionAttempt {
@@ -126,6 +128,7 @@ func (t *transactionAttempt) FinalErrorToRaise() TransactionErrorReason {
 }
 
 func (t *transactionAttempt) UpdateState(opts TransactionUpdateStateOptions) {
+	t.logger.logInfof(t.id, "Updating state to %s", opts)
 	stateBits := uint32(0)
 	if opts.ShouldNotCommit {
 		stateBits |= transactionStateBitShouldNotCommit
@@ -167,6 +170,7 @@ func (t *transactionAttempt) GetATRLocation() TransactionATRLocation {
 }
 
 func (t *transactionAttempt) SetATRLocation(location TransactionATRLocation) error {
+	t.logger.logInfof(t.id, "Setting ATR location to %s", newLoggableATRKey(location.Agent.BucketName(), location.ScopeName, location.CollectionName, nil))
 	t.lock.LockSync()
 	if t.atrAgent != nil {
 		t.lock.UnlockSync()

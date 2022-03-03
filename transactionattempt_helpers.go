@@ -202,6 +202,7 @@ func (t *transactionAttempt) checkCanRollbackLocked() *TransactionOperationFaile
 }
 
 func (t *transactionAttempt) setExpiryOvertimeAtomic() {
+	t.logger.logInfof(t.id, "Entering expiry overtime")
 	t.applyStateBits(transactionStateBitHasExpired, 0)
 }
 
@@ -343,8 +344,10 @@ func (t *transactionAttempt) checkForwardCompatability(
 	forceNonFatal bool,
 	cb func(*TransactionOperationFailedError),
 ) {
+	t.logger.logInfof(t.id, "Checking forward compatibility")
 	isCompat, shouldRetry, retryWait, err := checkForwardCompatability(stage, fc)
 	if err != nil {
+		t.logger.logInfof(t.id, "Forward compatability error")
 		cb(t.operationFailed(operationFailedDef{
 			Cerr:              classifyError(err),
 			CanStillCommit:    forceNonFatal,
@@ -358,6 +361,7 @@ func (t *transactionAttempt) checkForwardCompatability(
 	if !isCompat {
 		if shouldRetry {
 			cbRetryError := func() {
+				t.logger.logInfof(t.id, "Forward compatability failed - incompatible, should retry")
 				cb(t.operationFailed(operationFailedDef{
 					Cerr: classifyError(forwardCompatError{
 						BucketName:     bucket,
@@ -381,6 +385,7 @@ func (t *transactionAttempt) checkForwardCompatability(
 			return
 		}
 
+		t.logger.logInfof(t.id, "Forward compatability failed - incompatible")
 		cb(t.operationFailed(operationFailedDef{
 			Cerr: classifyError(forwardCompatError{
 				BucketName:     bucket,
@@ -420,10 +425,12 @@ func (t *transactionAttempt) getTxnState(
 
 		switch cerr.Class {
 		case TransactionErrorClassFailPathNotFound:
+			t.logger.logInfof(t.id, "Attempt entry not found")
 			// If the path is not found, we just return as if there was no
 			// entry data available for that atr entry.
 			cb(nil, time.Time{}, nil)
 		case TransactionErrorClassFailDocNotFound:
+			t.logger.logInfof(t.id, "ATR doc not found")
 			// If the ATR is not found, we just return as if there was no
 			// entry data available for that atr entry.
 			cb(nil, time.Time{}, nil)
@@ -444,8 +451,11 @@ func (t *transactionAttempt) getTxnState(
 		}
 	}
 
+	t.logger.logInfof(t.id, "Getting txn state")
+
 	atrAgent, atrOboUser, err := t.bucketAgentProvider(atrBucketName)
 	if err != nil {
+		t.logger.logInfof(t.id, "Failed to get atr agent")
 		ecCb(nil, time.Time{}, classifyError(err))
 		return
 	}
@@ -545,6 +555,7 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 	cb func(*TransactionOperationFailedError),
 ) {
 	if meta == nil {
+		t.logger.logInfof(t.id, "Meta is nil, no write-write conflict")
 		// There is no write-write conflict.
 		cb(nil)
 		return
@@ -583,6 +594,7 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 			return
 		}
 
+		t.logger.logInfof(t.id, "Transaction meta matches ours, no write-write conflict")
 		// The transaction matches our transaction.  We can safely overwrite the existing
 		// data in the txn meta and continue.
 		cb(nil)
@@ -593,7 +605,9 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 
 	var onePoll func()
 	onePoll = func() {
+		t.logger.logInfof(t.id, "Performing write-write conflict poll")
 		if !time.Now().Before(deadline) {
+			t.logger.logInfof(t.id, "Deadline expired during write-write poll")
 			// If the deadline expired, lets just immediately return.
 			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(&writeWriteConflictError{
@@ -651,6 +665,7 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 							}
 
 							if attempt == nil {
+								t.logger.logInfof(t.id, "ATR entry missing, completing write-write conflict poll")
 								// The ATR entry is missing, which counts as it being completed.
 								cb(nil)
 								return
@@ -658,6 +673,7 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 
 							state := jsonAtrState(attempt.State)
 							if state == jsonAtrStateCompleted || state == jsonAtrStateRolledBack {
+								t.logger.logInfof(t.id, "Attempt state %s, completing write-write conflict poll", state)
 								// If we have progressed enough to continue, let's do that.
 								cb(nil)
 								return
@@ -681,11 +697,13 @@ func (t *transactionAttempt) ensureCleanUpRequest() {
 
 	if t.state == TransactionAttemptStateCompleted || t.state == TransactionAttemptStateRolledBack {
 		t.lock.UnlockSync()
+		t.logger.logInfof(t.id, "Attempt state completed or rolled back, will not add cleanup request")
 		return
 	}
 
 	if t.hasCleanupRequest {
 		t.lock.UnlockSync()
+		t.logger.logInfof(t.id, "Attempt already created cleanup request, will not add cleanup request")
 		return
 	}
 
@@ -737,6 +755,13 @@ func (t *transactionAttempt) ensureCleanUpRequest() {
 	}
 
 	t.lock.UnlockSync()
+
+	t.logger.logInfof(t.id, "Adding cleanup request for atr %s, cleanup state: %s", newLoggableATRKey(
+		bucketName,
+		t.atrScopeName,
+		t.atrCollectionName,
+		t.atrKey,
+	), cleanupState)
 
 	t.addCleanupRequest(req)
 }

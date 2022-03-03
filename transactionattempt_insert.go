@@ -40,6 +40,13 @@ func (t *transactionAttempt) insert(
 	opts TransactionInsertOptions,
 	cb func(*TransactionGetResult, *TransactionOperationFailedError),
 ) error {
+	t.logger.logInfof(t.id, "Performing insert for %s", newLoggableDocKey(
+		opts.Agent.BucketName(),
+		opts.ScopeName,
+		opts.CollectionName,
+		opts.Key,
+	))
+
 	t.beginOpAndLock(func(unlock func(), endOp func()) {
 		endAndCb := func(result *TransactionGetResult, err *TransactionOperationFailedError) {
 			endOp()
@@ -78,6 +85,7 @@ func (t *transactionAttempt) insert(
 			if existingMutation != nil {
 				switch existingMutation.OpType {
 				case TransactionStagedMutationRemove:
+					t.logger.logInfof(t.id, "Staged remove exists on doc, performing replace")
 					t.stageReplace(
 						agent, oboUser, scopeName, collectionName, key,
 						value, existingMutation.Cas,

@@ -47,6 +47,27 @@ const (
 	TransactionAttemptStateRolledBack = TransactionAttemptState(7)
 )
 
+func (state TransactionAttemptState) String() string {
+	switch state {
+	case TransactionAttemptStateNothingWritten:
+		return "nothing_written"
+	case TransactionAttemptStatePending:
+		return "pending"
+	case TransactionAttemptStateCommitting:
+		return "committing"
+	case TransactionAttemptStateCommitted:
+		return "committed"
+	case TransactionAttemptStateCompleted:
+		return "completed"
+	case TransactionAttemptStateAborted:
+		return "aborted"
+	case TransactionAttemptStateRolledBack:
+		return "rolled_back"
+	default:
+		return "unknown"
+	}
+}
+
 // TransactionErrorReason is the reason why a transaction should be failed.
 // Internal: This should never be used and is not supported.
 type TransactionErrorReason uint8
@@ -70,7 +91,7 @@ const (
 	TransactionErrorReasonTransactionFailedPostCommit
 )
 
-func transactionErrorReasonToString(reason TransactionErrorReason) string {
+func (reason TransactionErrorReason) String() string {
 	switch reason {
 	case TransactionErrorReasonTransactionFailed:
 		return "failed"

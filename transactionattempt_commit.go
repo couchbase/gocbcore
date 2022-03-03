@@ -22,8 +22,10 @@ import (
 )
 
 func (t *transactionAttempt) Commit(cb TransactionCommitCallback) error {
+	t.logger.logInfof(t.id, "Performing commit")
 	return t.commit(func(err *TransactionOperationFailedError) {
 		if err != nil {
+			t.logger.logInfof(t.id, "Commit failed")
 			if t.ShouldRollback() {
 				if !t.isExpiryOvertimeAtomic() {
 					t.applyStateBits(transactionStateBitPreExpiryAutoRollback, 0)
@@ -31,6 +33,7 @@ func (t *transactionAttempt) Commit(cb TransactionCommitCallback) error {
 
 				err := t.rollback(func(rerr *TransactionOperationFailedError) {
 					if rerr != nil {
+						t.logger.logInfof(t.id, "Rollback failed")
 						logDebugf("implicit rollback after commit failure errored: %s", rerr)
 					}
 
@@ -38,6 +41,7 @@ func (t *transactionAttempt) Commit(cb TransactionCommitCallback) error {
 					cb(err)
 				})
 				if err != nil {
+					t.logger.logInfof(t.id, "Rollback failed to schedule")
 					logDebugf("failed to schedule rollback after commit failure errored: %s", err)
 
 					t.ensureCleanUpRequest()

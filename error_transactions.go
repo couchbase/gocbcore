@@ -104,7 +104,7 @@ func (tfe TransactionOperationFailedError) MarshalJSON() ([]byte, error) {
 	}{
 		Retry:    !tfe.shouldNotRetry,
 		Rollback: !tfe.shouldNotRollback,
-		Raise:    transactionErrorReasonToString(tfe.shouldRaise),
+		Raise:    tfe.shouldRaise.String(),
 		Cause:    marshalErrorToJSON(tfe.errorCause),
 	})
 }

@@ -114,6 +114,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 	bucketAgentProvider := t.config.BucketAgentProvider
 	hooks := t.config.Internal.Hooks
 
+	var logger *internalTransactionLogWrapper
 	if perConfig != nil {
 		if perConfig.ExpirationTime != 0 {
 			expirationTime = perConfig.ExpirationTime
@@ -133,6 +134,13 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		if perConfig.Internal.Hooks != nil {
 			hooks = perConfig.Internal.Hooks
 		}
+		if perConfig.TransactionLogger == nil {
+			logger = newInternalTransactionLogger(transactionUUID, NewNoopTransactionLogger())
+		} else {
+			logger = newInternalTransactionLogger(transactionUUID, perConfig.TransactionLogger)
+		}
+	} else {
+		logger = newInternalTransactionLogger(transactionUUID, NewNoopTransactionLogger())
 	}
 
 	now := time.Now()
@@ -152,6 +160,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		enableMutationCaching:   t.config.Internal.EnableMutationCaching,
 		bucketAgentProvider:     bucketAgentProvider,
 		addLostCleanupLocation:  t.addLostCleanupLocation,
+		logger:                  logger,
 	}, nil
 }
 
@@ -160,6 +169,9 @@ type ResumeTransactionOptions struct {
 	// BucketAgentProvider provides a function which returns an agent for
 	// a particular bucket by name.
 	BucketAgentProvider TransactionsBucketAgentProviderFn
+
+	// TransactionLogger is the logger to use with this transaction.
+	TransactionLogger TransactionLogger
 }
 
 // ResumeTransactionAttempt allows the resumption of an existing transaction attempt
@@ -231,6 +243,13 @@ func (t *TransactionsManager) ResumeTransactionAttempt(txnBytes []byte, options 
 	expirationTime := time.Duration(txnData.State.TimeLeftMs) * time.Millisecond
 	keyValueTimeout := time.Duration(txnData.Config.KeyValueTimeoutMs) * time.Millisecond
 
+	var logger *internalTransactionLogWrapper
+	if options == nil || options.TransactionLogger == nil {
+		logger = newInternalTransactionLogger(transactionUUID, NewNoopTransactionLogger())
+	} else {
+		logger = newInternalTransactionLogger(transactionUUID, options.TransactionLogger)
+	}
+
 	now := time.Now()
 	txn := &Transaction{
 		parent:                  t,
@@ -248,6 +267,7 @@ func (t *TransactionsManager) ResumeTransactionAttempt(txnBytes []byte, options 
 		enableMutationCaching:   t.config.Internal.EnableMutationCaching,
 		bucketAgentProvider:     bucketAgentProvider,
 		addLostCleanupLocation:  t.addLostCleanupLocation,
+		logger:                  logger,
 	}
 
 	err = txn.resumeAttempt(&txnData)

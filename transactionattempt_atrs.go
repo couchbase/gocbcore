@@ -183,6 +183,12 @@ func (t *transactionAttempt) setATRPendingLocked(
 				ecCb(classifyError(marshalErr))
 				return
 			}
+			t.logger.logInfof(t.id, "Setting ATR %s pending", newLoggableATRKey(
+				t.atrAgent.BucketName(),
+				t.atrScopeName,
+				t.atrCollectionName,
+				t.atrKey,
+			))
 
 			_, err = t.atrAgent.MutateIn(MutateInOptions{
 				ScopeName:              t.atrScopeName,

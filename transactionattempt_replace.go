@@ -23,6 +23,7 @@ import (
 func (t *transactionAttempt) Replace(opts TransactionReplaceOptions, cb TransactionStoreCallback) error {
 	return t.replace(opts, func(res *TransactionGetResult, err *TransactionOperationFailedError) {
 		if err != nil {
+			t.logger.logInfof(t.id, "Replace failed")
 			if err.shouldNotRollback {
 				t.ensureCleanUpRequest()
 			}
@@ -39,6 +40,12 @@ func (t *transactionAttempt) replace(
 	opts TransactionReplaceOptions,
 	cb func(*TransactionGetResult, *TransactionOperationFailedError),
 ) error {
+	t.logger.logInfof(t.id, "Performing replace for %s", newLoggableDocKey(
+		opts.Document.agent.BucketName(),
+		opts.Document.scopeName,
+		opts.Document.collectionName,
+		opts.Document.key,
+	))
 	t.beginOpAndLock(func(unlock func(), endOp func()) {
 		endAndCb := func(result *TransactionGetResult, err *TransactionOperationFailedError) {
 			endOp()
@@ -79,6 +86,7 @@ func (t *transactionAttempt) replace(
 			if existingMutation != nil {
 				switch existingMutation.OpType {
 				case TransactionStagedMutationInsert:
+					t.logger.logInfof(t.id, "Staged insert exists on doc, performing insert")
 					t.stageInsert(
 						agent, oboUser, scopeName, collectionName, key,
 						value, cas,
@@ -88,6 +96,7 @@ func (t *transactionAttempt) replace(
 					return
 
 				case TransactionStagedMutationReplace:
+					t.logger.logInfof(t.id, "Staged replace exists on doc, this is ok")
 					// We can overwrite other replaces without issue, any conflicts between the mutation
 					// the user passed to us and the existing mutation is caught by WriteWriteConflict.
 				case TransactionStagedMutationRemove:

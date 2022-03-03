@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -906,4 +907,66 @@ func (suite *StandardTestSuite) serializeUnserializeTxn(txns *TransactionsManage
 	suite.Require().Nil(err, err, "txn resume failed")
 
 	return txn
+}
+
+func (suite *StandardTestSuite) TestTransactionsLogger() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	agent, opHarness := suite.GetAgentAndHarness()
+
+	testDummy2 := []byte(`{"name":"mike"}`)
+
+	txns, err := InitTransactions(&TransactionsConfig{
+		DurabilityLevel: TransactionDurabilityLevelNone,
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			// We can always return just this one agent as we only actually
+			// use a single bucket for this entire test.
+			return agent, "", nil
+		},
+		ExpirationTime: 60 * time.Second,
+	})
+	suite.Require().Nil(err, err)
+
+	logger := NewInMemoryTransactionLogger()
+	txn, err := txns.BeginTransaction(&TransactionOptions{
+		TransactionLogger: logger,
+	})
+	suite.Require().Nil(err, err)
+
+	// Start the attempt
+	err = txn.NewAttempt()
+	suite.Require().Nil(err, err)
+
+	key := uuid.NewString()
+	_, err = testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+		Value:          testDummy2,
+	})
+	suite.Require().Nil(err, "insert failed")
+
+	_, err = testBlkGet(txn, TransactionGetOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+	})
+	suite.Require().Nil(err, "get failed")
+
+	err = testBlkCommit(txn)
+	suite.Require().Nil(err, "commit failed")
+
+	suite.assertDocNotStaged(key, agent, opHarness)
+
+	entries := logger.Logs()
+	for _, entry := range entries {
+		suite.Assert().NotZero(entry.Level)
+		items := strings.SplitN(entry.String(), " ", 3)
+		if suite.Assert().Len(items, 3) {
+			suite.Assert().Len(items[0], 12)
+			suite.Assert().Equal(txn.ID()[:5]+"/"+txn.Attempt().ID[:5], items[1])
+			suite.Assert().NotEmpty(items[2])
+		}
+	}
 }

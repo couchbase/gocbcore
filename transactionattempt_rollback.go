@@ -23,6 +23,7 @@ import (
 func (t *transactionAttempt) Rollback(cb TransactionRollbackCallback) error {
 	return t.rollback(func(err *TransactionOperationFailedError) {
 		if err != nil {
+			t.logger.logInfof(t.id, "Rollback failed")
 			t.ensureCleanUpRequest()
 			cb(err)
 			return
@@ -36,6 +37,7 @@ func (t *transactionAttempt) Rollback(cb TransactionRollbackCallback) error {
 func (t *transactionAttempt) rollback(
 	cb func(*TransactionOperationFailedError),
 ) error {
+	t.logger.logInfof(t.id, "Rolling back")
 	t.waitForOpsAndLock(func(unlock func()) {
 		unlockAndCb := func(err *TransactionOperationFailedError) {
 			unlock()
