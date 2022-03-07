@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
@@ -12,10 +13,21 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndStopRace() {
 		looperStopSig: make(chan struct{}),
 		looperDoneSig: make(chan struct{}),
 	}
+
+	cliMux := &httpClientMux{
+		mgmtEpList: []routeEndpoint{
+			{
+				Address: "localhost:8091",
+			},
+		},
+	}
 	htt := &httpConfigController{
 		baseHTTPConfigController: &baseHTTPConfigController{
 			looperStopSig: make(chan struct{}),
 			looperDoneSig: make(chan struct{}),
+		},
+		muxer: &httpMux{
+			muxPtr: unsafe.Pointer(cliMux),
 		},
 	}
 
@@ -26,6 +38,8 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndStopRace() {
 
 	poller.Stop()
 	poller.ForceHTTPPoller()
+
+	suite.Assert().Equal(poller.cccpPoller, poller.activeController)
 }
 
 // This test tests the scenario where ForceHTTPPoller and OnNewRouteConfig deadlock.
@@ -70,10 +84,20 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 			return false
 		},
 	}
+	cliMux := &httpClientMux{
+		mgmtEpList: []routeEndpoint{
+			{
+				Address: "localhost:8091",
+			},
+		},
+	}
 	htt := &httpConfigController{
 		baseHTTPConfigController: &baseHTTPConfigController{
 			looperStopSig: make(chan struct{}),
 			looperDoneSig: make(chan struct{}),
+		},
+		muxer: &httpMux{
+			muxPtr: unsafe.Pointer(cliMux),
 		},
 	}
 
@@ -107,4 +131,10 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	suite.Assert().Equal(poller.cccpPoller, poller.activeController)
 
 	poller.Stop()
+
+	select {
+	case <-poller.Done():
+	case <-time.After(2 * time.Second):
+		suite.T().Fatalf("Poller controller did not halt in required time")
+	}
 }

@@ -178,6 +178,10 @@ func (pc *pollerController) ForceHTTPPoller() {
 		logErrorf("Attempting to force http poller but no http poller is configured")
 		return
 	}
+	if !pc.httpPoller.CanPoll() {
+		logDebugf("Attempting to force http poller but there are no http endpoints to poll")
+		return
+	}
 	go func() {
 		if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
 			logInfof("Config already seen, not forcing HTTP")

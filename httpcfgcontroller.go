@@ -34,3 +34,7 @@ func (hcc *httpConfigController) GetEndpoint(iterNum uint64) string {
 
 	return pickedSrv
 }
+
+func (hcc *httpConfigController) CanPoll() bool {
+	return len(hcc.muxer.MgmtEps()) > 0
+}
