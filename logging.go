@@ -23,15 +23,15 @@ const (
 )
 
 func redactUserData(v interface{}) string {
-	return fmt.Sprintf("<ud>%v<ud>", v)
+	return fmt.Sprintf("<ud>%v</ud>", v)
 }
 
 func redactMetaData(v interface{}) string {
-	return fmt.Sprintf("<md>%v<md>", v)
+	return fmt.Sprintf("<md>%v</md>", v)
 }
 
 func redactSystemData(v interface{}) string {
-	return fmt.Sprintf("<sd>%v<sd>", v)
+	return fmt.Sprintf("<sd>%v</sd>", v)
 }
 
 // LogRedactLevel specifies the degree with which to redact the logs.
