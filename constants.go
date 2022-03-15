@@ -1,7 +1,7 @@
 package gocbcore
 
 const (
-	goCbCoreVersionStr = "v10.0.8"
+	goCbCoreVersionStr = "v10.0.9"
 )
 
 type bucketType int

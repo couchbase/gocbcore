@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.0.9 (15 March 2022)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1248](GOCBC-1248):
+  Fixed issue where a hard close of a memdclient during a graceful close could trigger a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1258](GOCBC-1258):
+  Fixed issue where log redaction tags were not closed correctly.
+
 ## Version 10.0.8 (15 February 2022)
 
 ### New Features and Behavioral Changes
