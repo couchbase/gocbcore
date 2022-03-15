@@ -1,5 +1,27 @@
 # Release Notes
 
+## Version 10.1.1 (15 March 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1221](GOCBC-1221):
+  Added support for improved query error handling.
+* [https://issues.couchbase.com/browse/GOCBC-1238](GOCBC-1238):
+  Add config option to set the connection read buffer size.
+* [https://issues.couchbase.com/browse/GOCBC-1242](GOCBC-1242):
+  Drain DCP queue on non-user initiated EOF.
+* [https://issues.couchbase.com/browse/GOCBC-1221](GOCBC-1244):
+  Updated dependencies.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1248](GOCBC-1248):
+  Fixed issue where a hard close of a memdclient during a graceful close could trigger a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1256](GOCBC-1256):
+  Fixed issue where config polling would fallback to using the http poller, when no http addresses are registered for use.
+* [https://issues.couchbase.com/browse/GOCBC-1258](GOCBC-1258):
+  Fixed issue where log redaction tags were not closed correctly.
+
 ## Version 10.1.0 (15 February 2022)
 
 ### New Features and Behavioral Changes
