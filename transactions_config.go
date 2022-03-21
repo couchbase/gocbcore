@@ -174,4 +174,10 @@ type TransactionOptions struct {
 	// BucketAgentProvider provides a function which returns an agent for
 	// a particular bucket by name.
 	BucketAgentProvider TransactionsBucketAgentProviderFn
+
+	// Internal specifies a set of options for internal use.
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		Hooks TransactionHooks
+	}
 }

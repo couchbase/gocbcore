@@ -112,6 +112,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 	keyValueTimeout := t.config.KeyValueTimeout
 	customATRLocation := t.config.CustomATRLocation
 	bucketAgentProvider := t.config.BucketAgentProvider
+	hooks := t.config.Internal.Hooks
 
 	if perConfig != nil {
 		if perConfig.ExpirationTime != 0 {
@@ -129,6 +130,9 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		if perConfig.BucketAgentProvider != nil {
 			bucketAgentProvider = perConfig.BucketAgentProvider
 		}
+		if perConfig.Internal.Hooks != nil {
+			hooks = perConfig.Internal.Hooks
+		}
 	}
 
 	now := time.Now()
@@ -141,7 +145,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		keyValueTimeout:         keyValueTimeout,
 		atrLocation:             customATRLocation,
 		addCleanupRequest:       t.addCleanupRequest,
-		hooks:                   t.config.Internal.Hooks,
+		hooks:                   hooks,
 		enableNonFatalGets:      t.config.Internal.EnableNonFatalGets,
 		enableParallelUnstaging: t.config.Internal.EnableParallelUnstaging,
 		enableExplicitATRs:      t.config.Internal.EnableExplicitATRs,
