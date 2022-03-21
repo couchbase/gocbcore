@@ -334,3 +334,8 @@ func (t *TransactionsManagerInternal) ForceCleanupQueue(cb func([]TransactionsCl
 func (t *TransactionsManagerInternal) CleanupQueueLength() int32 {
 	return t.parent.cleaner.QueueLength()
 }
+
+// CleanupLocations returns the set of locations currently being watched by the lost transactions process.
+func (t *TransactionsManagerInternal) CleanupLocations() []TransactionLostATRLocation {
+	return t.parent.lostCleanup.ATRLocations()
+}

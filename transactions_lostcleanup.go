@@ -84,6 +84,7 @@ type LostTransactionCleaner interface {
 
 type lostTransactionCleaner interface {
 	AddATRLocation(location TransactionLostATRLocation)
+	ATRLocations() []TransactionLostATRLocation
 	Close()
 }
 
@@ -91,6 +92,10 @@ type noopLostTransactionCleaner struct {
 }
 
 func (ltc *noopLostTransactionCleaner) AddATRLocation(location TransactionLostATRLocation) {
+}
+
+func (ltc *noopLostTransactionCleaner) ATRLocations() []TransactionLostATRLocation {
+	return nil
 }
 
 func (ltc *noopLostTransactionCleaner) Close() {
@@ -169,6 +174,16 @@ func (ltc *stdLostTransactionCleaner) start() {
 			go ltc.perLocation(agent, oboUser, location)
 		}
 	}
+}
+
+func (ltc *stdLostTransactionCleaner) ATRLocations() []TransactionLostATRLocation {
+	ltc.locationsLock.Lock()
+	defer ltc.locationsLock.Unlock()
+	var locations []TransactionLostATRLocation
+	for location := range ltc.locations {
+		locations = append(locations, location)
+	}
+	return locations
 }
 
 func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATRLocation) {
