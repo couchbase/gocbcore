@@ -37,7 +37,7 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 		boundAgents: make(map[string]*Agent),
 	}
 
-	ag.clusterAgent = createClusterAgent(&clusterAgentConfig{
+	ag.clusterAgent, err = createClusterAgent(&clusterAgentConfig{
 		UserAgent:            config.UserAgent,
 		SeedConfig:           config.SeedConfig,
 		SecurityConfig:       config.SecurityConfig,
@@ -47,6 +47,9 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 		DefaultRetryStrategy: config.DefaultRetryStrategy,
 		CircuitBreakerConfig: config.CircuitBreakerConfig,
 	})
+	if err != nil {
+		return nil, err
+	}
 	ag.clusterAgent.RegisterWith(agent.cfgManager, agent.dialer)
 
 	ag.boundAgents[config.BucketName] = agent

@@ -196,13 +196,13 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		auth:   config.SecurityConfig.Auth,
 	}
 
-	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
-
-	var tlsConfig *dynTLSConfig
-	if config.SecurityConfig.UseTLS {
-		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
+	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
+	if err != nil {
+		return nil, err
 	}
 	c.tlsConfig = tlsConfig
+
+	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
 
 	circuitBreakerConfig := CircuitBreakerConfig{
 		Enabled: false,

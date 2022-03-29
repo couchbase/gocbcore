@@ -25,7 +25,7 @@ type clusterAgent struct {
 	configWatchers  []routeConfigWatcher
 }
 
-func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
+func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 
 	tracer := config.TracerConfig.Tracer
 	if tracer == nil {
@@ -40,9 +40,9 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 	}
 
-	var tlsConfig *dynTLSConfig
-	if config.SecurityConfig.UseTLS {
-		tlsConfig = createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.TLSRootCAProvider)
+	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
+	if err != nil {
+		return nil, err
 	}
 
 	if c.defaultRetryStrategy == nil {
@@ -104,7 +104,7 @@ func createClusterAgent(config *clusterAgentConfig) *clusterAgent {
 
 	c.httpMux.OnNewRouteConfig(cfg)
 
-	return c
+	return c, nil
 }
 
 func (agent *clusterAgent) RegisterWith(cfgMgr configManager, dialer *memdClientDialerComponent) {
