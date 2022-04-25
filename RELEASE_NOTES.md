@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.1.1 (26 April 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1265](GOCBC-1265):
+  Bundle Capella CA certificates with the SDK.
+
 ## Version 10.1.1 (15 March 2022)
 
 ### New Features and Behavioral Changes
