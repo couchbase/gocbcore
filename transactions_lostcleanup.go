@@ -345,6 +345,12 @@ func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, 
 			if errors.As(err, &coreErr) {
 				for _, reason := range coreErr.RetryReasons {
 					if reason == KVCollectionOutdatedRetryReason {
+						logDebugf("Removing %s.%s.%s from lost cleanup %s",
+							location.location.BucketName,
+							location.location.ScopeName,
+							location.location.CollectionName,
+							ltc.uuid,
+						)
 						close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
 						ltc.locationsLock.Lock()
 						delete(ltc.locations, location.location)
@@ -530,7 +536,7 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 	logSchedf("Processing atr %s for %s.%s.%s", atrID, agent.BucketName(), scope, collection)
 	ltc.getATR(agent, oboUser, collection, scope, atrID, func(attempts map[string]jsonAtrAttempt, hlc int64, err error) {
 		if err != nil {
-			logDebugf("Failed to get atr %s on %s.%s.%s", atrID, agent.BucketName(), scope, collection)
+			logSchedf("Failed to get atr %s on %s.%s.%s", atrID, agent.BucketName(), scope, collection)
 			cb(nil, TransactionProcessATRStats{})
 			return
 		}
