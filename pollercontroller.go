@@ -21,7 +21,6 @@ type pollerController struct {
 
 type configPollerController interface {
 	Start()
-	Pause(paused bool)
 	Stop()
 	Done() chan struct{}
 	PollerError() error
@@ -29,7 +28,6 @@ type configPollerController interface {
 }
 
 type configPoller interface {
-	Pause(paused bool)
 	Done() chan struct{}
 	Stop()
 	Reset()
@@ -121,15 +119,6 @@ func (pc *pollerController) Start() {
 				pc.httpPoller.DoLoop()
 			}
 		}
-	}
-}
-
-func (pc *pollerController) Pause(paused bool) {
-	pc.controllerLock.Lock()
-	controller := pc.activeController
-	pc.controllerLock.Unlock()
-	if controller != nil {
-		controller.Pause(paused)
 	}
 }
 

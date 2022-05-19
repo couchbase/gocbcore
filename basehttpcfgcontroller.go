@@ -86,9 +86,6 @@ func (hcc *baseHTTPConfigController) setError(err error) {
 	hcc.errLock.Unlock()
 }
 
-func (hcc *baseHTTPConfigController) Pause(paused bool) {
-}
-
 func (hcc *baseHTTPConfigController) Done() chan struct{} {
 	return hcc.looperDoneSig
 }

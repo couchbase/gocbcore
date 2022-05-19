@@ -15,10 +15,6 @@ type cccpConfigController struct {
 	confCccpPollPeriod time.Duration
 	confCccpMaxWait    time.Duration
 
-	// Used exclusively for testing to overcome GOCBC-780. It allows a test to pause the cccp looper preventing
-	// unwanted requests from being sent to the mock once it has been setup for error map testing.
-	looperPauseSig chan bool
-
 	looperStopSig chan struct{}
 	looperDoneSig chan struct{}
 
@@ -36,9 +32,8 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		confCccpPollPeriod: props.confCccpPollPeriod,
 		confCccpMaxWait:    props.confCccpMaxWait,
 
-		looperPauseSig: make(chan bool),
-		looperStopSig:  make(chan struct{}),
-		looperDoneSig:  make(chan struct{}),
+		looperStopSig: make(chan struct{}),
+		looperDoneSig: make(chan struct{}),
 
 		isFallbackErrorFn: isFallbackErrorFn,
 	}
@@ -61,10 +56,6 @@ func (ccc *cccpConfigController) setError(err error) {
 	ccc.errLock.Unlock()
 }
 
-func (ccc *cccpConfigController) Pause(paused bool) {
-	ccc.looperPauseSig <- paused
-}
-
 func (ccc *cccpConfigController) Stop() {
 	close(ccc.looperStopSig)
 }
@@ -81,7 +72,6 @@ func (ccc *cccpConfigController) Reset() {
 
 func (ccc *cccpConfigController) DoLoop() error {
 	tickTime := ccc.confCccpPollPeriod
-	paused := false
 
 	logInfof("CCCP Looper starting.")
 	nodeIdx := -1
@@ -95,16 +85,10 @@ Looper:
 			select {
 			case <-ccc.looperStopSig:
 				break Looper
-			case pause := <-ccc.looperPauseSig:
-				paused = pause
 			case <-time.After(tickTime):
 			}
 		}
 		firstLoop = false
-
-		if paused {
-			continue
-		}
 
 		iter, err := ccc.muxer.PipelineSnapshot()
 		if err != nil {
