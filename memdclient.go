@@ -160,17 +160,17 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
 	defer client.lock.Unlock()
 
 	if client.closed {
-		logDebugf("Attempted to put dispatched op in drained opmap")
+		logDebugf("Attempted to put dispatched op OP=0x%x, Opaque=%d in drained opmap", req.Command, req.Opaque)
 		return errMemdClientClosed
 	}
 
 	if atomic.LoadUint32(&client.gracefulCloseTriggered) == 1 {
-		logDebugf("Attempted to dispatch op from gracefully closing memdclient")
+		logDebugf("Attempted to dispatch op OP=0x%x, Opaque=%d from gracefully closing memdclient", req.Command, req.Opaque)
 		return errMemdClientClosed
 	}
 
 	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(client)) {
-		logDebugf("Attempted to put dispatched op in new opmap")
+		logDebugf("Attempted to put dispatched op OP=0x%x, Opaque=%d in new opmap", req.Command, req.Opaque)
 		return errRequestAlreadyDispatched
 	}
 
@@ -195,7 +195,7 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 	defer client.lock.Unlock()
 
 	if client.closed {
-		logDebugf("Attempted to remove op from drained opmap")
+		logDebugf("Attempted to remove op OP=0x%x, Opaque=%d from drained opmap", req.Command, req.Opaque)
 		return false
 	}
 
@@ -555,6 +555,7 @@ func (client *memdClient) GracefulClose(err error) {
 }
 
 func (client *memdClient) closeConn(internalTrigger bool) error {
+	logDebugf("%s/%p memdclient closing connection, internal close: %t", client.Address(), client, internalTrigger)
 	if err := client.conn.Close(); err != nil {
 		logDebugf("Failed to close memdconn: %v", err)
 		client.conn.Release()

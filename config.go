@@ -154,7 +154,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			endpoints := endpointsFromPorts(ports, hostname, isSeedNode)
 			if endpoints.kvServer.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
-					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer)
+					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer.Address)
 				} else {
 					kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, endpoints.kvServer)
 				}

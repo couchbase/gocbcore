@@ -246,6 +246,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		}
 	}
 
+	httpConnectTimeout := 30 * time.Second
+	if config.HTTPConfig.ConnectTimeout > 0 {
+		httpConnectTimeout = config.HTTPConfig.ConnectTimeout
+	}
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
 			NetworkType:   config.IoConfig.NetworkType,
@@ -317,6 +322,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
 			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
 			idleTimeout:         config.HTTPConfig.IdleConnectionTimeout,
+			connectTimeout:      httpConnectTimeout,
 		},
 		c.httpMux,
 		c.tracer,

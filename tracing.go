@@ -130,7 +130,7 @@ func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Requ
 
 func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	if req.cmdTraceSpan != nil {
-		logWarnf("Attempted to start tracing on traced request")
+		logWarnf("Attempted to start tracing on traced request OP=0x%x, Opaque=%d", req.Command, req.Opaque)
 		return
 	}
 

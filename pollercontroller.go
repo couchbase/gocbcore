@@ -47,7 +47,7 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 	return pc
 }
 
-// We listen out for every config that comes in so that we (re)start the cccp if applicable.
+// OnNewRouteConfig listens out for every config that comes in so that we (re)start the cccp if applicable.
 func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	if cfg.bktType != bktTypeCouchbase && cfg.bktType != bktTypeMemcached {
 		return
@@ -149,7 +149,7 @@ type pollerErrorProvider interface {
 	PollerError() error
 }
 
-// If the underlying poller is currently in an error state then this will surface that error.
+// PollerError surfaces any error of the underlying poller is currently in an error state.
 func (pc *pollerController) PollerError() error {
 	pc.controllerLock.Lock()
 	controller := pc.activeController

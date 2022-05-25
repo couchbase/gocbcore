@@ -367,7 +367,7 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 		req.tryCallback(nil, err)
 	}
 
-	logDebugf("Request being requeued, Opaque=%d", req.Opaque)
+	logDebugf("Request being requeued, Opaque=%d, Opcode=0x%x", req.Opaque, req.Command)
 
 	for {
 		pipeline, err := mux.RouteRequest(req)
@@ -514,8 +514,37 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 	err := translateMemdError(originalErr, req)
 
 	if err == originalErr {
-		// We don't know anything about this error so send it to the error map
-		if resp != nil && resp.Magic == memd.CmdMagicRes {
+		if errors.Is(err, io.EOF) {
+			// The connection has gone away.
+			if req.Command == memd.CmdGetClusterConfig {
+				return false, err
+			}
+
+			if !mux.closed() && (req.Idempotent() || req.ConnectionInfo().lastDispatchedTo != "") {
+				if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
+					return true, nil
+				}
+			} else {
+				if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
+					return true, nil
+				}
+			}
+		} else if errors.Is(err, ErrMemdClientClosed) && !mux.closed() {
+			if req.Command == memd.CmdGetClusterConfig {
+				return false, err
+			}
+
+			if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
+				return true, nil
+			}
+		} else if errors.Is(err, io.ErrShortWrite) {
+			// This is a special case where the write has failed on the underlying connection and not all the bytes
+			// were written to the network.
+			if mux.waitAndRetryOperation(req, MemdWriteFailure) {
+				return true, nil
+			}
+		} else if resp != nil && resp.Magic == memd.CmdMagicRes {
+			// We don't know anything about this error so send it to the error map
 			shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
 			if shouldRetry {
 				if mux.waitAndRetryOperation(req, KVErrMapRetryReason) {
@@ -545,16 +574,6 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 			if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
 				return true, nil
 			}
-		} else if errors.Is(err, io.EOF) {
-			if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
-				return true, nil
-			}
-		} else if errors.Is(err, io.ErrShortWrite) {
-			// This is a special case where the write has failed on the underlying connection and not all of the bytes
-			// were written to the network.
-			if mux.waitAndRetryOperation(req, MemdWriteFailure) {
-				return true, nil
-			}
 		}
 		// If an error isn't in this list then we know what this error is but we don't support retries for it.
 	}
@@ -566,6 +585,10 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 	}
 
 	return mux.postCompleteErrHandler(resp, req, err)
+}
+
+func (mux *kvMux) closed() bool {
+	return mux.getState() == nil
 }
 
 func (mux *kvMux) waitAndRetryOperation(req *memdQRequest, reason RetryReason) bool {

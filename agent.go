@@ -109,6 +109,10 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	if config.HTTPConfig.IdleConnectionTimeout > 0 {
 		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
 	}
+	httpConnectTimeout := 30 * time.Second
+	if config.HTTPConfig.ConnectTimeout > 0 {
+		httpConnectTimeout = config.HTTPConfig.ConnectTimeout
+	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
 	userAgent := config.UserAgent
@@ -325,6 +329,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
 			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
 			idleTimeout:         httpIdleConnTimeout,
+			connectTimeout:      httpConnectTimeout,
 		},
 		c.httpMux,
 		c.tracer,

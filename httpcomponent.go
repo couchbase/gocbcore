@@ -12,7 +12,9 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +38,7 @@ type httpComponentProps struct {
 }
 
 type httpClientProps struct {
+	connectTimeout      time.Duration
 	maxIdleConns        int
 	maxIdleConnsPerHost int
 	idleTimeout         time.Duration
@@ -49,7 +52,8 @@ func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, mux
 		tracer:               tracer,
 	}
 
-	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.idleTimeout)
+	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.idleTimeout,
+		clientProps.connectTimeout)
 
 	return hc
 }
@@ -126,7 +130,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}
 	ctx, ctxCancel := context.WithCancel(ctx)
 
-	// This is easy to do with a bool and a defer than to ensure that we cancel after every error.
+	// This is easy to do with a bool and defer than to ensure that we cancel after every error.
 	doneCh := make(chan struct{}, 1)
 	querySuccess := false
 	defer func() {
@@ -137,13 +141,13 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}()
 
 	start := time.Now()
-	var cancelationIsTimeout uint32
+	var cancellationIsTimeout uint32
 	// Having no deadline is a legitimate case.
 	if !req.Deadline.IsZero() {
 		go func() {
 			select {
 			case <-time.After(req.Deadline.Sub(start)):
-				atomic.StoreUint32(&cancelationIsTimeout, 1)
+				atomic.StoreUint32(&cancellationIsTimeout, 1)
 				ctxCancel()
 			case <-doneCh:
 			}
@@ -151,171 +155,39 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}
 
 	if !skipConfigCheck {
-		for {
-			revID, err := hc.muxer.ConfigRev()
-			if err != nil {
-				return nil, err
-			}
-
-			if revID > -1 {
-				break
-			}
-
-			// We've not successfully been setup with a cluster map yet
-			select {
-			case <-ctx.Done():
-				err := ctx.Err()
-				if errors.Is(err, context.Canceled) {
-					isTimeout := atomic.LoadUint32(&cancelationIsTimeout)
-					if isTimeout == 1 {
-						if req.IsIdempotent {
-							return nil, errUnambiguousTimeout
-						}
-						return nil, errAmbiguousTimeout
-					}
-
-					return nil, errRequestCanceled
-				}
-
-				return nil, err
-			case <-time.After(500 * time.Microsecond):
-			}
-		}
-	}
-
-	// Identify an endpoint to use for the request
-	endpoint := req.Endpoint
-	if endpoint == "" {
-		var err error
-		switch req.Service {
-		case MgmtService:
-			endpoint, err = hc.getMgmtEp()
-		case CapiService:
-			endpoint, err = hc.getCapiEp()
-		case N1qlService:
-			endpoint, err = hc.getN1qlEp()
-		case FtsService:
-			endpoint, err = hc.getFtsEp()
-		case CbasService:
-			endpoint, err = hc.getCbasEp()
-		case EventingService:
-			endpoint, err = hc.getEventingEp()
-		case GSIService:
-			endpoint, err = hc.getGSIEp()
-		case BackupService:
-			endpoint, err = hc.getBackupEp()
-		}
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		var err error
-		switch req.Service {
-		case MgmtService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
-		case CapiService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
-		case N1qlService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
-		case FtsService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
-		case CbasService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
-		case EventingService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
-		case GSIService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
-		case BackupService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
-		}
-		if err != nil {
+		if err := hc.waitForConfig(ctx, req.IsIdempotent, &cancellationIsTimeout); err != nil {
 			return nil, err
 		}
 	}
 
-	// Generate a request URI
-	reqURI := endpoint + req.Path
+	generator := newHTTPRequestGenerator(ctx, req, hc.userAgent)
 
-	// Create a new request
-	hreq, err := http.NewRequest(req.Method, reqURI, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Lets add our context to the httpRequest
-	hreq = hreq.WithContext(ctx)
-
-	body := req.Body
-
-	// Inject credentials into the request
-	if req.Username != "" || req.Password != "" {
-		hreq.SetBasicAuth(req.Username, req.Password)
-	} else {
+	for {
+		endpoint, err := hc.endpoint(req.Service, req.Endpoint)
+		if err != nil {
+			return nil, err
+		}
 		auth := hc.muxer.Auth()
 		if auth == nil {
 			// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
 			return nil, errCliInternalError
 		}
-		creds, err := auth.Credentials(AuthCredsRequest{
-			Service:  req.Service,
-			Endpoint: endpoint,
-		})
+		hreq, err := generator.NewRequest(endpoint, auth)
 		if err != nil {
 			return nil, err
 		}
 
-		if req.Service == N1qlService || req.Service == CbasService ||
-			req.Service == FtsService {
-			// Handle service which support multi-bucket authentication using
-			// injection into the body of the request.
-			if len(creds) == 1 {
-				hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
-			} else {
-				body = injectJSONCreds(body, creds)
-			}
-		} else {
-			if len(creds) != 1 {
-				return nil, errInvalidCredentials
-			}
-
-			hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
-		}
-	}
-
-	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
-
-	if req.ContentType != "" {
-		hreq.Header.Set("Content-Type", req.ContentType)
-	} else {
-		hreq.Header.Set("Content-Type", "application/json")
-	}
-	if len(req.User) > 0 {
-		hreq.Header.Set("cb-on-behalf-of", req.User)
-	}
-	for key, val := range req.Headers {
-		hreq.Header.Set(key, val)
-	}
-
-	var uniqueID string
-	if req.UniqueID != "" {
-		uniqueID = req.UniqueID
-	} else {
-		uniqueID = uuid.New().String()
-	}
-	hreq.Header.Set("User-Agent", clientInfoString(uniqueID, hc.userAgent))
-
-	for {
 		dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
-		logSchedf("Writing HTTP request to %s ID=%s", reqURI, req.UniqueID)
-		// we can't close the body of this response as it's long lived beyond the function
+		logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
+		// we can't close the body of this response as it's long-lived beyond the function
 		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
 		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
 		if err != nil {
-			logSchedf("Received HTTP Response for ID=%s, errored", req.UniqueID)
+			logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation
 			// of the error message here for better UX.
 			if errors.Is(err, context.Canceled) {
-				isTimeout := atomic.LoadUint32(&cancelationIsTimeout)
+				isTimeout := atomic.LoadUint32(&cancellationIsTimeout)
 				if isTimeout == 1 {
 					if req.IsIdempotent {
 						err = &TimeoutError{
@@ -343,10 +215,6 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 				}
 			}
 
-			if !req.IsIdempotent {
-				return nil, err
-			}
-
 			isUserError := false
 			isUserError = isUserError || errors.Is(err, context.DeadlineExceeded)
 			isUserError = isUserError || errors.Is(err, context.Canceled)
@@ -357,7 +225,11 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			}
 
 			var retryReason RetryReason
-			if errors.Is(err, io.ErrUnexpectedEOF) {
+			if os.IsTimeout(err) || errors.Is(err, syscall.ECONNREFUSED) {
+				// Whilst the above comment holds true for once requests are actually sent the dial itself can actually
+				// timeout, at which point we don't get context canceled.
+				retryReason = SocketNotAvailableRetryReason
+			} else if errors.Is(err, io.ErrUnexpectedEOF) {
 				retryReason = SocketCloseInFlightRetryReason
 			}
 
@@ -365,27 +237,8 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 				return nil, err
 			}
 
-			shouldRetry, retryTime := retryOrchMaybeRetry(req, retryReason)
-			if !shouldRetry {
-				return nil, err
-			}
-
-			select {
-			case <-time.After(time.Until(retryTime)):
-				// continue!
-			case <-time.After(time.Until(req.Deadline)):
-				if errors.Is(err, context.DeadlineExceeded) {
-					err = &TimeoutError{
-						InnerError:       errAmbiguousTimeout,
-						OperationID:      "http",
-						Opaque:           req.Identifier(),
-						TimeObserved:     time.Since(start),
-						RetryReasons:     req.retryReasons,
-						RetryAttempts:    req.retryCount,
-						LastDispatchedTo: endpoint,
-					}
-				}
-
+			err := hc.maybeWait(req, retryReason, err, start, endpoint)
+			if err != nil {
 				return nil, err
 			}
 
@@ -404,6 +257,121 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 
 		return &respOut, nil
 	}
+}
+
+func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, cancellationIsTimeout *uint32) error {
+	for {
+		revID, err := hc.muxer.ConfigRev()
+		if err != nil {
+			return err
+		}
+
+		if revID > -1 {
+			return nil
+		}
+
+		// We've not successfully been setup with a cluster map yet
+		select {
+		case <-ctx.Done():
+			err := ctx.Err()
+			if errors.Is(err, context.Canceled) {
+				isTimeout := atomic.LoadUint32(cancellationIsTimeout)
+				if isTimeout == 1 {
+					if isIdempotent {
+						return errUnambiguousTimeout
+					}
+					return errAmbiguousTimeout
+				}
+
+				return errRequestCanceled
+			}
+
+			return err
+		case <-time.After(500 * time.Microsecond):
+		}
+	}
+}
+
+func (hc *httpComponent) endpoint(service ServiceType, endpoint string) (string, error) {
+	// Identify an endpoint to use for the request
+	if endpoint == "" {
+		var err error
+		switch service {
+		case MgmtService:
+			endpoint, err = hc.getMgmtEp()
+		case CapiService:
+			endpoint, err = hc.getCapiEp()
+		case N1qlService:
+			endpoint, err = hc.getN1qlEp()
+		case FtsService:
+			endpoint, err = hc.getFtsEp()
+		case CbasService:
+			endpoint, err = hc.getCbasEp()
+		case EventingService:
+			endpoint, err = hc.getEventingEp()
+		case GSIService:
+			endpoint, err = hc.getGSIEp()
+		case BackupService:
+			endpoint, err = hc.getBackupEp()
+		}
+		if err != nil {
+			return "", err
+		}
+	} else {
+		var err error
+		switch service {
+		case MgmtService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
+		case CapiService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
+		case N1qlService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
+		case FtsService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
+		case CbasService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
+		case EventingService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
+		case GSIService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
+		case BackupService:
+			err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return endpoint, nil
+}
+
+func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time,
+	endpoint string) error {
+	shouldRetry, retryTime := retryOrchMaybeRetry(req, retryReason)
+	if !shouldRetry {
+		return err
+	}
+
+	select {
+	case <-time.After(time.Until(retryTime)):
+		// continue!
+	case <-time.After(time.Until(req.Deadline)):
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = &TimeoutError{
+				InnerError:       errAmbiguousTimeout,
+				OperationID:      "http",
+				Opaque:           req.Identifier(),
+				TimeObserved:     time.Since(start),
+				RetryReasons:     req.retryReasons,
+				RetryAttempts:    req.retryCount,
+				LastDispatchedTo: endpoint,
+			}
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (hc *httpComponent) getMgmtEp() (string, error) {
@@ -469,9 +437,9 @@ func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTL
 	}
 }
 
-func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration) *http.Client {
+func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, connectTimeout time.Duration) *http.Client {
 	httpDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
+		Timeout:   connectTimeout,
 		KeepAlive: 30 * time.Second,
 	}
 
@@ -560,4 +528,86 @@ func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
 	}
 
 	return body
+}
+
+type httpRequestGenerator struct {
+	ctx     context.Context
+	request *httpRequest
+	header  http.Header
+}
+
+func newHTTPRequestGenerator(ctx context.Context, req *httpRequest, userAgent string) *httpRequestGenerator {
+	header := make(http.Header)
+	if req.ContentType != "" {
+		header.Set("Content-Type", req.ContentType)
+	} else {
+		header.Set("Content-Type", "application/json")
+	}
+	if len(req.User) > 0 {
+		header.Set("cb-on-behalf-of", req.User)
+	}
+	for key, val := range req.Headers {
+		header.Set(key, val)
+	}
+
+	var uniqueID string
+	if req.UniqueID != "" {
+		uniqueID = req.UniqueID
+	} else {
+		uniqueID = uuid.New().String()
+	}
+	header.Set("User-Agent", clientInfoString(uniqueID, userAgent))
+
+	return &httpRequestGenerator{
+		ctx:     ctx,
+		request: req,
+		header:  header,
+	}
+}
+
+func (hrg *httpRequestGenerator) NewRequest(endpoint string, auth AuthProvider) (*http.Request, error) {
+	// Generate a request URI
+	reqURI := endpoint + hrg.request.Path
+
+	hreq, err := http.NewRequestWithContext(hrg.ctx, hrg.request.Method, reqURI, nil)
+	if err != nil {
+		return nil, err
+	}
+	hreq.Header = hrg.header
+
+	body := hrg.request.Body
+
+	// Inject credentials into the request
+	if hrg.request.Username != "" || hrg.request.Password != "" {
+		hreq.SetBasicAuth(hrg.request.Username, hrg.request.Password)
+	} else {
+		creds, err := auth.Credentials(AuthCredsRequest{
+			Service:  hrg.request.Service,
+			Endpoint: endpoint,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if hrg.request.Service == N1qlService || hrg.request.Service == CbasService ||
+			hrg.request.Service == FtsService {
+			// Handle service which support multi-bucket authentication using
+			// injection into the body of the request.
+			if len(creds) == 1 {
+				hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
+			} else {
+				body = injectJSONCreds(body, creds)
+			}
+		} else {
+			if len(creds) != 1 {
+				return nil, errInvalidCredentials
+			}
+
+			hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
+		}
+	}
+
+	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	return hreq, nil
 }

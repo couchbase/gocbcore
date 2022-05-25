@@ -71,6 +71,15 @@ func (ccc *cccpConfigController) Reset() {
 }
 
 func (ccc *cccpConfigController) DoLoop() error {
+	if err := ccc.doLoop(); err != nil {
+		return err
+	}
+
+	close(ccc.looperDoneSig)
+	return nil
+}
+
+func (ccc *cccpConfigController) doLoop() error {
 	tickTime := ccc.confCccpPollPeriod
 
 	logInfof("CCCP Looper starting.")
@@ -78,13 +87,12 @@ func (ccc *cccpConfigController) DoLoop() error {
 	// The first time that we loop we want to skip any sleep so that we can try get a config and bootstrapped ASAP.
 	firstLoop := true
 
-Looper:
 	for {
 		if !firstLoop {
 			// Wait for either the agent to be shut down, or our tick time to expire
 			select {
 			case <-ccc.looperStopSig:
-				break Looper
+				return nil
 			case <-time.After(tickTime):
 			}
 		}
@@ -168,7 +176,6 @@ Looper:
 		ccc.cfgMgr.OnNewConfig(foundConfig)
 	}
 
-	close(ccc.looperDoneSig)
 	return nil
 }
 

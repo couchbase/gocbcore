@@ -121,7 +121,7 @@ func (req *memdQRequest) retryStrategy() RetryStrategy {
 }
 
 func (req *memdQRequest) Identifier() string {
-	return fmt.Sprintf("0x%x", atomic.LoadUint32(&req.Opaque))
+	return fmt.Sprintf("%d", atomic.LoadUint32(&req.Opaque))
 }
 
 func (req *memdQRequest) Idempotent() bool {
