@@ -403,7 +403,13 @@ func (agent *DCPAgent) Close() error {
 	return routeCloseErr
 }
 
-// WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
+// WaitUntilReady is used to verify that the SDK has been able to establish connections to the cluster.
+// If no strategy is set then a fast fail retry strategy will be applied - only RetryReason that are set to always
+// retry will be retried. This is includes for WaitUntilReady, that is the SDK will wait until connections succeed
+// or report a connection error - as soon as a connection error is reported WaitUntilReady will fail and return that
+// error.
+// Connection time errors are also be subject to KvConfig.ServerWaitBackoff. This is the period of time that the SDK
+// will wait before attempting to reconnect to a node.
 func (agent *DCPAgent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
 	cb WaitUntilReadyCallback) (PendingOp, error) {
 	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)

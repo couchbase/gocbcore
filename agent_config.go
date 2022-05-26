@@ -59,9 +59,11 @@ type AgentConfig struct {
 // reporter which records when the SDK receives responses for requests
 // that are no longer in the system (usually due to being timed out).
 type OrphanReporterConfig struct {
-	Enabled        bool
+	Enabled bool
+	// ReportInterval is the time period used for how often a report is logged.
 	ReportInterval time.Duration
-	SampleSize     int
+	// SampleSize is the number of requests which will be reported.
+	SampleSize int
 }
 
 func (config OrphanReporterConfig) fromSpec(spec connstr.ResolvedConnSpec) (OrphanReporterConfig, error) {
@@ -240,6 +242,7 @@ func (config ConfigPollerConfig) fromSpec(spec connstr.ResolvedConnSpec) (Config
 
 // IoConfig specifies IO related configuration options such as HELLO flags and the network type to use.
 type IoConfig struct {
+	// NetworkType defines which network to use from the cluster config.
 	NetworkType string
 
 	UseMutationTokens           bool
@@ -298,8 +301,12 @@ type MeterConfig struct {
 
 // HTTPConfig specifies http related configuration options.
 type HTTPConfig struct {
-	MaxIdleConns          int
-	MaxIdleConnsPerHost   int
+	// MaxIdleConns controls the maximum number of idle (keep-alive) connections across all hosts.
+	MaxIdleConns int
+	// MaxIdleConnsPerHost controls the maximum idle (keep-alive) connections to keep per-host.
+	MaxIdleConnsPerHost int
+	// IdleConnTimeout is the maximum amount of time an idle (keep-alive) connection will remain idle before closing
+	// itself.
 	IdleConnectionTimeout time.Duration
 }
 
@@ -333,10 +340,15 @@ func (config HTTPConfig) fromSpec(spec connstr.ResolvedConnSpec) (HTTPConfig, er
 
 // KVConfig specifies kv related configuration options.
 type KVConfig struct {
-	ConnectTimeout    time.Duration
+	// ConnectTimeout is the timeout value to apply when dialling tcp connections.
+	ConnectTimeout time.Duration
+	// ServerWaitBackoff is the period of time that the SDK will wait before reattempting connection to a node after
+	// bootstrap fails against that node.
 	ServerWaitBackoff time.Duration
 
-	PoolSize     int
+	// The number of connections to create to each node.
+	PoolSize int
+	// The maximum number of requests that can be queued waiting to be sent to a node.
 	MaxQueueSize int
 
 	// Note: if you create multiple agents with different buffer sizes within the same environment then you will

@@ -31,13 +31,19 @@ type CircuitBreakerCallback func(error) bool
 // If Disabled is set to true then a noop circuit breaker will be used, otherwise a lazy circuit
 // breaker.
 type CircuitBreakerConfig struct {
-	Enabled                  bool
-	VolumeThreshold          int64
+	Enabled bool
+	// VolumeThreshold is the minimum amount of operations to measure before the threshold percentage kicks in.
+	VolumeThreshold int64
+	// ErrorThresholdPercentage is the percentage of operations that need to fail in a window until the circuit opens.
 	ErrorThresholdPercentage float64
-	SleepWindow              time.Duration
-	RollingWindow            time.Duration
-	CompletionCallback       CircuitBreakerCallback
-	CanaryTimeout            time.Duration
+	// SleepWindow is the initial sleep time after which a canary is sent as a probe.
+	SleepWindow time.Duration
+	// RollingWindow is the rolling timeframe which is used to calculate the error threshold percentage.
+	RollingWindow time.Duration
+	// CompletionCallback is called on every response to determine if it is successful or not.
+	CompletionCallback CircuitBreakerCallback
+	// CanaryTimeout is the timeout for the canary request until it is deemed failed.
+	CanaryTimeout time.Duration
 }
 
 type noopCircuitBreaker struct {
