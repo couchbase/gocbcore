@@ -66,11 +66,14 @@ type operationFailedDef struct {
 	Reason            TransactionErrorReason
 }
 
-func (t *transactionAttempt) applyStateBits(stateBits uint32) {
+func (t *transactionAttempt) applyStateBits(stateBits uint32, errorBits uint32) {
 	// This is a bit dirty, but its maximum going to do one retry per bit.
 	for {
 		oldStateBits := atomic.LoadUint32(&t.stateBits)
 		newStateBits := oldStateBits | stateBits
+		if errorBits > ((oldStateBits & transactionStateBitsMaskFinalError) >> transactionStateBitsPositionFinalError) {
+			newStateBits = (newStateBits & transactionStateBitsMaskBits) | (errorBits << transactionStateBitsPositionFinalError)
+		}
 		if atomic.CompareAndSwapUint32(&t.stateBits, oldStateBits, newStateBits) {
 			break
 		}
@@ -99,7 +102,7 @@ func (t *transactionAttempt) operationFailed(def operationFailedDef) *Transactio
 	if def.Reason == TransactionErrorReasonTransactionExpired {
 		stateBits |= transactionStateBitHasExpired
 	}
-	t.applyStateBits(stateBits)
+	t.applyStateBits(stateBits, uint32(def.Reason))
 
 	return err
 }

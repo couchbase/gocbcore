@@ -136,7 +136,6 @@ func (t *transactionAttempt) mavRead(
 						CanStillCommit:    true,
 						ShouldNotRetry:    true,
 						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
 					}))
 					return
 				}
@@ -175,7 +174,6 @@ func (t *transactionAttempt) mavRead(
 						CanStillCommit:    true,
 						ShouldNotRetry:    true,
 						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
 					}))
 				default:
 					cb(nil, t.operationFailed(operationFailedDef{
@@ -292,7 +290,6 @@ func (t *transactionAttempt) mavRead(
 											CanStillCommit:    true,
 											ShouldNotRetry:    true,
 											ShouldNotRollback: false,
-											Reason:            TransactionErrorReasonTransactionFailed,
 										}))
 									default:
 										cb(nil, t.operationFailed(operationFailedDef{
@@ -300,7 +297,6 @@ func (t *transactionAttempt) mavRead(
 												wrapError(ErrIllegalState, "unexpected staged mutation type")),
 											ShouldNotRetry:    false,
 											ShouldNotRollback: false,
-											Reason:            TransactionErrorReasonTransactionFailed,
 										}))
 									}
 									return
@@ -313,7 +309,6 @@ func (t *transactionAttempt) mavRead(
 										CanStillCommit:    true,
 										ShouldNotRetry:    true,
 										ShouldNotRollback: false,
-										Reason:            TransactionErrorReasonTransactionFailed,
 									}))
 									return
 								}
@@ -357,7 +352,6 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				CanStillCommit:    true,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: false,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailTransient:
 			cb(nil, t.operationFailed(operationFailedDef{

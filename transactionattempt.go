@@ -117,8 +117,12 @@ func (t *transactionAttempt) ShouldRollback() bool {
 
 func (t *transactionAttempt) ShouldRetry() bool {
 	stateBits := atomic.LoadUint32(&t.stateBits)
-	return (stateBits&transactionStateBitShouldNotRetry) == 0 &&
-		(stateBits&transactionStateBitHasExpired) == 0
+	return (stateBits&transactionStateBitShouldNotRetry) == 0 && !t.isExpiryOvertimeAtomic()
+}
+
+func (t *transactionAttempt) FinalErrorToRaise() TransactionErrorReason {
+	stateBits := atomic.LoadUint32(&t.stateBits)
+	return TransactionErrorReason((stateBits & transactionStateBitsMaskFinalError) >> transactionStateBitsPositionFinalError)
 }
 
 func (t *transactionAttempt) UpdateState(opts TransactionUpdateStateOptions) {
@@ -132,10 +136,10 @@ func (t *transactionAttempt) UpdateState(opts TransactionUpdateStateOptions) {
 	if opts.ShouldNotRetry {
 		stateBits |= transactionStateBitShouldNotRetry
 	}
-	if opts.HasExpired {
+	if opts.Reason == TransactionErrorReasonTransactionExpired {
 		stateBits |= transactionStateBitHasExpired
 	}
-	t.applyStateBits(stateBits)
+	t.applyStateBits(stateBits, uint32(opts.Reason))
 
 	t.lock.LockSync()
 	if opts.State > 0 {

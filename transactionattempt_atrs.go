@@ -745,7 +745,6 @@ func (t *transactionAttempt) setATRAbortedLocked(
 					wrapError(ErrAttemptExpired, "atr abort failed during overtime")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionExpired,
 			}))
 			return
 		}
@@ -761,28 +760,24 @@ func (t *transactionAttempt) setATRAbortedLocked(
 				Cerr:              cerr.Wrap(ErrAtrNotFound),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailPathNotFound:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr.Wrap(ErrAtrEntryNotFound),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailOutOfSpace:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr.Wrap(ErrAtrFull),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		default:
 			time.AfterFunc(3*time.Millisecond, func() {
@@ -917,7 +912,6 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 					wrapError(ErrAttemptExpired, "rolled back atr removal failed during overtime")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionExpired,
 			}))
 			return
 		}
@@ -934,14 +928,12 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 					wrapError(ErrAttemptExpired, "rolled back atr removal operation expired")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionExpired,
 			}))
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		default:
 			time.AfterFunc(3*time.Millisecond, func() {

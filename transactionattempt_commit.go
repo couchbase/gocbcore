@@ -26,7 +26,7 @@ func (t *transactionAttempt) Commit(cb TransactionCommitCallback) error {
 		if err != nil {
 			if t.ShouldRollback() {
 				if !t.isExpiryOvertimeAtomic() {
-					t.applyStateBits(transactionStateBitPreExpiryAutoRollback)
+					t.applyStateBits(transactionStateBitPreExpiryAutoRollback, 0)
 				}
 
 				err := t.rollback(func(rerr *TransactionOperationFailedError) {
@@ -51,7 +51,7 @@ func (t *transactionAttempt) Commit(cb TransactionCommitCallback) error {
 			return
 		}
 
-		t.applyStateBits(transactionStateBitShouldNotRetry | transactionStateBitShouldNotRollback)
+		t.applyStateBits(transactionStateBitShouldNotRetry|transactionStateBitShouldNotRollback, 0)
 		t.ensureCleanUpRequest()
 		cb(nil)
 	})
@@ -72,7 +72,7 @@ func (t *transactionAttempt) commit(
 			return
 		}
 
-		t.applyStateBits(transactionStateBitShouldNotCommit)
+		t.applyStateBits(transactionStateBitShouldNotCommit, 0)
 
 		if t.state == TransactionAttemptStateNothingWritten {
 			//t.state = TransactionAttemptStateCompleted

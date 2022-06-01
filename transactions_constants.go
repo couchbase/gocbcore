@@ -54,8 +54,11 @@ type TransactionErrorReason uint8
 // NOTE: The errors within this section are critically ordered, as the order of
 // precedence used when merging errors together is based on this.
 const (
+	// TransactionErrorReasonSuccess indicates the transaction succeeded and did not fail.
+	TransactionErrorReasonSuccess TransactionErrorReason = iota
+
 	// TransactionErrorReasonTransactionFailed indicates the transaction should be failed because it failed.
-	TransactionErrorReasonTransactionFailed TransactionErrorReason = iota
+	TransactionErrorReasonTransactionFailed
 
 	// TransactionErrorReasonTransactionExpired indicates the transaction should be failed because it expired.
 	TransactionErrorReasonTransactionExpired
@@ -130,4 +133,10 @@ const (
 	transactionStateBitShouldNotRetry        = 1 << 2
 	transactionStateBitHasExpired            = 1 << 3
 	transactionStateBitPreExpiryAutoRollback = 1 << 4
+)
+
+const (
+	transactionStateBitsMaskFinalError     = 0b1110000
+	transactionStateBitsMaskBits           = 0b0001111
+	transactionStateBitsPositionFinalError = 4
 )

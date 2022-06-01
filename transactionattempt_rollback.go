@@ -48,7 +48,7 @@ func (t *transactionAttempt) rollback(
 			return
 		}
 
-		t.applyStateBits(transactionStateBitShouldNotCommit | transactionStateBitShouldNotRollback)
+		t.applyStateBits(transactionStateBitShouldNotCommit|transactionStateBitShouldNotRollback, 0)
 
 		if t.state == TransactionAttemptStateNothingWritten {
 			//t.state = TransactionAttemptStateRolledBack
@@ -87,7 +87,6 @@ func (t *transactionAttempt) rollback(
 									wrapError(ErrIllegalState, "unexpected staged mutation type")),
 								ShouldNotRetry:    true,
 								ShouldNotRollback: true,
-								Reason:            TransactionErrorReasonTransactionFailed,
 							}))
 						}
 					}
@@ -180,7 +179,6 @@ func (t *transactionAttempt) removeStagedInsert(
 					wrapError(ErrAttemptExpired, "removing a staged insert failed during overtime")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionExpired,
 			}))
 			return
 		}
@@ -209,14 +207,12 @@ func (t *transactionAttempt) removeStagedInsert(
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		default:
 			time.AfterFunc(3*time.Millisecond, func() {
@@ -303,7 +299,6 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 					wrapError(ErrAttemptExpired, "removing a staged remove or replace failed during overtime")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionExpired,
 			}))
 			return
 		}
@@ -326,7 +321,6 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailDocAlreadyExists:
 			cerr.Class = TransactionErrorClassFailCasMismatch
@@ -336,14 +330,12 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
-				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		default:
 			time.AfterFunc(3*time.Millisecond, func() {

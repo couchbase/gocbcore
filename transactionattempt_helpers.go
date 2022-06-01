@@ -202,7 +202,7 @@ func (t *transactionAttempt) checkCanRollbackLocked() *TransactionOperationFaile
 }
 
 func (t *transactionAttempt) setExpiryOvertimeAtomic() {
-	t.applyStateBits(transactionStateBitHasExpired)
+	t.applyStateBits(transactionStateBitHasExpired, 0)
 }
 
 func (t *transactionAttempt) isExpiryOvertimeAtomic() bool {

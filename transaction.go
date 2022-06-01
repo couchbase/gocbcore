@@ -377,6 +377,15 @@ func (t *Transaction) ShouldRetry() bool {
 	return t.attempt.ShouldRetry()
 }
 
+// FinalErrorToRaise returns the TransactionErrorReason corresponding to the final state of the transaction.
+func (t *Transaction) FinalErrorToRaise() TransactionErrorReason {
+	if t.attempt == nil {
+		return 0
+	}
+
+	return t.attempt.FinalErrorToRaise()
+}
+
 func (t *Transaction) TimeRemaining() time.Duration {
 	if t.attempt == nil {
 		return 0
@@ -445,8 +454,8 @@ type TransactionUpdateStateOptions struct {
 	ShouldNotCommit   bool
 	ShouldNotRollback bool
 	ShouldNotRetry    bool
-	HasExpired        bool
 	State             TransactionAttemptState
+	Reason            TransactionErrorReason
 }
 
 // UpdateState will update the internal state of the current attempt.
