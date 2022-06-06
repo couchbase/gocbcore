@@ -22,9 +22,9 @@ import (
 )
 
 func (t *transactionAttempt) Get(opts TransactionGetOptions, cb TransactionGetCallback) error {
-	return t.get(opts, func(res *TransactionGetResult, err *TransactionOperationFailedError) {
+	return t.get(opts, func(res *TransactionGetResult, err error) {
 		if err != nil {
-			if err.shouldNotRollback {
+			if !t.ShouldRollback() {
 				t.ensureCleanUpRequest()
 			}
 
@@ -38,12 +38,12 @@ func (t *transactionAttempt) Get(opts TransactionGetOptions, cb TransactionGetCa
 
 func (t *transactionAttempt) get(
 	opts TransactionGetOptions,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) error {
 	forceNonFatal := t.enableNonFatalGets
 
 	t.beginOpAndLock(func(unlock func(), endOp func()) {
-		endAndCb := func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+		endAndCb := func(result *TransactionGetResult, err error) {
 			endOp()
 			cb(result, err)
 		}
@@ -68,27 +68,28 @@ func (t *transactionAttempt) get(
 				return
 			}
 
-			t.mavRead(opts.Agent, opts.OboUser, opts.ScopeName, opts.CollectionName, opts.Key, opts.NoRYOW, "", forceNonFatal, func(result *TransactionGetResult, err *TransactionOperationFailedError) {
-				if err != nil {
-					endAndCb(nil, err)
-					return
-				}
-
-				t.hooks.AfterGetComplete(opts.Key, func(err error) {
+			t.mavRead(opts.Agent, opts.OboUser, opts.ScopeName, opts.CollectionName, opts.Key, opts.NoRYOW,
+				"", forceNonFatal, func(result *TransactionGetResult, err error) {
 					if err != nil {
-						endAndCb(nil, t.operationFailed(operationFailedDef{
-							Cerr:              classifyHookError(err),
-							CanStillCommit:    forceNonFatal,
-							ShouldNotRetry:    true,
-							ShouldNotRollback: true,
-							Reason:            TransactionErrorReasonTransactionFailed,
-						}))
+						endAndCb(nil, err)
 						return
 					}
 
-					endAndCb(result, nil)
+					t.hooks.AfterGetComplete(opts.Key, func(err error) {
+						if err != nil {
+							endAndCb(nil, t.operationFailed(operationFailedDef{
+								Cerr:              classifyHookError(err),
+								CanStillCommit:    forceNonFatal,
+								ShouldNotRetry:    true,
+								ShouldNotRollback: true,
+								Reason:            TransactionErrorReasonTransactionFailed,
+							}))
+							return
+						}
+
+						endAndCb(result, nil)
+					})
 				})
-			})
 		})
 	})
 
@@ -104,7 +105,7 @@ func (t *transactionAttempt) mavRead(
 	disableRYOW bool,
 	resolvingATREntry string,
 	forceNonFatal bool,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) {
 	t.fetchDocWithMeta(
 		agent,
@@ -113,7 +114,7 @@ func (t *transactionAttempt) mavRead(
 		collectionName,
 		key,
 		forceNonFatal,
-		func(doc *transactionGetDoc, err *TransactionOperationFailedError) {
+		func(doc *transactionGetDoc, err error) {
 			if err != nil {
 				cb(nil, err)
 				return
@@ -130,13 +131,7 @@ func (t *transactionAttempt) mavRead(
 			// Doc not involved in another transaction.
 			if doc.TxnMeta == nil {
 				if doc.Deleted {
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentNotFound, "doc was a tombstone")),
-						CanStillCommit:    true,
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-					}))
+					cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
 					return
 				}
 
@@ -168,13 +163,7 @@ func (t *transactionAttempt) mavRead(
 						Cas:            doc.Cas,
 					}, nil)
 				case jsonMutationRemove:
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentNotFound, "doc was a staged remove")),
-						CanStillCommit:    true,
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-					}))
+					cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
 				default:
 					cb(nil, t.operationFailed(operationFailedDef{
 						Cerr: classifyError(
@@ -190,14 +179,7 @@ func (t *transactionAttempt) mavRead(
 
 			if doc.TxnMeta.ID.Attempt == resolvingATREntry {
 				if doc.Deleted {
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentNotFound, "doc was a staged tombstone during resolution")),
-						CanStillCommit:    true,
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
+					cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged tombstone during resolution"))
 					return
 				}
 
@@ -284,13 +266,7 @@ func (t *transactionAttempt) mavRead(
 											Meta:           docMeta,
 										}, nil)
 									case jsonMutationRemove:
-										cb(nil, t.operationFailed(operationFailedDef{
-											Cerr: classifyError(
-												wrapError(ErrDocumentNotFound, "doc was a staged remove")),
-											CanStillCommit:    true,
-											ShouldNotRetry:    true,
-											ShouldNotRollback: false,
-										}))
+										cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
 									default:
 										cb(nil, t.operationFailed(operationFailedDef{
 											Cerr: classifyError(
@@ -303,13 +279,7 @@ func (t *transactionAttempt) mavRead(
 								}
 
 								if doc.Deleted {
-									cb(nil, t.operationFailed(operationFailedDef{
-										Cerr: classifyError(
-											wrapError(ErrDocumentNotFound, "doc was a tombstone")),
-										CanStillCommit:    true,
-										ShouldNotRetry:    true,
-										ShouldNotRollback: false,
-									}))
+									cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
 									return
 								}
 
@@ -336,7 +306,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 	collectionName string,
 	key []byte,
 	forceNonFatal bool,
-	cb func(*transactionGetDoc, *TransactionOperationFailedError),
+	cb func(*transactionGetDoc, error),
 ) {
 	ecCb := func(doc *transactionGetDoc, cerr *classifiedError) {
 		if cerr == nil {
@@ -346,13 +316,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 
 		switch cerr.Class {
 		case TransactionErrorClassFailDocNotFound:
-			cb(nil, t.operationFailed(operationFailedDef{
-				Cerr: classifyError(
-					wrapError(ErrDocumentNotFound, "doc was not found")),
-				CanStillCommit:    true,
-				ShouldNotRetry:    true,
-				ShouldNotRollback: false,
-			}))
+			cb(nil, wrapError(ErrDocumentNotFound, "doc was not found"))
 		case TransactionErrorClassFailTransient:
 			cb(nil, t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
