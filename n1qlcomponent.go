@@ -226,6 +226,9 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 			"limit for number of indexes that can be created per scope has been reached") {
 			err = errQuotaLimitedFailure
 		}
+		if errCode == 1080 {
+			err = errUnambiguousTimeout
+		}
 
 		if errCode == 3000 {
 			err = errParsingFailure
