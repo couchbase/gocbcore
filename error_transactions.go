@@ -67,8 +67,6 @@ var (
 	// ErrForwardCompatibilityFailure indicates an operation failed due to involving a document in another transaction
 	// which contains features this transaction does not support.
 	ErrForwardCompatibilityFailure = errors.New("forward compatibility error")
-
-	errTransactionOperationFailed = errors.New("transaction operation failed")
 )
 
 type classifiedError struct {
@@ -123,10 +121,6 @@ func (tfe TransactionOperationFailedError) Error() string {
 		errStr += " | " + tfe.errorCause.Error()
 	}
 	return errStr
-}
-
-func (tfe TransactionOperationFailedError) Unwrap() error {
-	return errTransactionOperationFailed
 }
 
 // Retry signals whether a new attempt should be made at rollback.
