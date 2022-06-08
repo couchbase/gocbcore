@@ -77,7 +77,7 @@ type TransactionProcessATRStats struct {
 // Internal: This should never be used and is not supported.
 type LostTransactionCleaner interface {
 	ProcessClient(agent *Agent, oboUser string, collection, scope, uuid string, cb func(*TransactionClientRecordDetails, error))
-	ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats))
+	ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats, error))
 	RemoveClientFromAllLocations(uuid string) error
 	Close()
 }
@@ -341,23 +341,18 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
 	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
 		if err != nil {
-			var coreErr *TimeoutError
-			if errors.As(err, &coreErr) {
-				for _, reason := range coreErr.RetryReasons {
-					if reason == KVCollectionOutdatedRetryReason {
-						logDebugf("Removing %s.%s.%s from lost cleanup %s",
-							location.location.BucketName,
-							location.location.ScopeName,
-							location.location.CollectionName,
-							ltc.uuid,
-						)
-						close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
-						ltc.locationsLock.Lock()
-						delete(ltc.locations, location.location)
-						ltc.locationsLock.Unlock()
-						return
-					}
-				}
+			if errors.Is(err, ErrCollectionNotFound) {
+				logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
+					location.location.BucketName,
+					location.location.ScopeName,
+					location.location.CollectionName,
+					ltc.uuid,
+				)
+				close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
+				ltc.locationsLock.Lock()
+				delete(ltc.locations, location.location)
+				ltc.locationsLock.Unlock()
+				return
 			}
 			select {
 			case <-ltc.stop:
@@ -385,6 +380,17 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 	ltc.ProcessClient(agent, oboUser, collection, scope, ltc.uuid, func(recordDetails *TransactionClientRecordDetails, err error) {
 		if err != nil {
 			logDebugf("Failed to process client %s on %s.%s.%s", ltc.uuid, agent.BucketName(), scope, collection)
+			var coreErr *TimeoutError
+			if errors.As(err, &coreErr) {
+				for _, reason := range coreErr.RetryReasons {
+					if reason == KVCollectionOutdatedRetryReason {
+						// We translate from outdated to not found here because at the point in time when we tried to
+						// use the collection it could not be found.
+						cb(ErrCollectionNotFound)
+						return
+					}
+				}
+			}
 			cb(err)
 			return
 		}
@@ -401,12 +407,21 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 				case <-time.After(d):
 				}
 
-				waitCh := make(chan struct{}, 1)
-				ltc.ProcessATR(agent, oboUser, collection, scope, atr, func(attempts []TransactionsCleanupAttempt, _ TransactionProcessATRStats) {
-					// We don't actually care what happened
-					waitCh <- struct{}{}
+				waitCh := make(chan error, 1)
+				ltc.ProcessATR(agent, oboUser, collection, scope, atr, func(attempts []TransactionsCleanupAttempt,
+					stats TransactionProcessATRStats, err error) {
+					waitCh <- err
 				})
-				<-waitCh
+				err := <-waitCh
+				var coreErr *TimeoutError
+				if errors.As(err, &coreErr) {
+					for _, reason := range coreErr.RetryReasons {
+						if reason == KVCollectionOutdatedRetryReason {
+							cb(ErrCollectionNotFound)
+							return
+						}
+					}
+				}
 			}
 
 			cb(nil)
@@ -532,17 +547,17 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 	})
 }
 
-func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats)) {
+func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats, error)) {
 	logSchedf("Processing atr %s for %s.%s.%s", atrID, agent.BucketName(), scope, collection)
 	ltc.getATR(agent, oboUser, collection, scope, atrID, func(attempts map[string]jsonAtrAttempt, hlc int64, err error) {
 		if err != nil {
 			logSchedf("Failed to get atr %s on %s.%s.%s", atrID, agent.BucketName(), scope, collection)
-			cb(nil, TransactionProcessATRStats{})
+			cb(nil, TransactionProcessATRStats{}, err)
 			return
 		}
 
 		if len(attempts) == 0 {
-			cb([]TransactionsCleanupAttempt{}, TransactionProcessATRStats{})
+			cb([]TransactionsCleanupAttempt{}, TransactionProcessATRStats{}, nil)
 			return
 		}
 
@@ -561,7 +576,7 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 				}
 				parsedCAS, err := parseCASToMilliseconds(attempt.PendingCAS)
 				if err != nil {
-					cb(nil, TransactionProcessATRStats{})
+					cb(nil, TransactionProcessATRStats{}, err)
 					return
 				}
 				var inserts []TransactionsDocRecord
@@ -632,7 +647,7 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 					stats.NumEntriesExpired++
 				}
 			}
-			cb(results, stats)
+			cb(results, stats, nil)
 		}()
 	})
 }
