@@ -209,6 +209,10 @@ func (t *transactionAttempt) mavRead(
 			}
 
 			t.checkForwardCompatability(
+				key,
+				agent.BucketName(),
+				scopeName,
+				collectionName,
 				forwardCompatStageGets,
 				docFc,
 				forceNonFatal,
@@ -243,57 +247,62 @@ func (t *transactionAttempt) mavRead(
 							}
 
 							atmptFc := jsonForwardCompatToForwardCompat(attempt.ForwardCompat)
-							t.checkForwardCompatability(forwardCompatStageGetsReadingATR, atmptFc, forceNonFatal, func(err *TransactionOperationFailedError) {
-								if err != nil {
-									cb(nil, err)
-									return
-								}
-
-								state := jsonAtrState(attempt.State)
-								if state == jsonAtrStateCommitted || state == jsonAtrStateCompleted {
-									switch doc.TxnMeta.Operation.Type {
-									case jsonMutationInsert:
-										fallthrough
-									case jsonMutationReplace:
-										cb(&TransactionGetResult{
-											agent:          agent,
-											oboUser:        oboUser,
-											scopeName:      scopeName,
-											collectionName: collectionName,
-											key:            key,
-											Value:          doc.TxnMeta.Operation.Staged,
-											Cas:            doc.Cas,
-											Meta:           docMeta,
-										}, nil)
-									case jsonMutationRemove:
-										cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
-									default:
-										cb(nil, t.operationFailed(operationFailedDef{
-											Cerr: classifyError(
-												wrapError(ErrIllegalState, "unexpected staged mutation type")),
-											ShouldNotRetry:    false,
-											ShouldNotRollback: false,
-										}))
+							t.checkForwardCompatability(
+								key,
+								agent.BucketName(),
+								scopeName,
+								collectionName,
+								forwardCompatStageGetsReadingATR, atmptFc, forceNonFatal, func(err *TransactionOperationFailedError) {
+									if err != nil {
+										cb(nil, err)
+										return
 									}
-									return
-								}
 
-								if doc.Deleted {
-									cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
-									return
-								}
+									state := jsonAtrState(attempt.State)
+									if state == jsonAtrStateCommitted || state == jsonAtrStateCompleted {
+										switch doc.TxnMeta.Operation.Type {
+										case jsonMutationInsert:
+											fallthrough
+										case jsonMutationReplace:
+											cb(&TransactionGetResult{
+												agent:          agent,
+												oboUser:        oboUser,
+												scopeName:      scopeName,
+												collectionName: collectionName,
+												key:            key,
+												Value:          doc.TxnMeta.Operation.Staged,
+												Cas:            doc.Cas,
+												Meta:           docMeta,
+											}, nil)
+										case jsonMutationRemove:
+											cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
+										default:
+											cb(nil, t.operationFailed(operationFailedDef{
+												Cerr: classifyError(
+													wrapError(ErrIllegalState, "unexpected staged mutation type")),
+												ShouldNotRetry:    false,
+												ShouldNotRollback: false,
+											}))
+										}
+										return
+									}
 
-								cb(&TransactionGetResult{
-									agent:          agent,
-									oboUser:        oboUser,
-									scopeName:      scopeName,
-									collectionName: collectionName,
-									key:            key,
-									Value:          doc.Body,
-									Cas:            doc.Cas,
-									Meta:           docMeta,
-								}, nil)
-							})
+									if doc.Deleted {
+										cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
+										return
+									}
+
+									cb(&TransactionGetResult{
+										agent:          agent,
+										oboUser:        oboUser,
+										scopeName:      scopeName,
+										collectionName: collectionName,
+										key:            key,
+										Value:          doc.Body,
+										Cas:            doc.Cas,
+										Meta:           docMeta,
+									}, nil)
+								})
 						})
 				})
 		})

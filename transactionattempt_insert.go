@@ -180,48 +180,53 @@ func (t *transactionAttempt) resolveConflictedInsert(
 				ForwardCompat: jsonForwardCompatToForwardCompat(txnMeta.ForwardCompat),
 			}
 
-			t.checkForwardCompatability(forwardCompatStageWWCInsertingGet, meta.ForwardCompat, false, func(err *TransactionOperationFailedError) {
-				if err != nil {
-					cb(nil, err)
-					return
-				}
-
-				if txnMeta.Operation.Type != jsonMutationInsert {
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentExists, "found staged non-insert mutation")),
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
-					return
-				}
-
-				// We have guards in place within the write write conflict polling to prevent miss-use when
-				// an existing mutation must have been discovered before it's safe to overwrite.  This logic
-				// is unneccessary, as is the forwards compatibility check when resolving conflicted inserts
-				// so we can safely just ignore it.
-				if meta.TransactionID == t.transactionID && meta.AttemptID == t.id {
-					t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
-					return
-				}
-
-				t.writeWriteConflictPoll(forwardCompatStageWWCInserting, agent, oboUser, scopeName, collectionName, key, cas, meta, nil, func(err *TransactionOperationFailedError) {
+			t.checkForwardCompatability(
+				key,
+				agent.BucketName(),
+				scopeName,
+				collectionName,
+				forwardCompatStageWWCInsertingGet, meta.ForwardCompat, false, func(err *TransactionOperationFailedError) {
 					if err != nil {
 						cb(nil, err)
 						return
 					}
 
-					t.cleanupStagedInsert(agent, oboUser, scopeName, collectionName, key, cas, isTombstone, func(cas Cas, err *TransactionOperationFailedError) {
+					if txnMeta.Operation.Type != jsonMutationInsert {
+						cb(nil, t.operationFailed(operationFailedDef{
+							Cerr: classifyError(
+								wrapError(ErrDocumentExists, "found staged non-insert mutation")),
+							ShouldNotRetry:    true,
+							ShouldNotRollback: false,
+							Reason:            TransactionErrorReasonTransactionFailed,
+						}))
+						return
+					}
+
+					// We have guards in place within the write write conflict polling to prevent miss-use when
+					// an existing mutation must have been discovered before it's safe to overwrite.  This logic
+					// is unneccessary, as is the forwards compatibility check when resolving conflicted inserts
+					// so we can safely just ignore it.
+					if meta.TransactionID == t.transactionID && meta.AttemptID == t.id {
+						t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+						return
+					}
+
+					t.writeWriteConflictPoll(forwardCompatStageWWCInserting, agent, oboUser, scopeName, collectionName, key, cas, meta, nil, func(err *TransactionOperationFailedError) {
 						if err != nil {
 							cb(nil, err)
 							return
 						}
 
-						t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+						t.cleanupStagedInsert(agent, oboUser, scopeName, collectionName, key, cas, isTombstone, func(cas Cas, err *TransactionOperationFailedError) {
+							if err != nil {
+								cb(nil, err)
+								return
+							}
+
+							t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+						})
 					})
 				})
-			})
 		})
 }
 

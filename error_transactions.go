@@ -260,6 +260,44 @@ func (bre basicRetypedError) Unwrap() error {
 	return bre.Source
 }
 
+type forwardCompatError struct {
+	BucketName     string
+	ScopeName      string
+	CollectionName string
+	DocumentKey    []byte
+}
+
+func (fce forwardCompatError) Error() string {
+	errStr := ErrForwardCompatibilityFailure.Error()
+	errStr += " | " + fmt.Sprintf(
+		"bucket:%s, scope:%s, collection:%s, key:%s",
+		fce.BucketName,
+		fce.ScopeName,
+		fce.CollectionName,
+		fce.DocumentKey)
+	return errStr
+}
+
+func (fce forwardCompatError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		BucketName     string `json:"bucket,omitempty"`
+		ScopeName      string `json:"scope,omitempty"`
+		CollectionName string `json:"collection,omitempty"`
+		DocumentKey    string `json:"document_key,omitempty"`
+		Message        string `json:"msg"`
+	}{
+		BucketName:     fce.BucketName,
+		ScopeName:      fce.ScopeName,
+		CollectionName: fce.CollectionName,
+		DocumentKey:    string(fce.DocumentKey),
+		Message:        ErrForwardCompatibilityFailure.Error(),
+	})
+}
+
+func (fce forwardCompatError) Unwrap() error {
+	return ErrForwardCompatibilityFailure
+}
+
 func marshalErrorToJSON(err error) json.RawMessage {
 	if marshaler, ok := err.(json.Marshaler); ok {
 		if data, err := marshaler.MarshalJSON(); err == nil {

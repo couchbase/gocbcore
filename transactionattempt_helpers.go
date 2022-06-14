@@ -336,6 +336,8 @@ func (t *transactionAttempt) recordStagedMutation(
 }
 
 func (t *transactionAttempt) checkForwardCompatability(
+	key []byte,
+	bucket, scope, collection string,
 	stage forwardCompatStage,
 	fc map[string][]TransactionForwardCompatibilityEntry,
 	forceNonFatal bool,
@@ -357,7 +359,12 @@ func (t *transactionAttempt) checkForwardCompatability(
 		if shouldRetry {
 			cbRetryError := func() {
 				cb(t.operationFailed(operationFailedDef{
-					Cerr:              classifyError(ErrForwardCompatibilityFailure),
+					Cerr: classifyError(forwardCompatError{
+						BucketName:     bucket,
+						ScopeName:      scope,
+						CollectionName: collection,
+						DocumentKey:    key,
+					}),
 					CanStillCommit:    forceNonFatal,
 					ShouldNotRetry:    false,
 					ShouldNotRollback: false,
@@ -375,7 +382,12 @@ func (t *transactionAttempt) checkForwardCompatability(
 		}
 
 		cb(t.operationFailed(operationFailedDef{
-			Cerr:              classifyError(ErrForwardCompatibilityFailure),
+			Cerr: classifyError(forwardCompatError{
+				BucketName:     bucket,
+				ScopeName:      scope,
+				CollectionName: collection,
+				DocumentKey:    key,
+			}),
 			CanStillCommit:    forceNonFatal,
 			ShouldNotRetry:    true,
 			ShouldNotRollback: false,
@@ -603,57 +615,58 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 			return
 		}
 
-		t.checkForwardCompatability(stage, meta.ForwardCompat, false, func(err *TransactionOperationFailedError) {
-			if err != nil {
-				cb(err)
-				return
-			}
-
-			t.checkExpiredAtomic(hookWWC, key, false, func(cerr *classifiedError) {
-				if cerr != nil {
-					cb(t.operationFailed(operationFailedDef{
-						Cerr:              cerr,
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionExpired,
-					}))
+		t.checkForwardCompatability(key, agent.BucketName(), scopeName, collectionName, stage, meta.ForwardCompat, false,
+			func(err *TransactionOperationFailedError) {
+				if err != nil {
+					cb(err)
 					return
 				}
 
-				t.getTxnState(
-					agent.BucketName(),
-					scopeName,
-					collectionName,
-					key,
-					meta.ATR.BucketName,
-					meta.ATR.ScopeName,
-					meta.ATR.CollectionName,
-					meta.ATR.DocID,
-					meta.AttemptID,
-					false,
-					func(attempt *jsonAtrAttempt, expiry time.Time, err *TransactionOperationFailedError) {
-						if err != nil {
-							cb(err)
-							return
-						}
+				t.checkExpiredAtomic(hookWWC, key, false, func(cerr *classifiedError) {
+					if cerr != nil {
+						cb(t.operationFailed(operationFailedDef{
+							Cerr:              cerr,
+							ShouldNotRetry:    true,
+							ShouldNotRollback: false,
+							Reason:            TransactionErrorReasonTransactionExpired,
+						}))
+						return
+					}
 
-						if attempt == nil {
-							// The ATR entry is missing, which counts as it being completed.
-							cb(nil)
-							return
-						}
+					t.getTxnState(
+						agent.BucketName(),
+						scopeName,
+						collectionName,
+						key,
+						meta.ATR.BucketName,
+						meta.ATR.ScopeName,
+						meta.ATR.CollectionName,
+						meta.ATR.DocID,
+						meta.AttemptID,
+						false,
+						func(attempt *jsonAtrAttempt, expiry time.Time, err *TransactionOperationFailedError) {
+							if err != nil {
+								cb(err)
+								return
+							}
 
-						state := jsonAtrState(attempt.State)
-						if state == jsonAtrStateCompleted || state == jsonAtrStateRolledBack {
-							// If we have progressed enough to continue, let's do that.
-							cb(nil)
-							return
-						}
+							if attempt == nil {
+								// The ATR entry is missing, which counts as it being completed.
+								cb(nil)
+								return
+							}
 
-						time.AfterFunc(200*time.Millisecond, onePoll)
-					})
+							state := jsonAtrState(attempt.State)
+							if state == jsonAtrStateCompleted || state == jsonAtrStateRolledBack {
+								// If we have progressed enough to continue, let's do that.
+								cb(nil)
+								return
+							}
+
+							time.AfterFunc(200*time.Millisecond, onePoll)
+						})
+				})
 			})
-		})
 	}
 	onePoll()
 }
