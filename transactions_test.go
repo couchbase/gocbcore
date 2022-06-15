@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"time"
 
@@ -847,6 +848,54 @@ func (suite *StandardTestSuite) TestTransactionsInsertRemove() {
 	suite.Require().Nil(err, "commit failed")
 
 	suite.assertStagedDoc("insertToRemoveDoc", "", nil, true, agent, opHarness)
+}
+
+// This test ensures that the addLostCleanupLocation function is registered on an attempt
+// after serialization/deserialization of the transaction.
+func (suite *StandardTestSuite) TestTransactionsInsertRemoveEarlySerialize() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	agent, opHarness := suite.GetAgentAndHarness()
+
+	testDummy2 := []byte(`{"name":"mike"}`)
+
+	txns, txn := suite.initTransactionAndAttempt(agent)
+
+	// We do this before any ops so that we trigger addLostCleanupLocation after setting the ATR to pending.
+	txn = suite.serializeUnserializeTxn(txns, txn)
+
+	docId := []byte(uuid.NewString())
+	insertToRemoveInsertRes, err := testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            docId,
+		Value:          testDummy2,
+	})
+	suite.Require().Nil(err, "Early serialization insert failed")
+
+	insertToRemoveGet2Res, err := testBlkGet(txn, TransactionGetOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            docId,
+	})
+	suite.Require().Nil(err, "Early serialization get2 failed")
+	suite.Assert().Equal(insertToRemoveInsertRes.Cas, insertToRemoveGet2Res.Cas, "Early serialization insert and get cas did not match")
+	suite.Assert().Equal(insertToRemoveInsertRes.Meta, insertToRemoveGet2Res.Meta, "Early serialization insert and get meta did not match")
+
+	_, err = testBlkRemove(txn, TransactionRemoveOptions{
+		Document: insertToRemoveGet2Res,
+	})
+	suite.Require().Nil(err, "Early serialization remove failed")
+
+	// Impossible to have a txn2 with a remove.
+
+	suite.assertStagedDoc(string(docId), "", nil, true, agent, opHarness)
+
+	err = testBlkCommit(txn)
+	suite.Require().Nil(err, "commit failed")
+
+	suite.assertStagedDoc(string(docId), "", nil, true, agent, opHarness)
 }
 
 func (suite *StandardTestSuite) serializeUnserializeTxn(txns *TransactionsManager, txn *Transaction) *Transaction {

@@ -247,6 +247,7 @@ func (t *TransactionsManager) ResumeTransactionAttempt(txnBytes []byte, options 
 		enableExplicitATRs:      t.config.Internal.EnableExplicitATRs,
 		enableMutationCaching:   t.config.Internal.EnableMutationCaching,
 		bucketAgentProvider:     bucketAgentProvider,
+		addLostCleanupLocation:  t.addLostCleanupLocation,
 	}
 
 	err = txn.resumeAttempt(&txnData)

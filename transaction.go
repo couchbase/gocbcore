@@ -203,7 +203,8 @@ func (t *Transaction) resumeAttempt(txnData *jsonSerializedAttempt) error {
 		atrKey:            atrKey,
 		hooks:             t.hooks,
 
-		addCleanupRequest: t.addCleanupRequest,
+		addCleanupRequest:      t.addCleanupRequest,
+		addLostCleanupLocation: t.addLostCleanupLocation,
 	}
 
 	return nil
