@@ -313,13 +313,15 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 					return
 				}
 
-				select {
-				case <-time.After(time.Until(deadline)):
-					cb(ErrTimeout)
-					return
-				case <-time.After(10 * time.Millisecond):
-				}
-				ltc.unregisterClientRecord(location, uuid, deadline, cb)
+				go func() {
+					select {
+					case <-time.After(time.Until(deadline)):
+						cb(ErrTimeout)
+						return
+					case <-time.After(10 * time.Millisecond):
+					}
+					ltc.unregisterClientRecord(location, uuid, deadline, cb)
+				}()
 				return
 			}
 
@@ -333,7 +335,6 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 			case <-time.After(10 * time.Millisecond):
 			}
 			ltc.unregisterClientRecord(location, uuid, deadline, cb)
-			return
 		}
 	})
 }
@@ -341,28 +342,32 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
 	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
 		if err != nil {
-			if errors.Is(err, ErrCollectionNotFound) {
-				logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
-					location.location.BucketName,
-					location.location.ScopeName,
-					location.location.CollectionName,
-					ltc.uuid,
-				)
-				close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
-				ltc.locationsLock.Lock()
-				delete(ltc.locations, location.location)
-				ltc.locationsLock.Unlock()
-				return
-			}
-			select {
-			case <-ltc.stop:
-				return
-			case <-location.shutdown:
-				return
-			case <-time.After(1 * time.Second):
-				ltc.perLocation(agent, oboUser, location)
-				return
-			}
+			// See comment in process for explanation of why we have a goroutine here.
+			go func() {
+				if errors.Is(err, ErrCollectionNotFound) {
+					logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
+						location.location.BucketName,
+						location.location.ScopeName,
+						location.location.CollectionName,
+						ltc.uuid,
+					)
+					close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
+					ltc.locationsLock.Lock()
+					delete(ltc.locations, location.location)
+					ltc.locationsLock.Unlock()
+					return
+				}
+				select {
+				case <-ltc.stop:
+					return
+				case <-location.shutdown:
+					return
+				case <-time.After(1 * time.Second):
+					ltc.perLocation(agent, oboUser, location)
+					return
+				}
+			}()
+			return
 		}
 
 		select {
