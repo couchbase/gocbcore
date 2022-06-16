@@ -22,6 +22,7 @@ var (
 	srvVer660   = NodeVersion{6, 6, 0, 0, 0, ""}
 	srvVer700   = NodeVersion{7, 0, 0, 0, 0, ""}
 	srvVer710   = NodeVersion{7, 1, 0, 0, 0, ""}
+	srvVer720   = NodeVersion{7, 2, 0, 0, 0, ""}
 	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
