@@ -1,6 +1,28 @@
 # Release Notes
 
-## Version 10.1.1 (26 April 2022)
+## Version 10.1.3 (22 June 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1264](GOCBC-1264):
+  Added more documentation to `AgentConfig`.
+* [https://issues.couchbase.com/browse/GOCBC-1298](GOCBC-1298):
+* [https://issues.couchbase.com/browse/GOCBC-1299](GOCBC-1299):
+  Masked the underlying cause of `TransactionOperationFailedError`.
+* [https://issues.couchbase.com/browse/GOCBC-1159](GOCBC-1159):
+  Made improvements to handle a rebalance during a freeze in serverless environments.
+* [https://issues.couchbase.com/browse/GOCBC-1283](GOCBC-1283):
+  Update forward compatibility errors to include document details.
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1300](GOCBC-1300):
+  Added collection unknown check to `ProcessATR` to improve lost cleanup deleted collection handling.
+* [https://issues.couchbase.com/browse/GOCBC-1304](GOCBC-1304):
+  Fixed issue where lost cleanup would block the SDK response thread for a connection.
+* [https://issues.couchbase.com/browse/GOCBC-1301](GOCBC-1301):
+  Fixed issue where `addLostCleanupLocation` was left nil after `ResumeTransactionAttempt` called.
+
+## Version 10.1.2 (26 April 2022)
 
 ### New Features and Behavioral Changes
 
