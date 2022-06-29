@@ -164,10 +164,11 @@ func (ltc *stdLostTransactionCleaner) start() {
 		case <-ltc.stop:
 			return
 		case location := <-ltc.newLocationCh:
+			logDebugf("Starting new location handler for %s, location %s", ltc.uuid, location.location)
 			agent, oboUser, err := ltc.bucketAgentProvider(location.location.BucketName)
 			if err != nil {
-				logDebugf("Failed to fetch agent for %v:, err: %v",
-					location, err)
+				logDebugf("Failed to fetch agent for %s, location: %s:, err: %v",
+					ltc.uuid, location.location, err)
 				// We should probably do something here...
 				return
 			}
@@ -195,7 +196,7 @@ func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATR
 	ch := make(chan struct{})
 	ltc.locations[location] = ch
 	ltc.locationsLock.Unlock()
-	logDebugf("Adding location %v to lost cleanup for %s", location, ltc.uuid)
+	logDebugf("Adding location %s to lost cleanup for %s", location, ltc.uuid)
 	ltc.newLocationCh <- lostATRLocationWithShutdown{
 		location: location,
 		shutdown: ch,
@@ -203,7 +204,7 @@ func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATR
 }
 
 func (ltc *stdLostTransactionCleaner) Close() {
-	logDebugf("Lost transactions %p stopping", ltc)
+	logDebugf("Lost transactions %s stopping", ltc.uuid)
 	close(ltc.stop)
 	err := ltc.RemoveClientFromAllLocations(ltc.uuid)
 	if err != nil {
@@ -245,7 +246,7 @@ func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[Tr
 
 			ltc.unregisterClientRecord(location, uuid, deadline, func(unregErr error) {
 				if unregErr != nil {
-					logDebugf("Failed to unregister %s from cleanup record on from location %v", uuid, location)
+					logDebugf("Failed to unregister %s from cleanup record on from location %s: %v", uuid, location, unregErr)
 					err = unregErr
 				}
 				logInfof("Unregistered %s from cleanup record for location %v", uuid, location)
@@ -259,10 +260,13 @@ func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[Tr
 }
 
 func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location TransactionLostATRLocation, uuid string, deadline time.Time, cb func(error)) {
+	logDebugf("Unregistering client %s for %s, location = %s", uuid, ltc.uuid, location)
 	agent, oboUser, err := ltc.bucketAgentProvider(location.BucketName)
 	if err != nil {
+		logDebugf("Failed to get agent for %s, location = %s, client = %s: %v", ltc.uuid, location, uuid, err)
 		select {
 		case <-time.After(time.Until(deadline)):
+			logDebugf("Timed out fetching agent for %s, location = %s, client = %s", ltc.uuid, location, uuid)
 			cb(ErrTimeout)
 			return
 		case <-time.After(10 * time.Millisecond):
@@ -309,13 +313,16 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
 				if errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrPathNotFound) {
+					logDebugf("Client %s not found in client record for %s, location = %s: %v", uuid, ltc.uuid, location, err)
 					cb(nil)
 					return
 				}
+				logDebugf("Failed to remove client %s for %s, location = %s: %v", uuid, ltc.uuid, location, err)
 
 				go func() {
 					select {
 					case <-time.After(time.Until(deadline)):
+						logDebugf("Timed out removing client %s from client record for %s, location = %s", uuid, ltc.uuid, location)
 						cb(ErrTimeout)
 						return
 					case <-time.After(10 * time.Millisecond):
@@ -328,8 +335,11 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 			cb(nil)
 		})
 		if err != nil {
+			logDebugf("Failed to schedule remove client %s for %s, location = %s: %v", uuid, ltc.uuid, location, err)
 			select {
 			case <-time.After(time.Until(deadline)):
+				logDebugf("Timed out scheduling client removal %s from client record for %s, location = %s", uuid,
+					ltc.uuid, location)
 				cb(ErrTimeout)
 				return
 			case <-time.After(10 * time.Millisecond):
@@ -340,8 +350,10 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 }
 
 func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
+	logSchedf("Running cleanup %s on %s", ltc.uuid, location.location)
 	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
 		if err != nil {
+			logDebugf("Cleanup failed for %s on %s", ltc.uuid, location.location)
 			// See comment in process for explanation of why we have a goroutine here.
 			go func() {
 				if errors.Is(err, ErrCollectionNotFound) {
@@ -399,6 +411,9 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 			cb(err)
 			return
 		}
+
+		logDebugf("%s will check %d atrs, check every %d ms", ltc.uuid, recordDetails.AtrsHandledByClient,
+			recordDetails.CheckAtrEveryNMillis)
 
 		// We need this goroutine so we can release the scope of the callback. We're still in the callback from the
 		// LookupIn here so we're blocking the gocbcore read loop for the node, any further requests against that node
@@ -480,6 +495,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 				case TransactionErrorClassFailDocNotFound:
 					ltc.createClientRecord(agent, oboUser, collection, scope, func(err error) {
 						if err != nil {
+							logDebugf("%s failed to create client record: %v", ltc.uuid, err)
 							cb(nil, err)
 							return
 						}
@@ -495,11 +511,13 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 			recordOp := result.Ops[0]
 			hlcOp := result.Ops[1]
 			if recordOp.Err != nil {
+				logDebugf("Failed to get records from client record for %s: %v", ltc.uuid, err)
 				cb(nil, recordOp.Err)
 				return
 			}
 
 			if hlcOp.Err != nil {
+				logDebugf("Failed to get hlc from client record for %s: %v", ltc.uuid, err)
 				cb(nil, hlcOp.Err)
 				return
 			}
@@ -507,6 +525,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 			var records jsonClientRecords
 			err = json.Unmarshal(recordOp.Value, &records)
 			if err != nil {
+				logDebugf("Failed to unmarshal records from client record for %s: %v", ltc.uuid, err)
 				cb(nil, err)
 				return
 			}
@@ -514,12 +533,14 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 			var hlc jsonHLC
 			err = json.Unmarshal(hlcOp.Value, &hlc)
 			if err != nil {
+				logDebugf("Failed to unmarshal hlc from client record for %s: %v", ltc.uuid, err)
 				cb(nil, err)
 				return
 			}
 
 			nowSecs, err := parseHLCToSeconds(hlc)
 			if err != nil {
+				logDebugf("Failed to parse hlc from client record for %s: %v", ltc.uuid, err)
 				cb(nil, err)
 				return
 			}
@@ -527,6 +548,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 
 			recordDetails, err := ltc.parseClientRecords(records, uuid, nowMS)
 			if err != nil {
+				logDebugf("Failed to parse records from client record for %s: %v", ltc.uuid, err)
 				cb(nil, err)
 				return
 			}
@@ -538,6 +560,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 
 			ltc.processClientRecord(agent, oboUser, collection, scope, uuid, recordDetails, func(err error) {
 				if err != nil {
+					logDebugf("%s failed to process client record %s: %v", ltc.uuid, uuid, err)
 					cb(nil, err)
 					return
 				}
@@ -553,10 +576,12 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 }
 
 func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats, error)) {
-	logSchedf("Processing atr %s for %s.%s.%s", atrID, agent.BucketName(), scope, collection)
 	ltc.getATR(agent, oboUser, collection, scope, atrID, func(attempts map[string]jsonAtrAttempt, hlc int64, err error) {
 		if err != nil {
-			logSchedf("Failed to get atr %s on %s.%s.%s", atrID, agent.BucketName(), scope, collection)
+			// We want to be careful to not flood the logs with atr not found messages.
+			if !errors.Is(err, ErrDocumentNotFound) {
+				logSchedf("%s failed to get atr %s on %s.%s.%s", ltc.uuid, atrID, agent.BucketName(), scope, collection)
+			}
 			cb(nil, TransactionProcessATRStats{}, err)
 			return
 		}
@@ -565,6 +590,8 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 			cb([]TransactionsCleanupAttempt{}, TransactionProcessATRStats{}, nil)
 			return
 		}
+
+		logSchedf("%s processing %d entries for atr %s on %s.%s.%s", ltc.uuid, len(attempts), atrID, agent.BucketName(), scope, collection)
 
 		stats := TransactionProcessATRStats{
 			NumEntries: len(attempts),
@@ -581,6 +608,8 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 				}
 				parsedCAS, err := parseCASToMilliseconds(attempt.PendingCAS)
 				if err != nil {
+					logDebugf("%s failed to parse CAS value %s for attempt %s on atr %s: %v", ltc.uuid,
+						attempt.PendingCAS, key, atrID, err)
 					cb(nil, TransactionProcessATRStats{}, err)
 					return
 				}
@@ -629,6 +658,7 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 				}
 
 				if int64(attempt.ExpiryTime)+parsedCAS < hlc {
+					logDebugf("%s detected expired attempt %s on atr %s", ltc.uuid, key, atrID)
 					req := &TransactionsCleanupRequest{
 						AttemptID:         key,
 						AtrID:             []byte(atrID),
@@ -641,6 +671,7 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 						State:             st,
 						ForwardCompat:     jsonForwardCompatToForwardCompat(attempt.ForwardCompat),
 						DurabilityLevel:   transactionsDurabilityLevelFromShorthand(attempt.DurabilityLevel),
+						Age:               time.Duration(hlc - parsedCAS),
 					}
 
 					waitCh := make(chan TransactionsCleanupAttempt, 1)
@@ -814,6 +845,7 @@ func (ltc *stdLostTransactionCleaner) parseClientRecords(records jsonClientRecor
 
 func (ltc *stdLostTransactionCleaner) processClientRecord(agent *Agent, oboUser string, collection, scope, uuid string,
 	recordDetails TransactionClientRecordDetails, cb func(error)) {
+	logSchedf("%s processing client record %s for %s.%s.%s", ltc.uuid, uuid, agent.BucketName(), scope, collection)
 	ltc.clientRecordHooks.BeforeUpdateRecord(func(err error) {
 		if err != nil {
 			cb(err)
@@ -896,6 +928,7 @@ func (ltc *stdLostTransactionCleaner) processClientRecord(agent *Agent, oboUser 
 }
 
 func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser string, collection, scope string, cb func(error)) {
+	logDebugf("%s creating client record in %s.%s.%s", ltc.uuid, agent.BucketName(), scope, collection)
 	ltc.clientRecordHooks.BeforeCreateRecord(func(err error) {
 		if err != nil {
 			ec := classifyHookError(err)
@@ -959,7 +992,7 @@ func (ltc *stdLostTransactionCleaner) fetchExtraCleanupLocations() {
 	if ltc.atrLocationFinder != nil {
 		locations, err := ltc.atrLocationFinder()
 		if err != nil {
-			logDebugf("Failed to poll for locations: %v", err)
+			logDebugf("%s failed to fetch extra cleanup locations: %v", ltc.uuid, err)
 			return
 		}
 

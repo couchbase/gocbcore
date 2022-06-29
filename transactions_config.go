@@ -89,6 +89,31 @@ type TransactionLostATRLocation struct {
 	CollectionName string
 }
 
+func (tlal TransactionLostATRLocation) build() string {
+	scope := tlal.ScopeName
+	if scope == "" {
+		scope = "_default"
+	}
+	collection := tlal.CollectionName
+	if collection == "" {
+		collection = "_default"
+	}
+
+	return tlal.BucketName + "." + scope + "." + collection
+}
+
+func (tlal TransactionLostATRLocation) String() string {
+	if isLogRedactionLevelFull() || isLogRedactionLevelPartial() {
+		return redactMetaData(tlal.build())
+	}
+
+	return tlal.build()
+}
+
+func (tlal TransactionLostATRLocation) redacted() interface{} {
+	return redactMetaData(tlal.build())
+}
+
 // TransactionsBucketAgentProviderFn is a function used to provide an agent for
 // a particular bucket by name.
 type TransactionsBucketAgentProviderFn func(bucketName string) (*Agent, string, error)

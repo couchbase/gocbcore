@@ -752,6 +752,7 @@ func (t *transactionAttempt) ensureCleanUpRequest() {
 		State:             cleanupState,
 		ForwardCompat:     nil, // Let's just be explicit about this, it'll change in the future anyway.
 		DurabilityLevel:   t.durabilityLevel,
+		Age:               time.Since(t.txnStartTime),
 	}
 
 	t.lock.UnlockSync()

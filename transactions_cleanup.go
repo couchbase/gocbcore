@@ -38,11 +38,37 @@ type TransactionsCleanupRequest struct {
 	State             TransactionAttemptState
 	ForwardCompat     map[string][]TransactionForwardCompatibilityEntry
 	DurabilityLevel   TransactionDurabilityLevel
+	Age               time.Duration
 }
 
 func (cr *TransactionsCleanupRequest) String() string {
-	return fmt.Sprintf("bucket: %s, collection: %s, scope: %s, atr: %s, attempt: %s", cr.AtrBucketName, cr.AtrCollectionName,
-		cr.AtrScopeName, cr.AtrID, cr.AttemptID)
+	if isLogRedactionLevelFull() || isLogRedactionLevelPartial() {
+		return cr.redacted().(string)
+	}
+
+	return fmt.Sprintf(
+		"bucket: %s, collection: %s, scope: %s, atr: %s, attempt: %s, state: %s, age: %s",
+		cr.AtrBucketName,
+		cr.AtrCollectionName,
+		cr.AtrScopeName,
+		cr.AtrID,
+		cr.AttemptID,
+		cr.State,
+		cr.Age,
+	)
+}
+
+func (cr *TransactionsCleanupRequest) redacted() interface{} {
+	return fmt.Sprintf(
+		"bucket: %s, collection: %s, scope: %s, atr: %s, attempt: %s, state: %s, age: %s",
+		redactMetaData(cr.AtrBucketName),
+		redactMetaData(cr.AtrCollectionName),
+		redactMetaData(cr.AtrScopeName),
+		cr.AtrID,
+		cr.AttemptID,
+		cr.State,
+		cr.Age,
+	)
 }
 
 // TransactionsDocRecord represents an individual document operation requiring cleanup.
@@ -279,10 +305,24 @@ func (c *stdTransactionsCleaner) checkForwardCompatability(
 }
 
 func (c *stdTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser string, req *TransactionsCleanupRequest, regular bool, cb func(attempt TransactionsCleanupAttempt)) {
+	beforeCb := func(stage string, attempt TransactionsCleanupAttempt) {
+		if attempt.Success {
+			cb(attempt)
+			return
+		}
+
+		logWarnf("Cleanup attempt %v with %p failed at %s check", req, c, stage)
+
+		if req.Age > 2*time.Hour {
+			logWarnf("Cleanup request is %s old which could indicate a serious error - please raise with support.", req.Age)
+		}
+
+		cb(attempt)
+	}
 	logSchedf("Cleaning up attempt %s with %p", req.AttemptID, c)
 	c.checkForwardCompatability(forwardCompatStageGetsCleanupEntry, req.ForwardCompat, func(err error) {
 		if err != nil {
-			cb(TransactionsCleanupAttempt{
+			beforeCb("forward compatability", TransactionsCleanupAttempt{
 				Success:           false,
 				IsReqular:         regular,
 				AttemptID:         req.AttemptID,
@@ -297,7 +337,7 @@ func (c *stdTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser stri
 
 		c.cleanupDocs(req, func(err error) {
 			if err != nil {
-				cb(TransactionsCleanupAttempt{
+				beforeCb("cleanup docs", TransactionsCleanupAttempt{
 					Success:           false,
 					IsReqular:         regular,
 					AttemptID:         req.AttemptID,
@@ -316,7 +356,7 @@ func (c *stdTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser stri
 					success = false
 				}
 
-				cb(TransactionsCleanupAttempt{
+				beforeCb("cleanup atr", TransactionsCleanupAttempt{
 					Success:           success,
 					IsReqular:         regular,
 					AttemptID:         req.AttemptID,
