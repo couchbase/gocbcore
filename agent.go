@@ -55,18 +55,6 @@ func (agent *Agent) HTTPClient() *http.Client {
 	return agent.http.cli
 }
 
-// AuthFunc is invoked by the agent to authenticate a client. This function returns two channels to allow for for multi-stage
-// authentication processes (such as SCRAM). The continue callback should be called when further asynchronous bootstrapping
-// requests (such as select bucket) can be sent. The completed callback should be called when authentication is completed,
-// or failed. It should contain any error that occurred. If completed is called before continue then continue will be called
-// first internally, the success value will be determined by whether or not an error is present.
-type AuthFunc func(client AuthClient, deadline time.Time, continueCb func(), completedCb func(error)) error
-
-// authFunc wraps AuthFunc to provide a better to the user.
-type authFunc func() (completedCh chan BytesAndError, continueCh chan bool, err error)
-
-type authFuncHandler func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc
-
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
 	initFn := func(client *memdClient, deadline time.Time) error {

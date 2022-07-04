@@ -98,7 +98,7 @@ func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoo
 }
 
 func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, tlsConfig *dynTLSConfig,
-	auth authFuncHandler, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+	auth AuthProvider, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
 	mcc.serverFailuresLock.Lock()
 	failureTime := mcc.serverFailures[address.Address]
 	mcc.serverFailuresLock.Unlock()
