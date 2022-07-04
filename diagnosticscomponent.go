@@ -740,7 +740,8 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 					return
 				}
 			case ClusterStateOnline:
-				if atomic.LoadUint32(&connected) == uint32(len(epList)) {
+				// If there are no entries in the epList then the service is not online and so cannot be ready.
+				if len(epList) > 0 && atomic.LoadUint32(&connected) == uint32(len(epList)) {
 					op.lock.Lock()
 					op.handledOneLocked()
 					op.lock.Unlock()
