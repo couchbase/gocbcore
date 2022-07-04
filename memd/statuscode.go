@@ -206,8 +206,8 @@ const (
 	StatusSubDocMultiPathFailureDeleted = StatusCode(0xd3)
 )
 
-// KVText returns the textual representation of this StatusCode.
-func (code StatusCode) KVText() string {
+// String returns the textual representation of this StatusCode.
+func (code StatusCode) String() string {
 	switch code {
 	case StatusSuccess:
 		return "success"

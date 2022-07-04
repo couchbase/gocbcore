@@ -1,6 +1,8 @@
 package memd
 
 import (
+	"bytes"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -88,6 +90,111 @@ type Packet struct {
 	UserImpersonationFrame *UserImpersonationFrame
 	PreserveExpiryFrame    *PreserveExpiryFrame
 	UnsupportedFrames      []UnsupportedFrame
+}
+
+func (pak *Packet) String() string {
+	var buffer bytes.Buffer
+
+	fmt.Fprintf(
+		&buffer,
+		"memd.Packet{Magic:%#02x(%s), Command:%#02x(%s), Datatype:%#02x, Status:%#04x(%s), Vbucket:%d(%#04x), Opaque:%#08x, "+
+			"Cas: %#08x, CollectionID:%d(%#08x), Barrier:%t\nKey:\n%sValue:\n%sExtras:\n%s",
+		uint8(pak.Magic),
+		pak.Magic,
+		pak.Command,
+		pak.Command.Name(),
+		pak.Datatype,
+		uint16(pak.Status),
+		pak.Status,
+		pak.Vbucket,
+		pak.Vbucket,
+		pak.Opaque,
+		pak.Cas,
+		pak.CollectionID,
+		pak.CollectionID,
+		pak.BarrierFrame != nil,
+		bytesToHexAsciiString(pak.Key),
+		bytesToHexAsciiString(pak.Value),
+		bytesToHexAsciiString(pak.Extras),
+	)
+
+	if pak.DurabilityLevelFrame != nil {
+		fmt.Fprintf(&buffer, "\nDurability Level: %#02x", pak.DurabilityLevelFrame.DurabilityLevel)
+
+		if pak.DurabilityTimeoutFrame != nil {
+			fmt.Fprintf(&buffer, "\nDurability Level Timeout: %s", pak.DurabilityTimeoutFrame.DurabilityTimeout)
+		}
+	}
+
+	if pak.StreamIDFrame != nil {
+		fmt.Fprintf(&buffer, "\nStreamID: %#02x", pak.StreamIDFrame.StreamID)
+	}
+
+	if pak.OpenTracingFrame != nil {
+		fmt.Fprintf(&buffer, "\nTrace Context:\n%s", bytesToHexAsciiString(pak.OpenTracingFrame.TraceContext))
+	}
+
+	if pak.ServerDurationFrame != nil {
+		fmt.Fprintf(&buffer, "\nServer Duration: %s", pak.ServerDurationFrame.ServerDuration)
+	}
+
+	if pak.UserImpersonationFrame != nil {
+		fmt.Fprintf(&buffer, "\nUser: %s", string(pak.UserImpersonationFrame.User))
+	}
+
+	if pak.PreserveExpiryFrame != nil {
+		fmt.Fprintf(&buffer, "\nPreserve Expiry: true")
+	}
+
+	if len(pak.UnsupportedFrames) > 0 {
+		fmt.Fprintf(&buffer, "\nUnsupported frames:")
+		for _, frame := range pak.UnsupportedFrames {
+			fmt.Fprintf(&buffer, "\nFrame type: %02x, data: %s", frame.Type, bytesToHexAsciiString(frame.Data))
+		}
+	}
+
+	fmt.Fprintf(&buffer, "}")
+
+	return buffer.String()
+}
+
+func bytesToHexAsciiString(bytes []byte) string {
+	out := ""
+	var ascii [16]byte
+	n := (len(bytes) + 15) &^ 15
+	for i := 0; i < n; i++ {
+		// include the line numbering at beginning of every line
+		if i%16 == 0 {
+			out += fmt.Sprintf("%4d", i)
+		}
+
+		// extra space between blocks of 8 bytes
+		if i%8 == 0 {
+			out += " "
+		}
+
+		// if we have bytes left, print the hex
+		if i < len(bytes) {
+			out += fmt.Sprintf(" %02X", bytes[i])
+		} else {
+			out += "   "
+		}
+
+		// build the ascii
+		if i >= len(bytes) {
+			ascii[i%16] = ' '
+		} else if bytes[i] < 32 || bytes[i] > 126 {
+			ascii[i%16] = '.'
+		} else {
+			ascii[i%16] = bytes[i]
+		}
+
+		// at the end of the line, print the newline.
+		if i%16 == 15 {
+			out += fmt.Sprintf("  %s\n", string(ascii[:]))
+		}
+	}
+	return out
 }
 
 // packetPool - Thread safe pool containing memcached packet structures. Used by the memcached connection when reading

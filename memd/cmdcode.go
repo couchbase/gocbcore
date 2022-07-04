@@ -1,6 +1,9 @@
 package memd
 
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
+)
 
 // CmdCode represents the specific command the packet is performing.
 type CmdCode uint8
@@ -203,4 +206,14 @@ func (command CmdCode) Name() string {
 	default:
 		return "CMD_x" + hex.EncodeToString([]byte{byte(command)})
 	}
+}
+
+func (magic CmdMagic) String() string {
+	switch magic {
+	case CmdMagicReq:
+		return "CmdMagicReq"
+	case CmdMagicRes:
+		return "CmdMagicRes"
+	}
+	return fmt.Sprintf("CmdMagicUnk(%d)", magic)
 }

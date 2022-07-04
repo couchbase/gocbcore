@@ -10,7 +10,7 @@ import (
 var statusCodeErrorMap = make(map[memd.StatusCode]error)
 
 func makeKvStatusError(code memd.StatusCode) error {
-	err := errors.New(code.KVText())
+	err := errors.New(code.String())
 	if statusCodeErrorMap[code] != nil {
 		log.Fatal("error handling setup failure")
 	}
@@ -22,7 +22,7 @@ func getKvStatusCodeError(code memd.StatusCode) error {
 	if err := statusCodeErrorMap[code]; err != nil {
 		return err
 	}
-	return errors.New(code.KVText())
+	return errors.New(code.String())
 }
 
 var (
