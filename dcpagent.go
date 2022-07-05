@@ -137,7 +137,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	// We wrap the authorization system to force DCP channel opening
 	//   as part of the "initialization" for any servers.
-	initFn := func(client *memdClient, deadline time.Time) error {
+	initFn := func(client *memdBootstrapClient, deadline time.Time) error {
 		sclient := &syncClient{client: client}
 		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
 			return err

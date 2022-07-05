@@ -57,7 +57,7 @@ func (agent *Agent) HTTPClient() *http.Client {
 
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := func(client *memdClient, deadline time.Time) error {
+	initFn := func(client *memdBootstrapClient, deadline time.Time) error {
 		return nil
 	}
 
