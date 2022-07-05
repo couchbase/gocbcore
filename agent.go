@@ -18,7 +18,6 @@ import (
 type Agent struct {
 	clientID             string
 	bucketName           string
-	initFn               memdInitFunc
 	defaultRetryStrategy RetryStrategy
 
 	pollerController configPollerController
@@ -57,14 +56,10 @@ func (agent *Agent) HTTPClient() *http.Client {
 
 // CreateAgent creates an agent for performing normal operations.
 func CreateAgent(config *AgentConfig) (*Agent, error) {
-	initFn := func(client *memdBootstrapClient, deadline time.Time) error {
-		return nil
-	}
-
-	return createAgent(config, initFn)
+	return createAgent(config)
 }
 
-func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
+func createAgent(config *AgentConfig) (*Agent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new agent: %+v", config)
 
@@ -78,7 +73,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),
 		bucketName: config.BucketName,
-		initFn:     initFn,
 		tracer:     tracerCmpt,
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
@@ -274,7 +268,6 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		circuitBreakerConfig,
 		c.zombieLogger,
 		c.tracer,
-		initFn,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
