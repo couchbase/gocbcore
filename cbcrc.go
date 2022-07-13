@@ -71,7 +71,7 @@ func cbCrc(key []byte) uint32 {
 	for x := 0; x < len(key); x++ {
 		crc = (crc >> 8) ^ crc32tab[(uint64(crc)^uint64(key[x]))&0xff]
 	}
-	return (^crc) >> 16
+	return (^crc) >> 16 & 0x7fff
 }
 
 func cbcVbMap(key []byte, numVbs uint32) uint16 {
