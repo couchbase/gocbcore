@@ -8,8 +8,14 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
+type memdSenderClient interface {
+	SupportsFeature(memd.HelloFeature) bool
+	Address() string
+	SendRequest(*memdQRequest) error
+}
+
 type syncClient struct {
-	client *memdBootstrapClient
+	client memdSenderClient
 }
 
 func (client *syncClient) SupportsFeature(feature memd.HelloFeature) bool {
@@ -20,8 +26,41 @@ func (client *syncClient) Address() string {
 	return client.client.Address()
 }
 
+func (client *syncClient) doRequest(req *memd.Packet, deadline time.Time) (valOut []byte, errOut error) {
+	signal := make(chan bool, 1)
+
+	qreq := memdQRequest{
+		Packet: *req,
+		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+			if resp != nil {
+				valOut = resp.Packet.Value
+			}
+			errOut = err
+			signal <- true
+		},
+		RetryStrategy: newFailFastRetryStrategy(),
+	}
+
+	err := client.client.SendRequest(&qreq)
+	if err != nil {
+		return nil, err
+	}
+
+	timeoutTmr := AcquireTimer(time.Until(deadline))
+	select {
+	case <-signal:
+		ReleaseTimer(timeoutTmr, false)
+		return
+	case <-timeoutTmr.C:
+		ReleaseTimer(timeoutTmr, true)
+		qreq.cancelWithCallback(errAmbiguousTimeout)
+		<-signal
+		return
+	}
+}
+
 func (client *syncClient) doBasicOp(cmd memd.CmdCode, k, v, e []byte, deadline time.Time) ([]byte, error) {
-	return client.client.SendSyncRequest(
+	return client.doRequest(
 		&memd.Packet{
 			Magic:   memd.CmdMagicReq,
 			Command: cmd,
@@ -43,6 +82,11 @@ func (client *syncClient) ExecGetClusterConfig(deadline time.Time) ([]byte, erro
 }
 
 func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags memd.DcpOpenFlag, deadline time.Time) error {
+	_, ok := client.client.(*memdClient)
+	if !ok {
+		return errCliInternalError
+	}
+
 	extraBuf := make([]byte, 8)
 	binary.BigEndian.PutUint32(extraBuf[0:], 0)
 	binary.BigEndian.PutUint32(extraBuf[4:], uint32((openFlags & ^memd.DcpOpenFlag(3))|memd.DcpOpenFlagProducer))
@@ -51,6 +95,10 @@ func (client *syncClient) ExecOpenDcpConsumer(streamName string, openFlags memd.
 }
 
 func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.Time) error {
+	_, ok := client.client.(*memdClient)
+	if !ok {
+		return errCliInternalError
+	}
 	// The client will always reply to No-Op's.  No need to enable it
 
 	err := client.ExecDcpControl("enable_noop", "true", deadline)
@@ -68,7 +116,7 @@ func (client *syncClient) ExecEnableDcpNoop(period time.Duration, deadline time.
 }
 
 func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
-	memcli, ok := client.client.client.(*memdClient)
+	memcli, ok := client.client.(*memdClient)
 	if !ok {
 		return errCliInternalError
 	}
@@ -82,7 +130,7 @@ func (client *syncClient) ExecEnableDcpClientEnd(deadline time.Time) error {
 }
 
 func (client *syncClient) ExecEnableDcpBufferAck(bufferSize int, deadline time.Time) error {
-	mclient, ok := client.client.client.(*memdClient)
+	mclient, ok := client.client.(*memdClient)
 	if !ok {
 		return errCliInternalError
 	}

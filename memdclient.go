@@ -2,7 +2,9 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,6 +67,8 @@ type memdClient struct {
 	compressionMinRatio  float64
 	disableDecompression bool
 
+	cancelBootstrapSig <-chan struct{}
+
 	gracefulCloseTriggered uint32
 }
 
@@ -116,15 +120,6 @@ func (client *memdClient) SupportsFeature(feature memd.HelloFeature) bool {
 	return checkSupportsFeature(client.features, feature)
 }
 
-// Features must be set from a context where no racey behaviours can occur, i.e. during bootstrap.
-func (client *memdClient) Features(features []memd.HelloFeature) {
-	client.features = features
-
-	for _, feature := range features {
-		client.conn.EnableFeature(feature)
-	}
-}
-
 func (client *memdClient) EnableDcpBufferAck(bufferAckSize int) {
 	client.dcpAckSize = bufferAckSize
 }
@@ -154,10 +149,6 @@ func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 
 func (client *memdClient) Address() string {
 	return client.conn.RemoteAddr()
-}
-
-func (client *memdClient) ConnID() string {
-	return client.connID
 }
 
 func (client *memdClient) CloseNotify() chan bool {
@@ -645,4 +636,625 @@ func (client *memdClient) sendCanary() {
 			client.breaker.MarkFailure()
 		}
 	}
+}
+
+func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
+	var features []memd.HelloFeature
+
+	// Send the TLS flag, which has unknown effects.
+	features = append(features, memd.FeatureTLS)
+
+	// Indicate that we understand XATTRs
+	features = append(features, memd.FeatureXattr)
+
+	// Indicates that we understand select buckets.
+	features = append(features, memd.FeatureSelectBucket)
+
+	// If the user wants to use KV Error maps, lets enable them
+	if props.XErrorFeatureEnabled {
+		features = append(features, memd.FeatureXerror)
+	}
+
+	// Indicate that we understand JSON
+	if props.JSONFeatureEnabled {
+		features = append(features, memd.FeatureJSON)
+	}
+
+	// Indicate that we understand Point in Time
+	if props.PITRFeatureEnabled {
+		features = append(features, memd.FeaturePITR)
+	}
+
+	// If the user wants to use mutation tokens, lets enable them
+	if props.MutationTokensEnabled {
+		features = append(features, memd.FeatureSeqNo)
+	}
+
+	// If the user wants on-the-wire compression, lets try to enable it
+	if props.CompressionEnabled {
+		features = append(features, memd.FeatureSnappy)
+	}
+
+	if props.DurationsEnabled {
+		features = append(features, memd.FeatureDurations)
+	}
+
+	if props.CollectionsEnabled {
+		features = append(features, memd.FeatureCollections)
+	}
+
+	if props.OutOfOrderEnabled {
+		features = append(features, memd.FeatureUnorderedExec)
+	}
+
+	// These flags are informational so don't actually enable anything
+	features = append(features, memd.FeatureAltRequests)
+	features = append(features, memd.FeatureCreateAsDeleted)
+	features = append(features, memd.FeatureReplaceBodyWithXattr)
+	features = append(features, memd.FeaturePreserveExpiry)
+
+	if props.SyncReplicationEnabled {
+		features = append(features, memd.FeatureSyncReplication)
+	}
+
+	return features
+}
+
+type helloProps struct {
+	MutationTokensEnabled  bool
+	CollectionsEnabled     bool
+	CompressionEnabled     bool
+	DurationsEnabled       bool
+	OutOfOrderEnabled      bool
+	JSONFeatureEnabled     bool
+	XErrorFeatureEnabled   bool
+	SyncReplicationEnabled bool
+	PITRFeatureEnabled     bool
+}
+
+type bootstrapProps struct {
+	Bucket        string
+	UserAgent     string
+	ErrMapManager *errMapComponent
+	HelloProps    helloProps
+}
+
+type memdInitFunc func(*memdClient, time.Time) error
+
+func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time,
+	authMechanisms []AuthMechanism, authProvider AuthProvider, cb memdInitFunc) error {
+	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
+
+	bucket := settings.Bucket
+	features := client.helloFeatures(settings.HelloProps)
+	clientInfoStr := clientInfoString(client.connID, settings.UserAgent)
+	client.cancelBootstrapSig = cancelSig
+
+	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
+	if err != nil {
+		logDebugf("Memdclient `%s/%p` Failed to execute HELLO (%v)", client.Address(), client, err)
+		return err
+	}
+
+	errMapCh, err := client.ExecGetErrorMap(2, deadline)
+	if err != nil {
+		// GetErrorMap isn't integral to bootstrap succeeding
+		logDebugf("Memdclient `%s/%p`Failed to execute Get error map (%v)", client.Address(), client, err)
+	}
+
+	var listMechsCh chan SaslListMechsCompleted
+	var completedAuthCh chan error
+	var continueAuthCh chan bool
+
+	firstAuthMethod := client.buildAuthHandler(authProvider, deadline, authMechanisms[0])
+
+	if firstAuthMethod != nil {
+		// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
+		listMechsCh = make(chan SaslListMechsCompleted, 1)
+		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
+			if err != nil {
+				logDebugf("Memdclient `%s/%p` Failed to fetch list auth mechs (%v)", client.Address(), client, err)
+			}
+			listMechsCh <- SaslListMechsCompleted{
+				Err:   err,
+				Mechs: mechs,
+			}
+		})
+		if err != nil {
+			logDebugf("Memdclient `%s/%p` Failed to execute list auth mechs (%v)", client.Address(), client, err)
+		}
+
+		completedAuthCh, continueAuthCh, err = firstAuthMethod()
+		if err != nil {
+			logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
+			return err
+		}
+	}
+
+	var selectCh chan error
+	// If there's no bucket then we don't need to do select bucket, we also don't need to for the continue channel,
+	// as it will never be read and will be garbage collected.
+	if bucket != "" {
+		if continueAuthCh == nil {
+			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
+			if err != nil {
+				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+				return err
+			}
+		} else {
+			selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
+		}
+	}
+
+	helloResp := <-helloCh
+	if helloResp.Err != nil {
+		logDebugf("Memdclient `%s/%p` Failed to hello with server (%v)", client.Address(), client, helloResp.Err)
+		return helloResp.Err
+	}
+
+	if errMapCh != nil {
+		errMapResp := <-errMapCh
+		if errMapResp.Err == nil {
+			settings.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
+		} else {
+			logDebugf("Memdclient `%s/%p` Failed to fetch kv error map (%s)", client.Address(), client, errMapResp.Err)
+		}
+	}
+
+	var serverAuthMechanisms []AuthMechanism
+	if listMechsCh != nil {
+		listMechsResp := <-listMechsCh
+		if listMechsResp.Err == nil {
+			serverAuthMechanisms = listMechsResp.Mechs
+			logDebugf("Memdclient `%s/%p` Server supported auth mechanisms: %v", client.Address(), client, serverAuthMechanisms)
+		} else {
+			logDebugf("Memdclient `%s/%p` Failed to fetch auth mechs from server (%v)", client.Address(), client, listMechsResp.Err)
+		}
+	}
+
+	// If completedAuthCh isn't nil then we have attempted to do auth so we need to wait on the result of that.
+	if completedAuthCh != nil {
+		authErr := <-completedAuthCh
+		if authErr != nil {
+			logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
+			if errors.Is(authErr, ErrRequestCanceled) {
+				// There's no point in us trying different mechanisms if something has cancelled bootstrapping.
+				return authErr
+			} else if errors.Is(authErr, ErrAuthenticationFailure) {
+				// If there's only one auth mechanism then we can just fail.
+				if len(authMechanisms) == 1 {
+					return authErr
+				}
+				// If the server supports the mechanism we've tried then this auth error can't be due to an unsupported
+				// mechanism.
+				for _, mech := range serverAuthMechanisms {
+					if mech == authMechanisms[0] {
+						return authErr
+					}
+				}
+
+				// If we've got here then the auth mechanism we tried is unsupported so let's keep trying with the next
+				// supported mechanism.
+				logInfof("Memdclient `%p` Unsupported authentication mechanism, will attempt to find next supported mechanism", client)
+			}
+
+			for {
+				var found bool
+				var mech AuthMechanism
+				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
+				if !found {
+					logDebugf("Memdclient `%s/%p` Failed to authenticate, all options exhausted", client.Address(), client)
+					return authErr
+				}
+
+				logDebugf("Memdclient `%s/%p` Retrying authentication with found supported mechanism: %s", client.Address(), client, mech)
+				nextAuthFunc := client.buildAuthHandler(authProvider, deadline, mech)
+				if nextAuthFunc == nil {
+					// This can't really happen but just in case it somehow does.
+					logInfof("Memdclient `%p` Failed to authenticate, no available credentials", client)
+					return authErr
+				}
+				completedAuthCh, continueAuthCh, err = nextAuthFunc()
+				if err != nil {
+					logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
+					return err
+				}
+				if bucket != "" {
+					if continueAuthCh == nil {
+						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
+						if err != nil {
+							logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+							return err
+						}
+					} else {
+						selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
+					}
+				}
+				authErr = <-completedAuthCh
+				if authErr == nil {
+					break
+				}
+
+				logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
+				if errors.Is(authErr, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
+					return authErr
+				}
+			}
+		}
+		logDebugf("Memdclient `%s/%p` Authenticated successfully", client.Address(), client)
+	}
+
+	if selectCh != nil {
+		selectErr := <-selectCh
+		if selectErr != nil {
+			logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectErr)
+			return selectErr
+		}
+	}
+
+	client.features = helloResp.SrvFeatures
+
+	logDebugf("Memdclient `%s/%p` Client Features: %+v", client.Address(), client, features)
+	logDebugf("Memdclient `%s/%p` Server Features: %+v", client.Address(), client, client.features)
+
+	for _, feature := range client.features {
+		client.conn.EnableFeature(feature)
+	}
+
+	err = cb(client, deadline)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLAuth,
+				Key:     k,
+				Value:   v,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				// Auth is special, auth continue is surfaced as an error
+				var val []byte
+				if resp != nil {
+					val = resp.Value
+				}
+
+				cb(val, err)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error {
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLStep,
+				Key:     k,
+				Value:   v,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					cb(err)
+					return
+				}
+
+				cb(nil)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan error, error) {
+	completedCh := make(chan error, 1)
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSelectBucket,
+				Key:     b,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					if errors.Is(err, ErrDocumentNotFound) {
+						// Bucket not found means that the user has privileges to access the bucket but that the bucket
+						// is in some way not existing right now (e.g. in warmup).
+						err = errBucketNotFound
+					}
+					completedCh <- err
+					return
+				}
+
+				completedCh <- nil
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+type errorMapResponse struct {
+	Err   error
+	Bytes []byte
+}
+
+func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan errorMapResponse, error) {
+	completedCh := make(chan errorMapResponse, 1)
+	valueBuf := make([]byte, 2)
+	binary.BigEndian.PutUint16(valueBuf, version)
+
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdGetErrorMap,
+				Value:   valueBuf,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- errorMapResponse{
+						Err: err,
+					}
+					return
+				}
+
+				completedCh <- errorMapResponse{
+					Bytes: resp.Value,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+func (client *memdClient) SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error {
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdSASLListMechs,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					cb(nil, err)
+					return
+				}
+
+				mechs := strings.Split(string(resp.Value), " ")
+				var authMechs []AuthMechanism
+				for _, mech := range mechs {
+					authMechs = append(authMechs, AuthMechanism(mech))
+				}
+
+				cb(authMechs, nil)
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ExecHelloResponse contains the features and/or error from an ExecHello operation.
+type ExecHelloResponse struct {
+	SrvFeatures []memd.HelloFeature
+	Err         error
+}
+
+func (client *memdClient) ExecHello(clientID string, features []memd.HelloFeature, deadline time.Time) (chan ExecHelloResponse, error) {
+	appendFeatureCode := func(bytes []byte, feature memd.HelloFeature) []byte {
+		bytes = append(bytes, 0, 0)
+		binary.BigEndian.PutUint16(bytes[len(bytes)-2:], uint16(feature))
+		return bytes
+	}
+
+	var featureBytes []byte
+	for _, feature := range features {
+		featureBytes = appendFeatureCode(featureBytes, feature)
+	}
+
+	completedCh := make(chan ExecHelloResponse, 1)
+	err := client.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdHello,
+				Key:     []byte(clientID),
+				Value:   featureBytes,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- ExecHelloResponse{
+						Err: err,
+					}
+					return
+				}
+
+				var srvFeatures []memd.HelloFeature
+				for i := 0; i < len(resp.Value); i += 2 {
+					feature := binary.BigEndian.Uint16(resp.Value[i:])
+					srvFeatures = append(srvFeatures, memd.HelloFeature(feature))
+				}
+
+				completedCh <- ExecHelloResponse{
+					SrvFeatures: srvFeatures,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Time) error {
+	origCb := req.Callback
+	doneCh := make(chan struct{})
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		close(doneCh)
+		origCb(resp, req, err)
+	}
+
+	req.Callback = handler
+
+	err := client.SendRequest(req)
+	if err != nil {
+		return err
+	}
+
+	start := time.Now()
+	req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
+		connInfo := req.ConnectionInfo()
+		count, reasons := req.Retries()
+		req.cancelWithCallback(&TimeoutError{
+			InnerError:         errAmbiguousTimeout,
+			OperationID:        req.Command.Name(),
+			Opaque:             req.Identifier(),
+			TimeObserved:       time.Since(start),
+			RetryReasons:       reasons,
+			RetryAttempts:      count,
+			LastDispatchedTo:   connInfo.lastDispatchedTo,
+			LastDispatchedFrom: connInfo.lastDispatchedFrom,
+			LastConnectionID:   connInfo.lastConnectionID,
+		})
+	}))
+
+	go func() {
+		select {
+		case <-doneCh:
+			return
+		case <-client.cancelBootstrapSig:
+			req.Cancel()
+			<-doneCh
+			return
+		}
+	}()
+
+	return nil
+}
+
+func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh chan bool, deadline time.Time) chan error {
+	selectCh := make(chan error, 1)
+	go func() {
+		success := <-continueAuthCh
+		if !success {
+			selectCh <- nil
+			return
+		}
+		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
+		if err != nil {
+			logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+			selectCh <- err
+			return
+		}
+
+		execErr := <-execCh
+		selectCh <- execErr
+	}()
+
+	return selectCh
+}
+
+type authFunc func() (continueCh chan error, completedCb chan bool, err error)
+
+func (client *memdClient) buildAuthHandler(auth AuthProvider, deadline time.Time, mechanism AuthMechanism) authFunc {
+	creds, err := getKvAuthCreds(auth, client.Address())
+	if err != nil {
+		return nil
+	}
+
+	if creds.Username != "" || creds.Password != "" {
+		return func() (chan error, chan bool, error) {
+			continueCh := make(chan bool, 1)
+			completedCh := make(chan error, 1)
+			hasContinued := int32(0)
+			callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
+				// hasContinued should never be 1 here but let's guard against it.
+				if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+					continueCh <- true
+				}
+			}, func(err error) {
+				if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+					sendContinue := true
+					if err != nil {
+						sendContinue = false
+					}
+					continueCh <- sendContinue
+				}
+				completedCh <- err
+			})
+			if callErr != nil {
+				return nil, nil, callErr
+			}
+			return completedCh, continueCh, nil
+		}
+	}
+
+	return nil
+}
+
+func checkSupportsFeature(srvFeatures []memd.HelloFeature, feature memd.HelloFeature) bool {
+	for _, srvFeature := range srvFeatures {
+		if srvFeature == feature {
+			return true
+		}
+	}
+	return false
+}
+
+func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
+	for {
+		if len(authMechanisms) <= 1 {
+			break
+		}
+		authMechanisms = authMechanisms[1:]
+		mech := authMechanisms[0]
+		for _, serverMech := range serverAuthMechanisms {
+			if mech == serverMech {
+				return true, mech, authMechanisms
+			}
+		}
+	}
+
+	return false, "", authMechanisms
 }
