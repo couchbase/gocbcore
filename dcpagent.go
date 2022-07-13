@@ -13,6 +13,7 @@ import (
 type DCPAgent struct {
 	clientID   string
 	bucketName string
+	initFn     memdInitFunc
 
 	pollerController configPollerController
 	kvMux            *kvMux
@@ -134,9 +135,61 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, nil)
 
+	// We wrap the authorization system to force DCP channel opening
+	//   as part of the "initialization" for any servers.
+	initFn := func(client *memdBootstrapClient, deadline time.Time) error {
+		sclient := &syncClient{client: client}
+		if err := sclient.ExecOpenDcpConsumer(dcpStreamName, openFlags, deadline); err != nil {
+			return err
+		}
+
+		if err := sclient.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
+			return err
+		}
+
+		if dcpPriorityStr != "" {
+			if err := sclient.ExecDcpControl("set_priority", dcpPriorityStr, deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.DCPConfig.UseExpiryOpcode {
+			if err := sclient.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.DCPConfig.UseStreamID {
+			if err := sclient.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if config.DCPConfig.UseOSOBackfill {
+			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
+				return err
+			}
+		}
+
+		if dcpBackfillOrderStr != "" {
+			if err := sclient.ExecDcpControl("backfill_order", dcpBackfillOrderStr, deadline); err != nil {
+				return err
+			}
+		}
+
+		if !config.DCPConfig.DisableBufferAcknowledgement {
+			if err := sclient.ExecEnableDcpBufferAck(dcpBufferSize, deadline); err != nil {
+				return err
+			}
+		}
+
+		return sclient.ExecEnableDcpClientEnd(deadline)
+	}
+
 	c := &DCPAgent{
 		clientID:   formatCbUID(randomCbUID()),
 		bucketName: config.BucketName,
+		initFn:     initFn,
 		tracer:     tracerCmpt,
 
 		errMap: newErrMapManager(config.BucketName),
@@ -219,18 +272,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			DisableDecompression: disableDecompression,
 			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
 			ConnBufSize:          kvBufferSize,
-
-			DCPBootstrapProps: &memdBootstrapDCPProps{
-				openFlags:                    openFlags,
-				streamName:                   dcpStreamName,
-				disableBufferAcknowledgement: config.DCPConfig.DisableBufferAcknowledgement,
-				useOSOBackfill:               config.DCPConfig.UseOSOBackfill,
-				useStreamID:                  config.DCPConfig.UseStreamID,
-				useExpiryOpcode:              config.DCPConfig.UseExpiryOpcode,
-				backfillOrderStr:             dcpBackfillOrderStr,
-				priorityStr:                  dcpPriorityStr,
-				bufferSize:                   dcpBufferSize,
-			},
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
@@ -248,6 +289,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		circuitBreakerConfig,
 		nil,
 		c.tracer,
+		initFn,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{

@@ -3,10 +3,9 @@ package gocbcore
 import (
 	"encoding/binary"
 	"errors"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"strings"
 	"time"
-
-	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 type bootstrapableClient interface {
@@ -15,19 +14,6 @@ type bootstrapableClient interface {
 	ConnID() string
 	SupportsFeature(feature memd.HelloFeature) bool
 	Features([]memd.HelloFeature)
-}
-
-type bootstrapClient interface {
-	Address() string
-	ConnID() string
-	Features(features []memd.HelloFeature)
-	SupportsFeature(feature memd.HelloFeature) bool
-	SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error
-	SaslStep(k, v []byte, deadline time.Time, cb func(err error)) error
-	ExecSelectBucket(b []byte, deadline time.Time) (chan error, error)
-	ExecGetErrorMap(version uint16, deadline time.Time) (chan errorMapResponse, error)
-	SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error
-	ExecHello(clientID string, features []memd.HelloFeature, deadline time.Time) (chan ExecHelloResponse, error)
 }
 
 // Due to AuthProvider we are currently tied to bootstrapping passing around a deadline and the bootstrap
@@ -279,6 +265,32 @@ func (bc *memdBootstrapClient) ExecHello(clientID string, features []memd.HelloF
 	}
 
 	return completedCh, nil
+}
+
+// SendSyncRequest sends a blocking request.
+// In the future we should aim to remove this function and create a dcp bootstrap client which wraps this one and
+// exposes the DCP control functions directly, removing the need for the sync client.
+func (bc *memdBootstrapClient) SendSyncRequest(pak *memd.Packet, deadline time.Time) (valOut []byte, errOut error) {
+	signal := make(chan bool, 1)
+	err := bc.doBootstrapRequest(&memdQRequest{
+		Packet: *pak,
+		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+			if resp != nil {
+				valOut = resp.Packet.Value
+			}
+			errOut = err
+			signal <- true
+		},
+		RetryStrategy: newFailFastRetryStrategy(),
+	}, deadline)
+	if err != nil {
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	<-signal
+	return
 }
 
 func (bc *memdBootstrapClient) doBootstrapRequest(req *memdQRequest, deadline time.Time) error {

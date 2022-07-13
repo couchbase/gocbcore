@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 type helloProps struct {
@@ -30,12 +29,15 @@ type bootstrapProps struct {
 	HelloProps    helloProps
 }
 
+type memdInitFunc func(*memdBootstrapClient, time.Time) error
+
 type memdClientDialerComponent struct {
 	kvConnectTimeout  time.Duration
 	serverWaitTimeout time.Duration
 	clientID          string
 	breakerCfg        CircuitBreakerConfig
 
+	dcpQueueSize         int
 	compressionMinSize   int
 	compressionMinRatio  float64
 	disableDecompression bool
@@ -47,41 +49,25 @@ type memdClientDialerComponent struct {
 	tracer       *tracerComponent
 	zombieLogger *zombieLoggerComponent
 
-	bootstrapProps bootstrapProps
+	bootstrapProps    bootstrapProps
+	bootstrapInitFunc memdInitFunc
 
 	bootstrapFailHandlersLock sync.Mutex
 	bootstrapFailHandlers     []memdBoostrapFailHandler
 
 	noTLSSeedNode bool
-
-	dcpBootstrapProps *memdBootstrapDCPProps
-	dcpQueueSize      int
-}
-
-type memdBootstrapDCPProps struct {
-	disableBufferAcknowledgement bool
-	useOSOBackfill               bool
-	useStreamID                  bool
-	useExpiryOpcode              bool
-	backfillOrderStr             string
-	priorityStr                  string
-	streamName                   string
-	openFlags                    memd.DcpOpenFlag
-	bufferSize                   int
 }
 
 type memdClientDialerProps struct {
 	KVConnectTimeout     time.Duration
 	ServerWaitTimeout    time.Duration
 	ClientID             string
+	DCPQueueSize         int
 	CompressionMinSize   int
 	CompressionMinRatio  float64
 	DisableDecompression bool
 	NoTLSSeedNode        bool
 	ConnBufSize          uint
-
-	DCPBootstrapProps *memdBootstrapDCPProps
-	DCPQueueSize      int
 }
 
 type memdBoostrapFailHandler interface {
@@ -89,7 +75,7 @@ type memdBoostrapFailHandler interface {
 }
 
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, bootstrapInitFunc memdInitFunc) *memdClientDialerComponent {
 	return &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
@@ -99,9 +85,9 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		tracer:            tracer,
 		serverFailures:    make(map[string]time.Time),
 
-		bootstrapProps: bSettings,
+		bootstrapProps:    bSettings,
+		bootstrapInitFunc: bootstrapInitFunc,
 
-		dcpBootstrapProps:    props.DCPBootstrapProps,
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinSize:   props.CompressionMinSize,
 		compressionMinRatio:  props.CompressionMinRatio,
@@ -163,12 +149,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		return nil, err
 	}
 
-	bClient := newMemdBootstrapClient(client, cancelSig)
-	if mcc.dcpBootstrapProps == nil {
-		err = mcc.bootstrap(bClient, deadline, authMechanisms, auth)
-	} else {
-		err = mcc.dcpBootstrap(newDCPBootstrapClient(bClient), deadline, authMechanisms, auth)
-	}
+	err = mcc.bootstrap(newMemdBootstrapClient(client, cancelSig), deadline, authMechanisms, auth, mcc.bootstrapInitFunc)
 	if err != nil {
 		closeErr := client.Close()
 		if closeErr != nil {
@@ -249,61 +230,8 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	return client, err
 }
 
-func (mcc *memdClientDialerComponent) dcpBootstrap(client *dcpBootstrapClient, deadline time.Time,
-	authMechanisms []AuthMechanism, authProvider AuthProvider) error {
-	if err := mcc.bootstrap(client, deadline, authMechanisms, authProvider); err != nil {
-		return err
-	}
-
-	if err := client.ExecOpenDcpConsumer(mcc.dcpBootstrapProps.streamName, mcc.dcpBootstrapProps.openFlags, deadline); err != nil {
-		return err
-	}
-
-	if err := client.ExecEnableDcpNoop(180*time.Second, deadline); err != nil {
-		return err
-	}
-
-	if mcc.dcpBootstrapProps.priorityStr != "" {
-		if err := client.ExecDcpControl("set_priority", mcc.dcpBootstrapProps.priorityStr, deadline); err != nil {
-			return err
-		}
-	}
-
-	if mcc.dcpBootstrapProps.useExpiryOpcode {
-		if err := client.ExecDcpControl("enable_expiry_opcode", "true", deadline); err != nil {
-			return err
-		}
-	}
-
-	if mcc.dcpBootstrapProps.useStreamID {
-		if err := client.ExecDcpControl("enable_stream_id", "true", deadline); err != nil {
-			return err
-		}
-	}
-
-	if mcc.dcpBootstrapProps.useOSOBackfill {
-		if err := client.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
-			return err
-		}
-	}
-
-	if mcc.dcpBootstrapProps.backfillOrderStr != "" {
-		if err := client.ExecDcpControl("backfill_order", mcc.dcpBootstrapProps.backfillOrderStr, deadline); err != nil {
-			return err
-		}
-	}
-
-	if !mcc.dcpBootstrapProps.disableBufferAcknowledgement {
-		if err := client.ExecEnableDcpBufferAck(mcc.dcpBootstrapProps.bufferSize, deadline); err != nil {
-			return err
-		}
-	}
-
-	return client.ExecEnableDcpClientEnd(deadline)
-}
-
-func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline time.Time,
-	authMechanisms []AuthMechanism, authProvider AuthProvider) error {
+func (mcc *memdClientDialerComponent) bootstrap(client *memdBootstrapClient, deadline time.Time,
+	authMechanisms []AuthMechanism, authProvider AuthProvider, initFn memdInitFunc) error {
 	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
 
 	bucket := mcc.bootstrapProps.Bucket
@@ -477,10 +405,15 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 	logDebugf("Memdclient `%s/%p` Client Features: %+v", client.Address(), client, features)
 	logDebugf("Memdclient `%s/%p` Server Features: %+v", client.Address(), client, helloResp.SrvFeatures)
 
+	err = initFn(client, deadline)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (mcc *memdClientDialerComponent) continueAfterAuth(client bootstrapClient, bucketName string, continueAuthCh chan bool,
+func (mcc *memdClientDialerComponent) continueAfterAuth(client *memdBootstrapClient, bucketName string, continueAuthCh chan bool,
 	deadline time.Time) chan error {
 	selectCh := make(chan error, 1)
 	go func() {
@@ -505,7 +438,7 @@ func (mcc *memdClientDialerComponent) continueAfterAuth(client bootstrapClient, 
 
 type authFunc func() (continueCh chan error, completedCb chan bool, err error)
 
-func (mcc *memdClientDialerComponent) buildAuthHandler(client bootstrapClient, auth AuthProvider, deadline time.Time,
+func (mcc *memdClientDialerComponent) buildAuthHandler(client *memdBootstrapClient, auth AuthProvider, deadline time.Time,
 	mechanism AuthMechanism) authFunc {
 	creds, err := getKvAuthCreds(auth, client.Address())
 	if err != nil {
