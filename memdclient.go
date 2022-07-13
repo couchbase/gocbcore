@@ -722,7 +722,7 @@ type bootstrapProps struct {
 type memdInitFunc func(*memdClient, time.Time) error
 
 func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstrapProps, deadline time.Time,
-	authMechanisms []AuthMechanism, authProvider AuthProvider, cb memdInitFunc) error {
+	authMechanisms []AuthMechanism, authHandler authFuncHandler, cb memdInitFunc) error {
 	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
 
 	bucket := settings.Bucket
@@ -743,13 +743,9 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
-	var completedAuthCh chan error
-	var continueAuthCh chan bool
-
-	firstAuthMethod := client.buildAuthHandler(authProvider, deadline, authMechanisms[0])
-
+	firstAuthMethod := authHandler(client, deadline, authMechanisms[0])
+	// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 	if firstAuthMethod != nil {
-		// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
 		listMechsCh = make(chan SaslListMechsCompleted, 1)
 		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
@@ -763,7 +759,11 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		if err != nil {
 			logDebugf("Memdclient `%s/%p` Failed to execute list auth mechs (%v)", client.Address(), client, err)
 		}
+	}
 
+	var completedAuthCh chan BytesAndError
+	var continueAuthCh chan bool
+	if firstAuthMethod != nil {
 		completedAuthCh, continueAuthCh, err = firstAuthMethod()
 		if err != nil {
 			logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
@@ -771,19 +771,17 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 		}
 	}
 
-	var selectCh chan error
-	// If there's no bucket then we don't need to do select bucket, we also don't need to for the continue channel,
-	// as it will never be read and will be garbage collected.
-	if bucket != "" {
-		if continueAuthCh == nil {
+	var selectCh chan BytesAndError
+	if continueAuthCh == nil {
+		if bucket != "" {
 			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
 				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 				return err
 			}
-		} else {
-			selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 		}
+	} else {
+		selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 	}
 
 	helloResp := <-helloCh
@@ -814,22 +812,22 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 
 	// If completedAuthCh isn't nil then we have attempted to do auth so we need to wait on the result of that.
 	if completedAuthCh != nil {
-		authErr := <-completedAuthCh
-		if authErr != nil {
-			logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
-			if errors.Is(authErr, ErrRequestCanceled) {
+		authResp := <-completedAuthCh
+		if authResp.Err != nil {
+			logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authResp.Err)
+			if errors.Is(authResp.Err, ErrRequestCanceled) {
 				// There's no point in us trying different mechanisms if something has cancelled bootstrapping.
-				return authErr
-			} else if errors.Is(authErr, ErrAuthenticationFailure) {
+				return authResp.Err
+			} else if errors.Is(authResp.Err, ErrAuthenticationFailure) {
 				// If there's only one auth mechanism then we can just fail.
 				if len(authMechanisms) == 1 {
-					return authErr
+					return authResp.Err
 				}
 				// If the server supports the mechanism we've tried then this auth error can't be due to an unsupported
 				// mechanism.
 				for _, mech := range serverAuthMechanisms {
 					if mech == authMechanisms[0] {
-						return authErr
+						return authResp.Err
 					}
 				}
 
@@ -844,40 +842,40 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
 				if !found {
 					logDebugf("Memdclient `%s/%p` Failed to authenticate, all options exhausted", client.Address(), client)
-					return authErr
+					return authResp.Err
 				}
 
 				logDebugf("Memdclient `%s/%p` Retrying authentication with found supported mechanism: %s", client.Address(), client, mech)
-				nextAuthFunc := client.buildAuthHandler(authProvider, deadline, mech)
+				nextAuthFunc := authHandler(client, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
 					logInfof("Memdclient `%p` Failed to authenticate, no available credentials", client)
-					return authErr
+					return authResp.Err
 				}
 				completedAuthCh, continueAuthCh, err = nextAuthFunc()
 				if err != nil {
 					logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
 					return err
 				}
-				if bucket != "" {
-					if continueAuthCh == nil {
+				if continueAuthCh == nil {
+					if bucket != "" {
 						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
 							logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 							return err
 						}
-					} else {
-						selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 					}
+				} else {
+					selectCh = client.continueAfterAuth(bucket, continueAuthCh, deadline)
 				}
-				authErr = <-completedAuthCh
-				if authErr == nil {
+				authResp = <-completedAuthCh
+				if authResp.Err == nil {
 					break
 				}
 
-				logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
-				if errors.Is(authErr, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
-					return authErr
+				logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authResp.Err)
+				if errors.Is(authResp.Err, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
+					return authResp.Err
 				}
 			}
 		}
@@ -885,10 +883,10 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	}
 
 	if selectCh != nil {
-		selectErr := <-selectCh
-		if selectErr != nil {
-			logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectErr)
-			return selectErr
+		selectResp := <-selectCh
+		if selectResp.Err != nil {
+			logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectResp.Err)
+			return selectResp.Err
 		}
 	}
 
@@ -907,6 +905,12 @@ func (client *memdClient) Bootstrap(cancelSig <-chan struct{}, settings bootstra
 	}
 
 	return nil
+}
+
+// BytesAndError contains the raw bytes of the result of an operation, and/or the error that occurred.
+type BytesAndError struct {
+	Err   error
+	Bytes []byte
 }
 
 func (client *memdClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {
@@ -966,8 +970,8 @@ func (client *memdClient) SaslStep(k, v []byte, deadline time.Time, cb func(err 
 	return nil
 }
 
-func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan error, error) {
-	completedCh := make(chan error, 1)
+func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan BytesAndError, error) {
+	completedCh := make(chan BytesAndError, 1)
 	err := client.doBootstrapRequest(
 		&memdQRequest{
 			Packet: memd.Packet{
@@ -978,15 +982,19 @@ func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan e
 			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 				if err != nil {
 					if errors.Is(err, ErrDocumentNotFound) {
-						// Bucket not found means that the user has privileges to access the bucket but that the bucket
+						// Bucket not found means that the user has priviledges to access the bucket but that the bucket
 						// is in some way not existing right now (e.g. in warmup).
 						err = errBucketNotFound
 					}
-					completedCh <- err
+					completedCh <- BytesAndError{
+						Err: err,
+					}
 					return
 				}
 
-				completedCh <- nil
+				completedCh <- BytesAndError{
+					Bytes: resp.Value,
+				}
 			},
 			RetryStrategy: newFailFastRetryStrategy(),
 		},
@@ -999,13 +1007,8 @@ func (client *memdClient) ExecSelectBucket(b []byte, deadline time.Time) (chan e
 	return completedCh, nil
 }
 
-type errorMapResponse struct {
-	Err   error
-	Bytes []byte
-}
-
-func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan errorMapResponse, error) {
-	completedCh := make(chan errorMapResponse, 1)
+func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (chan BytesAndError, error) {
+	completedCh := make(chan BytesAndError, 1)
 	valueBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(valueBuf, version)
 
@@ -1018,13 +1021,13 @@ func (client *memdClient) ExecGetErrorMap(version uint16, deadline time.Time) (c
 			},
 			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 				if err != nil {
-					completedCh <- errorMapResponse{
+					completedCh <- BytesAndError{
 						Err: err,
 					}
 					return
 				}
 
-				completedCh <- errorMapResponse{
+				completedCh <- BytesAndError{
 					Bytes: resp.Value,
 				}
 			},
@@ -1173,64 +1176,30 @@ func (client *memdClient) doBootstrapRequest(req *memdQRequest, deadline time.Ti
 	return nil
 }
 
-func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh chan bool, deadline time.Time) chan error {
-	selectCh := make(chan error, 1)
+func (client *memdClient) continueAfterAuth(bucketName string, continueAuthCh chan bool, deadline time.Time) chan BytesAndError {
+	if bucketName == "" {
+		return nil
+	}
+
+	selectCh := make(chan BytesAndError, 1)
 	go func() {
 		success := <-continueAuthCh
 		if !success {
-			selectCh <- nil
+			selectCh <- BytesAndError{}
 			return
 		}
 		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
 		if err != nil {
 			logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
-			selectCh <- err
+			selectCh <- BytesAndError{Err: err}
 			return
 		}
 
-		execErr := <-execCh
-		selectCh <- execErr
+		execResp := <-execCh
+		selectCh <- execResp
 	}()
 
 	return selectCh
-}
-
-type authFunc func() (continueCh chan error, completedCb chan bool, err error)
-
-func (client *memdClient) buildAuthHandler(auth AuthProvider, deadline time.Time, mechanism AuthMechanism) authFunc {
-	creds, err := getKvAuthCreds(auth, client.Address())
-	if err != nil {
-		return nil
-	}
-
-	if creds.Username != "" || creds.Password != "" {
-		return func() (chan error, chan bool, error) {
-			continueCh := make(chan bool, 1)
-			completedCh := make(chan error, 1)
-			hasContinued := int32(0)
-			callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
-				// hasContinued should never be 1 here but let's guard against it.
-				if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
-					continueCh <- true
-				}
-			}, func(err error) {
-				if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
-					sendContinue := true
-					if err != nil {
-						sendContinue = false
-					}
-					continueCh <- sendContinue
-				}
-				completedCh <- err
-			})
-			if callErr != nil {
-				return nil, nil, callErr
-			}
-			return completedCh, continueCh, nil
-		}
-	}
-
-	return nil
 }
 
 func checkSupportsFeature(srvFeatures []memd.HelloFeature, feature memd.HelloFeature) bool {

@@ -679,6 +679,8 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 
 	logDebugf(buffer.String())
 
+	authHandler := mux.buildAuthHandler(auth)
+
 	pipelines := make([]*memdPipeline, len(kvServerList))
 	for i, hostPort := range kvServerList {
 		trimmedHostPort := routeEndpoint{
@@ -687,7 +689,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, auth, authMechanisms, mux.handleOpRoutingResp)
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, authHandler, authMechanisms, mux.handleOpRoutingResp)
 		}
 		pipeline := newPipeline(trimmedHostPort, poolSize, mux.queueSize, getCurClientFn)
 
@@ -830,5 +832,43 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 		if err != nil {
 			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 		}
+	}
+}
+
+func (mux *kvMux) buildAuthHandler(auth AuthProvider) authFuncHandler {
+	return func(client AuthClient, deadline time.Time, mechanism AuthMechanism) authFunc {
+		creds, err := getKvAuthCreds(auth, client.Address())
+		if err != nil {
+			return nil
+		}
+
+		if creds.Username != "" || creds.Password != "" {
+			return func() (chan BytesAndError, chan bool, error) {
+				continueCh := make(chan bool, 1)
+				completedCh := make(chan BytesAndError, 1)
+				hasContinued := int32(0)
+				callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
+					// hasContinued should never be 1 here but let's guard against it.
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						continueCh <- true
+					}
+				}, func(err error) {
+					if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
+						sendContinue := true
+						if err != nil {
+							sendContinue = false
+						}
+						continueCh <- sendContinue
+					}
+					completedCh <- BytesAndError{Err: err}
+				})
+				if callErr != nil {
+					return nil, nil, callErr
+				}
+				return completedCh, continueCh, nil
+			}
+		}
+
+		return nil
 	}
 }
