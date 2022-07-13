@@ -221,11 +221,13 @@ func (agent *clusterAgent) WaitUntilReady(deadline time.Time, opts WaitUntilRead
 		}
 	}
 
+	forceWait := true
 	if len(opts.ServiceTypes) == 0 {
+		forceWait = false
 		opts.ServiceTypes = []ServiceType{CbasService, FtsService, N1qlService, MgmtService}
 	}
 
-	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
+	return agent.diagnostics.WaitUntilReady(deadline, forceWait, opts, cb)
 }
 
 // Close shuts down the agent, closing the underlying http client. This does not cause the agent

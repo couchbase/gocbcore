@@ -418,7 +418,14 @@ func (agent *DCPAgent) Close() error {
 // will wait before attempting to reconnect to a node.
 func (agent *DCPAgent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
 	cb WaitUntilReadyCallback) (PendingOp, error) {
-	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
+
+	forceWait := true
+	if len(opts.ServiceTypes) == 0 {
+		forceWait = false
+		opts.ServiceTypes = []ServiceType{MemdService}
+	}
+
+	return agent.diagnostics.WaitUntilReady(deadline, forceWait, opts, cb)
 }
 
 // OpenStream opens a DCP stream for a particular VBucket and, optionally, filter.

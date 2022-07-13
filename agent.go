@@ -536,7 +536,13 @@ func (agent *Agent) HasSeenConfig() (bool, error) {
 // Connection time errors are also be subject to KvConfig.ServerWaitBackoff. This is the period of time that the SDK
 // will wait before attempting to reconnect to a node.
 func (agent *Agent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions, cb WaitUntilReadyCallback) (PendingOp, error) {
-	return agent.diagnostics.WaitUntilReady(deadline, opts, cb)
+	forceWait := true
+	if len(opts.ServiceTypes) == 0 {
+		forceWait = false
+		opts.ServiceTypes = []ServiceType{MemdService}
+	}
+
+	return agent.diagnostics.WaitUntilReady(deadline, forceWait, opts, cb)
 }
 
 // ConfigSnapshot returns a snapshot of the underlying configuration currently in use.

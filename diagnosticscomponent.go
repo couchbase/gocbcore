@@ -620,7 +620,7 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 }
 
 func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service ServiceType,
-	desiredState ClusterState, op *waitUntilOp) {
+	desiredState ClusterState, forceWait bool, op *waitUntilOp) {
 	retryStrat := &failFastRetryStrategy{}
 	muxer := dc.httpMux
 
@@ -740,6 +740,13 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 					return
 				}
 			case ClusterStateOnline:
+				if !forceWait && len(epList) == 0 {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
 				// If there are no entries in the epList then the service is not online and so cannot be ready.
 				if len(epList) > 0 && atomic.LoadUint32(&connected) == uint32(len(epList)) {
 					op.lock.Lock()
@@ -783,7 +790,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 	}
 }
 
-func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions,
+func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, forceWait bool, opts WaitUntilReadyOptions,
 	cb WaitUntilReadyCallback) (PendingOp, error) {
 	desiredState := opts.DesiredState
 	if desiredState == ClusterStateOffline {
@@ -794,11 +801,6 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 		desiredState = ClusterStateOnline
 	}
 
-	serviceTypes := opts.ServiceTypes
-	if len(serviceTypes) == 0 {
-		serviceTypes = []ServiceType{MemdService}
-	}
-
 	retry := opts.RetryStrategy
 	if retry == nil {
 		retry = dc.defaultRetry
@@ -807,7 +809,7 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	op := &waitUntilOp{
-		remaining:  int32(len(serviceTypes)),
+		remaining:  int32(len(opts.ServiceTypes)),
 		stopCh:     make(chan struct{}),
 		callback:   cb,
 		httpCancel: cancelFunc,
@@ -827,20 +829,20 @@ func (dc *diagnosticsComponent) WaitUntilReady(deadline time.Time, opts WaitUnti
 	})
 	op.lock.Unlock()
 
-	for _, serviceType := range serviceTypes {
+	for _, serviceType := range opts.ServiceTypes {
 		switch serviceType {
 		case MemdService:
 			go dc.checkKVReady(desiredState, op)
 		case CapiService:
-			go dc.checkHTTPReady(ctx, CapiService, desiredState, op)
+			go dc.checkHTTPReady(ctx, CapiService, desiredState, forceWait, op)
 		case N1qlService:
-			go dc.checkHTTPReady(ctx, N1qlService, desiredState, op)
+			go dc.checkHTTPReady(ctx, N1qlService, desiredState, forceWait, op)
 		case FtsService:
-			go dc.checkHTTPReady(ctx, FtsService, desiredState, op)
+			go dc.checkHTTPReady(ctx, FtsService, desiredState, forceWait, op)
 		case CbasService:
-			go dc.checkHTTPReady(ctx, CbasService, desiredState, op)
+			go dc.checkHTTPReady(ctx, CbasService, desiredState, forceWait, op)
 		case MgmtService:
-			go dc.checkHTTPReady(ctx, MgmtService, desiredState, op)
+			go dc.checkHTTPReady(ctx, MgmtService, desiredState, forceWait, op)
 		}
 	}
 
