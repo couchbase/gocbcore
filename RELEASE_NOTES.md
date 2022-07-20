@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 10.1.4 (20 July 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1246](GOCBC-1246):
+  Added support for `TransactionLogger` to `TransactionOptions`.
+* [https://issues.couchbase.com/browse/GOCBC-1314](GOCBC-1314):
+  Improved logging in the lost transactions process.
+* [https://issues.couchbase.com/browse/GOCBC-1318](GOCBC-1318):
+  Changed `WaitUntilReady` to always wait for any explicitly defined services to be online.
+* [https://issues.couchbase.com/browse/GOCBC-1319](GOCBC-1319):
+  Added a `String` implemented to `memd.Packet`.
+
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1320](GOCBC-1320):
+  Fixed issue where vbucket hashing function wasn't masking out the 16th bit of the key.
+
 ## Version 10.1.3 (22 June 2022)
 
 ### New Features and Behavioral Changes
