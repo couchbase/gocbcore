@@ -16,6 +16,8 @@ import (
 type memdQResponse struct {
 	*memd.Packet
 
+	// remoteAddr and sourceAddr are opposite to what may be expected here, to reflect that this is the response.
+	remoteAddr   string
 	sourceAddr   string
 	sourceConnID string
 }

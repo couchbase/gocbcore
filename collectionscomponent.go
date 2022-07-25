@@ -2,8 +2,10 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -417,8 +419,13 @@ type collectionIDCache struct {
 
 func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	cid.lock.Lock()
-	req.CollectionID = cid.id
+	id := cid.id
 	cid.lock.Unlock()
+	if err := setRequestCid(req, id); err != nil {
+		logDebugf("Failed to set collection ID on request: %v", err)
+		return err
+	}
+
 	_, err := cid.dispatcher.DispatchDirect(req)
 	if err != nil {
 		return err
@@ -489,8 +496,13 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 
 			opQueue.Close()
 			opQueue.Drain(func(request *memdQRequest) {
-				request.CollectionID = result.CollectionID
 				request.AddResourceUnitsFromUnitResult(result.Internal.ResourceUnits)
+
+				if err := setRequestCid(request, result.CollectionID); err != nil {
+					logDebugf("Failed to set collection ID on request: %v", err)
+					request.cancelWithCallback(err)
+					return
+				}
 				cid.dispatcher.RequeueDirect(request, false)
 			})
 		},
@@ -591,4 +603,23 @@ func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 	if err != nil {
 		req.tryCallback(nil, err)
 	}
+}
+
+func setRequestCid(req *memdQRequest, cid uint32) error {
+	if req.Command == memd.CmdRangeScanCreate {
+		var createReq *rangeScanCreateRequest
+		if err := json.Unmarshal(req.Value, &createReq); err != nil {
+			return err
+		}
+		createReq.Collection = strconv.FormatUint(uint64(cid), 16)
+		value, err := json.Marshal(createReq)
+		if err != nil {
+			return err
+		}
+
+		req.Value = value
+		return nil
+	}
+	req.CollectionID = cid
+	return nil
 }

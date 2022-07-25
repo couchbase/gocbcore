@@ -390,7 +390,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 	c.cfgManager.AddConfigWatcher(c.dialer)
 
 	c.observe = newObserveComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.kvMux)
-	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap, c.kvMux)
+	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap, c.kvMux, disableDecompression)
 	c.stats = newStatsComponent(c.kvMux, c.defaultRetryStrategy, c.tracer)
 	c.n1ql = newN1QLQueryComponent(c.http, c.cfgManager, c.tracer)
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)

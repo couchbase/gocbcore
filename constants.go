@@ -65,6 +65,7 @@ const (
 	BucketCapabilityDurableWrites        BucketCapability = 0x00
 	BucketCapabilityCreateAsDeleted      BucketCapability = 0x01
 	BucketCapabilityReplaceBodyWithXattr BucketCapability = 0x02
+	BucketCapabilityRangeScan            BucketCapability = 0x03
 )
 
 type BucketCapabilityStatus uint32
@@ -129,6 +130,13 @@ type SpanStatus string
 const (
 	SpanStatusOK    SpanStatus = "Ok"
 	SpanStatusError SpanStatus = "Error"
+)
+
+type statusClass uint8
+
+const (
+	statusClassOK statusClass = iota
+	statusClassError
 )
 
 var crc32cMacro = []byte("\"${Mutation.value_crc32c}\"")

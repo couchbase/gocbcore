@@ -773,4 +773,9 @@ var (
 
 	errRateLimitedFailure  = ncError{ErrRateLimitedFailure}
 	errQuotaLimitedFailure = ncError{ErrQuotaLimitedFailure}
+
+	errRangeScanCancelled      = ncError{ErrRangeScanCancelled}
+	errRangeScanMore           = ncError{ErrRangeScanMore}
+	errRangeScanComplete       = ncError{ErrRangeScanComplete}
+	errRangeScanVbUUIDNotEqual = ncError{ErrRangeScanVbUUIDNotEqual}
 )

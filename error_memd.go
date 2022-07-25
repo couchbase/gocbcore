@@ -221,4 +221,16 @@ var (
 	// ErrMemdRateLimitedScopeSizeLimitExceeded occurs when the server rate limits due to the application reaching the maximum
 	// data size allowed for the scope.
 	ErrMemdRateLimitedScopeSizeLimitExceeded = makeKvStatusError(memd.StatusRateLimitedScopeSizeLimitExceeded)
+
+	// ErrMemdRangeScanCancelled occurs during a range scan to indicate that the range scan was cancelled.
+	ErrMemdRangeScanCancelled = makeKvStatusError(memd.StatusRangeScanCancelled)
+
+	// ErrMemdRangeScanMore occurs during a range scan to indicate that a range scan has more results.
+	ErrMemdRangeScanMore = makeKvStatusError(memd.StatusRangeScanMore)
+
+	// ErrMemdRangeScanComplete occurs during a range scan to indicate that a range scan has completed.
+	ErrMemdRangeScanComplete = makeKvStatusError(memd.StatusRangeScanComplete)
+
+	// ErrMemdRangeScanVbUUIDNotEqual occurs during a range scan to indicate that a vb-uuid mismatch has occurred.
+	ErrMemdRangeScanVbUUIDNotEqual = makeKvStatusError(memd.StatusRangeScanVbUUIDNotEqual)
 )

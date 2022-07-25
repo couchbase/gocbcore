@@ -156,6 +156,11 @@ var (
 	ErrXattrUnknownVirtualAttribute      = errors.New("xattr unknown virtual attribute")
 	ErrXattrCannotModifyVirtualAttribute = errors.New("xattr cannot modify virtual attribute")
 	ErrXattrInvalidOrder                 = errors.New("xattr invalid order")
+
+	ErrRangeScanCancelled      = errors.New("range scan cancelled")
+	ErrRangeScanMore           = errors.New("range scan more")
+	ErrRangeScanComplete       = errors.New("range scan complete")
+	ErrRangeScanVbUUIDNotEqual = errors.New("range scan vb-uuid mismatch")
 )
 
 // Query Error Definitions RFC#58@15

@@ -260,7 +260,7 @@ func (mux *kvMux) HasBucketCapabilityStatus(cap BucketCapability, status BucketC
 
 func (mux *kvMux) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
 	clientMux := mux.getState()
-	if clientMux == nil {
+	if clientMux == nil || clientMux.RevID() == -1 {
 		return BucketCapabilityStatusUnknown
 	}
 
@@ -614,6 +614,11 @@ func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) boo
 			// We need to push this upstream which will then update us with a new config.
 			mux.cfgMgr.OnNewConfig(bk)
 		}
+	}
+
+	if req.Command == memd.CmdRangeScanContinue {
+		// For range scan continue we never want to retry, the range scan is now invalid.
+		return false
 	}
 
 	// Redirect it!  This may actually come back to this server, but I won't tell

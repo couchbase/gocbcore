@@ -75,6 +75,9 @@ const (
 	CmdSubDocMultiMutation        = CmdCode(0xd1)
 	CmdSubDocGetCount             = CmdCode(0xd2)
 	CmdSubDocReplaceBodyWithXattr = CmdCode(0xd3)
+	CmdRangeScanCreate            = CmdCode(0xda)
+	CmdRangeScanContinue          = CmdCode(0xdb)
+	CmdRangeScanCancel            = CmdCode(0xdc)
 	CmdGetErrorMap                = CmdCode(0xfe)
 )
 
@@ -203,6 +206,12 @@ func (command CmdCode) Name() string {
 		return "CMD_GETCOLLECTIONID"
 	case CmdCollectionsGetManifest:
 		return "CMD_GETCOLLECTIONMANIFEST"
+	case CmdRangeScanCreate:
+		return "CMD_RANGESCANCREATE"
+	case CmdRangeScanContinue:
+		return "CMD_RANGESCANCONTINUE"
+	case CmdRangeScanCancel:
+		return "CMD_RANGESCANCANCEL"
 	default:
 		return "CMD_x" + hex.EncodeToString([]byte{byte(command)})
 	}

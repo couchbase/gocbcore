@@ -218,6 +218,14 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errRateLimitedFailure
 	case ErrMemdRateLimitedScopeSizeLimitExceeded:
 		return errQuotaLimitedFailure
+	case ErrMemdRangeScanCancelled:
+		return errRangeScanCancelled
+	case ErrMemdRangeScanMore:
+		return errRangeScanMore
+	case ErrMemdRangeScanComplete:
+		return errRangeScanComplete
+	case ErrMemdRangeScanVbUUIDNotEqual:
+		return errRangeScanVbUUIDNotEqual
 	}
 
 	return err

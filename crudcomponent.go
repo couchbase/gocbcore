@@ -13,16 +13,18 @@ type crudComponent struct {
 	tracer               *tracerComponent
 	errMapManager        *errMapComponent
 	featureVerifier      bucketCapabilityVerifier
+	disableDecompression bool
 }
 
 func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
-	errMapManager *errMapComponent, featureVerifier bucketCapabilityVerifier) *crudComponent {
+	errMapManager *errMapComponent, featureVerifier bucketCapabilityVerifier, disableDecompression bool) *crudComponent {
 	return &crudComponent{
 		cidMgr:               cidMgr,
 		defaultRetryStrategy: defaultRetryStrategy,
 		tracer:               tracerCmpt,
 		errMapManager:        errMapManager,
 		featureVerifier:      featureVerifier,
+		disableDecompression: disableDecompression,
 	}
 }
 

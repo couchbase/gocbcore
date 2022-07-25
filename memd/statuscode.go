@@ -130,6 +130,18 @@ const (
 	// StatusSyncWriteReCommitInProgress occurs when an SyncWrite is being recommitted.
 	StatusSyncWriteReCommitInProgress = StatusCode(0xa4)
 
+	// StatusRangeScanCancelled occurs during a range scan to indicate that the range scan was cancelled.
+	StatusRangeScanCancelled = StatusCode(0xa5)
+
+	// StatusRangeScanMore occurs during a range scan to indicate that a range scan has more results.
+	StatusRangeScanMore = StatusCode(0xa6)
+
+	// StatusRangeScanComplete occurs during a range scan to indicate that a range scan has completed.
+	StatusRangeScanComplete = StatusCode(0xa7)
+
+	// StatusRangeScanVbUUIDNotEqual occurs during a range scan to indicate that a vb-uuid mismatch has occurred.
+	StatusRangeScanVbUUIDNotEqual = StatusCode(0xa8)
+
 	// StatusSubDocPathNotFound occurs when a sub-document operation targets a path
 	// which does not exist in the specifie document.
 	StatusSubDocPathNotFound = StatusCode(0xc0)
@@ -308,6 +320,14 @@ func (code StatusCode) String() string {
 		return "cannot modify virtual attributes"
 	case StatusSubDocMultiPathFailureDeleted:
 		return "sub-document multi-path error"
+	case StatusRangeScanCancelled:
+		return "range scan cancelled"
+	case StatusRangeScanComplete:
+		return "range scan complete"
+	case StatusRangeScanMore:
+		return "range scan more"
+	case StatusRangeScanVbUUIDNotEqual:
+		return "range scan vb-uuid not equal"
 	default:
 		return fmt.Sprintf("unknown kv status code (%d)", code)
 	}

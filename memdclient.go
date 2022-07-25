@@ -268,15 +268,30 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 	return nil
 }
 
+func (client *memdClient) classifyResponseStatusClass(status memd.StatusCode) statusClass {
+	switch status {
+	case memd.StatusSuccess:
+		return statusClassOK
+	case memd.StatusRangeScanMore:
+		return statusClassOK
+	case memd.StatusRangeScanComplete:
+		return statusClassOK
+	default:
+		return statusClassError
+	}
+}
+
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	defer memd.ReleasePacket(resp.Packet)
 
 	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Command, resp.Opaque, resp.Status)
 
+	stClass := client.classifyResponseStatusClass(resp.Status)
+
 	client.lock.Lock()
 	// Find the request that goes with this response, don't check if the client is
 	// closed so that we can handle orphaned responses.
-	req := client.opList.FindAndMaybeRemove(resp.Opaque, resp.Status != memd.StatusSuccess)
+	req := client.opList.FindAndMaybeRemove(resp.Opaque, stClass == statusClassError)
 	client.lock.Unlock()
 
 	if atomic.LoadUint32(&client.gracefulCloseTriggered) == 1 {
@@ -306,7 +321,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		return
 	}
 
-	if !req.Persistent || resp.Status != memd.StatusSuccess {
+	if !req.Persistent || stClass == statusClassError {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
@@ -333,7 +348,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	// Give the agent an opportunity to intercept the response first
 	var err error
-	if resp.Magic == memd.CmdMagicRes && resp.Status != memd.StatusSuccess {
+	if resp.Magic == memd.CmdMagicRes && stClass == statusClassError {
 		err = getKvStatusCodeError(resp.Status)
 	}
 
@@ -410,6 +425,7 @@ func (client *memdClient) run() {
 			}
 
 			resp := &memdQResponse{
+				remoteAddr:   client.conn.LocalAddr(),
 				sourceAddr:   client.conn.RemoteAddr(),
 				sourceConnID: client.connID,
 				Packet:       packet,
