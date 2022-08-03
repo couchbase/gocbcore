@@ -136,7 +136,7 @@ func (suite *UnitTestSuite) TestConfigComponentRevEpoch() {
 
 			watcher := &testRouteWatcher{}
 			cmpt := configManagementComponent{
-				useSSL:            0,
+				useSSL:            false,
 				networkType:       "default",
 				cfgChangeWatchers: []routeConfigWatcher{watcher},
 				currentConfig:     oldCfg.BuildRouteConfig(false, "default", false, false),

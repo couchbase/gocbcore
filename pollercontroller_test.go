@@ -106,7 +106,7 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	})
 	poller.activeController = ccp
 
-	go ccp.DoLoop()
+	go poller.Run()
 	c := &memdOpConsumer{
 		parent:   pipeline.queue,
 		isClosed: false,

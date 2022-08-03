@@ -106,8 +106,13 @@ func (ccc *cccpConfigController) doLoop() error {
 
 		numNodes := iter.NumPipelines()
 		if numNodes == 0 {
-			logInfof("CCCPPOLL: No nodes available to poll, return upstream")
+			logInfof("CCCPPOLL: No nodes available to poll, returning upstream")
 			return errNoCCCPHosts
+		}
+
+		if iter.RevID() == -1 {
+			logInfof("CCCPPOLL: No config retrieved by pipelines yet, looping")
+			continue
 		}
 
 		if nodeIdx < 0 || nodeIdx > numNodes {
@@ -127,9 +132,9 @@ func (ccc *cccpConfigController) doLoop() error {
 					return true
 				}
 
+				ccc.setError(err)
 				// Only log the error at warn if it's unexpected.
 				// If we cancelled the request or we're shutting down the connection then it's not really unexpected.
-				ccc.setError(err)
 				if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
 					logDebugf("CCCPPOLL: CCCP request was cancelled or connection was shutdown: %v", err)
 					return true
@@ -140,7 +145,7 @@ func (ccc *cccpConfigController) doLoop() error {
 			}
 			ccc.setError(nil)
 
-			logDebugf("CCCPPOLL: Got Block: %v", string(cccpBytes))
+			logDebugf("CCCPPOLL: Got Block: %s", string(cccpBytes))
 
 			hostName, err := hostFromHostPort(pipeline.Address())
 			if err != nil {

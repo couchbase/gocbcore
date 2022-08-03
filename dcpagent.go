@@ -248,6 +248,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		circuitBreakerConfig,
 		nil,
 		c.tracer,
+		c.cfgManager,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -330,8 +331,8 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
 	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID)
 
-	c.dialer.AddBootstrapFailHandler(c)
 	c.dialer.AddBootstrapFailHandler(c.diagnostics)
+	c.dialer.AddCCCPUnsupportedHandler(c)
 
 	// Kick everything off.
 	cfg := &routeConfig{
@@ -343,7 +344,9 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	c.httpMux.OnNewRouteConfig(cfg)
 	c.kvMux.OnNewRouteConfig(cfg)
 
-	go c.pollerController.Start()
+	if c.pollerController != nil {
+		go c.pollerController.Run()
+	}
 
 	return c, nil
 }
@@ -481,7 +484,7 @@ func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) erro
 	return nil
 }
 
-func (agent *DCPAgent) onBootstrapFail(err error) {
+func (agent *DCPAgent) onCCCPUnsupported(err error) {
 	// If this error is a legitimate fallback reason then we should immediately start the http poller.
 	if agent.pollerController != nil && agent.isPollingFallbackError(err) {
 		agent.pollerController.ForceHTTPPoller()

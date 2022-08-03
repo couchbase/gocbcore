@@ -53,10 +53,17 @@ type memdClientDialerComponent struct {
 	bootstrapFailHandlersLock sync.Mutex
 	bootstrapFailHandlers     []memdBoostrapFailHandler
 
+	cccpUnsupportedHandlersLock sync.Mutex
+	cccpUnsupportedFailHandlers []memdBoostrapCCCPUnsupportedHandler
+
+	configApplied uint32
+
 	noTLSSeedNode bool
 
 	dcpBootstrapProps *memdBootstrapDCPProps
 	dcpQueueSize      int
+
+	cfgManager *configManagementComponent
 }
 
 type memdBootstrapDCPProps struct {
@@ -89,9 +96,13 @@ type memdBoostrapFailHandler interface {
 	onBootstrapFail(error)
 }
 
+type memdBoostrapCCCPUnsupportedHandler interface {
+	onCCCPUnsupported(error)
+}
+
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent) *memdClientDialerComponent {
-	return &memdClientDialerComponent{
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, cfgManager *configManagementComponent) *memdClientDialerComponent {
+	dialer := &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
 		clientID:          props.ClientID,
@@ -109,13 +120,29 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		disableDecompression: props.DisableDecompression,
 		noTLSSeedNode:        props.NoTLSSeedNode,
 		connBufSize:          props.ConnBufSize,
+
+		cfgManager: cfgManager,
 	}
+
+	cfgManager.AddConfigWatcher(dialer)
+	return dialer
+}
+
+func (mcc *memdClientDialerComponent) OnNewRouteConfig(_ *routeConfig) {
+	atomic.StoreUint32(&mcc.configApplied, 1)
+	mcc.cfgManager.RemoveConfigWatcher(mcc)
 }
 
 func (mcc *memdClientDialerComponent) AddBootstrapFailHandler(handler memdBoostrapFailHandler) {
 	mcc.bootstrapFailHandlersLock.Lock()
 	mcc.bootstrapFailHandlers = append(mcc.bootstrapFailHandlers, handler)
 	mcc.bootstrapFailHandlersLock.Unlock()
+}
+
+func (mcc *memdClientDialerComponent) AddCCCPUnsupportedHandler(handler memdBoostrapCCCPUnsupportedHandler) {
+	mcc.cccpUnsupportedHandlersLock.Lock()
+	mcc.cccpUnsupportedFailHandlers = append(mcc.cccpUnsupportedFailHandlers, handler)
+	mcc.cccpUnsupportedHandlersLock.Unlock()
 }
 
 func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoostrapFailHandler) {
@@ -353,18 +380,26 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 	}
 
 	var selectCh chan error
-	// If there's no bucket then we don't need to do select bucket, we also don't need to for the continue channel,
+	var configCh chan getConfigResponse
+	// If there's no bucket then we don't need to do select bucket, we also don't need to wait for the continue channel,
 	// as it will never be read and will be garbage collected.
-	if bucket != "" {
-		if continueAuthCh == nil {
+	if continueAuthCh == nil {
+		if bucket != "" {
 			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
 				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 				return err
 			}
-		} else {
-			selectCh = mcc.continueAfterAuth(client, bucket, continueAuthCh, deadline)
 		}
+		if atomic.LoadUint32(&mcc.configApplied) == 0 {
+			configCh, err = client.ExecGetConfig(deadline)
+			if err != nil {
+				// Getting a config isn't essential to bootstrap.
+				logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+			}
+		}
+	} else {
+		selectCh, configCh = mcc.continueAfterAuth(client, bucket, continueAuthCh, deadline)
 	}
 
 	helloResp := <-helloCh
@@ -440,16 +475,23 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 					logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
 					return err
 				}
-				if bucket != "" {
-					if continueAuthCh == nil {
+				if continueAuthCh == nil {
+					if bucket != "" {
 						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
 							logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
 							return err
 						}
-					} else {
-						selectCh = mcc.continueAfterAuth(client, bucket, continueAuthCh, deadline)
 					}
+					if atomic.LoadUint32(&mcc.configApplied) == 0 {
+						configCh, err = client.ExecGetConfig(deadline)
+						if err != nil {
+							// Getting a config isn't essential to bootstrap.
+							logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+						}
+					}
+				} else {
+					selectCh, configCh = mcc.continueAfterAuth(client, bucket, continueAuthCh, deadline)
 				}
 				authErr = <-completedAuthCh
 				if authErr == nil {
@@ -465,12 +507,32 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		logDebugf("Memdclient `%s/%p` Authenticated successfully", client.Address(), client)
 	}
 
+	var selectErr error
 	if selectCh != nil {
-		selectErr := <-selectCh
-		if selectErr != nil {
-			logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectErr)
-			return selectErr
+		selectErr = <-selectCh
+	}
+
+	// If we've done a config fetch then we try to read the result of that before checking if select bucket succeeded.
+	// We might have managed to get a config even if select bucket failed, e.g. if we're bootstrapping against a non-kv
+	// node.
+	if configCh != nil {
+		configResp := <-configCh
+		err = configResp.Err
+		if err == nil {
+			// We don't want this to block us completing bootstrap.
+			go mcc.cfgManager.OnNewConfig(configResp.Config)
+		} else {
+			logDebugf("Memdclient `%s/%p` Failed to perform config fetch against server (%v)", client.Address(), client, err)
+			if errors.Is(err, ErrDocumentNotFound) {
+				logDebugf("Memdclient `%s/%p` detected that CCCP is unsupported, informing upstream", client.Address(), client)
+				mcc.sendErrorToCCCPUnsupportedHandlers()
+			}
 		}
+	}
+
+	if selectErr != nil {
+		logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectErr)
+		return selectErr
 	}
 
 	client.Features(helloResp.SrvFeatures)
@@ -482,26 +544,64 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 }
 
 func (mcc *memdClientDialerComponent) continueAfterAuth(client bootstrapClient, bucketName string, continueAuthCh chan bool,
-	deadline time.Time) chan error {
-	selectCh := make(chan error, 1)
+	deadline time.Time) (chan error, chan getConfigResponse) {
+
+	var selectCh chan error
+	if bucketName != "" {
+		selectCh = make(chan error, 1)
+	}
+
+	var configCh chan getConfigResponse
+	if atomic.LoadUint32(&mcc.configApplied) == 0 {
+		configCh = make(chan getConfigResponse, 1)
+	}
+
 	go func() {
 		success := <-continueAuthCh
 		if !success {
-			selectCh <- nil
+			if selectCh != nil {
+				close(selectCh)
+			}
+			if configCh != nil {
+				close(configCh)
+			}
 			return
 		}
-		execCh, err := client.ExecSelectBucket([]byte(bucketName), deadline)
-		if err != nil {
-			logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
-			selectCh <- err
-			return
+		var execCh chan error
+		if selectCh != nil {
+			var err error
+			execCh, err = client.ExecSelectBucket([]byte(bucketName), deadline)
+			if err != nil {
+				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+				selectCh <- err
+				return
+			}
 		}
 
-		execErr := <-execCh
-		selectCh <- execErr
+		var execConfigCh chan getConfigResponse
+		if configCh != nil {
+			var err error
+			execConfigCh, err = client.ExecGetConfig(deadline)
+			if err != nil {
+				// Getting a config isn't essential to bootstrap.
+				logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+				close(configCh)
+				return
+			}
+		}
+
+		if selectCh != nil {
+			execErr := <-execCh
+			selectCh <- execErr
+		}
+
+		if configCh != nil {
+			configResp := <-execConfigCh
+			configCh <- configResp
+		}
 	}()
 
-	return selectCh
+	return selectCh, configCh
 }
 
 type authFunc func() (continueCh chan error, completedCb chan bool, err error)
@@ -541,6 +641,16 @@ func (mcc *memdClientDialerComponent) buildAuthHandler(client bootstrapClient, a
 	}
 
 	return nil
+}
+
+func (mcc *memdClientDialerComponent) sendErrorToCCCPUnsupportedHandlers() {
+	mcc.cccpUnsupportedHandlersLock.Lock()
+	handlers := make([]memdBoostrapCCCPUnsupportedHandler, len(mcc.cccpUnsupportedFailHandlers))
+	copy(handlers, mcc.cccpUnsupportedFailHandlers)
+	mcc.cccpUnsupportedHandlersLock.Unlock()
+	for _, h := range handlers {
+		h.onCCCPUnsupported(ErrUnsupportedOperation)
+	}
 }
 
 func checkSupportsFeature(srvFeatures []memd.HelloFeature, feature memd.HelloFeature) bool {

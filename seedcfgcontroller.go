@@ -30,7 +30,7 @@ func (scc *seedConfigController) GetEndpoint(iterNum uint64) string {
 func (scc *seedConfigController) Pause(paused bool) {
 }
 
-func (scc *seedConfigController) Start() {
+func (scc *seedConfigController) Run() {
 	scc.DoLoop()
 }
 

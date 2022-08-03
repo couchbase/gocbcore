@@ -28,6 +28,7 @@ type bootstrapClient interface {
 	ExecGetErrorMap(version uint16, deadline time.Time) (chan errorMapResponse, error)
 	SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error
 	ExecHello(clientID string, features []memd.HelloFeature, deadline time.Time) (chan ExecHelloResponse, error)
+	ExecGetConfig(deadline time.Time) (chan getConfigResponse, error)
 }
 
 // Due to AuthProvider we are currently tied to bootstrapping passing around a deadline and the bootstrap
@@ -268,6 +269,60 @@ func (bc *memdBootstrapClient) ExecHello(clientID string, features []memd.HelloF
 
 				completedCh <- ExecHelloResponse{
 					SrvFeatures: srvFeatures,
+				}
+			},
+			RetryStrategy: newFailFastRetryStrategy(),
+		},
+		deadline,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return completedCh, nil
+}
+
+type getConfigResponse struct {
+	Err    error
+	Config *cfgBucket
+}
+
+func (bc *memdBootstrapClient) ExecGetConfig(deadline time.Time) (chan getConfigResponse, error) {
+	completedCh := make(chan getConfigResponse, 1)
+	err := bc.doBootstrapRequest(
+		&memdQRequest{
+			Packet: memd.Packet{
+				Magic:   memd.CmdMagicReq,
+				Command: memd.CmdGetClusterConfig,
+			},
+			Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+				if err != nil {
+					completedCh <- getConfigResponse{
+						Err: err,
+					}
+					return
+				}
+
+				hostName, err := hostFromHostPort(bc.Address())
+				if err != nil {
+					logWarnf("Boostrap client: Failed to parse source address. %s", err)
+					completedCh <- getConfigResponse{
+						Err: err,
+					}
+					return
+				}
+
+				bk, err := parseConfig(resp.Value, hostName)
+				if err != nil {
+					logWarnf("Boostrap client: Failed to parse CCCP config. %v", err)
+					completedCh <- getConfigResponse{
+						Err: err,
+					}
+					return
+				}
+
+				completedCh <- getConfigResponse{
+					Config: bk,
 				}
 			},
 			RetryStrategy: newFailFastRetryStrategy(),

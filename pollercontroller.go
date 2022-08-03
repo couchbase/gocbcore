@@ -20,7 +20,7 @@ type pollerController struct {
 }
 
 type configPollerController interface {
-	Start()
+	Run()
 	Stop()
 	Done() chan struct{}
 	PollerError() error
@@ -55,7 +55,6 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	atomic.SwapUint32(&pc.bucketConfigSeen, 1)
 
 	if cfg.bktType == bktTypeMemcached {
-		pc.cfgMgr.RemoveConfigWatcher(pc)
 		return
 	}
 
@@ -66,59 +65,63 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 			return
 		}
 		if pc.activeController == pc.httpPoller {
-			logInfof("Found couchbase bucket and HTTP poller in use. Resetting pollers to start cccp.")
+			logInfof("Found couchbase bucket and HTTP poller in use. Restarting poller run loop to start cccp.")
 			pc.activeController = nil
 			pc.controllerLock.Unlock()
 
+			// Stopping the poller will trigger the run loop to loop again.
 			pc.httpPoller.Stop()
-			pollerCh := pc.httpPoller.Done()
-			if pollerCh != nil {
-				<-pollerCh
-			}
-			pc.httpPoller.Reset()
-			pc.cccpPoller.Reset()
-			pc.Start()
-		} else {
-			pc.controllerLock.Unlock()
+			return
 		}
+		pc.controllerLock.Unlock()
 	}()
 }
 
-func (pc *pollerController) Start() {
-	pc.controllerLock.Lock()
-	if pc.stopped {
-		pc.controllerLock.Unlock()
-		return
-	}
+func (pc *pollerController) Run() {
+	for {
+		logDebugf("Starting poller controller loop")
+		pc.controllerLock.Lock()
+		if pc.stopped {
+			pc.controllerLock.Unlock()
+			logDebugf("Poller controller stopped, exiting")
+			return
+		}
 
-	atomic.SwapUint32(&pc.bucketConfigSeen, 0)
-	if pc.cccpPoller == nil {
+		if pc.httpPoller != nil {
+			pc.httpPoller.Reset()
+		}
+		pc.cccpPoller.Reset()
+
+		atomic.SwapUint32(&pc.bucketConfigSeen, 0)
+		pc.activeController = pc.cccpPoller
+		pc.controllerLock.Unlock()
+
+		err := pc.cccpPoller.DoLoop()
+		if err != nil {
+			logDebugf("CCCP poller has exited with err: %v", err)
+		}
+		if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
+			logInfof("Config seen but CCCP poller exited, restarting CCCP poller.")
+			// CCCP managed to fetch a config whilst we were waiting for shutdown, in this case we want to just
+			// start CCCP again as the bucket must exist and be a couchbase bucket.
+			continue
+		}
+		pc.controllerLock.Lock()
+		if pc.stopped {
+			pc.controllerLock.Unlock()
+			logDebugf("Poller controller stopped, exiting")
+			return
+		}
+
+		if pc.httpPoller == nil {
+			pc.controllerLock.Unlock()
+			logErrorf("CCCP poller has exited for http fallback but no http poller is configured, retrying CCCP")
+			continue
+		}
+
 		pc.activeController = pc.httpPoller
 		pc.controllerLock.Unlock()
 		pc.httpPoller.DoLoop()
-		return
-	}
-	pc.activeController = pc.cccpPoller
-	pc.controllerLock.Unlock()
-	err := pc.cccpPoller.DoLoop()
-	if err != nil {
-		if pc.httpPoller == nil {
-			logErrorf("CCCP poller has exited for http fallback but no http poller is configured")
-			return
-		}
-		if pc.isFallbackErrorFn(err) {
-			pc.controllerLock.Lock()
-			// We can get into a weird race where the poller controller sent stop to the active controller but we then
-			// swap to a different one and so the Done() function never completes.
-			if pc.stopped {
-				pc.activeController = nil
-				pc.controllerLock.Unlock()
-			} else {
-				pc.activeController = pc.httpPoller
-				pc.controllerLock.Unlock()
-				pc.httpPoller.DoLoop()
-			}
-		}
 	}
 }
 
@@ -183,37 +186,20 @@ func (pc *pollerController) ForceHTTPPoller() {
 		if pc.stopped || pc.activeController == nil {
 			// If active controller is nil at this point then something strange is happening, we're trying to force
 			// http polling at the same time as we've received a config via http polling and are attempting to reset to
-			// use cccp polling (which means that the server must support cccp. If this happens let's just let
+			// use cccp polling (which means that the server must support cccp). If this happens let's just let
 			// cccp start up.
 			pc.controllerLock.Unlock()
 			return
 		}
 		if pc.activeController == pc.cccpPoller {
 			logInfof("Stopping CCCP poller for HTTP polling takeover")
-			pc.cccpPoller.Stop()
-			pollerCh := pc.cccpPoller.Done()
-			if pollerCh != nil {
-				<-pollerCh
-			}
-			pc.httpPoller.Reset()
-			pc.cccpPoller.Reset()
-			if atomic.LoadUint32(&pc.bucketConfigSeen) == 1 {
-				pc.controllerLock.Unlock()
-				logInfof("Config seen whilst waiting for CCCP poller to stop, restarting CCCP poller.")
-				// CCCP managed to fetch a config whilst we were waiting for shutdown, in this case we want to just
-				// start CCCP again as the bucket must exist and be a couchbase bucket.
-				pc.Start()
-				return
-			}
-		} else if pc.activeController == pc.httpPoller {
+			pc.activeController = nil
 			pc.controllerLock.Unlock()
+
+			pc.cccpPoller.Stop()
 			return
 		}
-
-		pc.activeController = pc.httpPoller
 		pc.controllerLock.Unlock()
-
-		pc.httpPoller.DoLoop()
 	}()
 }
 

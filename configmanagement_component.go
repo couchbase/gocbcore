@@ -2,15 +2,15 @@ package gocbcore
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 type configManagementComponent struct {
-	useSSL        uint32
+	useSSL        bool
 	networkType   string
 	noTLSSeedNode bool
 
 	currentConfig *routeConfig
+	configLock    sync.Mutex
 
 	cfgChangeWatchers []routeConfigWatcher
 	watchersLock      sync.Mutex
@@ -38,12 +38,8 @@ type configManager interface {
 }
 
 func newConfigManager(props configManagerProperties) *configManagementComponent {
-	useSSL := uint32(0)
-	if props.UseTLS {
-		useSSL = 1
-	}
 	return &configManagementComponent{
-		useSSL:        useSSL,
+		useSSL:        props.UseTLS,
 		noTLSSeedNode: props.NoTLSSeedNode,
 		networkType:   props.NetworkType,
 		srcServers:    append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
@@ -54,35 +50,35 @@ func newConfigManager(props configManagerProperties) *configManagementComponent 
 }
 
 func (cm *configManagementComponent) UseTLS(use bool) {
-	useTLS := uint32(0)
-	if use {
-		useTLS = 1
-	}
-
-	atomic.StoreUint32(&cm.useSSL, useTLS)
+	cm.configLock.Lock()
+	cm.useSSL = use
+	cm.configLock.Unlock()
 }
 
 func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
-	useSSL := atomic.LoadUint32(&cm.useSSL) == 1
+	cm.configLock.Lock()
 	if cm.seenConfig {
-		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false, cm.noTLSSeedNode)
+		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false, cm.noTLSSeedNode)
 	} else {
-		routeCfg = cm.buildFirstRouteConfig(cfg, useSSL)
+		routeCfg = cm.buildFirstRouteConfig(cfg, cm.useSSL)
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
+		cm.configLock.Unlock()
 		logDebugf("Routing data is not valid, skipping update: \n%s", routeCfg.DebugString())
 		return
 	}
 
 	// There's something wrong with this route config so don't send it to the watchers.
 	if !cm.updateRouteConfig(routeCfg) {
+		cm.configLock.Unlock()
 		return
 	}
 
 	cm.currentConfig = routeCfg
 	cm.seenConfig = true
+	cm.configLock.Unlock()
 
 	logDebugf("Sending out mux routing data (update)...")
 	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
@@ -106,11 +102,19 @@ func (cm *configManagementComponent) AddConfigWatcher(watcher routeConfigWatcher
 
 func (cm *configManagementComponent) RemoveConfigWatcher(watcher routeConfigWatcher) {
 	var idx int
+	var found bool
 	cm.watchersLock.Lock()
 	for i, w := range cm.cfgChangeWatchers {
 		if w == watcher {
 			idx = i
+			found = true
+			break
 		}
+	}
+
+	if !found {
+		cm.watchersLock.Unlock()
+		return
 	}
 
 	if idx == len(cm.cfgChangeWatchers) {
@@ -127,14 +131,15 @@ func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 	oldCfg := cm.currentConfig
 
 	// Check some basic things to ensure consistency!
-	if oldCfg.revID > -1 {
+	// If oldCfg name was empty and the new cfg isn't then we're moving from cluster to bucket connection.
+	if oldCfg.revID > -1 && (oldCfg.name != "" && cfg.name != "") {
 		if (cfg.vbMap == nil) != (oldCfg.vbMap == nil) {
-			logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
+			logErrorf("Received a configuration with a different number of vbuckets %s-%s.  Ignoring.", oldCfg.name, cfg.name)
 			return false
 		}
 
 		if cfg.vbMap != nil && cfg.vbMap.NumVbuckets() != oldCfg.vbMap.NumVbuckets() {
-			logErrorf("Received a configuration with a different number of vbuckets.  Ignoring.")
+			logErrorf("Received a configuration with a different number of vbuckets %s-%s.  Ignoring.", oldCfg.name, cfg.name)
 			return false
 		}
 	}

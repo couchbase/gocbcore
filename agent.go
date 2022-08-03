@@ -270,6 +270,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		circuitBreakerConfig,
 		c.zombieLogger,
 		c.tracer,
+		c.cfgManager,
 	)
 	c.kvMux = newKVMux(
 		kvMuxProps{
@@ -366,8 +367,9 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.pollerController = poller
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
 	}
-	c.dialer.AddBootstrapFailHandler(c)
 	c.dialer.AddBootstrapFailHandler(c.diagnostics)
+	c.dialer.AddCCCPUnsupportedHandler(c)
+	c.cfgManager.AddConfigWatcher(c.dialer)
 
 	c.observe = newObserveComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.kvMux)
 	c.crud = newCRUDComponent(c.collections, c.defaultRetryStrategy, c.tracer, c.errMap, c.kvMux)
@@ -388,7 +390,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 	c.kvMux.OnNewRouteConfig(cfg)
 
 	if c.pollerController != nil {
-		go c.pollerController.Start()
+		go c.pollerController.Run()
 	}
 
 	return c, nil
@@ -615,8 +617,9 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	return nil
 }
 
-func (agent *Agent) onBootstrapFail(err error) {
+func (agent *Agent) onCCCPUnsupported(err error) {
 	// If this error is a legitimate fallback reason then we should immediately start the http poller.
+	// This should always be a poller fallback error but lets just be sure.
 	if agent.pollerController != nil && agent.isPollingFallbackError(err) {
 		agent.pollerController.ForceHTTPPoller()
 	}
