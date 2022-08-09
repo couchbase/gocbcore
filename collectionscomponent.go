@@ -143,6 +143,25 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 		return nil, err
 	}
 
+	if !opts.Deadline.IsZero() {
+		start := time.Now()
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "GetCollectionManifest",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Since(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			}, tracer)
+		}))
+	}
+
 	return op, nil
 }
 
@@ -174,10 +193,35 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 		}
 	}
 
+	var setTimer func(request *memdQRequest)
+	if opts.Deadline.IsZero() {
+		setTimer = func(_ *memdQRequest) {}
+	} else {
+		start := time.Now()
+		timeout := opts.Deadline.Sub(start)
+
+		setTimer = func(req *memdQRequest) {
+			req.SetTimer(time.AfterFunc(timeout, func() {
+				connInfo := req.ConnectionInfo()
+				count, reasons := req.Retries()
+				req.cancelWithCallbackAndFinishTracer(&TimeoutError{
+					InnerError:         errUnambiguousTimeout,
+					OperationID:        "GetAllCollectionManifests",
+					Opaque:             req.Identifier(),
+					TimeObserved:       time.Since(start),
+					RetryReasons:       reasons,
+					RetryAttempts:      count,
+					LastDispatchedTo:   connInfo.lastDispatchedTo,
+					LastDispatchedFrom: connInfo.lastDispatchedFrom,
+					LastConnectionID:   connInfo.lastConnectionID,
+				}, tracer)
+			}))
+		}
+	}
+
 	iter.Iterate(0, func(pipeline *memdPipeline) bool {
 		handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 			manifestsLock.Lock()
-			defer manifestsLock.Unlock()
 
 			res := SingleServerManifestResult{
 				Error: err,
@@ -189,6 +233,8 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 
 			manifests[pipeline.address] = res
 			opCompleteLocked()
+
+			manifestsLock.Unlock()
 		}
 
 		req := &memdQRequest{
@@ -203,15 +249,16 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 
 		curOp, err := cidMgr.dispatcher.DispatchDirectToAddress(req, pipeline)
 		if err == nil {
+			setTimer(req)
+
 			op.ops = append(op.ops, curOp)
 			return false
 		}
 
 		manifestsLock.Lock()
-		defer manifestsLock.Unlock()
-
 		manifests[pipeline.address] = SingleServerManifestResult{Error: err}
 		opCompleteLocked()
+		manifestsLock.Unlock()
 
 		return false
 	})
@@ -281,6 +328,25 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 	if err != nil {
 		tracer.Finish()
 		return nil, err
+	}
+
+	if !opts.Deadline.IsZero() {
+		start := time.Now()
+		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
+			connInfo := req.ConnectionInfo()
+			count, reasons := req.Retries()
+			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
+				InnerError:         errUnambiguousTimeout,
+				OperationID:        "GetCollectionID",
+				Opaque:             req.Identifier(),
+				TimeObserved:       time.Since(start),
+				RetryReasons:       reasons,
+				RetryAttempts:      count,
+				LastDispatchedTo:   connInfo.lastDispatchedTo,
+				LastDispatchedFrom: connInfo.lastDispatchedFrom,
+				LastConnectionID:   connInfo.lastConnectionID,
+			}, tracer)
+		}))
 	}
 
 	return op, nil

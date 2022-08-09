@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 )
 
 const (
@@ -98,18 +99,21 @@ func (item *Manifest) UnmarshalJSON(data []byte) error {
 type GetCollectionManifestOptions struct {
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
+	Deadline      time.Time
 }
 
 // GetAllCollectionManifestsOptions are the options available to the GetAllCollectionManifests command.
 type GetAllCollectionManifestsOptions struct {
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
+	Deadline      time.Time
 }
 
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
 type GetCollectionIDOptions struct {
 	RetryStrategy RetryStrategy
 	TraceContext  RequestSpanContext
+	Deadline      time.Time
 }
 
 // GetCollectionIDResult encapsulates the result of a GetCollectionID operation.
