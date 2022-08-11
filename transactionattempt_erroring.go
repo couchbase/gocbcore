@@ -150,7 +150,7 @@ func classifyError(err error) *classifiedError {
 		errors.Is(err, ErrAmbiguousTimeout) ||
 		errors.Is(err, ErrRequestCanceled) {
 		ec = TransactionErrorClassFailAmbiguous
-	} else if errors.Is(err, ErrMemdTooBig) {
+	} else if errors.Is(err, ErrMemdTooBig) || errors.Is(err, ErrValueTooLarge) {
 		ec = TransactionErrorClassFailOutOfSpace
 	}
 
