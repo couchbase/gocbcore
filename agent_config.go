@@ -53,6 +53,8 @@ type AgentConfig struct {
 	TracerConfig TracerConfig
 
 	MeterConfig MeterConfig
+
+	InternalConfig InternalConfig
 }
 
 // OrphanReporterConfig specifies options for controlling the orphan
@@ -484,6 +486,24 @@ func (config SeedConfig) redacted() SeedConfig {
 	return newConfig
 }
 
+// InternalConfig specifies internal configs.
+// Internal: This should never be used and is not supported.
+type InternalConfig struct {
+	EnableResourceUnitsTrackingHello bool
+}
+
+func (config InternalConfig) fromSpec(spec connstr.ResolvedConnSpec) (InternalConfig, error) {
+	if valStr, ok := fetchOption(spec, "enable_resource_units"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return InternalConfig{}, fmt.Errorf("enable_resource_units option must be a boolean")
+		}
+		config.EnableResourceUnitsTrackingHello = val
+	}
+
+	return config, nil
+}
+
 func (config *AgentConfig) redacted() interface{} {
 	newConfig := *config
 	if isLogRedactionLevelFull() {
@@ -582,6 +602,11 @@ func (config *AgentConfig) FromConnStr(connStr string) error {
 	}
 
 	config.KVConfig, err = config.KVConfig.fromSpec(spec)
+	if err != nil {
+		return err
+	}
+
+	config.InternalConfig, err = config.InternalConfig.fromSpec(spec)
 	if err != nil {
 		return err
 	}

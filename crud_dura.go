@@ -40,6 +40,11 @@ type ObserveVbOptions struct {
 type ObserveResult struct {
 	KeyState memd.KeyState
 	Cas      Cas
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }
 
 // ObserveVbResult encapsulates the result of a ObserveVbEx operation.
@@ -51,4 +56,9 @@ type ObserveVbResult struct {
 	CurrentSeqNo SeqNo
 	OldVbUUID    VbUUID
 	LastSeqNo    SeqNo
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }

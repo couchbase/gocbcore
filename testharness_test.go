@@ -23,6 +23,7 @@ var (
 	srvVer700   = NodeVersion{7, 0, 0, 0, 0, ""}
 	srvVer710   = NodeVersion{7, 1, 0, 0, 0, ""}
 	srvVer720   = NodeVersion{7, 2, 0, 0, 0, ""}
+	srvVer720DP = NodeVersion{7, 2, 0, 0, 0, "dp"}
 	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
@@ -50,6 +51,7 @@ var (
 	TestFeatureExpandMacrosSeqNo    = TestFeatureCode("expandmacrosseqno")
 	TestFeatureTransactions         = TestFeatureCode("transactions")
 	TestFeatureN1qlReasons          = TestFeatureCode("n1qlreasons")
+	TestFeatureResourceUnits        = TestFeatureCode("computeunits")
 )
 
 type TestFeatureFlag struct {

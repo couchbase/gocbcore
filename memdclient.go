@@ -302,6 +302,8 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	req.processingLock.Lock()
 
+	req.AddResourceUnits(resp.ReadUnitsFrame, resp.WriteUnitsFrame)
+
 	if !req.Persistent {
 		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
 	}
@@ -697,6 +699,10 @@ func (client *memdClient) helloFeatures(props helloProps) []memd.HelloFeature {
 		features = append(features, memd.FeatureSyncReplication)
 	}
 
+	if props.ResourceUnitsEnabled {
+		features = append(features, memd.FeatureResourceUnits)
+	}
+
 	return features
 }
 
@@ -710,6 +716,7 @@ type helloProps struct {
 	XErrorFeatureEnabled   bool
 	SyncReplicationEnabled bool
 	PITRFeatureEnabled     bool
+	ResourceUnitsEnabled   bool
 }
 
 type bootstrapProps struct {

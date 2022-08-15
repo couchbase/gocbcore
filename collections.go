@@ -120,11 +120,21 @@ type GetCollectionIDOptions struct {
 type GetCollectionIDResult struct {
 	ManifestID   uint64
 	CollectionID uint32
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }
 
 // GetCollectionManifestResult encapsulates the result of a GetCollectionManifest operation.
 type GetCollectionManifestResult struct {
 	Manifest []byte
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }
 
 // SingleServerManifestResult encapsulates the result from a single server when using the GetAllCollectionManifests

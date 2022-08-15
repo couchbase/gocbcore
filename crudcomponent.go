@@ -47,6 +47,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 		res.Flags = binary.BigEndian.Uint32(resp.Extras[0:])
 		res.Cas = Cas(resp.Cas)
 		res.Datatype = resp.Datatype
+		res.Internal.ResourceUnits = req.ResourceUnits()
 
 		tracer.Finish()
 		cb(&res, nil)
@@ -91,19 +92,10 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errUnambiguousTimeout,
-				OperationID:        "Get",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "Get", errUnambiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -113,7 +105,7 @@ func (crud *crudComponent) Get(opts GetOptions, cb GetCallback) (PendingOp, erro
 func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCallback) (PendingOp, error) {
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetAndTouch", opts.TraceContext)
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -128,13 +120,16 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
 
-		tracer.Finish()
-		cb(&GetAndTouchResult{
+		res := &GetAndTouchResult{
 			Value:    resp.Value,
 			Flags:    flags,
 			Cas:      Cas(resp.Cas),
 			Datatype: resp.Datatype,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -179,19 +174,10 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "GetAndTouch",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "GetAndTouch", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -201,7 +187,7 @@ func (crud *crudComponent) GetAndTouch(opts GetAndTouchOptions, cb GetAndTouchCa
 func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallback) (PendingOp, error) {
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetAndLock", opts.TraceContext)
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -215,14 +201,16 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		tracer.Finish()
-		cb(&GetAndLockResult{
+		res := &GetAndLockResult{
 			Value:    resp.Value,
 			Flags:    flags,
 			Cas:      Cas(resp.Cas),
 			Datatype: resp.Datatype,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -267,19 +255,10 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "GetAndLock",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "GetAndLock", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -294,7 +273,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		return nil, errInvalidReplica
 	}
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -308,14 +287,16 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		tracer.Finish()
-		cb(&GetReplicaResult{
+		res := &GetReplicaResult{
 			Value:    resp.Value,
 			Flags:    flags,
 			Cas:      Cas(resp.Cas),
 			Datatype: resp.Datatype,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -358,19 +339,10 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errUnambiguousTimeout,
-				OperationID:        "GetOneReplica",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "GetOneReplica", errUnambiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -394,11 +366,14 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		tracer.Finish()
-		cb(&TouchResult{
+		res := &TouchResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -443,19 +418,10 @@ func (crud *crudComponent) Touch(opts TouchOptions, cb TouchCallback) (PendingOp
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "Touch",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "Touch", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -479,11 +445,14 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		tracer.Finish()
-		cb(&UnlockResult{
+		res := &UnlockResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -525,19 +494,10 @@ func (crud *crudComponent) Unlock(opts UnlockOptions, cb UnlockCallback) (Pendin
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "Unlock",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "Unlock", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -561,11 +521,14 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		tracer.Finish()
-		cb(&DeleteResult{
+		res := &DeleteResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var duraLevelFrame *memd.DurabilityLevelFrame
@@ -623,19 +586,10 @@ func (crud *crudComponent) Delete(opts DeleteOptions, cb DeleteCallback) (Pendin
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "Delete",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "Delete", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -659,11 +613,14 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
 
-		tracer.Finish()
-		cb(&StoreResult{
+		res := &StoreResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var duraLevelFrame *memd.DurabilityLevelFrame
@@ -730,19 +687,10 @@ func (crud *crudComponent) store(opName string, opcode memd.CmdCode, opts storeO
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        opName,
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, opName, errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -813,12 +761,14 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
-
-		tracer.Finish()
-		cb(&AdjoinResult{
+		res := &AdjoinResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var duraLevelFrame *memd.DurabilityLevelFrame
@@ -882,19 +832,10 @@ func (crud *crudComponent) adjoin(opName string, opcode memd.CmdCode, opts Adjoi
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        opName,
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, opName, errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -932,13 +873,15 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
-
-		tracer.Finish()
-		cb(&CounterResult{
+		res := &CounterResult{
 			Value:         intVal,
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	// You cannot have an expiry when you do not want to create the document.
@@ -1016,19 +959,10 @@ func (crud *crudComponent) counter(opName string, opcode memd.CmdCode, opts Coun
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        opName,
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, opName, errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -1046,7 +980,7 @@ func (crud *crudComponent) Decrement(opts CounterOptions, cb CounterCallback) (P
 func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback) (PendingOp, error) {
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetRandom", opts.TraceContext)
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -1060,15 +994,17 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 		}
 
 		flags := binary.BigEndian.Uint32(resp.Extras[0:])
-
-		tracer.Finish()
-		cb(&GetRandomResult{
+		res := &GetRandomResult{
 			Key:      resp.Key,
 			Value:    resp.Value,
 			Flags:    flags,
 			Cas:      Cas(resp.Cas),
 			Datatype: resp.Datatype,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -1110,19 +1046,10 @@ func (crud *crudComponent) GetRandom(opts GetRandomOptions, cb GetRandomCallback
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errUnambiguousTimeout,
-				OperationID:        "GetRandom",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "GetRandom", errUnambiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -1145,22 +1072,19 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 			return
 		}
 
-		deleted := binary.BigEndian.Uint32(resp.Extras[0:])
-		flags := binary.BigEndian.Uint32(resp.Extras[4:])
-		expTime := binary.BigEndian.Uint32(resp.Extras[8:])
-		seqNo := SeqNo(binary.BigEndian.Uint64(resp.Extras[12:]))
-		dataType := resp.Extras[20]
+		res := &GetMetaResult{
+			Value: resp.Value,
+			Cas:   Cas(resp.Cas),
+		}
+		res.Deleted = binary.BigEndian.Uint32(resp.Extras[0:])
+		res.Flags = binary.BigEndian.Uint32(resp.Extras[4:])
+		res.Expiry = binary.BigEndian.Uint32(resp.Extras[8:])
+		res.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[12:]))
+		res.Datatype = resp.Extras[20]
+		res.Internal.ResourceUnits = req.ResourceUnits()
 
 		tracer.Finish()
-		cb(&GetMetaResult{
-			Value:    resp.Value,
-			Flags:    flags,
-			Cas:      Cas(resp.Cas),
-			Expiry:   expTime,
-			SeqNo:    seqNo,
-			Datatype: dataType,
-			Deleted:  deleted,
-		}, nil)
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -1205,19 +1129,10 @@ func (crud *crudComponent) GetMeta(opts GetMetaOptions, cb GetMetaCallback) (Pen
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errUnambiguousTimeout,
-				OperationID:        "GetMeta",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "GetMeta", errUnambiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -1240,12 +1155,14 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
-
-		tracer.Finish()
-		cb(&SetMetaResult{
+		res := &SetMetaResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -1296,19 +1213,10 @@ func (crud *crudComponent) SetMeta(opts SetMetaOptions, cb SetMetaCallback) (Pen
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "SetMeta",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "SetMeta", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -1331,12 +1239,14 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
-
-		tracer.Finish()
-		cb(&DeleteMetaResult{
+		res := &DeleteMetaResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -1387,19 +1297,10 @@ func (crud *crudComponent) DeleteMeta(opts DeleteMetaOptions, cb DeleteMetaCallb
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "DeleteMeta",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "DeleteMeta", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 

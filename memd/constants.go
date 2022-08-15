@@ -30,8 +30,10 @@ const (
 	frameTypeReqStreamID          = frameType(2)
 	frameTypeReqOpenTracing       = frameType(3)
 	frameTypeReqUserImpersonation = frameType(4)
-	frameTypeResSrvDuration       = frameType(0)
 	frameTypeReqPreserveExpiry    = frameType(5)
+	frameTypeResSrvDuration       = frameType(0)
+	frameTypeResReadUnits         = frameType(1)
+	frameTypeResWriteUnits        = frameType(2)
 )
 
 // HelloFeature represents a feature code included in a memcached
@@ -106,6 +108,8 @@ const (
 
 	// FeatureReplaceBodyWithXattr indicates support for the replace body with xattr feature.
 	FeatureReplaceBodyWithXattr = HelloFeature(0x19)
+
+	FeatureResourceUnits = HelloFeature(0x1a)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending
@@ -320,7 +324,7 @@ const (
 type DcpStreamAddFlag uint32
 
 const (
-	//DcpStreamAddFlagDiskOnly indicates that stream should only send items if they are on disk
+	// DcpStreamAddFlagDiskOnly indicates that stream should only send items if they are on disk
 	DcpStreamAddFlagDiskOnly = DcpStreamAddFlag(0x02)
 
 	// DcpStreamAddFlagLatest indicates this stream wants to get data up to the latest seqno.

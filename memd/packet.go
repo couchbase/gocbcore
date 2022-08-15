@@ -66,6 +66,18 @@ type PreserveExpiryFrame struct {
 	// triggers the preserve expiry behaviour.
 }
 
+// ReadUnitsFrame allows the server to return information about the
+// number of read units used by a command.
+type ReadUnitsFrame struct {
+	ReadUnits uint16
+}
+
+// WriteUnitsFrame allows the server to return information about the
+// number of write units used by a command.
+type WriteUnitsFrame struct {
+	WriteUnits uint16
+}
+
 // Packet represents a single request or response packet being exchanged
 // between two clients.
 type Packet struct {
@@ -89,6 +101,8 @@ type Packet struct {
 	ServerDurationFrame    *ServerDurationFrame
 	UserImpersonationFrame *UserImpersonationFrame
 	PreserveExpiryFrame    *PreserveExpiryFrame
+	ReadUnitsFrame         *ReadUnitsFrame
+	WriteUnitsFrame        *WriteUnitsFrame
 	UnsupportedFrames      []UnsupportedFrame
 }
 

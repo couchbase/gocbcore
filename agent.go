@@ -124,6 +124,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 	usePITRHello := config.IoConfig.EnablePITRHello
 	useXErrorHello := !config.IoConfig.DisableXErrorHello
 	useSyncReplicationHello := !config.IoConfig.DisableSyncReplicationHello
+	useResourceUnits := config.InternalConfig.EnableResourceUnitsTrackingHello
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
 	useDurations := config.IoConfig.UseDurations
@@ -278,6 +279,7 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 				XErrorFeatureEnabled:   useXErrorHello,
 				SyncReplicationEnabled: useSyncReplicationHello,
 				PITRFeatureEnabled:     usePITRHello,
+				ResourceUnitsEnabled:   useResourceUnits,
 			},
 			Bucket:        c.bucketName,
 			UserAgent:     userAgent,

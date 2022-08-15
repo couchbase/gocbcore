@@ -149,6 +149,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureN1qlReasons:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer710)
+	case TestFeatureResourceUnits:
+		return !suite.IsMockServer() && suite.ClusterVersion.Equal(srvVer720DP)
 	}
 
 	panic("found unsupported feature code")
@@ -327,6 +329,7 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	}
 	config.TracerConfig.Tracer = suite.tracer
 	config.MeterConfig.Meter = suite.meter
+	config.InternalConfig.EnableResourceUnitsTrackingHello = true
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
 

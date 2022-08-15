@@ -83,6 +83,7 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 		enhErr.LastDispatchedTo = connInfo.lastDispatchedTo
 		enhErr.LastDispatchedFrom = connInfo.lastDispatchedFrom
 		enhErr.LastConnectionID = connInfo.lastConnectionID
+		enhErr.Internal.ResourceUnits = req.ResourceUnits()
 	}
 
 	if resp != nil {

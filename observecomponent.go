@@ -37,7 +37,7 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 		return nil, errFeatureNotAvailable
 	}
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -58,12 +58,14 @@ func (oc *observeComponent) Observe(opts ObserveOptions, cb ObserveCallback) (Pe
 		}
 		keyState := memd.KeyState(resp.Value[2+2+keyLen])
 		cas := binary.BigEndian.Uint64(resp.Value[2+2+keyLen+1:])
-
-		tracer.Finish()
-		cb(&ObserveResult{
+		res := &ObserveResult{
 			KeyState: keyState,
 			Cas:      Cas(cas),
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var userFrame *memd.UserImpersonationFrame
@@ -146,7 +148,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 		return nil, errFeatureNotAvailable
 	}
 
-	handler := func(resp *memdQResponse, _ *memdQRequest, err error) {
+	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -172,15 +174,17 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 			vbUUID := binary.BigEndian.Uint64(resp.Value[3:])
 			persistSeqNo := binary.BigEndian.Uint64(resp.Value[11:])
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
-
-			tracer.Finish()
-			cb(&ObserveVbResult{
+			res := &ObserveVbResult{
 				DidFailover:  false,
 				VbID:         vbID,
 				VbUUID:       VbUUID(vbUUID),
 				PersistSeqNo: SeqNo(persistSeqNo),
 				CurrentSeqNo: SeqNo(currentSeqNo),
-			}, nil)
+			}
+			res.Internal.ResourceUnits = req.ResourceUnits()
+
+			tracer.Finish()
+			cb(res, nil)
 			return
 		} else if formatType == 1 {
 			// Hard Failover
@@ -195,9 +199,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 			currentSeqNo := binary.BigEndian.Uint64(resp.Value[19:])
 			oldVbUUID := binary.BigEndian.Uint64(resp.Value[27:])
 			lastSeqNo := binary.BigEndian.Uint64(resp.Value[35:])
-
-			tracer.Finish()
-			cb(&ObserveVbResult{
+			res := &ObserveVbResult{
 				DidFailover:  true,
 				VbID:         vbID,
 				VbUUID:       VbUUID(vbUUID),
@@ -205,7 +207,11 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 				CurrentSeqNo: SeqNo(currentSeqNo),
 				OldVbUUID:    VbUUID(oldVbUUID),
 				LastSeqNo:    SeqNo(lastSeqNo),
-			}, nil)
+			}
+			res.Internal.ResourceUnits = req.ResourceUnits()
+
+			tracer.Finish()
+			cb(res, nil)
 			return
 		} else {
 			tracer.Finish()

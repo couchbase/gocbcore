@@ -70,16 +70,16 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 			results[subdocs.indexes[i]].Value = resp.Value[respIter+6 : respIter+6+resValueLen]
 			respIter += 6 + resValueLen
 		}
-
-		tracer.Finish()
-		cb(&LookupInResult{
+		res := &LookupInResult{
 			Cas: Cas(resp.Cas),
 			Ops: results,
-			Internal: struct{ IsDeleted bool }{
-				IsDeleted: isErrorStatus(err, memd.StatusSubDocSuccessDeleted) ||
-					isErrorStatus(err, memd.StatusSubDocMultiPathFailureDeleted),
-			},
-		}, nil)
+		}
+		res.Internal.IsDeleted = isErrorStatus(err, memd.StatusSubDocSuccessDeleted) ||
+			isErrorStatus(err, memd.StatusSubDocMultiPathFailureDeleted)
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	subdocs.Reorder(opts.Ops)
@@ -158,19 +158,10 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errUnambiguousTimeout,
-				OperationID:        "LookupIn",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "LookupIn", errUnambiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 
@@ -232,13 +223,15 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			mutToken.VbUUID = VbUUID(binary.BigEndian.Uint64(resp.Extras[0:]))
 			mutToken.SeqNo = SeqNo(binary.BigEndian.Uint64(resp.Extras[8:]))
 		}
-
-		tracer.Finish()
-		cb(&MutateInResult{
+		res := &MutateInResult{
 			Cas:           Cas(resp.Cas),
 			MutationToken: mutToken,
 			Ops:           results,
-		}, nil)
+		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
+
+		tracer.Finish()
+		cb(res, nil)
 	}
 
 	var duraLevelFrame *memd.DurabilityLevelFrame
@@ -373,19 +366,10 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	if !opts.Deadline.IsZero() {
 		start := time.Now()
 		req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
-			connInfo := req.ConnectionInfo()
-			count, reasons := req.Retries()
-			req.cancelWithCallbackAndFinishTracer(&TimeoutError{
-				InnerError:         errAmbiguousTimeout,
-				OperationID:        "MutateIn",
-				Opaque:             req.Identifier(),
-				TimeObserved:       time.Since(start),
-				RetryReasons:       reasons,
-				RetryAttempts:      count,
-				LastDispatchedTo:   connInfo.lastDispatchedTo,
-				LastDispatchedFrom: connInfo.lastDispatchedFrom,
-				LastConnectionID:   connInfo.lastConnectionID,
-			}, tracer)
+			req.cancelWithCallbackAndFinishTracer(
+				makeTimeoutError(start, "MutateIn", errAmbiguousTimeout, req),
+				tracer,
+			)
 		}))
 	}
 

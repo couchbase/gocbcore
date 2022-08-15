@@ -58,7 +58,8 @@ type LookupInResult struct {
 
 	// Internal: This should never be used and is not supported.
 	Internal struct {
-		IsDeleted bool
+		IsDeleted     bool
+		ResourceUnits *ResourceUnitResult
 	}
 }
 
@@ -67,4 +68,9 @@ type MutateInResult struct {
 	Cas           Cas
 	MutationToken MutationToken
 	Ops           []SubDocResult
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }

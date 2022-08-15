@@ -455,6 +455,14 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 					pkt.ServerDurationFrame = &ServerDurationFrame{
 						ServerDuration: DecodeSrvDura16(serverDurationEnc),
 					}
+				} else if frType == frameTypeResReadUnits && frameLen == 2 {
+					pkt.ReadUnitsFrame = &ReadUnitsFrame{
+						ReadUnits: binary.BigEndian.Uint16(frameBody),
+					}
+				} else if frType == frameTypeResWriteUnits && frameLen == 2 {
+					pkt.WriteUnitsFrame = &WriteUnitsFrame{
+						WriteUnits: binary.BigEndian.Uint16(frameBody),
+					}
 				} else {
 					// If we don't understand this frame type, we record it as an
 					// UnsupportedFrame (as opposed to dropping it blindly)

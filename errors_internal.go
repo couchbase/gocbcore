@@ -75,6 +75,11 @@ type KeyValueError struct {
 	LastDispatchedTo   string
 	LastDispatchedFrom string
 	LastConnectionID   string
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
 }
 
 // MarshalJSON implements the Marshaler interface.
@@ -555,6 +560,30 @@ type TimeoutError struct {
 	LastDispatchedTo   string
 	LastDispatchedFrom string
 	LastConnectionID   string
+
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnits *ResourceUnitResult
+	}
+}
+
+func makeTimeoutError(start time.Time, op string, innerErr error, req *memdQRequest) *TimeoutError {
+	connInfo := req.ConnectionInfo()
+	count, reasons := req.Retries()
+	err := &TimeoutError{
+		InnerError:         innerErr,
+		OperationID:        op,
+		Opaque:             req.Identifier(),
+		TimeObserved:       time.Since(start),
+		RetryReasons:       reasons,
+		RetryAttempts:      count,
+		LastDispatchedTo:   connInfo.lastDispatchedTo,
+		LastDispatchedFrom: connInfo.lastDispatchedFrom,
+		LastConnectionID:   connInfo.lastConnectionID,
+	}
+	err.Internal.ResourceUnits = req.ResourceUnits()
+
+	return err
 }
 
 type timeoutError struct {

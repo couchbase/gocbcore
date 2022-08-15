@@ -113,6 +113,7 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 		res := GetCollectionManifestResult{
 			Manifest: resp.Value,
 		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
 
 		tracer.Finish()
 		cb(&res, nil)
@@ -288,6 +289,7 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 			ManifestID:   manifestID,
 			CollectionID: collectionID,
 		}
+		res.Internal.ResourceUnits = req.ResourceUnits()
 
 		tracer.Finish()
 		cb(&res, nil)
@@ -488,6 +490,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 			opQueue.Close()
 			opQueue.Drain(func(request *memdQRequest) {
 				request.CollectionID = result.CollectionID
+				request.AddResourceUnitsFromUnitResult(result.Internal.ResourceUnits)
 				cid.dispatcher.RequeueDirect(request, false)
 			})
 		},

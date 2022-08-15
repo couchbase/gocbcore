@@ -87,12 +87,60 @@ type memdQRequest struct {
 
 	CollectionName string
 	ScopeName      string
+
+	resourceUnitsLock sync.Mutex
+	resourceUnits     *ResourceUnitResult
 }
 
 type memdQRequestConnInfo struct {
 	lastDispatchedTo   string
 	lastDispatchedFrom string
 	lastConnectionID   string
+}
+
+func (req *memdQRequest) AddResourceUnits(readUnitsFrame *memd.ReadUnitsFrame, writeUnitsFrame *memd.WriteUnitsFrame) {
+	if readUnitsFrame == nil && writeUnitsFrame == nil {
+		return
+	}
+	req.resourceUnitsLock.Lock()
+	if req.resourceUnits == nil {
+		req.resourceUnits = &ResourceUnitResult{}
+	}
+	if readUnitsFrame != nil {
+		req.resourceUnits.ReadUnits += readUnitsFrame.ReadUnits
+	}
+	if writeUnitsFrame != nil {
+		req.resourceUnits.WriteUnits += writeUnitsFrame.WriteUnits
+	}
+	req.resourceUnitsLock.Unlock()
+}
+
+func (req *memdQRequest) AddResourceUnitsFromUnitResult(unit *ResourceUnitResult) {
+	if unit == nil {
+		return
+	}
+	req.resourceUnitsLock.Lock()
+	if req.resourceUnits == nil {
+		req.resourceUnits = &ResourceUnitResult{}
+	}
+	req.resourceUnits.ReadUnits += unit.ReadUnits
+	req.resourceUnits.WriteUnits += unit.WriteUnits
+	req.resourceUnitsLock.Unlock()
+}
+
+func (req *memdQRequest) ResourceUnits() *ResourceUnitResult {
+	req.resourceUnitsLock.Lock()
+	if req.resourceUnits == nil {
+		req.resourceUnitsLock.Unlock()
+		return nil
+	}
+	units := &ResourceUnitResult{
+		ReadUnits:  req.resourceUnits.ReadUnits,
+		WriteUnits: req.resourceUnits.WriteUnits,
+	}
+	req.resourceUnitsLock.Unlock()
+
+	return units
 }
 
 func (req *memdQRequest) RetryAttempts() uint32 {
