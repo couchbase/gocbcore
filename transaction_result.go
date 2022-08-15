@@ -49,3 +49,11 @@ type TransactionResult struct {
 	// unstaged, or if a later cleanup job will be responsible.
 	UnstagingComplete bool
 }
+
+// TransactionResourceUnitResult describes the number of resource units used by a transaction attempt.
+// Internal: This should never be used and is not supported.
+type TransactionResourceUnitResult struct {
+	NumOps     uint32
+	ReadUnits  uint32
+	WriteUnits uint32
+}

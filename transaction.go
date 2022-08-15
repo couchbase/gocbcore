@@ -50,6 +50,8 @@ type Transaction struct {
 	addCleanupRequest      addCleanupRequest
 	addLostCleanupLocation addLostCleanupLocation
 
+	recordResourceUnit resourceUnitCallback
+
 	logger *internalTransactionLogWrapper
 }
 
@@ -58,7 +60,7 @@ func (t *Transaction) ID() string {
 	return t.transactionID
 }
 
-// TransactionAttempt returns meta-data about the current attempt to complete the transaction.
+// Attempt returns meta-data about the current attempt to complete the transaction.
 func (t *Transaction) Attempt() TransactionAttempt {
 	if t.attempt == nil {
 		return TransactionAttempt{}
@@ -96,6 +98,8 @@ func (t *Transaction) NewAttempt() error {
 		addCleanupRequest:      t.addCleanupRequest,
 		addLostCleanupLocation: t.addLostCleanupLocation,
 		logger:                 t.logger,
+
+		recordResourceUnit: t.recordResourceUnit,
 	}
 
 	return nil
@@ -211,6 +215,8 @@ func (t *Transaction) resumeAttempt(txnData *jsonSerializedAttempt) error {
 		addLostCleanupLocation: t.addLostCleanupLocation,
 
 		logger: t.logger,
+
+		recordResourceUnit: t.recordResourceUnit,
 	}
 
 	return nil

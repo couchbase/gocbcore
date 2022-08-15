@@ -356,6 +356,8 @@ func (t *transactionAttempt) fetchDocWithMeta(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailDocNotFound:
 			cb(nil, wrapError(ErrDocumentNotFound, "doc was not found"))
@@ -427,6 +429,8 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				ecCb(nil, classifyError(err))
 				return
 			}
+
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 			if result.Ops[0].Err != nil {
 				ecCb(nil, classifyError(result.Ops[0].Err))

@@ -423,6 +423,8 @@ func (t *transactionAttempt) getTxnState(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailPathNotFound:
 			t.logger.logInfof(t.id, "Attempt entry not found")
@@ -494,6 +496,8 @@ func (t *transactionAttempt) getTxnState(
 				ecCb(nil, time.Time{}, classifyError(err))
 				return
 			}
+
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 			for _, op := range result.Ops {
 				if op.Err != nil {

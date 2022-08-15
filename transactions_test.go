@@ -970,3 +970,168 @@ func (suite *StandardTestSuite) TestTransactionsLogger() {
 		}
 	}
 }
+
+func (suite *StandardTestSuite) TestTransactionsInsertGetReplaceRemoveCommitUnits() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	suite.EnsureSupportsFeature(TestFeatureResourceUnits)
+	agent, _ := suite.GetAgentAndHarness()
+
+	val1 := []byte(`{"name":"mike"}`)
+	val2 := []byte(`{"name":"dave"}`)
+
+	txns, err := InitTransactions(&TransactionsConfig{
+		DurabilityLevel: TransactionDurabilityLevelNone,
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			// We can always return just this one agent as we only actually
+			// use a single bucket for this entire test.
+			return agent, "", nil
+		},
+		ExpirationTime: 60 * time.Second,
+	})
+	suite.Require().Nil(err, err)
+
+	opts := &TransactionOptions{}
+	var readUnits uint32
+	var writeUnits uint32
+	var numOps uint32
+	opts.Internal.ResourceUnitCallback = func(result *ResourceUnitResult) {
+		readUnits += uint32(result.ReadUnits)
+		writeUnits += uint32(result.WriteUnits)
+		numOps++
+	}
+	txn, err := txns.BeginTransaction(opts)
+	suite.Require().Nil(err, err)
+
+	// Start the attempt
+	err = txn.NewAttempt()
+	suite.Require().Nil(err, err)
+
+	key := uuid.NewString()
+
+	_, err = testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+		Value:          val1,
+	})
+	suite.Require().Nil(err, "insert failed")
+
+	// We expect there to be 2 writes - the atr and the doc itself.
+	suite.Assert().Equal(uint32(2), writeUnits)
+	suite.Assert().Equal(uint32(0), readUnits)
+	suite.Assert().Equal(uint32(2), numOps)
+
+	getRes, err := testBlkGet(txn, TransactionGetOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+	})
+	suite.Require().Nil(err, "get failed")
+
+	// Get should add a read - of the doc.
+	suite.Assert().Equal(uint32(2), writeUnits)
+	suite.Assert().Equal(uint32(1), readUnits)
+	suite.Assert().Equal(uint32(3), numOps)
+
+	_, err = testBlkReplace(txn, TransactionReplaceOptions{
+		Document: getRes,
+		Value:    val2,
+	})
+	suite.Require().Nil(err, "replace failed")
+
+	// Replace should add a write and a read (as one op) - of the doc.
+	suite.Assert().Equal(uint32(3), writeUnits)
+	suite.Assert().Equal(uint32(2), readUnits)
+	suite.Assert().Equal(uint32(4), numOps)
+
+	getRes, err = testBlkGet(txn, TransactionGetOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+	})
+	suite.Require().Nil(err, "get failed")
+
+	// Get should add a read - of the doc.
+	suite.Assert().Equal(uint32(3), writeUnits)
+	suite.Assert().Equal(uint32(3), readUnits)
+	suite.Assert().Equal(uint32(5), numOps)
+
+	_, err = testBlkRemove(txn, TransactionRemoveOptions{
+		Document: getRes,
+	})
+	suite.Require().Nil(err, "remove failed")
+
+	// Remove should add a write and a read (as one op) - of the doc.
+	suite.Assert().Equal(uint32(4), writeUnits)
+	suite.Assert().Equal(uint32(4), readUnits)
+	suite.Assert().Equal(uint32(6), numOps)
+
+	err = testBlkCommit(txn)
+	suite.Require().Nil(err, "commit failed")
+
+	// Commit should add a write and a read (as one op) - of the atr and the doc.
+	suite.Assert().Equal(uint32(6), writeUnits)
+	suite.Assert().Equal(uint32(6), readUnits)
+	suite.Assert().Equal(uint32(8), numOps)
+}
+
+func (suite *StandardTestSuite) TestTransactionsInsertRollbacktUnits() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	suite.EnsureSupportsFeature(TestFeatureResourceUnits)
+	agent, _ := suite.GetAgentAndHarness()
+
+	val1 := []byte(`{"name":"mike"}`)
+	txns, err := InitTransactions(&TransactionsConfig{
+		DurabilityLevel: TransactionDurabilityLevelNone,
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			// We can always return just this one agent as we only actually
+			// use a single bucket for this entire test.
+			return agent, "", nil
+		},
+		ExpirationTime: 60 * time.Second,
+	})
+	suite.Require().Nil(err, err)
+
+	opts := &TransactionOptions{}
+	var readUnits uint32
+	var writeUnits uint32
+	var numOps uint32
+	opts.Internal.ResourceUnitCallback = func(result *ResourceUnitResult) {
+		readUnits += uint32(result.ReadUnits)
+		writeUnits += uint32(result.WriteUnits)
+		numOps++
+	}
+	txn, err := txns.BeginTransaction(opts)
+	suite.Require().Nil(err, err)
+
+	// Start the attempt
+	err = txn.NewAttempt()
+	suite.Require().Nil(err, err)
+
+	key := uuid.NewString()
+
+	_, err = testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+		Value:          val1,
+	})
+	suite.Require().Nil(err, "insert failed")
+
+	// We expect there to be 2 writes - the atr and the doc itself.
+	suite.Assert().Equal(uint32(2), writeUnits)
+	suite.Assert().Equal(uint32(0), readUnits)
+	suite.Assert().Equal(uint32(2), numOps)
+
+	err = testBlkRollback(txn)
+	suite.Require().Nil(err, "rollback failed")
+
+	// Rollback should add 3 writes and 3 reads - there are 2 requests against the atr and one against the doc.
+	suite.Assert().Equal(uint32(5), writeUnits)
+	suite.Assert().Equal(uint32(3), readUnits)
+	suite.Assert().Equal(uint32(5), numOps)
+}

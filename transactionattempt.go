@@ -56,6 +56,8 @@ type transactionAttempt struct {
 	addLostCleanupLocation addLostCleanupLocation
 
 	logger *internalTransactionLogWrapper
+
+	recordResourceUnit resourceUnitCallback
 }
 
 func (t *transactionAttempt) State() TransactionAttempt {

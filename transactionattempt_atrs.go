@@ -89,6 +89,8 @@ func (t *transactionAttempt) setATRPendingLocked(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
@@ -206,6 +208,8 @@ func (t *transactionAttempt) setATRPendingLocked(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -240,6 +244,8 @@ func (t *transactionAttempt) fetchATRCommitConflictLocked(
 			cb(st, nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		switch cerr.Class {
 		case TransactionErrorClassFailTransient:
@@ -324,6 +330,8 @@ func (t *transactionAttempt) fetchATRCommitConflictLocked(
 					ecCb(jsonAtrStateUnknown, classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				if result.Ops[0].Err != nil {
 					ecCb(jsonAtrStateUnknown, classifyError(err))
@@ -411,6 +419,8 @@ func (t *transactionAttempt) setATRCommittedLocked(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		errorReason := TransactionErrorReasonTransactionFailed
 		if ambiguityResolution {
@@ -588,6 +598,8 @@ func (t *transactionAttempt) setATRCommittedLocked(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -620,6 +632,8 @@ func (t *transactionAttempt) setATRCompletedLocked(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -712,6 +726,8 @@ func (t *transactionAttempt) setATRCompletedLocked(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -744,6 +760,8 @@ func (t *transactionAttempt) setATRAbortedLocked(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -879,6 +897,8 @@ func (t *transactionAttempt) setATRAbortedLocked(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -911,6 +931,8 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -991,6 +1013,8 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 					ecCb(classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				for _, op := range result.Ops {
 					if op.Err != nil {

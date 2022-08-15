@@ -122,6 +122,7 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 	customATRLocation := t.config.CustomATRLocation
 	bucketAgentProvider := t.config.BucketAgentProvider
 	hooks := t.config.Internal.Hooks
+	recordResourceUnit := noopResourceUnitCallback
 
 	var logger *internalTransactionLogWrapper
 	if perConfig != nil {
@@ -148,6 +149,9 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		} else {
 			logger = newInternalTransactionLogger(transactionUUID, perConfig.TransactionLogger)
 		}
+		if perConfig.Internal.ResourceUnitCallback != nil {
+			recordResourceUnit = perConfig.Internal.ResourceUnitCallback
+		}
 	} else {
 		logger = newInternalTransactionLogger(transactionUUID, NewNoopTransactionLogger())
 	}
@@ -170,10 +174,11 @@ func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*
 		bucketAgentProvider:     bucketAgentProvider,
 		addLostCleanupLocation:  t.addLostCleanupLocation,
 		logger:                  logger,
+		recordResourceUnit:      recordResourceUnit,
 	}, nil
 }
 
-// ResumeTransactionOptions specifies options which can be overriden for the resumed transaction.
+// ResumeTransactionOptions specifies options which can be overridden for the resumed transaction.
 type ResumeTransactionOptions struct {
 	// BucketAgentProvider provides a function which returns an agent for
 	// a particular bucket by name.
@@ -181,6 +186,12 @@ type ResumeTransactionOptions struct {
 
 	// TransactionLogger is the logger to use with this transaction.
 	TransactionLogger TransactionLogger
+
+	// Internal specifies a set of options for internal use.
+	// Internal: This should never be used and is not supported.
+	Internal struct {
+		ResourceUnitCallback func(result *ResourceUnitResult)
+	}
 }
 
 // ResumeTransactionAttempt allows the resumption of an existing transaction attempt
@@ -259,6 +270,11 @@ func (t *TransactionsManager) ResumeTransactionAttempt(txnBytes []byte, options 
 		logger = newInternalTransactionLogger(transactionUUID, options.TransactionLogger)
 	}
 
+	recordResourceUnit := noopResourceUnitCallback
+	if options != nil && options.Internal.ResourceUnitCallback != nil {
+		recordResourceUnit = options.Internal.ResourceUnitCallback
+	}
+
 	now := time.Now()
 	txn := &Transaction{
 		parent:                  t,
@@ -277,6 +293,7 @@ func (t *TransactionsManager) ResumeTransactionAttempt(txnBytes []byte, options 
 		bucketAgentProvider:     bucketAgentProvider,
 		addLostCleanupLocation:  t.addLostCleanupLocation,
 		logger:                  logger,
+		recordResourceUnit:      recordResourceUnit,
 	}
 
 	err = txn.resumeAttempt(&txnData)

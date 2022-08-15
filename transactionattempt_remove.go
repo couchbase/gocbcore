@@ -166,6 +166,8 @@ func (t *transactionAttempt) stageRemove(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
@@ -317,6 +319,8 @@ func (t *transactionAttempt) stageRemove(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				stagedInfo.Cas = result.Cas
 
 				t.hooks.AfterStagedRemoveComplete(key, func(err error) {
@@ -362,6 +366,8 @@ func (t *transactionAttempt) stageRemoveOfInsert(
 			cb(result, nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		switch cerr.Class {
 		case TransactionErrorClassFailExpiry:
@@ -456,6 +462,8 @@ func (t *transactionAttempt) stageRemoveOfInsert(
 					ecCb(nil, classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				t.hooks.AfterRemoveStagedInsert(key, func(err error) {
 					if err != nil {

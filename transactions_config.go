@@ -217,7 +217,7 @@ func (config *TransactionsConfig) String() string {
 		config.Internal.NumATRs)
 }
 
-// TransactionOptions specifies options which can be overriden on a per transaction basis.
+// TransactionOptions specifies options which can be overridden on a per transaction basis.
 type TransactionOptions struct {
 	// CustomATRLocation specifies a specific location to place meta-data.
 	CustomATRLocation TransactionATRLocation
@@ -244,7 +244,8 @@ type TransactionOptions struct {
 	// Internal specifies a set of options for internal use.
 	// Internal: This should never be used and is not supported.
 	Internal struct {
-		Hooks TransactionHooks
+		Hooks                TransactionHooks
+		ResourceUnitCallback func(result *ResourceUnitResult)
 	}
 }
 

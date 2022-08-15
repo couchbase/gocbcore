@@ -167,6 +167,8 @@ func (t *transactionAttempt) stageReplace(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
@@ -317,6 +319,8 @@ func (t *transactionAttempt) stageReplace(
 					ecCb(nil, classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				stagedInfo.Cas = result.Cas
 

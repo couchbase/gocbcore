@@ -53,7 +53,6 @@ func (t *transactionAttempt) rollback(
 		t.applyStateBits(transactionStateBitShouldNotCommit|transactionStateBitShouldNotRollback, 0)
 
 		if t.state == TransactionAttemptStateNothingWritten {
-			//t.state = TransactionAttemptStateRolledBack
 			unlockAndCb(nil)
 			return
 		}
@@ -175,6 +174,8 @@ func (t *transactionAttempt) removeStagedInsert(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(
@@ -261,6 +262,8 @@ func (t *transactionAttempt) removeStagedInsert(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -294,6 +297,8 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -382,6 +387,8 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 					ecCb(classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				for _, op := range result.Ops {
 					if op.Err != nil {

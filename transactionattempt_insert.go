@@ -254,6 +254,8 @@ func (t *transactionAttempt) stageInsert(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		switch cerr.Class {
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
@@ -374,6 +376,8 @@ func (t *transactionAttempt) stageInsert(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				stagedInfo.Cas = result.Cas
 
 				t.hooks.AfterStagedInsertComplete(key, func(err error) {
@@ -417,6 +421,8 @@ func (t *transactionAttempt) getMetaForConflictedInsert(
 			cb(isTombstone, meta, cas, nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		switch cerr.Class {
 		case TransactionErrorClassFailDocNotFound:
@@ -471,6 +477,8 @@ func (t *transactionAttempt) getMetaForConflictedInsert(
 				return
 			}
 
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 			var txnMeta *jsonTxnXattr
 			if result.Ops[0].Err == nil {
 				var txnMetaVal jsonTxnXattr
@@ -506,6 +514,8 @@ func (t *transactionAttempt) cleanupStagedInsert(
 			cb(cas, nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		switch cerr.Class {
 		case TransactionErrorClassFailDocNotFound:
@@ -557,6 +567,8 @@ func (t *transactionAttempt) cleanupStagedInsert(
 				ecCb(0, classifyError(err))
 				return
 			}
+
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 			ecCb(result.Cas, nil)
 		})

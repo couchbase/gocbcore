@@ -79,7 +79,6 @@ func (t *transactionAttempt) commit(
 		t.applyStateBits(transactionStateBitShouldNotCommit, 0)
 
 		if t.state == TransactionAttemptStateNothingWritten {
-			//t.state = TransactionAttemptStateCompleted
 			unlockAndCb(nil)
 			return
 		}
@@ -228,6 +227,8 @@ func (t *transactionAttempt) fetchBeforeUnstage(
 			return
 		}
 
+		t.ReportResourceUnitsError(cerr.Source)
+
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(
@@ -292,6 +293,8 @@ func (t *transactionAttempt) fetchBeforeUnstage(
 				return
 			}
 
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 			if result.Ops[0].Err != nil {
 				ecCb(classifyError(result.Ops[0].Err))
 				return
@@ -331,6 +334,8 @@ func (t *transactionAttempt) commitStagedReplace(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -448,6 +453,8 @@ func (t *transactionAttempt) commitStagedReplace(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				for _, op := range result.Ops {
 					if op.Err != nil {
 						ecCb(classifyError(op.Err))
@@ -489,6 +496,8 @@ func (t *transactionAttempt) commitStagedInsert(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -579,6 +588,8 @@ func (t *transactionAttempt) commitStagedInsert(
 					return
 				}
 
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
+
 				t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
 					if err != nil {
 						ecCb(classifyHookError(err))
@@ -613,6 +624,8 @@ func (t *transactionAttempt) commitStagedRemove(
 			cb(nil)
 			return
 		}
+
+		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
 			cb(t.operationFailed(operationFailedDef{
@@ -691,6 +704,8 @@ func (t *transactionAttempt) commitStagedRemove(
 					ecCb(classifyError(err))
 					return
 				}
+
+				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				t.hooks.AfterDocRemovedPreRetry(mutation.Key, func(err error) {
 					if err != nil {
