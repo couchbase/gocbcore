@@ -20,6 +20,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -80,12 +81,14 @@ type LostTransactionCleaner interface {
 	ProcessATR(agent *Agent, oboUser string, collection, scope, atrID string, cb func([]TransactionsCleanupAttempt, TransactionProcessATRStats, error))
 	RemoveClientFromAllLocations(uuid string) error
 	Close()
+	GetAndResetResourceUnits() *TransactionResourceUnitResult
 }
 
 type lostTransactionCleaner interface {
 	AddATRLocation(location TransactionLostATRLocation)
 	ATRLocations() []TransactionLostATRLocation
 	Close()
+	GetAndResetResourceUnits() *TransactionResourceUnitResult
 }
 
 type noopLostTransactionCleaner struct {
@@ -99,6 +102,10 @@ func (ltc *noopLostTransactionCleaner) ATRLocations() []TransactionLostATRLocati
 }
 
 func (ltc *noopLostTransactionCleaner) Close() {
+}
+
+func (ltc *noopLostTransactionCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
+	return nil
 }
 
 type stdLostTransactionCleaner struct {
@@ -115,6 +122,10 @@ type stdLostTransactionCleaner struct {
 	newLocationCh       chan lostATRLocationWithShutdown
 	stop                chan struct{}
 	atrLocationFinder   TransactionsLostCleanupATRLocationProviderFn
+
+	numResourceUnitOps uint32
+	readUnits          uint32
+	writeUnits         uint32
 }
 
 type lostATRLocationWithShutdown struct {
@@ -177,6 +188,32 @@ func (ltc *stdLostTransactionCleaner) start() {
 	}
 }
 
+func (ltc *stdLostTransactionCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
+	baseUnits := ltc.cleaner.GetAndResetResourceUnits()
+	numOps := atomic.SwapUint32(&ltc.numResourceUnitOps, 0)
+	if numOps == 0 && baseUnits == nil {
+		return nil
+	}
+
+	readUnits := atomic.SwapUint32(&ltc.readUnits, 0)
+	writeUnits := atomic.SwapUint32(&ltc.writeUnits, 0)
+
+	if baseUnits == nil {
+		return &TransactionResourceUnitResult{
+			NumOps:     numOps,
+			ReadUnits:  readUnits,
+			WriteUnits: writeUnits,
+		}
+	} else if numOps == 0 {
+		return baseUnits
+	}
+	return &TransactionResourceUnitResult{
+		NumOps:     numOps + baseUnits.NumOps,
+		ReadUnits:  readUnits + baseUnits.ReadUnits,
+		WriteUnits: writeUnits + baseUnits.WriteUnits,
+	}
+}
+
 func (ltc *stdLostTransactionCleaner) ATRLocations() []TransactionLostATRLocation {
 	ltc.locationsLock.Lock()
 	defer ltc.locationsLock.Unlock()
@@ -232,6 +269,27 @@ func (ltc *stdLostTransactionCleaner) RemoveClientFromAllLocations(uuid string) 
 	}
 
 	return ltc.removeClient(uuid, locations)
+}
+
+func (ltc *stdLostTransactionCleaner) updateResourceUnits(units *ResourceUnitResult) {
+	if units == nil {
+		return
+	}
+
+	atomic.AddUint32(&ltc.numResourceUnitOps, 1)
+	atomic.AddUint32(&ltc.readUnits, uint32(units.ReadUnits))
+	atomic.AddUint32(&ltc.writeUnits, uint32(units.WriteUnits))
+}
+
+func (ltc *stdLostTransactionCleaner) updateResourceUnitsError(err error) {
+	if err == nil {
+		return
+	}
+
+	var kerr *KeyValueError
+	if errors.As(err, &kerr) {
+		ltc.updateResourceUnits(kerr.Internal.ResourceUnits)
+	}
 }
 
 func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[TransactionLostATRLocation]chan struct{}) error {
@@ -312,6 +370,7 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 			User:           oboUser,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
+				ltc.updateResourceUnitsError(err)
 				if errors.Is(err, ErrDocumentNotFound) || errors.Is(err, ErrPathNotFound) {
 					logDebugf("Client %s not found in client record for %s, location = %s: %v", uuid, ltc.uuid, location, err)
 					cb(nil)
@@ -331,6 +390,8 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 				}()
 				return
 			}
+
+			ltc.updateResourceUnits(result.Internal.ResourceUnits)
 
 			cb(nil)
 		})
@@ -489,6 +550,7 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 			User:           oboUser,
 		}, func(result *LookupInResult, err error) {
 			if err != nil {
+				ltc.updateResourceUnitsError(err)
 				ec := classifyError(err)
 
 				switch ec.Class {
@@ -507,6 +569,8 @@ func (ltc *stdLostTransactionCleaner) ProcessClient(agent *Agent, oboUser string
 				}
 				return
 			}
+
+			ltc.updateResourceUnits(result.Internal.ResourceUnits)
 
 			recordOp := result.Ops[0]
 			hlcOp := result.Ops[1]
@@ -721,9 +785,12 @@ func (ltc *stdLostTransactionCleaner) getATR(agent *Agent, oboUser string, colle
 			User:           oboUser,
 		}, func(result *LookupInResult, err error) {
 			if err != nil {
+				ltc.updateResourceUnitsError(err)
 				cb(nil, 0, err)
 				return
 			}
+
+			ltc.updateResourceUnits(result.Internal.ResourceUnits)
 
 			if result.Ops[0].Err != nil {
 				cb(nil, 0, result.Ops[0].Err)
@@ -914,9 +981,12 @@ func (ltc *stdLostTransactionCleaner) processClientRecord(agent *Agent, oboUser 
 			User:           oboUser,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
+				ltc.updateResourceUnitsError(err)
 				cb(err)
 				return
 			}
+
+			ltc.updateResourceUnits(result.Internal.ResourceUnits)
 
 			cb(nil)
 		})
@@ -969,6 +1039,7 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 			User:           oboUser,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
+				ltc.updateResourceUnitsError(err)
 				ec := classifyError(err)
 
 				switch ec.Class {
@@ -979,6 +1050,8 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 				case TransactionErrorClassFailCasMismatch:
 				}
 			}
+
+			ltc.updateResourceUnits(result.Internal.ResourceUnits)
 			cb(nil)
 		})
 		if err != nil {

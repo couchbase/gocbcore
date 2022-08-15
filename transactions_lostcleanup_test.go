@@ -25,6 +25,30 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
+func (suite *StandardTestSuite) buildCleaner(agent *Agent, numATRs int,
+	locations map[TransactionLostATRLocation]chan struct{}) *stdLostTransactionCleaner {
+	clientUUID := uuid.New().String()
+	config := &TransactionsConfig{}
+	config.DurabilityLevel = TransactionDurabilityLevelNone
+	config.BucketAgentProvider = func(bucketName string) (*Agent, string, error) {
+		// We can always return just this one agent as we only actually
+		// use a single bucket for this entire test.
+		return agent, "", nil
+	}
+	config.CleanupWindow = 1 * time.Second
+	config.ExpirationTime = 500 * time.Millisecond
+	config.KeyValueTimeout = 2500 * time.Millisecond
+	config.Internal.Hooks = nil
+	config.Internal.CleanUpHooks = &TransactionDefaultCleanupHooks{}
+	config.Internal.ClientRecordHooks = &TransactionDefaultClientRecordHooks{}
+	config.Internal.NumATRs = numATRs
+	cleaner := newStdLostTransactionCleaner(config)
+	cleaner.locations = locations
+	cleaner.uuid = clientUUID
+
+	return cleaner
+}
+
 func (suite *UnitTestSuite) TestParseCas() {
 	// assertEquals(1539336197457L, ActiveTransactionRecord.parseMutationCAS("0x000058a71dd25c15"));
 	cas, err := parseCASToMilliseconds("0x000058a71dd25c15")
@@ -66,28 +90,11 @@ func (suite *StandardTestSuite) TestLostCleanupProcessClientSuccessfulTxn() {
 		panic(err)
 	}
 
-	clientUUID := uuid.New().String()
-	config := &TransactionsConfig{}
-	config.DurabilityLevel = TransactionDurabilityLevelNone
-	config.BucketAgentProvider = func(bucketName string) (*Agent, string, error) {
-		// We can always return just this one agent as we only actually
-		// use a single bucket for this entire test.
-		return agent, "", nil
-	}
-	config.CleanupWindow = 1 * time.Second
-	config.ExpirationTime = 500 * time.Millisecond
-	config.KeyValueTimeout = 2500 * time.Millisecond
-	config.Internal.Hooks = nil
-	config.Internal.CleanUpHooks = &TransactionDefaultCleanupHooks{}
-	config.Internal.ClientRecordHooks = &TransactionDefaultClientRecordHooks{}
-	config.Internal.NumATRs = 1
-	cleaner := newStdLostTransactionCleaner(config)
-	cleaner.locations = map[TransactionLostATRLocation]chan struct{}{
+	cleaner := suite.buildCleaner(agent, 1, map[TransactionLostATRLocation]chan struct{}{
 		{
-			BucketName: "default",
+			BucketName: agent.BucketName(),
 		}: make(chan struct{}),
-	}
-	cleaner.uuid = clientUUID
+	})
 
 	cleaner.process(agent, "", "", "", func(err error) {
 		s.Wrap(func() {
@@ -98,12 +105,21 @@ func (suite *StandardTestSuite) TestLostCleanupProcessClientSuccessfulTxn() {
 	})
 	s.Wait(0)
 
+	if suite.SupportsFeature(TestFeatureResourceUnits) {
+		units := cleaner.GetAndResetResourceUnits()
+		if suite.Assert().NotNil(units) {
+			suite.Assert().Greater(units.ReadUnits, uint16(0))
+			suite.Assert().Greater(units.WriteUnits, uint16(0))
+			suite.Assert().Greater(units.NumOps, uint32(0))
+		}
+	}
+
 	// Ensure that this cleaner has added itself to the client record
 	ops := []SubDocOp{
 		{
 			Op:    memd.SubDocOpGet,
 			Flags: memd.SubdocFlagXattrPath,
-			Path:  "records.clients." + clientUUID,
+			Path:  "records.clients." + cleaner.uuid,
 		},
 	}
 
@@ -197,24 +213,9 @@ func (suite *StandardTestSuite) TestLostCleanupCleansUpExpiredClients() {
 	}))
 	h.Wait(0)
 
-	clientUUID := uuid.New().String()
-	config := &TransactionsConfig{}
-	config.DurabilityLevel = TransactionDurabilityLevelNone
-	config.BucketAgentProvider = func(bucketName string) (*Agent, string, error) {
-		// We can always return just this one agent as we only actually
-		// use a single bucket for this entire test.
-		return agent, "", nil
-	}
-	config.CleanupWindow = 1 * time.Second
-	config.ExpirationTime = 500 * time.Millisecond
-	config.KeyValueTimeout = 2500 * time.Millisecond
-	config.Internal.Hooks = nil
-	config.Internal.CleanUpHooks = &TransactionDefaultCleanupHooks{}
-	config.Internal.ClientRecordHooks = &TransactionDefaultClientRecordHooks{}
-	config.Internal.NumATRs = 1024
-	cleaner := newStdLostTransactionCleaner(config)
+	cleaner := suite.buildCleaner(agent, 1024, nil)
 
-	cleaner.ProcessClient(agent, "", "", "", clientUUID, func(details *TransactionClientRecordDetails, err error) {
+	cleaner.ProcessClient(agent, "", "", "", cleaner.uuid, func(details *TransactionClientRecordDetails, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("ProcessClient operation failed: %v", err)
@@ -256,6 +257,142 @@ func (suite *StandardTestSuite) TestLostCleanupCleansUpExpiredClients() {
 		})
 	}))
 	h.Wait(0)
+}
+
+type abortATRHooks struct {
+	*TransactionDefaultHooks
+}
+
+func (h *abortATRHooks) BeforeATRAborted(cb func(err error)) {
+	cb(errors.New("some error"))
+}
+
+func (suite *StandardTestSuite) TestLostCleanupProcessRollback() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+
+	agent, s := suite.GetAgentAndTxnHarness()
+
+	snap, err := agent.ConfigSnapshot()
+	suite.Require().Nil(err, err)
+
+	numSrvrs, err := snap.NumServers()
+	suite.Require().Nil(err, err)
+
+	if numSrvrs == 1 {
+		suite.T().Skip("Skipping test due to only 1 server, durability used by cleanup not possible")
+	}
+
+	h := suite.GetHarness()
+
+	h.PushOp(agent.Delete(DeleteOptions{
+		Key: clientRecordKey,
+	}, func(result *DeleteResult, err error) {
+		h.Wrap(func() {
+			if err != nil && !errors.Is(err, ErrDocumentNotFound) {
+				s.Fatalf("Remove operation failed: %v", err)
+			}
+		})
+	}))
+	h.Wait(0)
+
+	cfg := &TransactionsConfig{
+		DurabilityLevel: TransactionDurabilityLevelNone,
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			// We can always return just this one agent as we only actually
+			// use a single bucket for this entire test.
+			return agent, "", nil
+		},
+		ExpirationTime:      500 * time.Millisecond,
+		KeyValueTimeout:     2500 * time.Millisecond,
+		CleanupLostAttempts: false,
+	}
+	cfg.Internal.Hooks = &abortATRHooks{}
+
+	transactions, err := InitTransactions(cfg)
+	if err != nil {
+		log.Printf("InitTransactions failed: %+v", err)
+		panic(err)
+	}
+
+	txn, err := transactions.BeginTransaction(nil)
+	suite.Require().Nil(err, err)
+
+	val1 := []byte(`{"name":"mike"}`)
+
+	key := uuid.NewString()
+
+	// Start the attempt
+	err = txn.NewAttempt()
+	suite.Require().Nil(err, err)
+
+	_, err = testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+		Value:          val1,
+	})
+	suite.Require().Nil(err, "insert failed")
+
+	err = testBlkRollback(txn)
+	suite.Require().NotNil(err)
+
+	cleaner := suite.buildCleaner(agent, 1, map[TransactionLostATRLocation]chan struct{}{
+		{
+			BucketName: agent.BucketName(),
+		}: make(chan struct{}),
+	})
+
+	cleaner.ProcessClient(agent, "", suite.CollectionName, suite.ScopeName, cleaner.uuid, func(result *TransactionClientRecordDetails, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("process client operation failed: %v", err)
+			}
+		})
+	})
+	s.Wait(0)
+
+	success := suite.tryUntil(time.Now().Add(2*time.Second), 250*time.Millisecond, func() bool {
+		wait := make(chan struct {
+			err      error
+			attempts []TransactionsCleanupAttempt
+			stats    TransactionProcessATRStats
+		}, 1)
+		cleaner.ProcessATR(agent, "", txn.Attempt().AtrCollectionName, txn.Attempt().AtrScopeName, string(txn.Attempt().AtrID),
+			func(attempts []TransactionsCleanupAttempt, stats TransactionProcessATRStats, err error) {
+				wait <- struct {
+					err      error
+					attempts []TransactionsCleanupAttempt
+					stats    TransactionProcessATRStats
+				}{err: err, attempts: attempts, stats: stats}
+			})
+		res := <-wait
+
+		if len(res.attempts) == 0 {
+			return false
+		}
+		if !res.attempts[0].Success {
+			return false
+		}
+		if res.stats.NumEntriesExpired == 0 {
+			return false
+		}
+
+		return true
+	})
+	suite.Require().True(success, "ProcessATR did not succeed in time")
+
+	if suite.SupportsFeature(TestFeatureResourceUnits) {
+		units := cleaner.GetAndResetResourceUnits()
+		if suite.Assert().NotNil(units) {
+			suite.Assert().Greater(units.ReadUnits, uint16(0))
+			suite.Assert().Greater(units.WriteUnits, uint16(0))
+			suite.Assert().Greater(units.NumOps, uint32(0))
+		}
+	}
+
+	suite.Require().Nil(transactions.Close())
+	cleaner.Close()
 }
 
 func (suite *StandardTestSuite) TestCustomATRLocationAutomaticallyAddedToCleanup() {

@@ -386,3 +386,15 @@ func (t *TransactionsManagerInternal) CleanupQueueLength() int32 {
 func (t *TransactionsManagerInternal) CleanupLocations() []TransactionLostATRLocation {
 	return t.parent.lostCleanup.ATRLocations()
 }
+
+// LostCleanupGetAndResetResourceUnits returns the number of resource units used by the lost cleanup thread,
+// and resets them.
+func (t *TransactionsManagerInternal) LostCleanupGetAndResetResourceUnits() *TransactionResourceUnitResult {
+	return t.parent.lostCleanup.GetAndResetResourceUnits()
+}
+
+// CleanupThreadGetAndResetResourceUnits returns the number of resource units used by the standard cleanup thread,
+// // and resets them.
+func (t *TransactionsManagerInternal) CleanupThreadGetAndResetResourceUnits() *TransactionResourceUnitResult {
+	return t.parent.cleaner.GetAndResetResourceUnits()
+}

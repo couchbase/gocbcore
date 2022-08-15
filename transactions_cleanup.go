@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -107,6 +108,7 @@ type TransactionsCleaner interface {
 	QueueLength() int32
 	CleanupAttempt(atrAgent *Agent, atrOboUser string, req *TransactionsCleanupRequest, regular bool, cb func(attempt TransactionsCleanupAttempt))
 	Close()
+	GetAndResetResourceUnits() *TransactionResourceUnitResult
 }
 
 // NewTransactionsCleaner returns a TransactionsCleaner implementation.
@@ -133,6 +135,10 @@ func (nc *noopTransactionsCleaner) QueueLength() int32 {
 	return 0
 }
 
+func (nc *noopTransactionsCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
+	return nil
+}
+
 func (nc *noopTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser string, req *TransactionsCleanupRequest, regular bool, cb func(attempt TransactionsCleanupAttempt)) {
 	cb(TransactionsCleanupAttempt{})
 }
@@ -147,6 +153,10 @@ type stdTransactionsCleaner struct {
 	bucketAgentProvider TransactionsBucketAgentProviderFn
 	keyValueTimeout     time.Duration
 	durabilityLevel     TransactionDurabilityLevel
+
+	numResourceUnitOps uint32
+	readUnits          uint32
+	writeUnits         uint32
 }
 
 func newStdCleaner(config *TransactionsConfig) *stdTransactionsCleaner {
@@ -202,6 +212,40 @@ func (c *stdTransactionsCleaner) stealAllRequests() []*TransactionsCleanupReques
 		default:
 			return reqs
 		}
+	}
+}
+
+func (c *stdTransactionsCleaner) updateResourceUnits(units *ResourceUnitResult) {
+	if units == nil {
+		return
+	}
+
+	atomic.AddUint32(&c.numResourceUnitOps, 1)
+	atomic.AddUint32(&c.readUnits, uint32(units.ReadUnits))
+	atomic.AddUint32(&c.writeUnits, uint32(units.WriteUnits))
+}
+
+func (c *stdTransactionsCleaner) updateResourceUnitsError(err error) {
+	if err == nil {
+		return
+	}
+
+	var kerr *KeyValueError
+	if errors.As(err, &kerr) {
+		c.updateResourceUnits(kerr.Internal.ResourceUnits)
+	}
+}
+
+func (c *stdTransactionsCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
+	numOps := atomic.SwapUint32(&c.numResourceUnitOps, 0)
+	if numOps == 0 {
+		return nil
+	}
+
+	return &TransactionResourceUnitResult{
+		NumOps:     numOps,
+		ReadUnits:  atomic.SwapUint32(&c.readUnits, 0),
+		WriteUnits: atomic.SwapUint32(&c.writeUnits, 0),
 	}
 }
 
@@ -414,6 +458,7 @@ func (c *stdTransactionsCleaner) cleanupATR(agent *Agent, oboUser string, req *T
 			User:                   oboUser,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
+				c.updateResourceUnitsError(err)
 				if errors.Is(err, ErrPathNotFound) {
 					cb(nil)
 					return
@@ -424,6 +469,7 @@ func (c *stdTransactionsCleaner) cleanupATR(agent *Agent, oboUser string, req *T
 				return
 			}
 
+			c.updateResourceUnits(result.Internal.ResourceUnits)
 			cb(nil)
 		})
 		if err != nil {
@@ -571,12 +617,14 @@ func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []Tra
 					User:                   oboUser,
 				}, func(result *MutateInResult, err error) {
 					if err != nil {
+						c.updateResourceUnitsError(err)
 						logDebugf("Failed to rollback for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 							doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 						waitCh <- err
 						return
 					}
 
+					c.updateResourceUnits(result.Internal.ResourceUnits)
 					waitCh <- nil
 				})
 				if err != nil {
@@ -647,12 +695,14 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 						User:                   oboUser,
 					}, func(result *MutateInResult, err error) {
 						if err != nil {
+							c.updateResourceUnitsError(err)
 							logDebugf("Failed to rollback for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 								doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 							waitCh <- err
 							return
 						}
 
+						c.updateResourceUnits(result.Internal.ResourceUnits)
 						waitCh <- nil
 					})
 					if err != nil {
@@ -671,12 +721,14 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 						User:                   oboUser,
 					}, func(result *DeleteResult, err error) {
 						if err != nil {
+							c.updateResourceUnitsError(err)
 							logDebugf("Failed to rollback for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 								doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 							waitCh <- err
 							return
 						}
 
+						c.updateResourceUnits(result.Internal.ResourceUnits)
 						waitCh <- nil
 					})
 					if err != nil {
@@ -743,12 +795,14 @@ func (c *stdTransactionsCleaner) commitRemDocs(attemptID string, docs []Transact
 					User:                   oboUser,
 				}, func(result *DeleteResult, err error) {
 					if err != nil {
+						c.updateResourceUnitsError(err)
 						logDebugf("Failed to commit for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 							doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 						waitCh <- err
 						return
 					}
 
+					c.updateResourceUnits(result.Internal.ResourceUnits)
 					waitCh <- nil
 				})
 				if err != nil {
@@ -809,12 +863,14 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						User:                   oboUser,
 					}, func(result *StoreResult, err error) {
 						if err != nil {
+							c.updateResourceUnitsError(err)
 							logDebugf("Failed to commit for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 								doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 							waitCh <- err
 							return
 						}
 
+						c.updateResourceUnits(result.Internal.ResourceUnits)
 						waitCh <- nil
 					})
 					if err != nil {
@@ -845,12 +901,14 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						User:                   oboUser,
 					}, func(result *MutateInResult, err error) {
 						if err != nil {
+							c.updateResourceUnitsError(err)
 							logDebugf("Failed to commit for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
 								doc.BucketName, doc.CollectionName, doc.ScopeName, doc.ID, err)
 							waitCh <- err
 							return
 						}
 
+						c.updateResourceUnits(result.Internal.ResourceUnits)
 						waitCh <- nil
 					})
 					if err != nil {
@@ -904,6 +962,7 @@ func (c *stdTransactionsCleaner) perDoc(crc32MatchStaging bool, attemptID string
 			User:     oboUser,
 		}, func(result *LookupInResult, err error) {
 			if err != nil {
+				c.updateResourceUnitsError(err)
 				if errors.Is(err, ErrDocumentNotFound) {
 					// We can consider this success.
 					cb(nil, nil)
@@ -915,6 +974,8 @@ func (c *stdTransactionsCleaner) perDoc(crc32MatchStaging bool, attemptID string
 				cb(nil, err)
 				return
 			}
+
+			c.updateResourceUnits(result.Internal.ResourceUnits)
 
 			if result.Ops[0].Err != nil {
 				// This is not so good.
