@@ -257,3 +257,48 @@ func (suite *StandardTestSuite) TestLostCleanupCleansUpExpiredClients() {
 	}))
 	h.Wait(0)
 }
+
+func (suite *StandardTestSuite) TestCustomATRLocationAutomaticallyAddedToCleanup() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+
+	agent, _ := suite.GetAgentAndTxnHarness()
+
+	loc := TransactionATRLocation{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+	}
+
+	cfg := &TransactionsConfig{
+		DurabilityLevel: TransactionDurabilityLevelNone,
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			// We can always return just this one agent as we only actually
+			// use a single bucket for this entire test.
+			return agent, "", nil
+		},
+		ExpirationTime:      500 * time.Millisecond,
+		KeyValueTimeout:     2500 * time.Millisecond,
+		CleanupLostAttempts: true,
+		CustomATRLocation:   loc,
+		CleanupWatchATRs:    true,
+	}
+
+	transactions, err := InitTransactions(cfg)
+	if err != nil {
+		log.Printf("InitTransactions failed: %+v", err)
+		panic(err)
+	}
+	defer transactions.Close()
+
+	suite.Require().Eventually(func() bool {
+		locs := transactions.Internal().CleanupLocations()
+		if len(locs) == 0 {
+			return false
+		}
+
+		cLoc := locs[0]
+		return cLoc.BucketName == loc.Agent.BucketName() && cLoc.ScopeName == loc.ScopeName &&
+			cLoc.CollectionName == loc.CollectionName
+	}, 5*time.Second, 100*time.Millisecond)
+
+}

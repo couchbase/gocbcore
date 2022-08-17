@@ -170,7 +170,7 @@ func (ltc *stdLostTransactionCleaner) start() {
 				logDebugf("Failed to fetch agent for %s, location: %s:, err: %v",
 					ltc.uuid, location.location, err)
 				// We should probably do something here...
-				return
+				continue
 			}
 			go ltc.perLocation(agent, oboUser, location)
 		}

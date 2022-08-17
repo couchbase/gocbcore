@@ -89,6 +89,13 @@ func InitTransactions(config *TransactionsConfig) (*TransactionsManager, error) 
 
 	if config.CleanupLostAttempts {
 		t.lostCleanup = startLostTransactionCleaner(config)
+
+		// We add the custom metadata location to the cleanup locations so that lost cleanup starts watching it
+		// immediately. Note that we don't do the same for the custom locations on TransactionOptions, this is because
+		// we know that that location will be used in a transaction.
+		if config.CustomATRLocation.Agent != nil {
+			t.addLostCleanupLocation(config.CustomATRLocation.Agent.BucketName(), config.CustomATRLocation.ScopeName, config.CustomATRLocation.CollectionName)
+		}
 	} else {
 		t.lostCleanup = &noopLostTransactionCleaner{}
 	}
