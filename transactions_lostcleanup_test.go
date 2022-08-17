@@ -262,7 +262,6 @@ func (suite *StandardTestSuite) TestCustomATRLocationAutomaticallyAddedToCleanup
 	suite.EnsureSupportsFeature(TestFeatureTransactions)
 
 	agent, _ := suite.GetAgentAndTxnHarness()
-
 	loc := TransactionATRLocation{
 		Agent:          agent,
 		ScopeName:      suite.ScopeName,
@@ -280,7 +279,6 @@ func (suite *StandardTestSuite) TestCustomATRLocationAutomaticallyAddedToCleanup
 		KeyValueTimeout:     2500 * time.Millisecond,
 		CleanupLostAttempts: true,
 		CustomATRLocation:   loc,
-		CleanupWatchATRs:    true,
 	}
 
 	transactions, err := InitTransactions(cfg)

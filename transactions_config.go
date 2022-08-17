@@ -16,6 +16,7 @@ package gocbcore
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -79,6 +80,31 @@ type TransactionATRLocation struct {
 	OboUser        string
 	ScopeName      string
 	CollectionName string
+}
+
+func (tlal TransactionATRLocation) build() string {
+	scope := tlal.ScopeName
+	if scope == "" {
+		scope = "_default"
+	}
+	collection := tlal.CollectionName
+	if collection == "" {
+		collection = "_default"
+	}
+
+	return tlal.Agent.BucketName() + "." + scope + "." + collection
+}
+
+func (tlal TransactionATRLocation) String() string {
+	if isLogRedactionLevelFull() || isLogRedactionLevelPartial() {
+		return redactMetaData(tlal.build())
+	}
+
+	return tlal.build()
+}
+
+func (tlal TransactionATRLocation) redacted() interface{} {
+	return redactMetaData(tlal.build())
 }
 
 // TransactionLostATRLocation specifies a specific location where lost transactions should
@@ -162,10 +188,6 @@ type TransactionsConfig struct {
 	// for use in lost transaction cleanup.
 	LostCleanupATRLocationProvider TransactionsLostCleanupATRLocationProviderFn
 
-	// CleanupWatchATRs controls whether to automatically add any ATR entries to lost transaction cleanup,
-	// in addition cleaning up any ATR entries returned by LostCleanupATRLocationProvider.
-	CleanupWatchATRs bool
-
 	// Internal specifies a set of options for internal use.
 	// Internal: This should never be used and is not supported.
 	Internal struct {
@@ -178,6 +200,21 @@ type TransactionsConfig struct {
 		EnableMutationCaching   bool
 		NumATRs                 int
 	}
+}
+
+func (config *TransactionsConfig) String() string {
+	if config == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("CustomATRLocation:%s ExpirationTime:%s DurabilityLevel:%s KeyValueTimeout:%s CleanupWindow:%s "+
+		"CleanupClientAttempts:%t CleanupLostAttempts:%t CleanupQueueSize:%d BucketAgentProvider:%p LostCleanupATRLocationProvider:%p "+
+		"Internal:{EnableNonFatalGets:%t EnableParallelUnstaging:%t "+"EnableExplicitATRs:%t EnableMutationCaching:%t NumATRs:%d}",
+		config.CustomATRLocation, config.ExpirationTime, transactionDurabilityLevelToString(config.DurabilityLevel),
+		config.KeyValueTimeout, config.CleanupWindow, config.CleanupClientAttempts, config.CleanupLostAttempts, config.CleanupQueueSize,
+		config.BucketAgentProvider, config.LostCleanupATRLocationProvider, config.Internal.EnableNonFatalGets,
+		config.Internal.EnableParallelUnstaging, config.Internal.EnableExplicitATRs, config.Internal.EnableMutationCaching,
+		config.Internal.NumATRs)
 }
 
 // TransactionOptions specifies options which can be overriden on a per transaction basis.
@@ -209,4 +246,15 @@ type TransactionOptions struct {
 	Internal struct {
 		Hooks TransactionHooks
 	}
+}
+
+func (opts *TransactionOptions) String() string {
+	if opts == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("CustomATRLocation:%s ExpirationTime:%s DurabilityLevel:%s KeyValueTimeout:%s "+
+		"BucketAgentProvider:%p TransactionLogger:%p ",
+		opts.CustomATRLocation, opts.ExpirationTime, transactionDurabilityLevelToString(opts.DurabilityLevel),
+		opts.KeyValueTimeout, opts.BucketAgentProvider, opts.TransactionLogger)
 }

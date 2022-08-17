@@ -33,6 +33,7 @@ type TransactionsManager struct {
 // InitTransactions will initialize the transactions library and return a TransactionsManager
 // object which can be used to perform transactions.
 func InitTransactions(config *TransactionsConfig) (*TransactionsManager, error) {
+	logInfof("Initializing transactions: %s", config)
 	defaultConfig := &TransactionsConfig{
 		ExpirationTime:        10000 * time.Millisecond,
 		DurabilityLevel:       TransactionDurabilityLevelMajority,
@@ -112,6 +113,7 @@ func (t *TransactionsManager) Config() TransactionsConfig {
 // BeginTransaction will begin a new transaction.  The returned object can be used
 // to begin a new attempt and subsequently perform operations before finally committing.
 func (t *TransactionsManager) BeginTransaction(perConfig *TransactionOptions) (*Transaction, error) {
+	logDebugf("Beginning transaction: %s", perConfig)
 	transactionUUID := uuid.New().String()
 
 	expirationTime := t.config.ExpirationTime
@@ -299,7 +301,7 @@ func (t *TransactionsManager) addCleanupRequest(req *TransactionsCleanupRequest)
 }
 
 func (t *TransactionsManager) addLostCleanupLocation(bucket, scope, collection string) {
-	if !t.config.CleanupWatchATRs {
+	if !t.config.CleanupLostAttempts {
 		return
 	}
 
