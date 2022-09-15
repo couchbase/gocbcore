@@ -83,7 +83,9 @@ func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 
 	newHTTPMux := newHTTPClientMux(cfg, endpoints, oldHTTPMux.tlsConfig, oldHTTPMux.auth, mux.breakerCfg)
 
-	mux.Update(oldHTTPMux, newHTTPMux)
+	if !mux.Update(oldHTTPMux, newHTTPMux) {
+		logDebugf("Failed to update HTTP mux")
+	}
 }
 
 func (mux *httpMux) UpdateTLS(tlsConfig *dynTLSConfig, auth AuthProvider) {

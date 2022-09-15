@@ -128,7 +128,16 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 	return dialer
 }
 
-func (mcc *memdClientDialerComponent) OnNewRouteConfig(_ *routeConfig) {
+func (mcc *memdClientDialerComponent) ResetConfig() {
+	atomic.StoreUint32(&mcc.configApplied, 0)
+	mcc.cfgManager.AddConfigWatcher(mcc)
+}
+
+func (mcc *memdClientDialerComponent) OnNewRouteConfig(cfg *routeConfig) {
+	if cfg.revID == -1 {
+		return
+	}
+
 	atomic.StoreUint32(&mcc.configApplied, 1)
 	mcc.cfgManager.RemoveConfigWatcher(mcc)
 }

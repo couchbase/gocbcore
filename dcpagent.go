@@ -31,6 +31,10 @@ type DCPAgent struct {
 	auth                   AuthProvider
 	authMechanisms         []AuthMechanism
 	tlsConfig              *dynTLSConfig
+
+	srvDetails *srvDetails
+
+	shutdownSig chan struct{}
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
@@ -141,6 +145,8 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 		errMap: newErrMapManager(config.BucketName),
 		auth:   config.SecurityConfig.Auth,
+
+		shutdownSig: make(chan struct{}),
 	}
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
@@ -190,6 +196,12 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				IsSeedNode: true,
 			})
 			srcMemdAddrs = kvServerList.NonSSLEndpoints
+		}
+	}
+	if config.SeedConfig.SRVRecord != nil {
+		c.srvDetails = &srvDetails{
+			Addrs:  kvServerList,
+			Record: *config.SeedConfig.SRVRecord,
 		}
 	}
 
@@ -320,6 +332,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				c.kvMux,
 				c.cfgManager,
 				c.isPollingFallbackError,
+				c.onCCCPNoConfigFromAnyNode,
 			),
 			httpPoller,
 			c.cfgManager,
@@ -493,4 +506,33 @@ func (agent *DCPAgent) onCCCPUnsupported(err error) {
 
 func (agent *DCPAgent) isPollingFallbackError(err error) bool {
 	return isPollingFallbackError(err, agent.bucketName)
+}
+
+func (agent *DCPAgent) srv() *srvDetails {
+	return agent.srvDetails
+}
+
+func (agent *DCPAgent) setSRVAddrs(addrs routeEndpoints) {
+	agent.srvDetails.Addrs = addrs
+}
+
+func (agent *DCPAgent) routeConfigWatchers() []routeConfigWatcher {
+	return agent.cfgManager.Watchers()
+}
+
+func (agent *DCPAgent) resetConfig() {
+	// Reset the config manager to accept the next config that the poller fetches.
+	// This is safe to do here, we're blocking the poller from fetching a config and if we're here then
+	// we can't be performing ops.
+	agent.cfgManager.ResetConfig()
+	// Reset the dialer so that the next connections to bootstrap fetch a config and kick off the poller again.
+	agent.dialer.ResetConfig()
+}
+
+func (agent *DCPAgent) onCCCPNoConfigFromAnyNode(err error) {
+	onCCCPNoConfigFromAnyNode(agent, err)
+}
+
+func (agent *DCPAgent) stopped() <-chan struct{} {
+	return agent.shutdownSig
 }

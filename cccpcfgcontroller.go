@@ -22,10 +22,11 @@ type cccpConfigController struct {
 	errLock  sync.Mutex
 
 	isFallbackErrorFn func(error) bool
+	noConfigFoundFn   func(error)
 }
 
 func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMgr *configManagementComponent,
-	isFallbackErrorFn func(error) bool) *cccpConfigController {
+	isFallbackErrorFn func(error) bool, noConfigFoundFn func(error)) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,
@@ -36,6 +37,7 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		looperDoneSig: make(chan struct{}),
 
 		isFallbackErrorFn: isFallbackErrorFn,
+		noConfigFoundFn:   noConfigFoundFn,
 	}
 }
 
@@ -169,10 +171,12 @@ func (ccc *cccpConfigController) doLoop() error {
 		if foundConfig == nil {
 			// Only log the error at warn if it's unexpected.
 			// If we cancelled the request then we're shutting down and this isn't unexpected.
-			if errors.Is(ccc.Error(), ErrRequestCanceled) || errors.Is(ccc.Error(), ErrShutdown) {
+			err := ccc.Error()
+			if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
 				logDebugf("CCCPPOLL: CCCP request was cancelled.")
 			} else {
 				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
+				ccc.noConfigFoundFn(err)
 			}
 			continue
 		}
@@ -218,12 +222,13 @@ func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOu
 		for _, cli := range clients {
 			err := cli.Error()
 			if err != nil {
+				logDebugf("Found error in pipeline client %p/%s: %v", cli, cli.address, err)
 				req.cancelWithCallback(err)
 				<-signal
 				return
 			}
 		}
-		req.cancelWithCallback(errAmbiguousTimeout)
+		req.cancelWithCallback(errUnambiguousTimeout)
 		<-signal
 		return
 	case <-ccc.looperStopSig:

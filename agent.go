@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -45,6 +46,9 @@ type Agent struct {
 	auth                   AuthProvider
 	authMechanisms         []AuthMechanism
 	tlsConfig              *dynTLSConfig
+
+	srvDetails  *srvDetails
+	shutdownSig chan struct{}
 }
 
 // HTTPClient returns a pre-configured HTTP Client for communicating with
@@ -52,6 +56,11 @@ type Agent struct {
 // for any dispatched requests.
 func (agent *Agent) HTTPClient() *http.Client {
 	return agent.http.cli
+}
+
+type srvDetails struct {
+	Addrs  routeEndpoints
+	Record SRVRecord
 }
 
 // CreateAgent creates an agent for performing normal operations.
@@ -79,6 +88,8 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 
 		errMap: newErrMapManager(config.BucketName),
 		auth:   config.SecurityConfig.Auth,
+
+		shutdownSig: make(chan struct{}),
 	}
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
@@ -228,6 +239,12 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 			srcMemdAddrs = kvServerList.NonSSLEndpoints
 		}
 	}
+	if config.SeedConfig.SRVRecord != nil {
+		c.srvDetails = &srvDetails{
+			Addrs:  kvServerList,
+			Record: *config.SeedConfig.SRVRecord,
+		}
+	}
 
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
@@ -358,6 +375,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 					c.kvMux,
 					c.cfgManager,
 					c.isPollingFallbackError,
+					c.onCCCPNoConfigFromAnyNode,
 				),
 				httpPoller,
 				c.cfgManager,
@@ -422,6 +440,7 @@ func (agent *Agent) Close() error {
 
 	// Close the transports so that they don't hold open goroutines.
 	agent.http.Close()
+	close(agent.shutdownSig)
 
 	return routeCloseErr
 }
@@ -627,6 +646,148 @@ func (agent *Agent) onCCCPUnsupported(err error) {
 
 func (agent *Agent) isPollingFallbackError(err error) bool {
 	return isPollingFallbackError(err, agent.bucketName)
+}
+
+type srvAgent interface {
+	srv() *srvDetails
+	setSRVAddrs(routeEndpoints)
+	routeConfigWatchers() []routeConfigWatcher
+	resetConfig()
+	IsSecure() bool
+	stopped() <-chan struct{}
+}
+
+func (agent *Agent) srv() *srvDetails {
+	return agent.srvDetails
+}
+
+func (agent *Agent) setSRVAddrs(addrs routeEndpoints) {
+	agent.srvDetails.Addrs = addrs
+}
+
+func (agent *Agent) routeConfigWatchers() []routeConfigWatcher {
+	return agent.cfgManager.Watchers()
+}
+
+func (agent *Agent) resetConfig() {
+	// Reset the config manager to accept the next config that the poller fetches.
+	// This is safe to do here, we're blocking the poller from fetching a config and if we're here then
+	// we can't be performing ops.
+	agent.cfgManager.ResetConfig()
+	// Reset the dialer so that the next connections to bootstrap fetch a config and kick off the poller again.
+	agent.dialer.ResetConfig()
+}
+
+func (agent *Agent) onCCCPNoConfigFromAnyNode(err error) {
+	onCCCPNoConfigFromAnyNode(agent, err)
+}
+
+func (agent *Agent) stopped() <-chan struct{} {
+	return agent.shutdownSig
+}
+
+// The CCCP poller suddenly becoming unable to fetch a config from any node in the cluster is the trigger
+// for checking if we need to try refresh the DNS SRV record that we used to initially connect.
+// Note that we don't need locking around of this because there is only one poller active at any given time
+// and we're blocking it here.
+func onCCCPNoConfigFromAnyNode(agent srvAgent, err error) {
+	srvDetails := agent.srv()
+	if srvDetails == nil {
+		return
+	}
+
+	// We only want to refresh the SRV record under certain circumstances, namely that we can't connect to the cluster.
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		return
+	}
+
+	logInfof("Refreshing SRV record: %s", srvDetails.Record)
+
+	var addrs []*net.SRV
+	for {
+		_, addrs, err = net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
+		if err != nil {
+			if isLogRedactionLevelFull() {
+				logInfof("Failed to lookup SRV record: %s", redactSystemData(err))
+			} else {
+				logInfof("Failed to lookup SRV record: %s", err)
+			}
+		}
+
+		if len(addrs) > 0 {
+			break
+		}
+
+		select {
+		case <-agent.stopped():
+			return
+		case <-time.After(10 * time.Second):
+		}
+	}
+
+	// If any of the addresses in the SRV record match an address that we already know then we can say that the
+	// cluster has not moved and bail out.
+	useTLS := agent.IsSecure()
+	var memdAddrs []routeEndpoint
+	if useTLS {
+		memdAddrs = srvDetails.Addrs.SSLEndpoints
+	} else {
+		memdAddrs = srvDetails.Addrs.NonSSLEndpoints
+	}
+
+	logAddrs := append([]routeEndpoint(nil), memdAddrs...)
+	if isLogRedactionLevelFull() {
+		for i, addr := range logAddrs {
+			logAddrs[i].Address = redactSystemData(addr)
+		}
+	}
+	logInfof("Found new addrs for SRV record: %v", logAddrs)
+
+	for _, addr := range addrs {
+		host := fmt.Sprintf("%s:%d", strings.TrimSuffix(addr.Target, "."), addr.Port)
+		for _, seed := range memdAddrs {
+			if host == seed.Address {
+				logInfof("Found already known matching address, not refreshing system")
+				return
+			}
+		}
+	}
+	logInfof("No matching address known, refreshing system")
+
+	agent.resetConfig()
+
+	kvServerList := routeEndpoints{}
+	for _, seed := range addrs {
+		host := fmt.Sprintf("%s:%d", strings.TrimSuffix(seed.Target, "."), seed.Port)
+		if useTLS {
+			kvServerList.SSLEndpoints = append(kvServerList.SSLEndpoints, routeEndpoint{
+				Address:    host,
+				IsSeedNode: true,
+			})
+		} else {
+			kvServerList.NonSSLEndpoints = append(kvServerList.NonSSLEndpoints, routeEndpoint{
+				Address:    host,
+				IsSeedNode: true,
+			})
+		}
+	}
+
+	// Build a new fake config to kick off the pipelines again, this will make the kvmux stop the old pipelines
+	// and create new connections to the new addresses.
+	newCfg := &routeConfig{
+		kvServerList: kvServerList,
+		revID:        -1,
+	}
+
+	watchers := agent.routeConfigWatchers()
+	for _, watcher := range watchers {
+		watcher.OnNewRouteConfig(newCfg)
+	}
+
+	// Update the addresses we hold so that if the SRV changes again then we can correctly check the new vs old
+	// addresses.
+	agent.setSRVAddrs(kvServerList)
 }
 
 func authMechanismsFromConfig(authMechanisms []AuthMechanism, useTLS bool) []AuthMechanism {

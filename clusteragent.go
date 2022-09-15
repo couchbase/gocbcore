@@ -143,7 +143,7 @@ func (agent *clusterAgent) RemoveConfigWatcher(watcher routeConfigWatcher) {
 func (agent *clusterAgent) OnNewRouteConfig(cfg *routeConfig) {
 	agent.revLock.Lock()
 	// This could be coming from multiple agents so we need to make sure that it's up to date with what we've seen.
-	if cfg.revID <= agent.revID {
+	if cfg.revID > -1 && cfg.revID <= agent.revID {
 		agent.revLock.Unlock()
 		return
 	}

@@ -407,10 +407,22 @@ func (config KVConfig) fromSpec(spec connstr.ResolvedConnSpec) (KVConfig, error)
 	return config, nil
 }
 
+// SRVRecord describes the SRV record used to extract memd addresses in the SeedConfig.
+type SRVRecord struct {
+	Proto  string
+	Scheme string
+	Host   string
+}
+
+func (srv SRVRecord) redacted() interface{} {
+	return fmt.Sprintf("%s %s %s", srv.Proto, srv.Scheme, redactSystemData(srv.Host))
+}
+
 // SeedConfig specifies initial seed configuration options such as addresses.
 type SeedConfig struct {
 	HTTPAddrs []string
 	MemdAddrs []string
+	SRVRecord *SRVRecord
 }
 
 func (config SeedConfig) fromSpec(spec connstr.ResolvedConnSpec) (SeedConfig, error) {
@@ -463,6 +475,13 @@ func (config SeedConfig) fromSpec(spec connstr.ResolvedConnSpec) (SeedConfig, er
 	}
 	config.MemdAddrs = memdHosts
 	config.HTTPAddrs = httpHosts
+	if spec.SrvRecord != nil {
+		config.SRVRecord = &SRVRecord{
+			Proto:  spec.SrvRecord.Proto,
+			Scheme: spec.SrvRecord.Scheme,
+			Host:   spec.SrvRecord.Host,
+		}
+	}
 
 	return config, nil
 }
@@ -471,6 +490,7 @@ func (config SeedConfig) redacted() SeedConfig {
 	newConfig := SeedConfig{
 		HTTPAddrs: config.HTTPAddrs,
 		MemdAddrs: config.MemdAddrs,
+		SRVRecord: config.SRVRecord,
 	}
 	// The slices here are still pointing at config's underlying arrays
 	// so we need to make them not do that.

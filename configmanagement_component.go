@@ -55,6 +55,14 @@ func (cm *configManagementComponent) UseTLS(use bool) {
 	cm.configLock.Unlock()
 }
 
+func (cm *configManagementComponent) TLSEnabled() bool {
+	cm.configLock.Lock()
+	useSSL := cm.useSSL
+	cm.configLock.Unlock()
+
+	return useSSL
+}
+
 func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	cm.configLock.Lock()
@@ -71,7 +79,7 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	}
 
 	// There's something wrong with this route config so don't send it to the watchers.
-	if !cm.updateRouteConfig(routeCfg) {
+	if !cm.canUpdateRouteConfig(routeCfg) {
 		cm.configLock.Unlock()
 		return
 	}
@@ -92,6 +100,23 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	for _, watcher := range watchers {
 		watcher.OnNewRouteConfig(routeCfg)
 	}
+}
+
+func (cm *configManagementComponent) Watchers() []routeConfigWatcher {
+	cm.watchersLock.Lock()
+	watchers := make([]routeConfigWatcher, len(cm.cfgChangeWatchers))
+	copy(watchers, cm.cfgChangeWatchers)
+	cm.watchersLock.Unlock()
+
+	return watchers
+}
+
+func (cm *configManagementComponent) ResetConfig() {
+	cm.configLock.Lock()
+	cm.currentConfig = &routeConfig{
+		revID: -1,
+	}
+	cm.configLock.Unlock()
 }
 
 func (cm *configManagementComponent) AddConfigWatcher(watcher routeConfigWatcher) {
@@ -127,7 +152,7 @@ func (cm *configManagementComponent) RemoveConfigWatcher(watcher routeConfigWatc
 
 // We should never be receiving concurrent updates and nothing should be accessing
 // our internal route config so we shouldn't need to lock here.
-func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
+func (cm *configManagementComponent) canUpdateRouteConfig(cfg *routeConfig) bool {
 	oldCfg := cm.currentConfig
 
 	// Check some basic things to ensure consistency!
