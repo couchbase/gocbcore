@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version 10.1.5 (21 September 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1293](GOCBC-1293):
+  Added support for resource units.
+* [https://issues.couchbase.com/browse/GOCBC-1332](GOCBC-1332):
+  Added deadlines to collections operations options.
+* [https://issues.couchbase.com/browse/GOCBC-1339](GOCBC-1339):
+  Removed support for `CleanupWatchATRs` from `TransactionsConfig`.
+  Note that whilst this field still exists it is *not* used internally, it is included only for API level backward compatibility.
+* [https://issues.couchbase.com/browse/GOCBC-1340](GOCBC-1340):
+  Added support for automatically starting lost cleanup on `TransactionsConfig` `CustomATRLocation`.
+
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1338](GOCBC-1338):
+  Fixed issue where `lazyCircuitBreaker` was not using 64-bit aligned values.
+
 ## Version 10.1.4 (20 July 2022)
 
 ### New Features and Behavioral Changes
