@@ -188,6 +188,11 @@ type TransactionsConfig struct {
 	// for use in lost transaction cleanup.
 	LostCleanupATRLocationProvider TransactionsLostCleanupATRLocationProviderFn
 
+	// CleanupWatchATRs is *NOT* used within the codebase, it is *only* here to provide API level backward
+	// compatibility.
+	// This should *never* be used.
+	CleanupWatchATRs bool
+
 	// Internal specifies a set of options for internal use.
 	// Internal: This should never be used and is not supported.
 	Internal struct {
