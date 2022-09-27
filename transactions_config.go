@@ -83,6 +83,10 @@ type TransactionATRLocation struct {
 }
 
 func (tlal TransactionATRLocation) build() string {
+	if tlal.Agent == nil {
+		return ""
+	}
+
 	scope := tlal.ScopeName
 	if scope == "" {
 		scope = "_default"
@@ -116,6 +120,10 @@ type TransactionLostATRLocation struct {
 }
 
 func (tlal TransactionLostATRLocation) build() string {
+	if tlal.BucketName == "" {
+		return ""
+	}
+
 	scope := tlal.ScopeName
 	if scope == "" {
 		scope = "_default"
