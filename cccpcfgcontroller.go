@@ -128,10 +128,8 @@ func (ccc *cccpConfigController) doLoop() error {
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
 				if ccc.isFallbackErrorFn(err) {
-					// This error is indicative of a memcached bucket which we can't handle so return the error.
-					logInfof("CCCPPOLL: CCCP not supported, returning error upstream.")
 					foundErr = err
-					return true
+					return false
 				}
 
 				ccc.setError(err)
@@ -145,6 +143,7 @@ func (ccc *cccpConfigController) doLoop() error {
 				logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %s", err)
 				return false
 			}
+			foundErr = nil
 			ccc.setError(nil)
 
 			logDebugf("CCCPPOLL: Got Block: %s", string(cccpBytes))
@@ -165,6 +164,8 @@ func (ccc *cccpConfigController) doLoop() error {
 			return true
 		})
 		if foundErr != nil {
+			// This error is indicative of a memcached bucket which we can't handle so return the error.
+			logInfof("CCCPPOLL: CCCP not supported, returning error upstream.")
 			return foundErr
 		}
 
