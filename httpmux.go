@@ -3,7 +3,6 @@ package gocbcore
 import (
 	"bytes"
 	"fmt"
-	"net/url"
 	"sync/atomic"
 	"unsafe"
 )
@@ -100,6 +99,15 @@ func (mux *httpMux) UpdateTLS(tlsConfig *dynTLSConfig, auth AuthProvider) {
 	}
 }
 
+func makeEpList(endpoints []routeEndpoint) []string {
+	var epList []string
+	for _, ep := range endpoints {
+		epList = append(epList, ep.Address)
+	}
+
+	return epList
+}
+
 // CapiEps returns the capi endpoints with the path escaped bucket name appended.
 func (mux *httpMux) CapiEps() []string {
 	clientMux := mux.Get()
@@ -107,12 +115,7 @@ func (mux *httpMux) CapiEps() []string {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.capiEpList {
-		epList = append(epList, ep.Address+"/"+url.PathEscape(clientMux.bucket))
-	}
-
-	return epList
+	return makeEpList(clientMux.capiEpList)
 }
 
 func (mux *httpMux) MgmtEps() []string {
@@ -121,12 +124,7 @@ func (mux *httpMux) MgmtEps() []string {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.mgmtEpList {
-		epList = append(epList, ep.Address)
-	}
-
-	return epList
+	return makeEpList(clientMux.mgmtEpList)
 }
 
 func (mux *httpMux) N1qlEps() []string {
@@ -135,12 +133,7 @@ func (mux *httpMux) N1qlEps() []string {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.n1qlEpList {
-		epList = append(epList, ep.Address)
-	}
-
-	return epList
+	return makeEpList(clientMux.n1qlEpList)
 }
 
 func (mux *httpMux) CbasEps() []string {
@@ -149,12 +142,7 @@ func (mux *httpMux) CbasEps() []string {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.cbasEpList {
-		epList = append(epList, ep.Address)
-	}
-
-	return epList
+	return makeEpList(clientMux.cbasEpList)
 }
 
 func (mux *httpMux) FtsEps() []string {
@@ -163,22 +151,12 @@ func (mux *httpMux) FtsEps() []string {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.ftsEpList {
-		epList = append(epList, ep.Address)
-	}
-
-	return epList
+	return makeEpList(clientMux.ftsEpList)
 }
 
 func (mux *httpMux) EventingEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		var epList []string
-		for _, ep := range cMux.eventingEpList {
-			epList = append(epList, ep.Address)
-		}
-
-		return epList
+		return makeEpList(cMux.eventingEpList)
 	}
 
 	return nil
@@ -186,12 +164,7 @@ func (mux *httpMux) EventingEps() []string {
 
 func (mux *httpMux) GSIEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		var epList []string
-		for _, ep := range cMux.gsiEpList {
-			epList = append(epList, ep.Address)
-		}
-
-		return epList
+		return makeEpList(cMux.gsiEpList)
 	}
 
 	return nil
@@ -199,12 +172,7 @@ func (mux *httpMux) GSIEps() []string {
 
 func (mux *httpMux) BackupEps() []string {
 	if cMux := mux.Get(); cMux != nil {
-		var epList []string
-		for _, ep := range cMux.backupEpList {
-			epList = append(epList, ep.Address)
-		}
-
-		return epList
+		return makeEpList(cMux.backupEpList)
 	}
 
 	return nil

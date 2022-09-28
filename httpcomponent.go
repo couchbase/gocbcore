@@ -162,17 +162,45 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 
 	generator := newHTTPRequestGenerator(ctx, req, hc.userAgent)
 
+	var denylist []string
 	for {
-		endpoint, err := hc.endpoint(req.Service, req.Endpoint)
-		if err != nil {
-			return nil, err
+		endpoint := req.Endpoint
+		if endpoint == "" {
+			var err error
+			endpoint, err = hc.randomEndpoint(req.Service, denylist)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			err := hc.checkEndpointExists(req.Service, endpoint)
+			if err != nil {
+				return nil, err
+			}
 		}
-		auth := hc.muxer.Auth()
-		if auth == nil {
-			// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
-			return nil, errCliInternalError
+		var creds []UserPassPair
+		if req.Username == "" && req.Password == "" {
+			auth := hc.muxer.Auth()
+			if auth == nil {
+				// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
+				return nil, errCliInternalError
+			}
+
+			var err error
+			creds, err = auth.Credentials(AuthCredsRequest{
+				Service:  req.Service,
+				Endpoint: endpoint,
+			})
+			if err != nil {
+				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, endpoint); err != nil {
+					return nil, err
+				}
+				denylist = append(denylist, endpoint)
+
+				continue
+			}
 		}
-		hreq, err := generator.NewRequest(endpoint, auth)
+
+		hreq, err := generator.NewRequest(endpoint, creds)
 		if err != nil {
 			return nil, err
 		}
@@ -292,57 +320,59 @@ func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, c
 	}
 }
 
-func (hc *httpComponent) endpoint(service ServiceType, endpoint string) (string, error) {
-	// Identify an endpoint to use for the request
-	if endpoint == "" {
-		var err error
-		switch service {
-		case MgmtService:
-			endpoint, err = hc.getMgmtEp()
-		case CapiService:
-			endpoint, err = hc.getCapiEp()
-		case N1qlService:
-			endpoint, err = hc.getN1qlEp()
-		case FtsService:
-			endpoint, err = hc.getFtsEp()
-		case CbasService:
-			endpoint, err = hc.getCbasEp()
-		case EventingService:
-			endpoint, err = hc.getEventingEp()
-		case GSIService:
-			endpoint, err = hc.getGSIEp()
-		case BackupService:
-			endpoint, err = hc.getBackupEp()
-		}
-		if err != nil {
-			return "", err
-		}
-	} else {
-		var err error
-		switch service {
-		case MgmtService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
-		case CapiService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
-		case N1qlService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
-		case FtsService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
-		case CbasService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
-		case EventingService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
-		case GSIService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
-		case BackupService:
-			err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
-		}
-		if err != nil {
-			return "", err
-		}
+func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) (string, error) {
+	var endpoint string
+	var err error
+	switch service {
+	case MgmtService:
+		endpoint, err = hc.getMgmtEp(denylist)
+	case CapiService:
+		endpoint, err = hc.getCapiEp(denylist)
+	case N1qlService:
+		endpoint, err = hc.getN1qlEp(denylist)
+	case FtsService:
+		endpoint, err = hc.getFtsEp(denylist)
+	case CbasService:
+		endpoint, err = hc.getCbasEp(denylist)
+	case EventingService:
+		endpoint, err = hc.getEventingEp(denylist)
+	case GSIService:
+		endpoint, err = hc.getGSIEp(denylist)
+	case BackupService:
+		endpoint, err = hc.getBackupEp(denylist)
+	}
+	if err != nil {
+		return "", err
 	}
 
 	return endpoint, nil
+}
+
+func (hc *httpComponent) checkEndpointExists(service ServiceType, endpoint string) error {
+	var err error
+	switch service {
+	case MgmtService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
+	case CapiService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
+	case N1qlService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
+	case FtsService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
+	case CbasService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
+	case EventingService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
+	case GSIService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
+	case BackupService:
+		err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time,
@@ -374,36 +404,37 @@ func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, er
 	return nil
 }
 
-func (hc *httpComponent) getMgmtEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.MgmtEps())
+func (hc *httpComponent) getMgmtEp(denylist []string) (string, error) {
+	endpoints, err := randFromServiceEndpoints(hc.muxer.MgmtEps(), denylist)
+	return endpoints, err
 }
 
-func (hc *httpComponent) getCapiEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.CapiEps())
+func (hc *httpComponent) getCapiEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.CapiEps(), denylist)
 }
 
-func (hc *httpComponent) getN1qlEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.N1qlEps())
+func (hc *httpComponent) getN1qlEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.N1qlEps(), denylist)
 }
 
-func (hc *httpComponent) getFtsEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.FtsEps())
+func (hc *httpComponent) getFtsEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.FtsEps(), denylist)
 }
 
-func (hc *httpComponent) getCbasEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.CbasEps())
+func (hc *httpComponent) getCbasEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.CbasEps(), denylist)
 }
 
-func (hc *httpComponent) getEventingEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.EventingEps())
+func (hc *httpComponent) getEventingEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.EventingEps(), denylist)
 }
 
-func (hc *httpComponent) getGSIEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.GSIEps())
+func (hc *httpComponent) getGSIEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.GSIEps(), denylist)
 }
 
-func (hc *httpComponent) getBackupEp() (string, error) {
-	return randFromServiceEndpoints(hc.muxer.BackupEps())
+func (hc *httpComponent) getBackupEp(denylist []string) (string, error) {
+	return randFromServiceEndpoints(hc.muxer.BackupEps(), denylist)
 }
 
 func (hc *httpComponent) validateEndpoint(endpoint string, endpoints []string) error {
@@ -499,12 +530,29 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int,
 }
 
 /* #nosec G404 */
-func randFromServiceEndpoints(endpoints []string) (string, error) {
-	if len(endpoints) == 0 {
+func randFromServiceEndpoints(endpoints []string, denylist []string) (string, error) {
+	var allowList []string
+	for _, ep := range endpoints {
+		if inDenyList(ep, denylist) {
+			continue
+		}
+		allowList = append(allowList, ep)
+	}
+	if len(allowList) == 0 {
 		return "", errServiceNotAvailable
 	}
 
-	return endpoints[rand.Intn(len(endpoints))], nil
+	return allowList[rand.Intn(len(allowList))], nil
+}
+
+func inDenyList(ep string, denylist []string) bool {
+	for _, b := range denylist {
+		if ep == b {
+			return true
+		}
+	}
+
+	return false
 }
 
 func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
@@ -565,7 +613,7 @@ func newHTTPRequestGenerator(ctx context.Context, req *httpRequest, userAgent st
 	}
 }
 
-func (hrg *httpRequestGenerator) NewRequest(endpoint string, auth AuthProvider) (*http.Request, error) {
+func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPair) (*http.Request, error) {
 	// Generate a request URI
 	reqURI := endpoint + hrg.request.Path
 
@@ -581,14 +629,6 @@ func (hrg *httpRequestGenerator) NewRequest(endpoint string, auth AuthProvider) 
 	if hrg.request.Username != "" || hrg.request.Password != "" {
 		hreq.SetBasicAuth(hrg.request.Username, hrg.request.Password)
 	} else {
-		creds, err := auth.Credentials(AuthCredsRequest{
-			Service:  hrg.request.Service,
-			Endpoint: endpoint,
-		})
-		if err != nil {
-			return nil, err
-		}
-
 		if hrg.request.Service == N1qlService || hrg.request.Service == CbasService ||
 			hrg.request.Service == FtsService {
 			// Handle service which support multi-bucket authentication using

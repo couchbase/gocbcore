@@ -133,6 +133,9 @@ var (
 
 	// MemdWriteFailure indicates that the operation failed because the write failed on the connection.
 	MemdWriteFailure = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "MEMD_WRITE_FAILURE"}
+
+	// CredentialsFetchFailedRetryReason indicates that the operation failed because the AuthProvider return an error for credentials.
+	CredentialsFetchFailedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "CREDENTIALS_FETCH_FAILED"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.
