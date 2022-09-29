@@ -514,17 +514,14 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 	err := translateMemdError(originalErr, req)
 
 	if err == originalErr {
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) && !mux.closed() {
 			// The connection has gone away.
 			if req.Command == memd.CmdGetClusterConfig {
 				return false, err
 			}
 
-			if !mux.closed() && (req.Idempotent() || req.ConnectionInfo().lastDispatchedTo != "") {
-				if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
-					return true, nil
-				}
-			} else {
+			// If the request is idempotent or not written yet then we should retry.
+			if req.Idempotent() || req.ConnectionInfo().lastDispatchedTo == "" {
 				if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
 					return true, nil
 				}
@@ -534,6 +531,7 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 				return false, err
 			}
 
+			// The request can't have been dispatched yet.
 			if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
 				return true, nil
 			}
