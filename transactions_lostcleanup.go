@@ -1049,6 +1049,9 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 				case TransactionErrorClassFailDocAlreadyExists:
 				case TransactionErrorClassFailCasMismatch:
 				}
+
+				cb(nil)
+				return
 			}
 
 			ltc.updateResourceUnits(result.Internal.ResourceUnits)
