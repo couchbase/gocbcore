@@ -16,16 +16,19 @@ package gocbcore
 
 import (
 	"encoding/json"
-
+	"errors"
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 func (t *transactionAttempt) Replace(opts TransactionReplaceOptions, cb TransactionStoreCallback) error {
-	return t.replace(opts, func(res *TransactionGetResult, err *TransactionOperationFailedError) {
+	return t.replace(opts, func(res *TransactionGetResult, err error) {
 		if err != nil {
 			t.logger.logInfof(t.id, "Replace failed")
-			if err.shouldNotRollback {
-				t.ensureCleanUpRequest()
+			var e *TransactionOperationFailedError
+			if errors.As(err, &e) {
+				if e.shouldNotRollback {
+					t.ensureCleanUpRequest()
+				}
 			}
 
 			cb(nil, err)
@@ -38,7 +41,7 @@ func (t *transactionAttempt) Replace(opts TransactionReplaceOptions, cb Transact
 
 func (t *transactionAttempt) replace(
 	opts TransactionReplaceOptions,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) error {
 	t.logger.logInfof(t.id, "Performing replace for %s", newLoggableDocKey(
 		opts.Document.agent.BucketName(),
@@ -47,7 +50,7 @@ func (t *transactionAttempt) replace(
 		opts.Document.key,
 	))
 	t.beginOpAndLock(func(unlock func(), endOp func()) {
-		endAndCb := func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+		endAndCb := func(result *TransactionGetResult, err error) {
 			endOp()
 			cb(result, err)
 		}
@@ -90,7 +93,7 @@ func (t *transactionAttempt) replace(
 					t.stageInsert(
 						agent, oboUser, scopeName, collectionName, key,
 						value, cas,
-						func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
 					return
@@ -140,7 +143,7 @@ func (t *transactionAttempt) replace(
 						t.stageReplace(
 							agent, oboUser, scopeName, collectionName, key,
 							value, cas,
-							func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+							func(result *TransactionGetResult, err error) {
 								endAndCb(result, err)
 							})
 					})
@@ -159,7 +162,7 @@ func (t *transactionAttempt) stageReplace(
 	key []byte,
 	value json.RawMessage,
 	cas Cas,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
 		if cerr == nil {

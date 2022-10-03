@@ -16,16 +16,20 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 func (t *transactionAttempt) Insert(opts TransactionInsertOptions, cb TransactionStoreCallback) error {
-	return t.insert(opts, func(res *TransactionGetResult, err *TransactionOperationFailedError) {
+	return t.insert(opts, func(res *TransactionGetResult, err error) {
 		if err != nil {
-			if err.shouldNotRollback {
-				t.ensureCleanUpRequest()
+			var e *TransactionOperationFailedError
+			if errors.As(err, &e) {
+				if e.shouldNotRollback {
+					t.ensureCleanUpRequest()
+				}
 			}
 
 			cb(nil, err)
@@ -38,7 +42,7 @@ func (t *transactionAttempt) Insert(opts TransactionInsertOptions, cb Transactio
 
 func (t *transactionAttempt) insert(
 	opts TransactionInsertOptions,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) error {
 	t.logger.logInfof(t.id, "Performing insert for %s", newLoggableDocKey(
 		opts.Agent.BucketName(),
@@ -48,7 +52,7 @@ func (t *transactionAttempt) insert(
 	))
 
 	t.beginOpAndLock(func(unlock func(), endOp func()) {
-		endAndCb := func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+		endAndCb := func(result *TransactionGetResult, err error) {
 			endOp()
 			cb(result, err)
 		}
@@ -89,7 +93,7 @@ func (t *transactionAttempt) insert(
 					t.stageReplace(
 						agent, oboUser, scopeName, collectionName, key,
 						value, existingMutation.Cas,
-						func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
 					return
@@ -132,7 +136,7 @@ func (t *transactionAttempt) insert(
 				t.stageInsert(
 					agent, oboUser, scopeName, collectionName, key,
 					value, 0,
-					func(result *TransactionGetResult, err *TransactionOperationFailedError) {
+					func(result *TransactionGetResult, err error) {
 						endAndCb(result, err)
 					})
 			})
@@ -149,10 +153,10 @@ func (t *transactionAttempt) resolveConflictedInsert(
 	collectionName string,
 	key []byte,
 	value json.RawMessage,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) {
 	t.getMetaForConflictedInsert(agent, oboUser, scopeName, collectionName, key,
-		func(isTombstone bool, txnMeta *jsonTxnXattr, cas Cas, err *TransactionOperationFailedError) {
+		func(isTombstone bool, txnMeta *jsonTxnXattr, cas Cas, err error) {
 			if err != nil {
 				cb(nil, err)
 				return
@@ -161,13 +165,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 			if txnMeta == nil {
 				// This doc isn't in a transaction
 				if !isTombstone {
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentExists, "found existing document")),
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
+					cb(nil, ErrDocumentExists)
 					return
 				}
 
@@ -246,7 +244,7 @@ func (t *transactionAttempt) stageInsert(
 	key []byte,
 	value json.RawMessage,
 	cas Cas,
-	cb func(*TransactionGetResult, *TransactionOperationFailedError),
+	cb func(*TransactionGetResult, error),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
 		if cerr == nil {
@@ -414,7 +412,7 @@ func (t *transactionAttempt) getMetaForConflictedInsert(
 	scopeName string,
 	collectionName string,
 	key []byte,
-	cb func(bool, *jsonTxnXattr, Cas, *TransactionOperationFailedError),
+	cb func(bool, *jsonTxnXattr, Cas, error),
 ) {
 	ecCb := func(isTombstone bool, meta *jsonTxnXattr, cas Cas, cerr *classifiedError) {
 		if cerr == nil {
