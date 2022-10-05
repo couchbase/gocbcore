@@ -813,24 +813,15 @@ func authMechanismsFromConfig(authMechanisms []AuthMechanism, useTLS bool) []Aut
 }
 
 func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error) {
-	var endsInCloud bool
-	for _, host := range addrs {
-		if strings.HasSuffix(strings.Split(host, ":")[0], ".cloud.couchbase.com") {
-			endsInCloud = true
-			break
-		}
-	}
-
 	var tlsConfig *dynTLSConfig
 	if config.UseTLS {
 		if config.TLSRootCAProvider == nil {
-			if !endsInCloud {
-				return nil, wrapError(errInvalidArgument, "must provide a CA certificate when tls is in use")
+			logDebugf("TLS enabled with no root ca provider - trusting system cert pool and Capella root CA")
+
+			pool, err := x509.SystemCertPool()
+			if err != nil {
+				return nil, wrapError(err, "failed to load system cert pool")
 			}
-
-			logDebugf("Capella connection string detected, with no root ca provider - trusting default root cert")
-
-			pool := x509.NewCertPool()
 			pool.AppendCertsFromPEM(capellaRootCA)
 
 			config.TLSRootCAProvider = func() *x509.CertPool {
@@ -838,9 +829,18 @@ func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error
 			}
 		}
 		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
-	} else if endsInCloud {
-		logWarnf("TLS is required when connecting to Couchbase Capella. Please enable TLS by prefixing " +
-			"the connection string with \"couchbases://\" (note the final 's').")
+	} else {
+		var endsInCloud bool
+		for _, host := range addrs {
+			if strings.HasSuffix(strings.Split(host, ":")[0], ".cloud.couchbase.com") {
+				endsInCloud = true
+				break
+			}
+		}
+		if endsInCloud {
+			logWarnf("TLS is required when connecting to Couchbase Capella. Please enable TLS by prefixing " +
+				"the connection string with \"couchbases://\" (note the final 's').")
+		}
 	}
 
 	return tlsConfig, nil

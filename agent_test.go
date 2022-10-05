@@ -2647,24 +2647,6 @@ func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortFastFailInvalidBuc
 	s.Wait(6)
 }
 
-func (suite *StandardTestSuite) TestConnectMemdOnlyDefaultPortSSLNoCert() {
-	suite.EnsureSupportsFeature(TestFeatureSsl)
-
-	cfg := makeAgentConfig(globalTestConfig)
-	if len(cfg.SeedConfig.MemdAddrs) == 0 {
-		suite.T().Skip("Skipping test due to no memd addresses")
-	}
-
-	cfg.SecurityConfig.UseTLS = true
-	cfg.SecurityConfig.TLSRootCAProvider = nil
-	cfg.BucketName = globalTestConfig.BucketName
-	agent, err := CreateAgent(&cfg)
-	suite.Assert().ErrorIs(err, ErrInvalidArgument)
-	if err == nil {
-		agent.Close()
-	}
-}
-
 // This test tests that given an address any connections to it will be made not using SSL whilst other connections will
 // be made using TLS.
 func (suite *StandardTestSuite) TestAgentNSServerScheme() {
