@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -146,7 +147,7 @@ func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 		Extras:  extrasBuf,
 	})
 	if err != nil {
-		logWarnf("Failed to dispatch DCP buffer ack: %s", err)
+		logWarnf("%p memdclient failed to dispatch DCP buffer ack: %s", client, err)
 	}
 
 	client.dcpFlowRecv -= ackAmt
@@ -169,17 +170,17 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
 	defer client.lock.Unlock()
 
 	if client.closed {
-		logDebugf("Attempted to put dispatched op OP=0x%x, Opaque=%d in drained opmap", req.Command, req.Opaque)
+		logDebugf("%s memdclient attempted to put dispatched op OP=0x%x, Opaque=%d in drained opmap", client.loggerID(), req.Command, req.Opaque)
 		return errMemdClientClosed
 	}
 
 	if atomic.LoadUint32(&client.gracefulCloseTriggered) == 1 {
-		logDebugf("Attempted to dispatch op OP=0x%x, Opaque=%d from gracefully closing memdclient", req.Command, req.Opaque)
+		logDebugf("%s memdclient attempted to dispatch op OP=0x%x, Opaque=%d from gracefully closing memdclient", client.loggerID(), req.Command, req.Opaque)
 		return errMemdClientClosed
 	}
 
 	if !atomic.CompareAndSwapPointer(&req.waitingIn, nil, unsafe.Pointer(client)) {
-		logDebugf("Attempted to put dispatched op OP=0x%x, Opaque=%d in new opmap", req.Command, req.Opaque)
+		logDebugf("%s memdclient attempted to put dispatched op OP=0x%x, Opaque=%d in new opmap", client.loggerID(), req.Command, req.Opaque)
 		return errRequestAlreadyDispatched
 	}
 
@@ -204,7 +205,7 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 	defer client.lock.Unlock()
 
 	if client.closed {
-		logDebugf("Attempted to remove op OP=0x%x, Opaque=%d from drained opmap", req.Command, req.Opaque)
+		logDebugf("%s memdclient attempted to remove op OP=0x%x, Opaque=%d from drained opmap", client.loggerID(), req.Command, req.Opaque)
 		return false
 	}
 
@@ -260,7 +261,7 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 
 	err := client.conn.WritePacket(packet)
 	if err != nil {
-		logDebugf("memdClient write failure: %v", err)
+		logDebugf(" %s memdclient write failure: %v", client.loggerID(), err)
 		return err
 	}
 
@@ -290,7 +291,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 				// connection/client if someone else has already closed it.
 				err := client.Close()
 				if err != nil {
-					logDebugf("failed to shutdown memdclient during graceful close: %s", err)
+					logDebugf("Failed to shutdown memdclient (%s) during graceful close: %s", client.loggerID(), err)
 				}
 			}()
 		}
@@ -298,7 +299,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
-		logDebugf("Received response with no corresponding request.")
+		logDebugf("%s memdclient received response with no corresponding request.", client.loggerID())
 		if client.zombieLogger != nil {
 			client.zombieLogger.RecordZombieResponse(resp, client.connID, client.LocalAddress(), client.Address())
 		}
@@ -322,7 +323,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
 			req.processingLock.Unlock()
-			logDebugf("Failed to decompress value from the server for key `%s`.", req.Key)
+			logDebugf("%s memdclient failed to decompress value from the server for key `%s`.", client.loggerID(), req.Key)
 			return
 		}
 
@@ -402,7 +403,7 @@ func (client *memdClient) run() {
 			if err != nil {
 				client.lock.Lock()
 				if !client.closed {
-					logWarnf("memdClient read failure on conn `%v` : %v", client.connID, err)
+					logWarnf("%p memdClient read failure on conn `%v` : %v", client, client.connID, err)
 				}
 				client.lock.Unlock()
 				break
@@ -424,7 +425,7 @@ func (client *memdClient) run() {
 					Opaque:  resp.Opaque,
 				})
 				if err != nil {
-					logWarnf("Failed to dispatch DCP noop reply: %s", err)
+					logWarnf("%p memdclient failed to dispatch DCP noop reply: %s", client, err)
 				}
 				continue
 			}
@@ -467,7 +468,7 @@ func (client *memdClient) run() {
 					packetLen: n,
 				}
 			default:
-				logSchedf("Resolving response OP=0x%x. Opaque=%d", resp.Command, resp.Opaque)
+				logSchedf("%s memdclient resolving response OP=0x%x. Opaque=%d", client.loggerID(), resp.Command, resp.Opaque)
 				client.resolveRequest(resp)
 			}
 		}
@@ -480,7 +481,7 @@ func (client *memdClient) run() {
 			err := client.closeConn(true)
 			if err != nil {
 				// Lets log a warning, as this is non-fatal
-				logWarnf("Failed to shut down client connection (%s)", err)
+				logWarnf("Failed to shut down client (%p) connection (%s)", client, err)
 			}
 		} else {
 			client.lock.Unlock()
@@ -496,7 +497,7 @@ func (client *memdClient) run() {
 
 		client.opList.Drain(func(req *memdQRequest) {
 			if !atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil) {
-				logWarnf("Encountered an unowned request in a client opMap")
+				logWarnf("Encountered an unowned request in a client (%p) opMap", client)
 			}
 
 			shortCircuited, routeErr := client.postErrHandler(nil, req, io.EOF)
@@ -559,16 +560,16 @@ func (client *memdClient) GracefulClose(err error) {
 		err := client.closeConn(false)
 		if err != nil {
 			// Lets log a warning, as this is non-fatal
-			logWarnf("Failed to shut down client connection (%s)", err)
+			logWarnf("Failed to shut down client (%p) connection (%s)", client, err)
 		}
 
 	}
 }
 
 func (client *memdClient) closeConn(internalTrigger bool) error {
-	logDebugf("%s/%p memdclient closing connection, internal close: %t", client.Address(), client, internalTrigger)
+	logDebugf("%s memdclient closing connection, internal close: %t", client.loggerID(), internalTrigger)
 	if err := client.conn.Close(); err != nil {
-		logDebugf("Failed to close memdconn: %v", err)
+		logDebugf("Failed to close memdconn: %v on memdclient %s", err, client.loggerID())
 		client.conn.Release()
 		close(client.connReleasedNotify)
 		return err
@@ -620,7 +621,7 @@ func (client *memdClient) sendCanary() {
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
 
-	logDebugf("Sending NOOP request for %p/%s", client, client.Address())
+	logDebugf("Sending NOOP request for %s", client.loggerID())
 	err := client.internalSendRequest(req)
 	if err != nil {
 		client.breaker.MarkFailure()
@@ -632,10 +633,10 @@ func (client *memdClient) sendCanary() {
 		if !req.internalCancel(errRequestCanceled) {
 			err := <-errChan
 			if err == nil {
-				logDebugf("NOOP request successful for %p/%s", client, client.Address())
+				logDebugf("NOOP request successful for %s", client.loggerID())
 				client.breaker.MarkSuccessful()
 			} else {
-				logDebugf("NOOP request failed for %p/%s", client, client.Address())
+				logDebugf("NOOP request failed for %s", client.loggerID())
 				client.breaker.MarkFailure()
 			}
 		}
@@ -647,4 +648,8 @@ func (client *memdClient) sendCanary() {
 			client.breaker.MarkFailure()
 		}
 	}
+}
+
+func (client *memdClient) loggerID() string {
+	return fmt.Sprintf("%s/%p", client.Address(), client)
 }
