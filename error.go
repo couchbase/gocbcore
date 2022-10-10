@@ -96,7 +96,7 @@ var (
 	ErrInvalidArgument          = errors.New("invalid argument")
 	ErrServiceNotAvailable      = errors.New("service not available")
 	ErrInternalServerFailure    = errors.New("internal server failure")
-	ErrAuthenticationFailure    = errors.New("authentication failure")
+	ErrAuthenticationFailure    = errors.New("authentication failure - possible reasons - incorrect authentication configuration, bucket doesn’t exist or bucket may be hibernated")
 	ErrTemporaryFailure         = errors.New("temporary failure")
 	ErrParsingFailure           = errors.New("parsing failure")
 	ErrMemdClientClosed         = errors.New("memdclient closed")
