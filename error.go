@@ -80,6 +80,11 @@ var (
 
 	// ErrForcedReconnect occurs when an operation is in flight during a forced reconnect.
 	ErrForcedReconnect = errors.New("forced reconnect")
+
+	// ErrNotStored occurs when the server could not store the document.
+	// Per GOCBC-1356, it can also be returned on some paths when inserting a document, and in that context indicates
+	// that the document already exists.
+	ErrNotStored = errors.New("document was not stored")
 )
 
 // Shared Error Definitions RFC#58@15

@@ -179,6 +179,13 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var subdocs subdocOpList
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
+		// GOCBC-1356: memcached can return a NOT_STORED response when inserting a doc with sub-doc.
+		if isErrorStatus(err, memd.StatusNotStored) && opts.Flags&memd.SubdocDocFlagAddDoc != 0 {
+			tracer.Finish()
+			cb(nil, crud.errMapManager.EnhanceKvError(errDocumentExists, resp, req))
+			return
+		}
+
 		if err != nil &&
 			!isErrorStatus(err, memd.StatusSubDocSuccessDeleted) &&
 			!isErrorStatus(err, memd.StatusSubDocBadMulti) {

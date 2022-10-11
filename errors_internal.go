@@ -711,6 +711,7 @@ var (
 	errDocumentLocked                    = ncError{ErrDocumentLocked}
 	errValueTooLarge                     = ncError{ErrValueTooLarge}
 	errDocumentExists                    = ncError{ErrDocumentExists}
+	errNotStored                         = ncError{ErrNotStored}
 	errValueNotJSON                      = ncError{ErrValueNotJSON}
 	errDurabilityLevelNotAvailable       = ncError{ErrDurabilityLevelNotAvailable}
 	errDurabilityImpossible              = ncError{ErrDurabilityImpossible}

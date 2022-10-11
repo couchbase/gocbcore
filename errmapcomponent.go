@@ -133,6 +133,13 @@ func translateMemdError(err error, req *memdQRequest) error {
 			return errCasMismatch
 		}
 		return errDocumentExists
+	case ErrMemdNotStored:
+		// GOCBC-1356: memcached does not currently return a NOT_STORED response when inserting a doc, but this was originally
+		// the plan, so for safety handle this path.
+		if req.Command == memd.CmdAdd {
+			return errDocumentExists
+		}
+		return errNotStored
 	case ErrMemdCollectionNotFound:
 		return errCollectionNotFound
 	case ErrMemdUnknownCommand:
