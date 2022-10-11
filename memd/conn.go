@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,25 +37,31 @@ type Conn struct {
 
 	headerBuf [24]byte
 
-	collectionsEnabled bool
-	enabledFeatures    map[HelloFeature]bool
+	enabledFeatures uint64
 }
 
 // NewConn creates a new connection object which can be used to perform
 // reading and writing of packets.
 func NewConn(stream io.ReadWriter) *Conn {
 	return &Conn{
-		stream:          stream,
-		enabledFeatures: make(map[HelloFeature]bool),
+		stream: stream,
 	}
 }
 
 // EnableFeature enables a particular feature on this connection.
 func (c *Conn) EnableFeature(feature HelloFeature) {
-	c.enabledFeatures[feature] = true
+	featureBit := uint64(1) << int(feature)
+	for {
+		enabledFeatures := atomic.LoadUint64(&c.enabledFeatures)
+		if enabledFeatures&featureBit > 0 {
+			// already enabled
+			return
+		}
 
-	if feature == FeatureCollections {
-		c.collectionsEnabled = true
+		newEnabledFeatures := enabledFeatures | featureBit
+		if atomic.CompareAndSwapUint64(&c.enabledFeatures, enabledFeatures, newEnabledFeatures) {
+			break
+		}
 	}
 }
 
@@ -62,15 +69,20 @@ func (c *Conn) EnableFeature(feature HelloFeature) {
 // on this particular connection.  Note that this is directly based on
 // calls to EnableFeature and is not controlled by the library.
 func (c *Conn) IsFeatureEnabled(feature HelloFeature) bool {
-	enabled, ok := c.enabledFeatures[feature]
-	return ok && enabled
+	featureBit := uint64(1) << int(feature)
+	enabledFeatures := atomic.LoadUint64(&c.enabledFeatures)
+	return enabledFeatures&featureBit > 0
+}
+
+func (c *Conn) isCollectionsEnabled() bool {
+	return c.IsFeatureEnabled(FeatureCollections)
 }
 
 // WritePacket writes a packet to the network.
 func (c *Conn) WritePacket(pkt *Packet) error {
 	encodedKey := pkt.Key
 	extras := pkt.Extras
-	if c.collectionsEnabled {
+	if c.isCollectionsEnabled() {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
 			// enabled, we don't currently implement that operation for simplicity, as the key is
@@ -481,7 +493,7 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 	pkt.Key = bodyBuf[framesLen+extLen : framesLen+extLen+keyLen]
 	pkt.Value = bodyBuf[framesLen+extLen+keyLen:]
 
-	if c.collectionsEnabled {
+	if c.isCollectionsEnabled() {
 		if pkt.Command == CmdObserve {
 			// While it's possible that the Observe operation is in fact supported with collections
 			// enabled, we don't currently implement that operation for simplicity, as the key is
