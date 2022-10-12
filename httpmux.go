@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"sync/atomic"
 	"unsafe"
 )
@@ -115,7 +116,12 @@ func (mux *httpMux) CapiEps() []string {
 		return nil
 	}
 
-	return makeEpList(clientMux.capiEpList)
+	var epList []string
+	for _, ep := range clientMux.capiEpList {
+		epList = append(epList, ep.Address+"/"+url.PathEscape(clientMux.bucket))
+	}
+
+	return epList
 }
 
 func (mux *httpMux) MgmtEps() []string {
