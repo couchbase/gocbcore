@@ -135,6 +135,7 @@ var (
 	MemdWriteFailure = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "MEMD_WRITE_FAILURE"}
 
 	// CredentialsFetchFailedRetryReason indicates that the operation failed because the AuthProvider return an error for credentials.
+	// Uncommitted: This API may change in the future.
 	CredentialsFetchFailedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "CREDENTIALS_FETCH_FAILED"}
 )
 

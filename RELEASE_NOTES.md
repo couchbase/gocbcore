@@ -1,5 +1,37 @@
 # Release Notes
 
+## Version 10.2.0 (19 October 2022)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1159](GOCBC-1159):
+  Added support for refreshing the DNS SRV record when cluster becomes uncontactable.
+* [https://issues.couchbase.com/browse/GOCBC-1284](GOCBC-1284):
+  Significant refactoring work to kv bootstrap.
+* [https://issues.couchbase.com/browse/GOCBC-1303](GOCBC-1303):
+  Added `ServerWaitBackoff` to agent options.
+* [https://issues.couchbase.com/browse/GOCBC-1316](GOCBC-1316):
+  Added support for transactions ExtInsertExisting.
+* [https://issues.couchbase.com/browse/GOCBC-1328](GOCBC-1328):
+  Only fallback from cccp polling to http polling once all nodes tried.
+* [https://issues.couchbase.com/browse/GOCBC-1331](GOCBC-1331):
+  Added support for pipelining fetching a config into kv bootstrap.
+* [https://issues.couchbase.com/browse/GOCBC-1335](GOCBC-1335):
+  Updated logging to include address and pointer location in memdclient.
+* [https://issues.couchbase.com/browse/GOCBC-1351](GOCBC-1351):
+  Updated error message logged on auth failures.
+* [https://issues.couchbase.com/browse/GOCBC-1352](GOCBC-1352):
+  Added support for trusting the system cert store when TLS enabled and no cert provider registered.
+* [https://issues.couchbase.com/browse/GOCBC-1356](GOCBC-1356):
+  Updated the behaviour when `MutateIn` or `Add` returns `NOT_STORED` to return a `ErrDocumentExists`.
+
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1347](GOCBC-1347):
+  Fixed issue where a nil agent value could cause logging `TransactionATRLocation` to log a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1348](GOCBC-1348):
+  Fixed issue where a race on creating a client record could lead to a panic.
+
 ## Version 10.1.5 (21 September 2022)
 
 ### New Features and Behavioral Changes
@@ -18,6 +50,12 @@
 ### Fixed Issues
 * [https://issues.couchbase.com/browse/GOCBC-1338](GOCBC-1338):
   Fixed issue where `lazyCircuitBreaker` was not using 64-bit aligned values.
+
+### Known Issues
+* [https://issues.couchbase.com/browse/GOCBC-1347](GOCBC-1347):
+  Known issue where a nil agent value could cause logging `TransactionATRLocation` to log a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1348](GOCBC-1348):
+  Known issue where a race on creating a client record can lead to a panic.
 
 ## Version 10.1.4 (20 July 2022)
 
