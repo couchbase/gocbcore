@@ -1,5 +1,13 @@
 # Release Notes
 
+## Version 10.1.6 (27 October 2022)
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1347](GOCBC-1347):
+  Fixed issue where a nil agent value could cause logging `TransactionATRLocation` to log a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1348](GOCBC-1348):
+  Fixed issue where a race on creating a client record could lead to a panic.
+
 ## Version 10.1.5 (21 September 2022)
 
 ### New Features and Behavioral Changes
@@ -18,6 +26,12 @@
 ### Fixed Issues
 * [https://issues.couchbase.com/browse/GOCBC-1338](GOCBC-1338):
   Fixed issue where `lazyCircuitBreaker` was not using 64-bit aligned values.
+
+### Known Issues
+* [https://issues.couchbase.com/browse/GOCBC-1347](GOCBC-1347):
+  Known issue where a nil agent value could cause logging `TransactionATRLocation` to log a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1348](GOCBC-1348):
+  Known issue where a race on creating a client record can lead to a panic.
 
 ## Version 10.1.4 (20 July 2022)
 
