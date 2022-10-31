@@ -41,6 +41,8 @@ func testPktRoundTrip(t *testing.T, pkt *Packet, features []HelloFeature) {
 		t.Logf("EXP STRMID: %+v\nGOT STRMID: %+v", pkt.StreamIDFrame, pktOut.StreamIDFrame)
 		t.Logf("EXP OTRCTX: %+v\nGOT OTRCTX: %+v", pkt.OpenTracingFrame, pktOut.OpenTracingFrame)
 		t.Logf("EXP SRVDUR: %+v\nGOT SRVDUR: %+v", pkt.ServerDurationFrame, pktOut.ServerDurationFrame)
+		t.Logf("EXP USERIMP: %+v\nGOT USERIMP: %+v", pkt.UserImpersonationFrame, pktOut.UserImpersonationFrame)
+		t.Logf("EXP UNSPPTD: %+v\nGOT UNSPPTD: %+v", pkt.UnsupportedFrames, pktOut.UnsupportedFrames)
 		t.FailNow()
 	}
 }
@@ -143,6 +145,73 @@ func TestPktRtBasicResExt(t *testing.T) {
 		Value:        []byte("World"),
 		ServerDurationFrame: &ServerDurationFrame{
 			ServerDuration: 119973 * time.Microsecond,
+		},
+	}, allFeatures)
+}
+
+func TestPktUnsupportedFrameReqExt(t *testing.T) {
+	testPktRoundTrip(t, &Packet{
+		Magic:    CmdMagicReq,
+		Command:  CmdGAT,
+		Datatype: 0x22,
+		Vbucket:  0x9f9e,
+		Opaque:   0x87654321,
+		Cas:      0x7654321076543210,
+		Key:      []byte("Hello"),
+		Extras:   []byte("I am some data which is longer?"),
+		Value:    []byte("World"),
+		UnsupportedFrames: []UnsupportedFrame{
+			{
+				Type: 13,
+				Data: []byte("barry"),
+			},
+		},
+	}, allFeatures)
+}
+
+func TestPktUnsupportedFramesReqExt(t *testing.T) {
+	testPktRoundTrip(t, &Packet{
+		Magic:    CmdMagicReq,
+		Command:  CmdGAT,
+		Datatype: 0x22,
+		Vbucket:  0x9f9e,
+		Opaque:   0x87654321,
+		Cas:      0x7654321076543210,
+		Key:      []byte("Hello"),
+		Extras:   []byte("I am some data which is longer?"),
+		Value:    []byte("World"),
+		UnsupportedFrames: []UnsupportedFrame{
+			{
+				Type: 13,
+				Data: []byte("barry"),
+			},
+			{
+				Type: 12,
+				Data: []byte("barrysmate"),
+			},
+			{
+				Type: 11,
+				Data: []byte("barrysothermatewithareallylongname"),
+			},
+		},
+	}, allFeatures)
+}
+
+func TestPktUnsupportedFrameResExt(t *testing.T) {
+	testPktRoundTrip(t, &Packet{
+		Magic:    CmdMagicRes,
+		Command:  CmdGAT,
+		Datatype: 0x22,
+		Opaque:   0x87654321,
+		Cas:      0x7654321076543210,
+		Key:      []byte("Hello"),
+		Extras:   []byte("I am some data which is longer?"),
+		Value:    []byte("World"),
+		UnsupportedFrames: []UnsupportedFrame{
+			{
+				Type: 13,
+				Data: []byte("barry"),
+			},
 		},
 	}, allFeatures)
 }

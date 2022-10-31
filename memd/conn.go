@@ -131,26 +131,19 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		framesLen += 3
 	}
 	if pkt.OpenTracingFrame != nil {
-		traceCtxLen := len(pkt.OpenTracingFrame.TraceContext)
-		if traceCtxLen < 15 {
-			framesLen += 1 + traceCtxLen
-		} else {
-			framesLen += 2 + traceCtxLen
-		}
+		framesLen += calcHeaderSize(len(pkt.OpenTracingFrame.TraceContext))
 	}
 	if pkt.ServerDurationFrame != nil {
 		framesLen += 3
 	}
 	if pkt.UserImpersonationFrame != nil {
-		userLen := len(pkt.UserImpersonationFrame.User)
-		if userLen < 15 {
-			framesLen += 1 + userLen
-		} else {
-			framesLen += 2 + userLen
-		}
+		framesLen += calcHeaderSize(len(pkt.UserImpersonationFrame.User))
 	}
 	if pkt.PreserveExpiryFrame != nil {
 		framesLen += 1
+	}
+	for _, fr := range pkt.UnsupportedFrames {
+		framesLen += calcHeaderSize(len(fr.Data))
 	}
 
 	// We automatically upgrade a packet from normal Req or Res magic into
@@ -267,14 +260,8 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		}
 
 		traceCtxLen := len(pkt.OpenTracingFrame.TraceContext)
-		if traceCtxLen < 15 {
-			writeFrameHeader(buffer, frameTypeReqOpenTracing, uint8(traceCtxLen))
-			buffer.Write(pkt.OpenTracingFrame.TraceContext)
-		} else {
-			writeFrameHeader(buffer, frameTypeReqOpenTracing, 15)
-			buffer.WriteByte(uint8(traceCtxLen - 15))
-			buffer.Write(pkt.OpenTracingFrame.TraceContext)
-		}
+		writeFrameHeader(buffer, frameTypeReqOpenTracing, uint8(traceCtxLen))
+		buffer.Write(pkt.OpenTracingFrame.TraceContext)
 	}
 
 	if pkt.ServerDurationFrame != nil {
@@ -296,14 +283,8 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		}
 
 		userCtxLen := len(pkt.UserImpersonationFrame.User)
-		if userCtxLen < 15 {
-			writeFrameHeader(buffer, frameTypeReqUserImpersonation, uint8(userCtxLen))
-			buffer.Write(pkt.UserImpersonationFrame.User)
-		} else {
-			writeFrameHeader(buffer, frameTypeReqUserImpersonation, 15)
-			buffer.WriteByte(byte(userCtxLen - 15))
-			buffer.Write(pkt.UserImpersonationFrame.User)
-		}
+		writeFrameHeader(buffer, frameTypeReqUserImpersonation, uint8(userCtxLen))
+		buffer.Write(pkt.UserImpersonationFrame.User)
 	}
 
 	if pkt.PreserveExpiryFrame != nil {
@@ -318,8 +299,11 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 		writeFrameHeader(buffer, frameTypeReqPreserveExpiry, 0)
 	}
 
-	if len(pkt.UnsupportedFrames) > 0 {
-		return errors.New("cannot send packets with unsupported frames")
+	// Any frames that we don't support we'll just write to the packet, and assume that
+	// the user knows what they're doing re: encoding.
+	for _, fr := range pkt.UnsupportedFrames {
+		writeFrameHeader(buffer, fr.Type, uint8(len(fr.Data)))
+		buffer.Write(fr.Data)
 	}
 
 	// Copy the extras into the body of the packet
@@ -544,5 +528,20 @@ func writeUint64(buffer *bytes.Buffer, n uint64) {
 // writeFrameHeader - Write a single byte containing information about the following frame directly into the provided
 // buffer.
 func writeFrameHeader(buffer *bytes.Buffer, frameType frameType, frameLen uint8) {
-	buffer.WriteByte(uint8(frameType)<<4 | frameLen)
+	if frameLen < 15 {
+		buffer.WriteByte(uint8(frameType)<<4 | frameLen)
+		return
+	}
+
+	buffer.WriteByte(uint8(frameType)<<4 | 15)
+	buffer.WriteByte(frameLen - 15)
+}
+
+// calcHeaderSize calculates the correct length header for a frame of variable size.
+func calcHeaderSize(frameLen int) int {
+	if frameLen < 15 {
+		return 1 + frameLen
+	}
+
+	return 2 + frameLen
 }
