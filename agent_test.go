@@ -2192,6 +2192,66 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 	}
 }
 
+func (suite *StandardTestSuite) TestAgentWaitForConfigSnapshot() {
+	cfg := makeAgentConfig(globalTestConfig)
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	var snapshot *ConfigSnapshot
+	s.PushOp(agent.WaitForConfigSnapshot(time.Now().Add(5*time.Second), WaitForConfigSnapshotOptions{}, func(result *WaitForConfigSnapshotResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitForConfigSnapshot failed with error: %v", err)
+			}
+
+			snapshot = result.Snapshot
+		})
+	}))
+	s.Wait(6)
+
+	suite.Assert().True(snapshot.RevID() > -1)
+}
+
+func (suite *StandardTestSuite) TestAgentWaitForConfigSnapshotSteadyState() {
+	cfg := makeAgentConfig(globalTestConfig)
+	cfg.BucketName = globalTestConfig.BucketName
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	defer agent.Close()
+	s := suite.GetHarness()
+
+	var snapshot *ConfigSnapshot
+	s.PushOp(agent.WaitForConfigSnapshot(time.Now().Add(5*time.Second), WaitForConfigSnapshotOptions{}, func(result *WaitForConfigSnapshotResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitForConfigSnapshot failed with error: %v", err)
+			}
+
+			snapshot = result.Snapshot
+		})
+	}))
+	s.Wait(6)
+
+	suite.Assert().True(snapshot.RevID() > -1)
+
+	// Run it again, we know that the agent has already seen a config by now.
+	s.PushOp(agent.WaitForConfigSnapshot(time.Now().Add(5*time.Second), WaitForConfigSnapshotOptions{}, func(result *WaitForConfigSnapshotResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitForConfigSnapshot failed with error: %v", err)
+			}
+
+			snapshot = result.Snapshot
+		})
+	}))
+	s.Wait(6)
+
+	suite.Assert().True(snapshot.RevID() > -1)
+}
+
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 

@@ -56,6 +56,8 @@ type kvMux struct {
 	clientCloseWg sync.WaitGroup
 
 	noTLSSeedNode bool
+
+	hasSeenConfigCh chan struct{}
 }
 
 type kvMuxProps struct {
@@ -78,6 +80,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		shutdownSig:        make(chan struct{}),
 		noTLSSeedNode:      props.NoTLSSeedNode,
 		muxPtr:             unsafe.Pointer(muxState),
+		hasSeenConfigCh:    make(chan struct{}),
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -131,30 +134,28 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 		return
 	}
 
-	if oldMuxState == nil {
-		if newMuxState.RevID() > -1 && mux.collectionsEnabled && !newMuxState.collectionsSupported {
+	if oldMuxState.RevID() == -1 && newMuxState.RevID() > -1 {
+		if mux.collectionsEnabled && !newMuxState.collectionsSupported {
 			logDebugf("Collections disabled as unsupported")
 		}
-		// There is no existing muxer.  We can simply start the new pipelines.
-		for _, pipeline := range newMuxState.pipelines {
-			pipeline.StartClients()
-		}
-	} else {
-		if !mux.collectionsEnabled {
-			// If collections just aren't enabled then we never need to refresh the connections because collections
-			// have come online.
-			mux.pipelineTakeover(oldMuxState, newMuxState)
-		} else if oldMuxState.RevID() == -1 || oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
-			// Get the new muxer to takeover the pipelines from the older one
-			mux.pipelineTakeover(oldMuxState, newMuxState)
-		} else {
-			// Collections support has changed so we need to reconnect all connections in order to support the new
-			// state.
-			mux.reconnectPipelines(oldMuxState, newMuxState, true)
-		}
 
-		mux.requeueRequests(oldMuxState)
+		close(mux.hasSeenConfigCh)
 	}
+
+	if !mux.collectionsEnabled {
+		// If collections just aren't enabled then we never need to refresh the connections because collections
+		// have come online.
+		mux.pipelineTakeover(oldMuxState, newMuxState)
+	} else if oldMuxState.RevID() == -1 || oldMuxState.collectionsSupported == newMuxState.collectionsSupported {
+		// Get the new muxer to takeover the pipelines from the older one
+		mux.pipelineTakeover(oldMuxState, newMuxState)
+	} else {
+		// Collections support has changed so we need to reconnect all connections in order to support the new
+		// state.
+		mux.reconnectPipelines(oldMuxState, newMuxState, true)
+	}
+
+	mux.requeueRequests(oldMuxState)
 }
 
 func (mux *kvMux) SetPostCompleteErrorHandler(handler postCompleteErrorHandler) {
@@ -487,6 +488,57 @@ func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	return &pipelineSnapshot{
 		state: clientMux,
 	}, nil
+}
+
+type waitForConfigSnapshotOp struct {
+	cancelCh chan struct{}
+}
+
+func (w *waitForConfigSnapshotOp) Cancel() {
+	close(w.cancelCh)
+}
+
+func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnapshotCallback) (PendingOp, error) {
+	// No point in doing anything if we're shutdown.
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
+	}
+
+	op := &waitForConfigSnapshotOp{
+		cancelCh: make(chan struct{}),
+	}
+
+	start := time.Now()
+	go func() {
+		select {
+		case <-mux.shutdownSig:
+			cb(nil, errShutdown)
+		case <-op.cancelCh:
+			cb(nil, errRequestCanceled)
+		case <-time.After(time.Until(deadline)):
+			cb(nil, &TimeoutError{
+				InnerError:   errUnambiguousTimeout,
+				OperationID:  "WaitForConfigSnapshot",
+				TimeObserved: time.Since(start),
+			})
+		case <-mux.hasSeenConfigCh:
+			// Just in case.
+			clientMux := mux.getState()
+			if clientMux == nil {
+				cb(nil, errShutdown)
+				return
+			}
+
+			cb(&WaitForConfigSnapshotResult{
+				Snapshot: &ConfigSnapshot{
+					state: clientMux,
+				},
+			}, nil)
+		}
+	}()
+
+	return op, nil
 }
 
 func (mux *kvMux) ConfigSnapshot() (*ConfigSnapshot, error) {

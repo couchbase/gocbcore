@@ -316,3 +316,18 @@ type RangeScanCancelCallback func(*RangeScanCancelResult, error)
 func (agent *Agent) RangeScanCancel(scanUUID []byte, vbID uint16, opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error) {
 	return agent.crud.RangeScanCancel(scanUUID, vbID, opts, cb)
 }
+
+// WaitForConfigSnapshotOptions encapsulates the parameters for a WaitForConfigSnapshot operation.
+// Volatile: This API is subject to change at any time.
+type WaitForConfigSnapshotOptions struct {
+}
+
+// WaitForConfigSnapshotResult encapsulates the result of a WaitForConfig operation.
+// Volatile: This API is subject to change at any time.
+type WaitForConfigSnapshotResult struct {
+	Snapshot *ConfigSnapshot
+}
+
+// WaitForConfigSnapshotCallback is invoked upon completion of a WaitForConfigSnapshot operation.
+// Volatile: This API is subject to change at any time.
+type WaitForConfigSnapshotCallback func(*WaitForConfigSnapshotResult, error)

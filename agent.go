@@ -554,6 +554,12 @@ func (agent *Agent) ConfigSnapshot() (*ConfigSnapshot, error) {
 	return agent.kvMux.ConfigSnapshot()
 }
 
+// WaitForConfigSnapshot returns a snapshot of the underlying configuration currently in use, once one is available.
+// Volatile: This API is subject to change at any time.
+func (agent *Agent) WaitForConfigSnapshot(deadline time.Time, opts WaitForConfigSnapshotOptions, cb WaitForConfigSnapshotCallback) (PendingOp, error) {
+	return agent.kvMux.WaitForConfigSnapshot(deadline, cb)
+}
+
 // BucketName returns the name of the bucket that the agent is using, if any.
 // Uncommitted: This API may change in the future.
 func (agent *Agent) BucketName() string {
