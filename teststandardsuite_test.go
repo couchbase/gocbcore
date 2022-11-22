@@ -152,7 +152,7 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureResourceUnits:
 		return !suite.IsMockServer() && suite.ClusterVersion.Equal(srvVer720DP)
 	case TestFeatureRangeScan:
-		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer720)
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer750)
 	}
 
 	panic("found unsupported feature code")
