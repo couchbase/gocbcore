@@ -48,19 +48,17 @@ func (opts RangeScanCreateOptions) toRequest() (*rangeScanCreateRequest, error) 
 	}
 
 	if opts.Range != nil {
-		if len(opts.Range.Start) > 0 && len(opts.Range.ExclusiveStart) > 0 {
+		if opts.Range.hasStart() && opts.Range.hasExclusiveStart() {
 			return nil, wrapError(errInvalidArgument, "only one of start and exclusive start within range can be set")
 		}
-		if len(opts.Range.End) > 0 && len(opts.Range.ExclusiveEnd) > 0 {
+		if opts.Range.hasEnd() && opts.Range.hasExclusiveEnd() {
 			return nil, wrapError(errInvalidArgument, "only one of end and exclusive end within range can be set")
 		}
-		if (len(opts.Range.Start) == 0 && len(opts.Range.End) > 0) ||
-			(len(opts.Range.Start) > 0 && len(opts.Range.End) == 0) {
-			return nil, wrapError(errInvalidArgument, "start and end within range must both be set")
+		if !(opts.Range.hasStart() || opts.Range.hasExclusiveStart()) {
+			return nil, wrapError(errInvalidArgument, "one of start and exclusive start within range must both be set")
 		}
-		if (len(opts.Range.ExclusiveStart) == 0 && len(opts.Range.ExclusiveEnd) > 0) ||
-			(len(opts.Range.ExclusiveStart) > 0 && len(opts.Range.ExclusiveEnd) == 0) {
-			return nil, wrapError(errInvalidArgument, "exclusive start and exclusive end within range must both be set")
+		if !(opts.Range.hasEnd() || opts.Range.hasExclusiveEnd()) {
+			return nil, wrapError(errInvalidArgument, "one of end and exclusive end within range must both be set")
 		}
 
 		createReq.Range = &rangeScanCreateRange{}
@@ -114,6 +112,21 @@ type RangeScanCreateRangeScanConfig struct {
 	End            []byte
 	ExclusiveStart []byte
 	ExclusiveEnd   []byte
+}
+
+func (cfg *RangeScanCreateRangeScanConfig) hasStart() bool {
+	return len(cfg.Start) > 0
+}
+
+func (cfg *RangeScanCreateRangeScanConfig) hasEnd() bool {
+	return len(cfg.End) > 0
+}
+func (cfg *RangeScanCreateRangeScanConfig) hasExclusiveStart() bool {
+	return len(cfg.ExclusiveStart) > 0
+}
+
+func (cfg *RangeScanCreateRangeScanConfig) hasExclusiveEnd() bool {
+	return len(cfg.ExclusiveEnd) > 0
 }
 
 // RangeScanCreateRandomSamplingConfig is the configuration available for performing a random sampling.
