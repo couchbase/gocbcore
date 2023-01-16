@@ -239,6 +239,9 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 		if errCode == 13014 {
 			err = errAuthenticationFailure
 		}
+		if errCode == 1197 {
+			err = wrapError(errFeatureNotAvailable, "this server requires that a query context be used for queries")
+		}
 		if errCodeGroup == 10 {
 			err = errAuthenticationFailure
 		}
