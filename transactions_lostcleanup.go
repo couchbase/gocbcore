@@ -473,7 +473,7 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 			return
 		}
 
-		logDebugf("%s will check %d atrs, check every %d ms", ltc.uuid, recordDetails.AtrsHandledByClient,
+		logDebugf("%s will check %d atrs, check every %d ms", ltc.uuid, len(recordDetails.AtrsHandledByClient),
 			recordDetails.CheckAtrEveryNMillis)
 
 		// We need this goroutine so we can release the scope of the callback. We're still in the callback from the
