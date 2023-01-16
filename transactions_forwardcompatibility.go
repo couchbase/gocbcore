@@ -47,6 +47,7 @@ func TransactionsProtocolExtensions() []string {
 		"EXT_SDK_INTEGRATION",
 		"EXT_SINGLE_QUERY",
 		"EXT_INSERT_EXISTING",
+		"EXT_QUERY_CONTEXT",
 	}
 }
 
@@ -81,6 +82,7 @@ const (
 	forwardCompatExtensionSDKIntegration           forwardCompatExtension = "SI"
 	forwardCompatExtensionSingleQuery              forwardCompatExtension = "SQ"
 	forwardCompatExtensionInsertExisting           forwardCompatExtension = "IX"
+	forwardCompatExtensionQueryContext             forwardCompatExtension = "QC"
 )
 
 type forwardCompatStage string
@@ -129,6 +131,7 @@ var supportedforwardCompatExtensions = []forwardCompatExtension{
 	forwardCompatExtensionSDKIntegration,
 	forwardCompatExtensionSingleQuery,
 	forwardCompatExtensionInsertExisting,
+	forwardCompatExtensionQueryContext,
 }
 
 func jsonForwardCompatToForwardCompat(fc map[string][]jsonForwardCompatibilityEntry) map[string][]TransactionForwardCompatibilityEntry {
