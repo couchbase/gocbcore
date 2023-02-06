@@ -558,20 +558,22 @@ func (client *memdClient) GracefulClose(err error) {
 
 func (client *memdClient) closeConn(internalTrigger bool) error {
 	logDebugf("%s/%p memdclient closing connection, internal close: %t", client.Address(), client, internalTrigger)
-	if err := client.conn.Close(); err != nil {
-		logDebugf("Failed to close memdconn: %v", err)
-		client.conn.Release()
-		close(client.connReleasedNotify)
-		return err
+	err := client.conn.Close()
+	if err != nil {
+		logDebugf("Failed to close memdconn: %v on memdclient %s/%p", err, client.Address(), client)
 	}
 
+	// If this has been triggered by the read side failing a read before the client is closed then we
+	// can be certain that we aren't going to attempt a read, and it's safe to release the connection.
+	// Otherwise, we need to wait for the connection close to propagate through the read side and to be told
+	// that reading has stopped so we can safely release.
 	if !internalTrigger {
 		<-client.connReleaseNotify
 	}
 
 	client.conn.Release()
 	close(client.connReleasedNotify)
-	return nil
+	return err
 }
 
 func (client *memdClient) Close() error {
