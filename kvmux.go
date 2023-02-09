@@ -701,16 +701,12 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	if mux.noTLSSeedNode {
 		// The order of the kv server list matters, so we need to maintain the same order and just replace the seed
 		// node.
-		kvServerList = make([]routeEndpoint, len(cfg.kvServerList.SSLEndpoints))
 		if useTls {
+			kvServerList = make([]routeEndpoint, len(cfg.kvServerList.SSLEndpoints))
+			copy(kvServerList, cfg.kvServerList.SSLEndpoints)
+
 			for i, ep := range cfg.kvServerList.NonSSLEndpoints {
 				if ep.IsSeedNode {
-					kvServerList[i] = ep
-					break
-				}
-			}
-			for i, ep := range cfg.kvServerList.SSLEndpoints {
-				if !ep.IsSeedNode {
 					kvServerList[i] = ep
 				}
 			}
