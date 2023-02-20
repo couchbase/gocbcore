@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 10.1.7 (20 February 2023)
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1376](GOCBC-1376):
+  Fixed issue where formatting was incorrect in lost cleanup log message.
+* [https://issues.couchbase.com/browse/GOCBC-1387](GOCBC-1387):
+  Fixed issue where a read could occur on a connection after close, leading to a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1388](GOCBC-1388):
+  Fixed issue where certain localhost configurations could lead to being unable to connect to a node.
+
 ## Version 10.1.6 (27 October 2022)
 
 ### Fixed Issues
