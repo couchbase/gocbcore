@@ -1,5 +1,25 @@
 # Release Notes
 
+## Version 10.2.1 (22 February 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1362](GOCBC-1362):
+  Added support for sending unsupported frames with `memd.Conn`.
+* [https://issues.couchbase.com/browse/GOCBC-1322](GOCBC-1322):
+  Added volatile stability support for kv range scan.
+  Added volatile stability support for waiting for a config snapshot to be available.
+* [https://issues.couchbase.com/browse/GOCBC-1373](GOCBC-1373):
+  Added support for query error code 1197.
+
+### Fixed Issues
+* [https://issues.couchbase.com/browse/GOCBC-1376](GOCBC-1376):
+  Fixed issue where lost cleanup would log an incorrectly formatted log line.
+* [https://issues.couchbase.com/browse/GOCBC-1387](GOCBC-1387):
+  Fixed issue where an edge case could trigger a race between releasing connection buffers and reading on the connection - leading to a panic.
+* [https://issues.couchbase.com/browse/GOCBC-1388](GOCBC-1388):
+  Fixed issue where the SDK could not connect to all nodes when `NoTLSSeedNode` is set in environments where multiple nodes are identifying as 127.0.0.1 (and so do not set a hostname in the cluster config).
+
 ## Version 10.2.0 (19 October 2022)
 
 ### New Features and Behavioral Changes
