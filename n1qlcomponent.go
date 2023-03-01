@@ -260,14 +260,54 @@ type n1qlQueryComponent struct {
 	cfgMgr        configManager
 	tracer        *tracerComponent
 
-	queryCache map[string]*n1qlQueryCacheEntry
-	cacheLock  sync.RWMutex
+	queryCache *n1qlQueryCache
 
 	enhancedPreparedSupported uint32
 }
 
+type n1qlQueryCache struct {
+	cache     map[string]*n1qlQueryCacheEntry
+	cacheLock sync.RWMutex
+}
+
+func newN1qlQueryCache() *n1qlQueryCache {
+	return &n1qlQueryCache{
+		cache: make(map[string]*n1qlQueryCacheEntry),
+	}
+}
+
+func (cache *n1qlQueryCache) Invalidate() {
+	cache.cacheLock.Lock()
+	cache.cache = make(map[string]*n1qlQueryCacheEntry)
+	cache.cacheLock.Unlock()
+}
+
+func (cache *n1qlQueryCache) Put(statement string, entry *n1qlQueryCacheEntry) {
+	cache.cacheLock.Lock()
+	cache.cache[statement] = entry
+	cache.cacheLock.Unlock()
+}
+
+func (cache *n1qlQueryCache) Delete(statement string) {
+	cache.cacheLock.Lock()
+	delete(cache.cache, statement)
+	cache.cacheLock.Unlock()
+}
+
+func (cache *n1qlQueryCache) Get(statement string) *n1qlQueryCacheEntry {
+	cache.cacheLock.RLock()
+	entry := cache.cache[statement]
+	if entry == nil {
+		cache.cacheLock.RUnlock()
+		return nil
+	}
+	cached := *entry
+	cache.cacheLock.RUnlock()
+
+	return &cached
+}
+
 type n1qlQueryCacheEntry struct {
-	enhanced    bool
 	name        string
 	encodedPlan string
 }
@@ -277,16 +317,11 @@ type n1qlJSONPrepData struct {
 	Name        string `json:"name"`
 }
 
-type preparedN1qlRequest struct {
-	httpReq    *httpRequest
-	cachedStmt *n1qlQueryCacheEntry
-}
-
 func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr configManager, tracer *tracerComponent) *n1qlQueryComponent {
 	nqc := &n1qlQueryComponent{
 		httpComponent: httpComponent,
 		cfgMgr:        cfgMgr,
-		queryCache:    make(map[string]*n1qlQueryCacheEntry),
+		queryCache:    newN1qlQueryCache(),
 		tracer:        tracer,
 	}
 	cfgMgr.AddConfigWatcher(nqc)
@@ -297,10 +332,9 @@ func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr configMa
 func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 0 &&
 		cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
+		logDebugf("Enabling enhanced prepared statement support")
 		// Once supported this can't be unsupported
-		nqc.cacheLock.Lock()
-		nqc.queryCache = make(map[string]*n1qlQueryCacheEntry)
-		nqc.cacheLock.Unlock()
+		nqc.queryCache.Invalidate()
 		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 	}
 }
@@ -338,7 +372,7 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 	}
 
 	go func() {
-		resp, err := nqc.execute(ireq, payloadMap, statement)
+		resp, err := nqc.execute(ireq, payloadMap, statement, time.Now())
 		if err != nil {
 			tracer.Finish()
 			cb(nil, err)
@@ -356,78 +390,14 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCallback) (PendingOp, error) {
 	tracer := nqc.tracer.StartTelemeteryHandler(metricValueServiceQueryValue, "PreparedN1QLQuery", opts.TraceContext)
 
-	var payloadMap map[string]interface{}
-	err := json.Unmarshal(opts.Payload, &payloadMap)
-	if err != nil {
-		tracer.Finish()
-		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"), "", 0)
-	}
-
-	statement := getMapValueString(payloadMap, "statement", "")
-	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
-	readOnly := getMapValueBool(payloadMap, "readonly", false)
-
-	nqc.cacheLock.RLock()
-	cachedStmt := nqc.queryCache[statement]
-	nqc.cacheLock.RUnlock()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	parentReqForCancel := &httpRequest{
 		Context:    ctx,
 		CancelFunc: cancel,
 	}
 
-	var prepareReq *preparedN1qlRequest
-	if cachedStmt != nil {
-		prepareReq = &preparedN1qlRequest{
-			httpReq: &httpRequest{
-				Service:          N1qlService,
-				Method:           "POST",
-				Path:             "/query/service",
-				IsIdempotent:     readOnly,
-				UniqueID:         clientContextID,
-				Deadline:         opts.Deadline,
-				RetryStrategy:    opts.RetryStrategy,
-				RootTraceContext: tracer.RootContext(),
-				Context:          ctx,
-				CancelFunc:       cancel,
-				User:             opts.User,
-				Endpoint:         opts.Endpoint,
-			},
-			cachedStmt: cachedStmt,
-		}
-	}
-
-	ireq := &httpRequest{
-		Service:          N1qlService,
-		Method:           "POST",
-		Path:             "/query/service",
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: tracer.RootContext(),
-		Context:          ctx,
-		CancelFunc:       cancel,
-		User:             opts.User,
-	}
-
 	go func() {
-		if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1 {
-			res, err := nqc.executeEnhPrepared(prepareReq, ireq, payloadMap, statement)
-			if err != nil {
-				cancel()
-				tracer.Finish()
-				cb(nil, err)
-				return
-			}
-
-			tracer.Finish()
-			cb(res, nil)
-			return
-		}
-
-		res, err := nqc.executeOldPrepared(prepareReq, ireq, payloadMap, statement)
+		res, err := nqc.executePrepared(ctx, cancel, tracer.RootContext(), opts)
 		if err != nil {
 			cancel()
 			tracer.Finish()
@@ -442,71 +412,179 @@ func (nqc *n1qlQueryComponent) PreparedN1QLQuery(opts N1QLQueryOptions, cb N1QLQ
 	return parentReqForCancel, nil
 }
 
-func (nqc *n1qlQueryComponent) executeEnhPrepared(prepareRequest *preparedN1qlRequest, ireq *httpRequest,
-	payloadMap map[string]interface{}, statement string) (*N1QLRowReader, error) {
+func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel context.CancelFunc,
+	traceCtx RequestSpanContext, opts N1QLQueryOptions) (*N1QLRowReader, error) {
+	start := time.Now()
+	var payloadMap map[string]interface{}
+	err := json.Unmarshal(opts.Payload, &payloadMap)
+	if err != nil {
+		return nil, wrapN1QLError(nil, "", wrapError(err, "expected a JSON payload"), "", 0)
+	}
 
-	if prepareRequest != nil {
+	statement := getMapValueString(payloadMap, "statement", "")
+	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
+	readOnly := getMapValueBool(payloadMap, "readonly", false)
+
+	cachedStmt := nqc.queryCache.Get(statement)
+
+	enhanced := atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1
+
+	if cachedStmt != nil {
 		// Attempt to execute our cached query plan
 		delete(payloadMap, "statement")
-		payloadMap["prepared"] = prepareRequest.cachedStmt.name
+		payloadMap["prepared"] = cachedStmt.name
+		if cachedStmt.encodedPlan != "" {
+			payloadMap["encoded_plan"] = cachedStmt.encodedPlan
+		}
 
-		results, err := nqc.execute(prepareRequest.httpReq, payloadMap, statement)
+		prepareReq := &httpRequest{
+			Service:          N1qlService,
+			Method:           "POST",
+			Path:             "/query/service",
+			IsIdempotent:     readOnly,
+			UniqueID:         clientContextID,
+			Deadline:         opts.Deadline,
+			RetryStrategy:    opts.RetryStrategy,
+			RootTraceContext: traceCtx,
+			Context:          ctx,
+			CancelFunc:       cancel,
+			User:             opts.User,
+			Endpoint:         opts.Endpoint,
+		}
+
+		results, err := nqc.execute(prepareReq, payloadMap, statement, start)
 		if err == nil {
 			return results, nil
 		}
-		// if we fail to send the prepared statement name then retry a PREPARE.
-		delete(payloadMap, "prepared")
+
+		err = nqc.preparedStatementMaybeEvictAndRetry(prepareReq, err, start, statement)
+		if err != nil {
+			return nil, err
+		}
 	}
 
+	delete(payloadMap, "prepared")
+	delete(payloadMap, "encoded_plan")
 	payloadMap["statement"] = "PREPARE " + statement
-	payloadMap["auto_execute"] = true
 
-	results, err := nqc.execute(ireq, payloadMap, statement)
+	if enhanced {
+		payloadMap["auto_execute"] = true
+	} else {
+		delete(payloadMap, "auto_execute")
+	}
+
+	ireq := &httpRequest{
+		Service:          N1qlService,
+		Method:           "POST",
+		Path:             "/query/service",
+		IsIdempotent:     readOnly,
+		UniqueID:         clientContextID,
+		Deadline:         opts.Deadline,
+		RetryStrategy:    opts.RetryStrategy,
+		RootTraceContext: traceCtx,
+		Context:          ctx,
+		CancelFunc:       cancel,
+	}
+
+	for {
+		var res *N1QLRowReader
+		var err error
+		if enhanced {
+			res, err = nqc.executeEnhPrepared(ireq, payloadMap, statement, start)
+		} else {
+			res, err = nqc.executeOldPrepared(ireq, payloadMap, statement, start)
+		}
+		if err == nil {
+			return res, nil
+		}
+
+		err = nqc.preparedStatementMaybeEvictAndRetry(ireq, err, start, statement)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (nqc *n1qlQueryComponent) preparedStatementMaybeEvictAndRetry(req *httpRequest, originalErr error, start time.Time,
+	statement string) error {
+	var err *N1QLError
+	if !errors.As(originalErr, &err) {
+		return originalErr
+	}
+
+	var retryReason RetryReason
+	if len(err.Errors) >= 1 {
+		firstErrDesc := err.Errors[0]
+
+		if firstErrDesc.Code == 4040 || firstErrDesc.Code == 4050 || firstErrDesc.Code == 4060 ||
+			firstErrDesc.Code == 4070 || firstErrDesc.Code == 4080 || firstErrDesc.Code == 4090 {
+			retryReason = QueryPreparedStatementFailureRetryReason
+
+			// If the error is because of a prepared statement issue then we need to evict the cache entry and reprepare.
+			nqc.queryCache.Delete(statement)
+		}
+
+		if retryReason == nil {
+			// n1qlErr is already wrapped here
+			return originalErr
+		}
+
+		shouldRetry, retryTime := retryOrchMaybeRetry(req, retryReason)
+		if !shouldRetry {
+			// n1qlErr is already wrapped here
+			return originalErr
+		}
+
+		select {
+		case <-time.After(time.Until(req.Deadline)):
+			err := &TimeoutError{
+				InnerError:       errUnambiguousTimeout,
+				OperationID:      "N1QLQuery",
+				Opaque:           req.Identifier(),
+				TimeObserved:     time.Since(start),
+				RetryReasons:     req.retryReasons,
+				RetryAttempts:    req.retryCount,
+				LastDispatchedTo: req.Endpoint,
+			}
+			return wrapN1QLError(req, statement, err, "", 0)
+		case <-time.After(time.Until(retryTime)):
+			return nil
+		}
+	}
+
+	return originalErr
+}
+
+func (nqc *n1qlQueryComponent) executeEnhPrepared(ireq *httpRequest, payloadMap map[string]interface{},
+	statement string, start time.Time) (*N1QLRowReader, error) {
+	cacheRes, err := nqc.execute(ireq, payloadMap, statement, start)
 	if err != nil {
 		return nil, err
 	}
 
-	preparedName, err := results.PreparedName()
+	preparedName, err := cacheRes.PreparedName()
 	if err != nil {
 		logWarnf("Failed to read prepared name from result: %s", err)
-		return results, nil
+		return cacheRes, nil
 	}
 
 	cachedStmt := &n1qlQueryCacheEntry{}
 	cachedStmt.name = preparedName
-	cachedStmt.enhanced = true
 
-	nqc.cacheLock.Lock()
-	nqc.queryCache[statement] = cachedStmt
-	nqc.cacheLock.Unlock()
+	nqc.queryCache.Put(statement, cachedStmt)
 
-	return results, nil
+	return cacheRes, nil
 }
 
-func (nqc *n1qlQueryComponent) executeOldPrepared(prepareRequest *preparedN1qlRequest, ireq *httpRequest,
-	payloadMap map[string]interface{}, statement string) (*N1QLRowReader, error) {
-
-	if prepareRequest != nil {
-		// Attempt to execute our cached query plan
-		delete(payloadMap, "statement")
-		payloadMap["prepared"] = prepareRequest.cachedStmt.name
-		payloadMap["encoded_plan"] = prepareRequest.cachedStmt.encodedPlan
-
-		results, err := nqc.execute(prepareRequest.httpReq, payloadMap, statement)
-		if err == nil {
-			return results, nil
-		}
-
-		// if we fail to send the prepared statement name then retry a PREPARE.
-	}
-
+func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap map[string]interface{}, statement string,
+	start time.Time) (*N1QLRowReader, error) {
 	delete(payloadMap, "prepared")
 	delete(payloadMap, "encoded_plan")
 	delete(payloadMap, "auto_execute")
 	prepStatement := "PREPARE " + statement
 	payloadMap["statement"] = prepStatement
 
-	cacheRes, err := nqc.execute(ireq, payloadMap, statement)
+	cacheRes, err := nqc.execute(ireq, payloadMap, statement, start)
 	if err != nil {
 		return nil, err
 	}
@@ -542,16 +620,14 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(prepareRequest *preparedN1qlRe
 	cachedStmt.name = prepData.Name
 	cachedStmt.encodedPlan = prepData.EncodedPlan
 
-	nqc.cacheLock.Lock()
-	nqc.queryCache[statement] = cachedStmt
-	nqc.cacheLock.Unlock()
+	nqc.queryCache.Put(statement, cachedStmt)
 
 	// Attempt to execute our cached query plan
 	delete(payloadMap, "statement")
 	payloadMap["prepared"] = cachedStmt.name
 	payloadMap["encoded_plan"] = cachedStmt.encodedPlan
 
-	resp, err := nqc.execute(ireq, payloadMap, statement)
+	resp, err := nqc.execute(ireq, payloadMap, statement, start)
 	if err != nil {
 		return nil, err
 	}
@@ -559,8 +635,8 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(prepareRequest *preparedN1qlRe
 	return resp, nil
 }
 
-func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string) (*N1QLRowReader, error) {
-	start := time.Now()
+func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string,
+	start time.Time) (*N1QLRowReader, error) {
 	for {
 		{ // Produce an updated payload with the appropriate timeout
 			timeoutLeft := time.Until(ireq.Deadline)
@@ -586,6 +662,7 @@ func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]
 		if resp.StatusCode != 200 {
 			n1qlErr := parseN1QLErrorResp(ireq, statementForErr, resp)
 
+			// Note that prepared statement error code retries are handled higher up.
 			var retryReason RetryReason
 			if len(n1qlErr.Errors) >= 1 {
 				firstErrDesc := n1qlErr.Errors[0]
@@ -593,16 +670,8 @@ func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]
 				// See MB-50643 for why this code check is here.
 				if firstErrDesc.Retry && firstErrDesc.Code != 12016 {
 					retryReason = QueryErrorRetryable
-				} else {
-					if firstErrDesc.Code == 4040 {
-						retryReason = QueryPreparedStatementFailureRetryReason
-					} else if firstErrDesc.Code == 4050 {
-						retryReason = QueryPreparedStatementFailureRetryReason
-					} else if firstErrDesc.Code == 4070 {
-						retryReason = QueryPreparedStatementFailureRetryReason
-					} else if strings.Contains(firstErrDesc.Message, "queryport.indexNotFound") {
-						retryReason = QueryIndexNotFoundRetryReason
-					}
+				} else if strings.Contains(firstErrDesc.Message, "queryport.indexNotFound") {
+					retryReason = QueryIndexNotFoundRetryReason
 				}
 			}
 
