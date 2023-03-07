@@ -187,11 +187,25 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 func (sqc *searchQueryComponent) searchQuery(ireq *httpRequest, indexName string, query interface{}, payloadMap map[string]interface{},
 	ctlMap map[string]interface{}, startTime time.Time) (*SearchRowReader, error) {
 	for {
-		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := time.Until(ireq.Deadline)
-
-			ctlMap["timeout"] = timeoutLeft / time.Millisecond
-			payloadMap["ctl"] = ctlMap
+		{
+			if !ireq.Deadline.IsZero() {
+				// Produce an updated payload with the appropriate timeout
+				timeoutLeft := time.Until(ireq.Deadline)
+				if timeoutLeft <= 0 {
+					err := &TimeoutError{
+						InnerError:       errUnambiguousTimeout,
+						OperationID:      "N1QLQuery",
+						Opaque:           ireq.Identifier(),
+						TimeObserved:     time.Since(startTime),
+						RetryReasons:     ireq.retryReasons,
+						RetryAttempts:    ireq.retryCount,
+						LastDispatchedTo: ireq.Endpoint,
+					}
+					return nil, wrapSearchError(nil, indexName, query, err, 0)
+				}
+				ctlMap["timeout"] = timeoutLeft / time.Millisecond
+				payloadMap["ctl"] = ctlMap
+			}
 
 			newPayload, err := json.Marshal(payloadMap)
 			if err != nil {

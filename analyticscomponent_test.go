@@ -296,7 +296,7 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.AnalyticsQuery(AnalyticsQueryOptions{
 		Payload:  []byte(payloadStr),
-		Deadline: time.Now().Add(100 * time.Microsecond),
+		Deadline: time.Now().Add(1 * time.Microsecond),
 	}, func(reader *AnalyticsRowReader, err error) {
 		if err != nil {
 			errCh <- err
@@ -328,8 +328,15 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
-			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
+			if suite.Assert().Equal(len(nilParents), 1) {
+				span := nilParents[0]
+				suite.Assert().Equal("AnalyticsQuery", span.Name)
+				suite.Assert().Equal(1, len(span.Tags))
+				suite.Assert().Equal("couchbase", span.Tags["db.system"])
+				suite.Assert().True(span.Finished)
+
+				_, ok := span.Spans[spanNameDispatchToServer]
+				suite.Assert().False(ok)
 			}
 		}
 	}

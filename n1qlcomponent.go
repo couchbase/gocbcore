@@ -429,6 +429,7 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 
 	enhanced := atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1
 
+	var req *httpRequest
 	if cachedStmt != nil {
 		// Attempt to execute our cached query plan
 		delete(payloadMap, "statement")
@@ -437,7 +438,7 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 			payloadMap["encoded_plan"] = cachedStmt.encodedPlan
 		}
 
-		prepareReq := &httpRequest{
+		req = &httpRequest{
 			Service:          N1qlService,
 			Method:           "POST",
 			Path:             "/query/service",
@@ -452,15 +453,17 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 			Endpoint:         opts.Endpoint,
 		}
 
-		results, err := nqc.execute(prepareReq, payloadMap, statement, start)
+		results, err := nqc.execute(req, payloadMap, statement, start)
 		if err == nil {
 			return results, nil
 		}
 
-		err = nqc.preparedStatementMaybeEvictAndRetry(prepareReq, err, start, statement)
-		if err != nil {
-			return nil, err
+		retryErr := nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statement)
+		if retryErr != nil {
+			return nil, retryErr
 		}
+
+		logDebugf("Prepared statement execution failed, will attempt reprepare: %v", err)
 	}
 
 	delete(payloadMap, "prepared")
@@ -473,32 +476,36 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 		delete(payloadMap, "auto_execute")
 	}
 
-	ireq := &httpRequest{
-		Service:          N1qlService,
-		Method:           "POST",
-		Path:             "/query/service",
-		IsIdempotent:     readOnly,
-		UniqueID:         clientContextID,
-		Deadline:         opts.Deadline,
-		RetryStrategy:    opts.RetryStrategy,
-		RootTraceContext: traceCtx,
-		Context:          ctx,
-		CancelFunc:       cancel,
+	if req == nil {
+		req = &httpRequest{
+			Service:          N1qlService,
+			Method:           "POST",
+			Path:             "/query/service",
+			IsIdempotent:     readOnly,
+			UniqueID:         clientContextID,
+			Deadline:         opts.Deadline,
+			RetryStrategy:    opts.RetryStrategy,
+			RootTraceContext: traceCtx,
+			Context:          ctx,
+			CancelFunc:       cancel,
+			User:             opts.User,
+			Endpoint:         opts.Endpoint,
+		}
 	}
 
 	for {
 		var res *N1QLRowReader
 		var err error
 		if enhanced {
-			res, err = nqc.executeEnhPrepared(ireq, payloadMap, statement, start)
+			res, err = nqc.executeEnhPrepared(req, payloadMap, statement, start)
 		} else {
-			res, err = nqc.executeOldPrepared(ireq, payloadMap, statement, start)
+			res, err = nqc.executeOldPrepared(req, payloadMap, statement, start)
 		}
 		if err == nil {
 			return res, nil
 		}
 
-		err = nqc.preparedStatementMaybeEvictAndRetry(ireq, err, start, statement)
+		err = nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statement)
 		if err != nil {
 			return nil, err
 		}
@@ -638,9 +645,24 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap 
 func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]interface{}, statementForErr string,
 	start time.Time) (*N1QLRowReader, error) {
 	for {
-		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := time.Until(ireq.Deadline)
-			payloadMap["timeout"] = timeoutLeft.String()
+		{
+			if !ireq.Deadline.IsZero() {
+				// Produce an updated payload with the appropriate timeout
+				timeoutLeft := time.Until(ireq.Deadline)
+				if timeoutLeft <= 0 {
+					err := &TimeoutError{
+						InnerError:       errUnambiguousTimeout,
+						OperationID:      "N1QLQuery",
+						Opaque:           ireq.Identifier(),
+						TimeObserved:     time.Since(start),
+						RetryReasons:     ireq.retryReasons,
+						RetryAttempts:    ireq.retryCount,
+						LastDispatchedTo: ireq.Endpoint,
+					}
+					return nil, wrapN1QLError(ireq, statementForErr, err, "", 0)
+				}
+				payloadMap["timeout"] = timeoutLeft.String()
+			}
 
 			newPayload, err := json.Marshal(payloadMap)
 			if err != nil {

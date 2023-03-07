@@ -265,13 +265,28 @@ func (aqc *analyticsQueryComponent) AnalyticsQuery(opts AnalyticsQueryOptions, c
 func (aqc *analyticsQueryComponent) analyticsQuery(ireq *httpRequest, payloadMap map[string]interface{},
 	statement string, startTime time.Time) (*AnalyticsRowReader, error) {
 	for {
-		{ // Produce an updated payload with the appropriate timeout
-			timeoutLeft := time.Until(ireq.Deadline)
-			payloadMap["timeout"] = timeoutLeft.String()
+		{
+			if !ireq.Deadline.IsZero() {
+				// Produce an updated payload with the appropriate timeout
+				timeoutLeft := time.Until(ireq.Deadline)
+				if timeoutLeft <= 0 {
+					err := &TimeoutError{
+						InnerError:       errUnambiguousTimeout,
+						OperationID:      "N1QLQuery",
+						Opaque:           ireq.Identifier(),
+						TimeObserved:     time.Since(startTime),
+						RetryReasons:     ireq.retryReasons,
+						RetryAttempts:    ireq.retryCount,
+						LastDispatchedTo: ireq.Endpoint,
+					}
+					return nil, wrapAnalyticsError(ireq, statement, err, "", 0)
+				}
+				payloadMap["timeout"] = timeoutLeft.String()
+			}
 
 			newPayload, err := json.Marshal(payloadMap)
 			if err != nil {
-				return nil, wrapAnalyticsError(nil, "", wrapError(err, "failed to produce payload"), "", 0)
+				return nil, wrapAnalyticsError(nil, statement, wrapError(err, "failed to produce payload"), "", 0)
 			}
 			ireq.Body = newPayload
 		}

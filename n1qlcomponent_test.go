@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/mock"
 	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/mock"
 )
 
 type n1qlTestHelper struct {
@@ -401,7 +402,7 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.N1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
-		Deadline: time.Now().Add(100 * time.Microsecond),
+		Deadline: time.Now().Add(1 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
 		if err != nil {
 			errCh <- err
@@ -432,10 +433,15 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
-		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
-			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "N1QLQuery")
-			}
+		if suite.Assert().Equal(len(nilParents), 1) {
+			span := nilParents[0]
+			suite.Assert().Equal("N1QLQuery", span.Name)
+			suite.Assert().Equal(1, len(span.Tags))
+			suite.Assert().Equal("couchbase", span.Tags["db.system"])
+			suite.Assert().True(span.Finished)
+
+			_, ok := span.Spans[spanNameDispatchToServer]
+			suite.Assert().False(ok)
 		}
 	}
 
@@ -540,7 +546,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	payloadStr := fmt.Sprintf(`{"statement":"SELECT * FROM %s LIMIT 1","client_context_id":"12345"}`, suite.BucketName)
 	_, err := ag.PreparedN1QLQuery(N1QLQueryOptions{
 		Payload:  []byte(payloadStr),
-		Deadline: time.Now().Add(100 * time.Microsecond),
+		Deadline: time.Now().Add(1 * time.Microsecond),
 	}, func(reader *N1QLRowReader, err error) {
 		if err != nil {
 			errCh <- err
@@ -571,10 +577,15 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
-		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
-			for i := 0; i < len(nilParents); i++ {
-				suite.AssertHTTPSpan(nilParents[i], "PreparedN1QLQuery")
-			}
+		if suite.Assert().Equal(len(nilParents), 1) {
+			span := nilParents[0]
+			suite.Assert().Equal("PreparedN1QLQuery", span.Name)
+			suite.Assert().Equal(1, len(span.Tags))
+			suite.Assert().Equal("couchbase", span.Tags["db.system"])
+			suite.Assert().True(span.Finished)
+
+			_, ok := span.Spans[spanNameDispatchToServer]
+			suite.Assert().False(ok)
 		}
 	}
 
@@ -905,6 +916,140 @@ func (suite *UnitTestSuite) doN1QLRequest(respData []byte, statusCode int, retry
 	suite.Require().Nil(err, err)
 
 	return <-waitCh
+}
+
+func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryRetryPrepare4050() {
+
+	body := []byte(`{"errors":[{"code":4050,"msg":"Unrecognizable prepared statement"}]}`)
+
+	r := ioutil.NopCloser(bytes.NewReader(body))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    404,
+		ContentLength: int64(len(body)),
+		Body:          r,
+	}
+
+	body2 := []byte(`{"prepared":"somename","results":[]}`)
+
+	r2 := ioutil.NopCloser(bytes.NewReader(body2))
+	resp2 := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(body2)),
+		Body:          r2,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil).Once().Run(func(args mock.Arguments) {
+		req := args.Get(0).(*httpRequest)
+		var body map[string]interface{}
+		suite.Require().NoError(json.Unmarshal(req.Body, &body))
+
+		_, ok := body["statement"]
+		suite.Assert().False(ok)
+
+		prepared := body["prepared"]
+		suite.Assert().Equal("somename", prepared)
+	})
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp2, nil).Once().Run(func(args mock.Arguments) {
+		req := args.Get(0).(*httpRequest)
+		var body map[string]interface{}
+		suite.Require().NoError(json.Unmarshal(req.Body, &body))
+
+		statement := body["statement"]
+		suite.Assert().Equal("PREPARE SELECT 1=1", statement)
+
+		autoExec := body["auto_execute"]
+		suite.Assert().True(autoExec.(bool))
+	})
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	n1qlC.enhancedPreparedSupported = 1
+	n1qlC.queryCache.Put("SELECT 1=1", &n1qlQueryCacheEntry{
+		name: "somename",
+	})
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan error, 1)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:       payload,
+		RetryStrategy: NewBestEffortRetryStrategy(nil),
+		Deadline:      time.Now().Add(1 * time.Second),
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().NoError(err, err)
+	suite.Require().NoError(<-waitCh)
+}
+
+func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryFailReprepare() {
+	body := []byte(`{"errors":[{"code":4050,"msg":"Unrecognizable prepared statement"}]}`)
+	r := ioutil.NopCloser(bytes.NewReader(body))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    404,
+		ContentLength: int64(len(body)),
+		Body:          r,
+	}
+
+	body2 := []byte(`{"errors":[{"code":9999,"msg":"A made up error"}]}`)
+	r2 := ioutil.NopCloser(bytes.NewReader(body2))
+	resp2 := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    404,
+		ContentLength: int64(len(body2)),
+		Body:          r2,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil).Once()
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp2, nil).Once()
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	n1qlC.enhancedPreparedSupported = 1
+	n1qlC.queryCache.Put("SELECT 1=1", &n1qlQueryCacheEntry{
+		name: "somename",
+	})
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan error, 1)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:       payload,
+		RetryStrategy: NewBestEffortRetryStrategy(nil),
+		Deadline:      time.Now().Add(100 * time.Millisecond),
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().NoError(err, err)
+
+	var n1qlErr *N1QLError
+	suite.Require().ErrorAs(<-waitCh, &n1qlErr)
+
+	suite.Assert().Equal(uint32(1), n1qlErr.RetryAttempts)
+	suite.Assert().Contains(n1qlErr.RetryReasons, QueryPreparedStatementFailureRetryReason)
 }
 
 type n1qlRetryStrategy struct {
