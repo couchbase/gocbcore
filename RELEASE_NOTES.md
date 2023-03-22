@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.2.2 (22 March 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1393](GOCBC-1393):
+  Altered the behaviour of retries for enhanced prepared statements.
+* [https://issues.couchbase.com/browse/GOCBC-1395](GOCBC-1395):
+  Improved timeout errors on http based services.
+
 ## Version 10.2.1 (22 February 2023)
 
 ### New Features and Behavioral Changes
