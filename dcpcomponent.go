@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -43,8 +44,17 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			}
 
 			if resp != nil && resp.Magic == memd.CmdMagicRes {
-				atomic.StoreUint32(&openHandled, 1)
 				// CmdMagicRes means that this must be the open stream request response.
+				atomic.StoreUint32(&openHandled, 1)
+				// We need to decorate rollback errors with extra information that the server returns to us.
+				// Unforunately we have to check for the memd due to earlier oversights where we missed converting
+				// it to a proper gocbcore error.
+				if errors.Is(err, ErrMemdRollback) {
+					err = DCPRollbackError{
+						InnerError: err,
+						SeqNo:      SeqNo(binary.BigEndian.Uint64(resp.Value)),
+					}
+				}
 				cb(nil, err)
 				return
 			}
