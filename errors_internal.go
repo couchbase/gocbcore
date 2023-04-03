@@ -646,6 +646,43 @@ func (err TimeoutError) Unwrap() error {
 	return err.InnerError
 }
 
+type DCPRollbackError struct {
+	InnerError error
+	SeqNo      SeqNo
+}
+
+// MarshalJSON implements the Marshaler interface.
+func (e DCPRollbackError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		InnerError string `json:"msg,omitempty"`
+		SeqNo      uint64 `json:"seq_no,omitempty"`
+	}{
+		InnerError: e.InnerError.Error(),
+		SeqNo:      uint64(e.SeqNo),
+	})
+}
+
+// Error returns the string representation of this error.
+func (e DCPRollbackError) Error() string {
+	errBytes, serErr := json.Marshal(struct {
+		InnerError error  `json:"-"`
+		SeqNo      uint64 `json:"seq_no,omitempty"`
+	}{
+		InnerError: e.InnerError,
+		SeqNo:      uint64(e.SeqNo),
+	})
+	if serErr != nil {
+		logErrorf("failed to serialize error to json: %s", serErr.Error())
+	}
+
+	return e.InnerError.Error() + " | " + string(errBytes)
+}
+
+// Unwrap returns the underlying reason for the error
+func (err DCPRollbackError) Unwrap() error {
+	return err.InnerError
+}
+
 // ncError is a wrapper error that provides no additional context to one of the
 // publicly exposed error types.  This is to force people to correctly use the
 // error handling behaviours to check the error, rather than direct compares.
