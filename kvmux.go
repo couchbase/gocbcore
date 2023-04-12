@@ -135,7 +135,7 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	}
 
 	if oldMuxState.RevID() == -1 && newMuxState.RevID() > -1 {
-		if mux.collectionsEnabled && !newMuxState.collectionsSupported {
+		if cfg.name != "" && mux.collectionsEnabled && !newMuxState.collectionsSupported {
 			logDebugf("Collections disabled as unsupported")
 		}
 
@@ -362,7 +362,7 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 	handleError := func(err error) {
 		// We only want to log an error on retries if the error isn't cancelled.
 		if !isRetry || (isRetry && !errors.Is(err, ErrRequestCanceled)) {
-			logErrorf("Reschedule failed, failing request (%s)", err)
+			logErrorf("Reschedule failed, failing request, Opaque=%d, Opcode=0x%x, (%s)", req.Opaque, req.Command, err)
 		}
 
 		req.tryCallback(nil, err)
@@ -797,6 +797,15 @@ func (mux *kvMux) requeueRequests(oldMuxState *kvMuxState) {
 
 	for _, req := range requestList {
 		stopCmdTrace(req)
+
+		// If the command is a get cluster config then we cancel it rather than requeuing.
+		// Get cluster config is explicitly sent a specific pipeline so we do not want to requeue.
+		// This may seem like it'll cause the poller to take longer to fetch a config but that's
+		// OK because we can only have here by something fetching a new config anyway.
+		if req.Command == memd.CmdGetClusterConfig {
+			req.tryCallback(nil, ErrRequestCanceled)
+			continue
+		}
 		mux.RequeueDirect(req, false)
 	}
 }

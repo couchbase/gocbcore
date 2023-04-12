@@ -112,38 +112,37 @@ func (ccc *cccpConfigController) doLoop() error {
 			return errNoCCCPHosts
 		}
 
-		if iter.RevID() == -1 {
-			logInfof("CCCPPOLL: No config retrieved by pipelines yet, looping")
-			continue
-		}
-
 		if nodeIdx < 0 || nodeIdx > numNodes {
 			nodeIdx = rand.Intn(numNodes) // #nosec G404
 		}
 
 		var foundConfig *cfgBucket
-		var foundErr error
+		var fallbackErr error
+		var wasCancelled bool
 		iter.Iterate(nodeIdx, func(pipeline *memdPipeline) bool {
 			nodeIdx = (nodeIdx + 1) % numNodes
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
 				if ccc.isFallbackErrorFn(err) {
-					foundErr = err
+					fallbackErr = err
 					return false
 				}
 
-				ccc.setError(err)
 				// Only log the error at warn if it's unexpected.
 				// If we cancelled the request or we're shutting down the connection then it's not really unexpected.
 				if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
+					wasCancelled = true
 					logDebugf("CCCPPOLL: CCCP request was cancelled or connection was shutdown: %v", err)
 					return true
 				}
 
+				// This error is checked by WaitUntilReady when no config has been seen.
+				ccc.setError(err)
+
 				logWarnf("CCCPPOLL: Failed to retrieve CCCP config. %s", err)
 				return false
 			}
-			foundErr = nil
+			fallbackErr = nil
 			ccc.setError(nil)
 
 			logDebugf("CCCPPOLL: Got Block: %s", string(cccpBytes))
@@ -163,17 +162,16 @@ func (ccc *cccpConfigController) doLoop() error {
 			foundConfig = bk
 			return true
 		})
-		if foundErr != nil {
+		if fallbackErr != nil {
 			// This error is indicative of a memcached bucket which we can't handle so return the error.
 			logInfof("CCCPPOLL: CCCP not supported, returning error upstream.")
-			return foundErr
+			return fallbackErr
 		}
 
 		if foundConfig == nil {
 			// Only log the error at warn if it's unexpected.
-			// If we cancelled the request then we're shutting down and this isn't unexpected.
-			err := ccc.Error()
-			if errors.Is(err, ErrRequestCanceled) || errors.Is(err, ErrShutdown) {
+			// If we cancelled the request then we're shutting down or request was requeued and this isn't unexpected.
+			if wasCancelled {
 				logDebugf("CCCPPOLL: CCCP request was cancelled.")
 			} else {
 				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
