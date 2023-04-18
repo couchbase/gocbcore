@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.2.3 (18 April 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1401](GOCBC-1401):
+  Exposed SeqNo on DCP rollback error.
+* [https://issues.couchbase.com/browse/GOCBC-1403](GOCBC-1403):
+  Fixed issue where cccp poller would wait for a cluster config before starting.
+
 ## Version 10.2.2 (22 March 2023)
 
 ### New Features and Behavioral Changes
