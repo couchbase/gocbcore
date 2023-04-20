@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 9.1.9 (20 April 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1401](GOCBC-1401):
+  Exposed SeqNo on DCP rollback error.
+
 ## Version 9.1.8 (18 January 2022)
 
 ###New Features and Behavioral Changes
