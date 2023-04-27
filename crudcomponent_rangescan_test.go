@@ -1,10 +1,11 @@
 package gocbcore
 
 import (
-	"github.com/couchbase/gocbcore/v10/memd"
-	"github.com/google/uuid"
 	"strings"
 	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
 )
 
 type rangeScanMutation struct {
@@ -69,13 +70,17 @@ func (suite *StandardTestSuite) TestRangeScanRangeLargeValues() {
 
 	docIDs := []string{"largevalues-2960", "largevalues-3064", "largevalues-3686", "largevalues-3716", "largevalues-5354",
 		"largevalues-5426", "largevalues-6175", "largevalues-6607", "largevalues-6797", "largevalues-7871"}
-	muts := suite.setupRangeScan(docIDs, value, "", "")
+	muts := suite.setupRangeScan(docIDs, value, suite.CollectionName, suite.ScopeName)
 
 	data := suite.doRangeScan(12,
 		RangeScanCreateOptions{
 			Range: &RangeScanCreateRangeScanConfig{
 				Start: []byte("largevalues"),
 				End:   []byte("largevalues\xFF"),
+			},
+			Snapshot: &RangeScanCreateSnapshotRequirements{
+				VbUUID: muts.vbuuid,
+				SeqNo:  muts.highSeqNo,
 			},
 			ScopeName:      suite.ScopeName,
 			CollectionName: suite.CollectionName,
@@ -112,13 +117,17 @@ func (suite *StandardTestSuite) TestRangeScanRangeSmallValues() {
 	docIDs := []string{"rangesmallvalues-1023", "rangesmallvalues-1751", "rangesmallvalues-2202",
 		"rangesmallvalues-2392", "rangesmallvalues-2570", "rangesmallvalues-4132", "rangesmallvalues-4640",
 		"rangesmallvalues-5836", "rangesmallvalues-7283", "rangesmallvalues-7313"}
-	muts := suite.setupRangeScan(docIDs, value, "", "")
+	muts := suite.setupRangeScan(docIDs, value, suite.CollectionName, suite.ScopeName)
 
 	data := suite.doRangeScan(12,
 		RangeScanCreateOptions{
 			Range: &RangeScanCreateRangeScanConfig{
 				Start: []byte("rangesmallvalues"),
 				End:   []byte("rangesmallvalues\xFF"),
+			},
+			Snapshot: &RangeScanCreateSnapshotRequirements{
+				VbUUID: muts.vbuuid,
+				SeqNo:  muts.highSeqNo,
 			},
 			ScopeName:      suite.ScopeName,
 			CollectionName: suite.CollectionName,
@@ -212,13 +221,17 @@ func (suite *StandardTestSuite) TestRangeScanRangeKeysOnly() {
 	docIDs := []string{"rangekeysonly-1269", "rangekeysonly-2048", "rangekeysonly-4378", "rangekeysonly-7159",
 		"rangekeysonly-8898", "rangekeysonly-8908", "rangekeysonly-19559", "rangekeysonly-20808",
 		"rangekeysonly-20998", "rangekeysonly-25889"}
-	muts := suite.setupRangeScan(docIDs, []byte(value), "", "")
+	muts := suite.setupRangeScan(docIDs, []byte(value), suite.CollectionName, suite.ScopeName)
 
 	data := suite.doRangeScan(12,
 		RangeScanCreateOptions{
 			Range: &RangeScanCreateRangeScanConfig{
 				Start: []byte("rangekeysonly"),
 				End:   []byte("rangekeysonly\xFF"),
+			},
+			Snapshot: &RangeScanCreateSnapshotRequirements{
+				VbUUID: muts.vbuuid,
+				SeqNo:  muts.highSeqNo,
 			},
 			KeysOnly:       true,
 			ScopeName:      suite.ScopeName,
@@ -271,6 +284,10 @@ func (suite *StandardTestSuite) TestRangeScanSamplingKeysOnly() {
 			Sampling: &RangeScanCreateRandomSamplingConfig{
 				Samples: 10,
 			},
+			Snapshot: &RangeScanCreateSnapshotRequirements{
+				VbUUID: muts.vbuuid,
+				SeqNo:  muts.highSeqNo,
+			},
 			KeysOnly:       true,
 			ScopeName:      scopeName,
 			CollectionName: collectionName,
@@ -291,75 +308,6 @@ func (suite *StandardTestSuite) TestRangeScanSamplingKeysOnly() {
 			suite.Assert().Zero(item.Cas)
 			suite.Assert().Zero(item.SeqNo)
 			suite.Assert().Empty(item.Value)
-		}
-	}
-
-	suite.verifyRangeScanTelemetry(agent)
-}
-
-func (suite *StandardTestSuite) TestRangeScanRangeSnapshot() {
-	suite.EnsureSupportsFeature(TestFeatureRangeScan)
-
-	agent, s := suite.GetAgentAndHarness()
-
-	value := "value"
-	docIDs := []string{"rangescansnapshot-38523", "rangescansnapshot-45448", "rangescansnapshot-51222",
-		"rangescansnapshot-108547", "rangescansnapshot-135193", "rangescansnapshot-161246", "rangescansnapshot-188667",
-		"rangescansnapshot-220032", "rangescansnapshot-234658", "rangescansnapshot-249733"}
-
-	var highSeqNo SeqNo
-	var vbUUID VbUUID
-	for i := 0; i < len(docIDs); i++ {
-		s.PushOp(agent.Set(SetOptions{
-			Key:            []byte(docIDs[i]),
-			Value:          []byte(value),
-			ScopeName:      suite.ScopeName,
-			CollectionName: suite.CollectionName,
-		}, func(res *StoreResult, err error) {
-			s.Wrap(func() {
-				if err != nil {
-					s.Fatalf("Set operation failed: %v", err)
-				}
-
-				highSeqNo = res.MutationToken.SeqNo
-				vbUUID = res.MutationToken.VbUUID
-			})
-		}))
-		s.Wait(0)
-	}
-
-	suite.tracer.Reset()
-	suite.meter.Reset()
-
-	data := suite.doRangeScan(12,
-		RangeScanCreateOptions{
-			Range: &RangeScanCreateRangeScanConfig{
-				Start: []byte("rangescansnapshot"),
-				End:   []byte("rangescansnapshot\xFF"),
-			},
-			Snapshot: &RangeScanCreateSnapshotRequirements{
-				VbUUID: vbUUID,
-				SeqNo:  highSeqNo,
-			},
-			ScopeName:      suite.ScopeName,
-			CollectionName: suite.CollectionName,
-		},
-		RangeScanContinueOptions{
-			Deadline: time.Now().Add(10 * time.Second),
-		},
-	)
-
-	itemsMap := make(map[string]RangeScanItem)
-	for _, item := range data {
-		itemsMap[string(item.Key)] = item
-	}
-
-	for _, id := range docIDs {
-		item, ok := itemsMap[id]
-		if suite.Assert().True(ok) {
-			suite.Assert().NotZero(item.Cas)
-			suite.Assert().NotZero(item.SeqNo)
-			suite.Assert().Equal([]byte(value), item.Value)
 		}
 	}
 
