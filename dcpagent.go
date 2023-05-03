@@ -171,7 +171,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		}
 
 		if config.UseOSOBackfill {
-			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
+			if err := sclient.ExecDcpControl("enable_out_of_order_snapshots", "true_with_seqno_advanced", deadline); err != nil {
 				return err
 			}
 		}
