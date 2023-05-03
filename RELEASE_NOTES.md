@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 9.1.10 (3 May 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1409](GOCBC-1409):
+  Updated DCP OSO to use improved SeqNoAdvance.
+
 ## Version 9.1.9 (20 April 2023)
 
 ### Fixed Issues
