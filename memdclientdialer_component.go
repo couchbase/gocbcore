@@ -319,7 +319,7 @@ func (mcc *memdClientDialerComponent) dcpBootstrap(client *dcpBootstrapClient, d
 	}
 
 	if mcc.dcpBootstrapProps.useOSOBackfill {
-		if err := client.ExecDcpControl("enable_out_of_order_snapshots", "true", deadline); err != nil {
+		if err := client.ExecDcpControl("enable_out_of_order_snapshots", "true_with_seqno_advanced", deadline); err != nil {
 			return err
 		}
 	}
