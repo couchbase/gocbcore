@@ -126,6 +126,11 @@ func (mux *kvMux) OnNewRouteConfig(cfg *routeConfig) {
 	mux.muxStateWriteLock.Lock()
 	defer mux.muxStateWriteLock.Unlock()
 	oldMuxState := mux.getState()
+	if oldMuxState == nil {
+		// We can get here if we're shutting down and a NMVB comes in from an in flight request.
+		logWarnf("Received new config whilst shutting down kvmux")
+		return
+	}
 	newMuxState := mux.newKVMuxState(cfg, oldMuxState.tlsConfig, oldMuxState.authMechanisms, oldMuxState.auth)
 
 	// Attempt to atomically update the routing data

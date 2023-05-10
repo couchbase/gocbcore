@@ -420,15 +420,7 @@ func (agent *Agent) Close() error {
 	poller := agent.pollerController
 	if poller != nil {
 		poller.Stop()
-	}
 
-	routeCloseErr := agent.kvMux.Close()
-
-	if agent.zombieLogger != nil {
-		agent.zombieLogger.Stop()
-	}
-
-	if poller != nil {
 		// Wait for our external looper goroutines to finish, note that if the
 		// specific looper wasn't used, it will be a nil value otherwise it
 		// will be an open channel till its closed to signal completion.
@@ -436,6 +428,11 @@ func (agent *Agent) Close() error {
 		if pollerCh != nil {
 			<-pollerCh
 		}
+	}
+	routeCloseErr := agent.kvMux.Close()
+
+	if agent.zombieLogger != nil {
+		agent.zombieLogger.Stop()
 	}
 
 	// Close the transports so that they don't hold open goroutines.
