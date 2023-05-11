@@ -57,6 +57,10 @@ func (mux *httpMux) Clear() *httpClientMux {
 
 func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 	oldHTTPMux := mux.Get()
+	if oldHTTPMux == nil {
+		logWarnf("HTTP mux received new route config after shutdown")
+		return
+	}
 
 	endpoints := mux.buildEndpoints(cfg, oldHTTPMux.tlsConfig != nil)
 
