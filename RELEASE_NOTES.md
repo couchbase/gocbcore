@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 10.2.4 (17 May 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1409](GOCBC-1409):
+  Updated DCP OSO to use improved SeqNoAdvance
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1410](GOCBC-1410):
+  Fixed issue where applying a cluster config during SDK shutdown could panic.
+
 ## Version 10.2.3 (18 April 2023)
 
 ### Fixed Issues
