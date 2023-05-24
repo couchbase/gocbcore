@@ -217,6 +217,9 @@ func (ltc *stdLostTransactionCleaner) GetAndResetResourceUnits() *TransactionRes
 func (ltc *stdLostTransactionCleaner) ATRLocations() []TransactionLostATRLocation {
 	ltc.locationsLock.Lock()
 	defer ltc.locationsLock.Unlock()
+	if ltc.locations == nil {
+		return nil
+	}
 	var locations []TransactionLostATRLocation
 	for location := range ltc.locations {
 		locations = append(locations, location)
@@ -226,6 +229,10 @@ func (ltc *stdLostTransactionCleaner) ATRLocations() []TransactionLostATRLocatio
 
 func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATRLocation) {
 	ltc.locationsLock.Lock()
+	if ltc.locations == nil {
+		ltc.locationsLock.Unlock()
+		return
+	}
 	if _, ok := ltc.locations[location]; ok {
 		ltc.locationsLock.Unlock()
 		return
@@ -250,10 +257,15 @@ func (ltc *stdLostTransactionCleaner) Close() {
 }
 
 func (ltc *stdLostTransactionCleaner) RemoveClientFromAllLocations(uuid string) error {
-	logDebugf("Removing %s from all locations", ltc.uuid)
 	ltc.locationsLock.Lock()
+	if ltc.locations == nil {
+		ltc.locationsLock.Unlock()
+		return nil
+	}
 	locations := ltc.locations
+	ltc.locations = nil
 	ltc.locationsLock.Unlock()
+	logDebugf("Removing %s from all locations", ltc.uuid)
 	if ltc.atrLocationFinder != nil {
 		bs, err := ltc.atrLocationFinder()
 		if err != nil {
@@ -426,6 +438,10 @@ func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, 
 					)
 					close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
 					ltc.locationsLock.Lock()
+					if ltc.locations == nil {
+						ltc.locationsLock.Unlock()
+						return
+					}
 					delete(ltc.locations, location.location)
 					ltc.locationsLock.Unlock()
 					return
