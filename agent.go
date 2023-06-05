@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -247,13 +248,23 @@ func createAgent(config *AgentConfig, initFn memdInitFunc) (*Agent, error) {
 		}
 	}
 
+	var seedNodeAddr string
+	if config.SecurityConfig.NoTLSSeedNode {
+		host, err := parseSeedNode(config.SeedConfig.HTTPAddrs)
+		if err != nil {
+			return nil, err
+		}
+
+		seedNodeAddr = host
+	}
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:   config.IoConfig.NetworkType,
-			SrcMemdAddrs:  srcMemdAddrs,
-			SrcHTTPAddrs:  srcHTTPAddrs,
-			UseTLS:        tlsConfig != nil,
-			NoTLSSeedNode: config.SecurityConfig.NoTLSSeedNode,
+			NetworkType:  config.IoConfig.NetworkType,
+			SrcMemdAddrs: srcMemdAddrs,
+			SrcHTTPAddrs: srcHTTPAddrs,
+			UseTLS:       tlsConfig != nil,
+			SeedNodeAddr: seedNodeAddr,
 		},
 	)
 
@@ -699,4 +710,20 @@ func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error
 	}
 
 	return tlsConfig, nil
+}
+
+func parseSeedNode(addrs []string) (string, error) {
+	if len(addrs) != 1 {
+		return "", wrapError(errInvalidArgument, "must specify exactly one seed address")
+	}
+
+	host, _, err := net.SplitHostPort(addrs[0])
+	if err != nil {
+		return "", wrapError(err, "cannot split host port for seed address")
+	}
+	if !net.ParseIP(host).IsLoopback() {
+		return "", wrapError(errInvalidArgument, "seed address must be loopback")
+	}
+
+	return host, nil
 }

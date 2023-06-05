@@ -1,16 +1,20 @@
 package gocbcore
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
 
 type configManagementComponent struct {
-	useSSL        uint32
-	networkType   string
-	noTLSSeedNode bool
+	useSSL      uint32
+	networkType string
+
+	seedNodeAddr      string
+	localLoopbackAddr *localLoopbackAddress
 
 	currentConfig *routeConfig
+	configLock    sync.Mutex
 
 	cfgChangeWatchers []routeConfigWatcher
 	watchersLock      sync.Mutex
@@ -21,11 +25,11 @@ type configManagementComponent struct {
 }
 
 type configManagerProperties struct {
-	UseTLS        bool
-	NoTLSSeedNode bool
-	NetworkType   string
-	SrcMemdAddrs  []routeEndpoint
-	SrcHTTPAddrs  []routeEndpoint
+	UseTLS       bool
+	SeedNodeAddr string
+	NetworkType  string
+	SrcMemdAddrs []routeEndpoint
+	SrcHTTPAddrs []routeEndpoint
 }
 
 type routeConfigWatcher interface {
@@ -43,10 +47,10 @@ func newConfigManager(props configManagerProperties) *configManagementComponent 
 		useSSL = 1
 	}
 	return &configManagementComponent{
-		useSSL:        useSSL,
-		noTLSSeedNode: props.NoTLSSeedNode,
-		networkType:   props.NetworkType,
-		srcServers:    append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
+		useSSL:       useSSL,
+		seedNodeAddr: props.SeedNodeAddr,
+		networkType:  props.NetworkType,
+		srcServers:   append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
@@ -64,25 +68,33 @@ func (cm *configManagementComponent) UseTLS(use bool) {
 
 func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
+	cm.configLock.Lock()
 	useSSL := atomic.LoadUint32(&cm.useSSL) == 1
 	if cm.seenConfig {
-		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false, cm.noTLSSeedNode)
+		routeCfg = cfg.BuildRouteConfig(useSSL, cm.networkType, false, cm.localLoopbackAddr)
 	} else {
 		routeCfg = cm.buildFirstRouteConfig(cfg, useSSL)
+		if routeCfg == nil {
+			// If the routeCfg isn't valid then ignore it.
+			return
+		}
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
+		cm.configLock.Unlock()
 		logDebugf("Routing data is not valid, skipping update: \n%s", routeCfg.DebugString())
 		return
 	}
 
 	// There's something wrong with this route config so don't send it to the watchers.
 	if !cm.updateRouteConfig(routeCfg) {
+		cm.configLock.Unlock()
 		return
 	}
 
 	cm.currentConfig = routeCfg
 	cm.seenConfig = true
+	cm.configLock.Unlock()
 
 	logDebugf("Sending out mux routing data (update)...")
 	logDebugf("New Routing Data:\n%s", routeCfg.DebugString())
@@ -154,11 +166,27 @@ func (cm *configManagementComponent) updateRouteConfig(cfg *routeConfig) bool {
 }
 
 func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, useSSL bool) *routeConfig {
+	if cm.seedNodeAddr != "" {
+		for _, node := range config.NodesExt {
+			if node.ThisNode {
+				cm.localLoopbackAddr = &localLoopbackAddress{
+					LoopbackAddr: cm.seedNodeAddr,
+					Identifier:   fmt.Sprintf("%s:%d", node.Hostname, node.Services.Mgmt),
+				}
+				break
+			}
+		}
+
+		if cm.localLoopbackAddr == nil {
+			logWarnf("Ignoring config, nodesExt entry contained no thisNode node")
+			return nil
+		}
+	}
 	if cm.networkType != "" && cm.networkType != "auto" {
-		return config.BuildRouteConfig(useSSL, cm.networkType, true, cm.noTLSSeedNode)
+		return config.BuildRouteConfig(useSSL, cm.networkType, true, cm.localLoopbackAddr)
 	}
 
-	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true, cm.noTLSSeedNode)
+	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true, cm.localLoopbackAddr)
 
 	var kvServerList []routeEndpoint
 	var mgmtEpList []routeEndpoint
@@ -191,7 +219,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, us
 	}
 
 	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true, cm.noTLSSeedNode)
+	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true, cm.localLoopbackAddr)
 	if externalRouteCfg.IsValid() {
 		cm.networkType = "external"
 		return externalRouteCfg
