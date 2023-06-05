@@ -4,14 +4,16 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/gocbcore/v10/memd"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
 
 	cavescli "github.com/couchbaselabs/gocaves/client"
 	"github.com/stretchr/testify/suite"
@@ -511,6 +513,10 @@ func (suite *StandardTestSuite) CreateNSAgentConfig() (*AgentConfig, string) {
 	}
 	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
 	parts := strings.Split(seedAddr, ":")
+
+	if !net.ParseIP(parts[0]).IsLoopback() {
+		suite.T().Skip("Skipping test due to not being loopback address")
+	}
 
 	if parts[1] != "8091" && parts[1] != "11210" {
 		// This should work with non default ports but it makes the test logic too complicated.

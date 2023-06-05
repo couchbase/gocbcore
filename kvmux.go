@@ -588,6 +588,7 @@ func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) boo
 		logErrorf("NMV response source address was invalid, skipping config update")
 	} else {
 		// Try to parse the value as a bucket configuration
+		logDebugf("Got NMV Block: %v", string(resp.Value))
 		bk, err := parseConfig(resp.Value, sourceHost)
 		if err == nil {
 			// We need to push this upstream which will then update us with a new config.

@@ -139,7 +139,7 @@ func (suite *UnitTestSuite) TestConfigComponentRevEpoch() {
 				useSSL:            0,
 				networkType:       "default",
 				cfgChangeWatchers: []routeConfigWatcher{watcher},
-				currentConfig:     oldCfg.BuildRouteConfig(false, "default", false, false),
+				currentConfig:     oldCfg.BuildRouteConfig(false, "default", false, nil),
 			}
 
 			newCfg := *cfg
