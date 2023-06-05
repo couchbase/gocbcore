@@ -1,13 +1,16 @@
 package gocbcore
 
 import (
+	"fmt"
 	"sync"
 )
 
 type configManagementComponent struct {
-	useSSL        bool
-	networkType   string
-	noTLSSeedNode bool
+	useSSL      bool
+	networkType string
+
+	seedNodeAddr      string
+	localLoopbackAddr *localLoopbackAddress
 
 	currentConfig *routeConfig
 	configLock    sync.Mutex
@@ -21,11 +24,11 @@ type configManagementComponent struct {
 }
 
 type configManagerProperties struct {
-	UseTLS        bool
-	NoTLSSeedNode bool
-	NetworkType   string
-	SrcMemdAddrs  []routeEndpoint
-	SrcHTTPAddrs  []routeEndpoint
+	UseTLS       bool
+	SeedNodeAddr string
+	NetworkType  string
+	SrcMemdAddrs []routeEndpoint
+	SrcHTTPAddrs []routeEndpoint
 }
 
 type routeConfigWatcher interface {
@@ -39,10 +42,10 @@ type configManager interface {
 
 func newConfigManager(props configManagerProperties) *configManagementComponent {
 	return &configManagementComponent{
-		useSSL:        props.UseTLS,
-		noTLSSeedNode: props.NoTLSSeedNode,
-		networkType:   props.NetworkType,
-		srcServers:    append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
+		useSSL:       props.UseTLS,
+		seedNodeAddr: props.SeedNodeAddr,
+		networkType:  props.NetworkType,
+		srcServers:   append(props.SrcMemdAddrs, props.SrcHTTPAddrs...),
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
@@ -67,9 +70,13 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	cm.configLock.Lock()
 	if cm.seenConfig {
-		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false, cm.noTLSSeedNode)
+		routeCfg = cfg.BuildRouteConfig(cm.useSSL, cm.networkType, false, cm.localLoopbackAddr)
 	} else {
 		routeCfg = cm.buildFirstRouteConfig(cfg, cm.useSSL)
+		if routeCfg == nil {
+			// If the routeCfg isn't valid then ignore it.
+			return
+		}
 		logDebugf("Using network type %s for connections", cm.networkType)
 	}
 	if !routeCfg.IsValid() {
@@ -184,11 +191,27 @@ func (cm *configManagementComponent) canUpdateRouteConfig(cfg *routeConfig) bool
 }
 
 func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, useSSL bool) *routeConfig {
+	if cm.seedNodeAddr != "" {
+		for _, node := range config.NodesExt {
+			if node.ThisNode {
+				cm.localLoopbackAddr = &localLoopbackAddress{
+					LoopbackAddr: cm.seedNodeAddr,
+					Identifier:   fmt.Sprintf("%s:%d", node.Hostname, node.Services.Mgmt),
+				}
+				break
+			}
+		}
+
+		if cm.localLoopbackAddr == nil {
+			logWarnf("Ignoring config, nodesExt entry contained no thisNode node")
+			return nil
+		}
+	}
 	if cm.networkType != "" && cm.networkType != "auto" {
-		return config.BuildRouteConfig(useSSL, cm.networkType, true, cm.noTLSSeedNode)
+		return config.BuildRouteConfig(useSSL, cm.networkType, true, cm.localLoopbackAddr)
 	}
 
-	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true, cm.noTLSSeedNode)
+	defaultRouteConfig := config.BuildRouteConfig(useSSL, "default", true, cm.localLoopbackAddr)
 
 	var kvServerList []routeEndpoint
 	var mgmtEpList []routeEndpoint
@@ -221,7 +244,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, us
 	}
 
 	// Next lets see if we have an external config, if so, default to that
-	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true, cm.noTLSSeedNode)
+	externalRouteCfg := config.BuildRouteConfig(useSSL, "external", true, cm.localLoopbackAddr)
 	if externalRouteCfg.IsValid() {
 		cm.networkType = "external"
 		return externalRouteCfg

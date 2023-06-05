@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -392,7 +393,7 @@ func (suite *DCPTestSuite) getFailoverLogs(nVB int, dcpAgent *DCPAgent) (map[int
 	return failOverEntries, nil
 }
 
-//Runs a dcp stream on all VBs from the last snapshot to the current seqno
+// Runs a dcp stream on all VBs from the last snapshot to the current seqno
 func (suite *DCPTestSuite) runDCPStream(dcpAgent *DCPAgent) int {
 	suite.so.newCounter()
 	seqnos, err := suite.getCurrentSeqNos(dcpAgent)
@@ -409,7 +410,7 @@ func (suite *DCPTestSuite) runDCPStream(dcpAgent *DCPAgent) int {
 	fo, err := suite.getFailoverLogs(len(seqnos), dcpAgent)
 	suite.Require().Nil(err, err)
 
-	//Start streaming from all VBs from the latest snapshot, until the current seqno
+	// Start streaming from all VBs from the latest snapshot, until the current seqno
 	for _, entry := range seqnos {
 		go func(en VbSeqNoEntry) {
 			ch := make(chan error, 1)
@@ -485,7 +486,7 @@ func (suite *DCPTestSuite) getCurrentSeqNos(dcpAgent *DCPAgent) ([]VbSeqNoEntry,
 
 	numNodes, err := snapshot.NumServers()
 	suite.Require().Nil(err, err)
-	//Get all SeqNos
+	// Get all SeqNos
 	for i := 1; i < numNodes+1; i++ {
 		h.PushOp(dcpAgent.GetVbucketSeqnos(i, memd.VbucketStateActive, GetVbucketSeqnoOptions{},
 			func(entries []VbSeqNoEntry, err error) {
@@ -544,11 +545,11 @@ func (suite *DCPTestSuite) TestScopesBasic() {
 func (suite *DCPTestSuite) TestScopesDrops() {
 	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	//Make scopes
+	// Make scopes
 	prefix := "dcp_scope_sdrops"
 	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
-	//Drop all scopes created in this test
+	// Drop all scopes created in this test
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	suite.dropScopes(pScopes, suite.BucketName, suite.opAgent)
 
@@ -571,11 +572,11 @@ func (suite *DCPTestSuite) TestScopesDrops() {
 func (suite *DCPTestSuite) TestCollectionsBasic() {
 	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	//Make scopes
+	// Make scopes
 	prefix := "dcp_scope_cbasic"
 	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
-	//Make NumCollections per scope
+	// Make NumCollections per scope
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, "dcp_collection_cbasic", pScopes, suite.BucketName, suite.opAgent)
 	pScopes = suite.getPrunedScopeManifests(prefix, lastScopeManifest)
@@ -605,16 +606,16 @@ func (suite *DCPTestSuite) TestCollectionsBasic() {
 func (suite *DCPTestSuite) TestCollectionsScopeDrop() {
 	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	//Make scopes
+	// Make scopes
 	prefix := "dcp_scope_csdrop"
 	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
-	//Make NumCollections per scope
+	// Make NumCollections per scope
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, "dcp_collection_csdrop", pScopes, suite.BucketName, suite.opAgent)
 	pScopes = suite.getPrunedScopeManifests(prefix, lastScopeManifest)
 
-	//Drop all scopes created in this test, implicitly dropping all the collections
+	// Drop all scopes created in this test, implicitly dropping all the collections
 	suite.dropScopes(pScopes, suite.BucketName, suite.opAgent)
 
 	nVB := suite.runDCPStream(suite.dcpAgent)
@@ -643,16 +644,16 @@ func (suite *DCPTestSuite) TestCollectionsScopeDrop() {
 func (suite *DCPTestSuite) TestCollectionsDrop() {
 	suite.EnsureSupportsFeature(TestFeatureCollections)
 
-	//Make scopes
+	// Make scopes
 	prefix := "dcp_scope_ccdrop"
 	scopes := suite.makeScopes(suite.NumScopes, prefix, suite.BucketName, suite.opAgent)
 
-	//Make NumCollections per scope
+	// Make NumCollections per scope
 	pScopes := suite.getPrunedScopeManifests(prefix, scopes)
 	lastScopeManifest := suite.makeCollections(suite.NumCollections, "dcp_collection_ccdrop", pScopes, suite.BucketName, suite.opAgent)
 	pScopes = suite.getPrunedScopeManifests(prefix, lastScopeManifest)
 
-	//Drop all collections created in this test
+	// Drop all collections created in this test
 	suite.dropCollections(pScopes, suite.BucketName, suite.opAgent)
 
 	nVB := suite.runDCPStream(suite.dcpAgent)
@@ -725,6 +726,10 @@ func (suite *DCPTestSuite) TestNSAgent() {
 	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
 	parts := strings.Split(seedAddr, ":")
 
+	if !net.ParseIP(parts[0]).IsLoopback() {
+		suite.T().Skip("Skipping test due to not being loopback address")
+	}
+
 	if parts[1] != "8091" && parts[1] != "11210" {
 		// This should work with non default ports but it makes the test logic too complicated.
 		// This implicitly means that if TLS is enabled then this test won't run.
@@ -783,7 +788,7 @@ func (suite *DCPTestSuite) makeScopes(n int, prefix, bucketName string, agent *A
 	return m.Scopes
 }
 
-//Return only the scope manifests with the provided prefix name
+// Return only the scope manifests with the provided prefix name
 func (suite *DCPTestSuite) getPrunedScopeManifests(prefix string, sm []ManifestScope) []ManifestScope {
 	var prunedScopes []ManifestScope
 	for _, s := range sm {

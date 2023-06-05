@@ -210,13 +210,23 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		httpConnectTimeout = config.HTTPConfig.ConnectTimeout
 	}
 
+	var seedNodeAddr string
+	if config.SecurityConfig.NoTLSSeedNode {
+		host, err := parseSeedNode(config.SeedConfig.HTTPAddrs)
+		if err != nil {
+			return nil, err
+		}
+
+		seedNodeAddr = host
+	}
+
 	c.cfgManager = newConfigManager(
 		configManagerProperties{
-			NetworkType:   config.IoConfig.NetworkType,
-			SrcMemdAddrs:  srcMemdAddrs,
-			SrcHTTPAddrs:  srcHTTPAddrs,
-			UseTLS:        tlsConfig != nil,
-			NoTLSSeedNode: config.SecurityConfig.NoTLSSeedNode,
+			NetworkType:  config.IoConfig.NetworkType,
+			SrcMemdAddrs: srcMemdAddrs,
+			SrcHTTPAddrs: srcHTTPAddrs,
+			UseTLS:       tlsConfig != nil,
+			SeedNodeAddr: seedNodeAddr,
 		},
 	)
 

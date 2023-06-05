@@ -92,10 +92,15 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 }
 
+type localLoopbackAddress struct {
+	LoopbackAddr string
+	Identifier   string
+}
+
 // BuildRouteConfig builds a new route config from this config.
 // overwriteSeedNode indicates that we should set the hostname for a node to the cfg.SourceHostname when the config has
 // been sourced from that node.
-func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, overwriteSeedNode bool) *routeConfig {
+func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, loopbackAddr *localLoopbackAddress) *routeConfig {
 	var (
 		kvServerList   = routeEndpoints{}
 		capiEpList     = routeEndpoints{}
@@ -143,12 +148,17 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 			}
 
-			isSeedNode := node.ThisNode || len(node.Hostname) == 0
-			if isSeedNode && overwriteSeedNode {
-				logSchedf("Seed node detected and set to overwrite, setting hostname to %s", cfg.SourceHostname)
-				hostname = cfg.SourceHostname
-			} else {
+			var isSeedNode bool
+			if loopbackAddr == nil {
 				hostname = getHostname(hostname, cfg.SourceHostname)
+			} else {
+				isSeedNode = fmt.Sprintf("%s:%d", node.Hostname, node.Services.Mgmt) == loopbackAddr.Identifier
+				if isSeedNode {
+					logDebugf("Seed node detected and set to overwrite, setting hostname to %s", loopbackAddr.LoopbackAddr)
+					hostname = loopbackAddr.LoopbackAddr
+				} else {
+					hostname = getHostname(hostname, cfg.SourceHostname)
+				}
 			}
 
 			endpoints := endpointsFromPorts(ports, hostname, isSeedNode)
@@ -186,7 +196,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 
 			if endpoints.kvServerSSL.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
-					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServerSSL)
+					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServerSSL.Address)
 				} else {
 					kvServerList.SSLEndpoints = append(kvServerList.SSLEndpoints, endpoints.kvServerSSL)
 				}

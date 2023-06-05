@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -2726,6 +2727,10 @@ func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 	}
 	seedAddr := srcCfg.SeedConfig.HTTPAddrs[0]
 	parts := strings.Split(seedAddr, ":")
+
+	if !net.ParseIP(parts[0]).IsLoopback() {
+		suite.T().Skip("Skipping test due to not being loopback address")
+	}
 
 	if parts[1] != "8091" && parts[1] != "11210" {
 		// This should work with non default ports but it makes the test logic too complicated.
