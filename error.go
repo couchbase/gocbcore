@@ -101,6 +101,7 @@ var (
 	ErrParsingFailure           = errors.New("parsing failure")
 	ErrMemdClientClosed         = errors.New("memdclient closed")
 	ErrRequestAlreadyDispatched = errors.New("request already dispatched")
+	ErrBusy                     = errors.New("busy")
 
 	ErrCasMismatch          = errors.New("cas mismatch")
 	ErrBucketNotFound       = errors.New("bucket not found")

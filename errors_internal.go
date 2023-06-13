@@ -724,6 +724,7 @@ var (
 	errInternalServerFailure    = ncError{ErrInternalServerFailure}
 	errAuthenticationFailure    = ncError{ErrAuthenticationFailure}
 	errTemporaryFailure         = ncError{ErrTemporaryFailure}
+	errBusy                     = ncError{ErrBusy}
 	errParsingFailure           = ncError{ErrParsingFailure}
 	errCasMismatch              = ncError{ErrCasMismatch}
 	errBucketNotFound           = ncError{ErrBucketNotFound}

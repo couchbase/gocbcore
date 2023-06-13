@@ -126,6 +126,11 @@ func translateMemdError(err error, req *memdQRequest) error {
 	case ErrMemdTmpFail:
 		return errTemporaryFailure
 	case ErrMemdBusy:
+		if req.Command == memd.CmdRangeScanCreate {
+			// Range scan create is special cased. We can't change the behaviour for all errors as that
+			// would be a breaking change but we need to be able to differentiate busy and tmp fail for create.
+			return errBusy
+		}
 		return errTemporaryFailure
 	case ErrMemdKeyExists:
 		if req.Command == memd.CmdReplace || (req.Command == memd.CmdDelete && req.Cas != 0) ||
