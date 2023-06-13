@@ -348,7 +348,7 @@ func (suite *StandardTestSuite) TestRangeScanRangeCancellation() {
 	suite.tracer.Reset()
 	suite.meter.Reset()
 
-	var scanUUID []byte
+	var createRes RangeScanCreateResult
 	s.PushOp(agent.RangeScanCreate(12, RangeScanCreateOptions{
 		Range: &RangeScanCreateRangeScanConfig{
 			Start: []byte("rangescancancel"),
@@ -360,18 +360,18 @@ func (suite *StandardTestSuite) TestRangeScanRangeCancellation() {
 		},
 		ScopeName:      suite.ScopeName,
 		CollectionName: suite.CollectionName,
-	}, func(res *RangeScanCreateResult, err error) {
+	}, func(res RangeScanCreateResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("RangeScanCreate operation failed: %v", err)
 			}
 
-			scanUUID = res.ScanUUUID
+			createRes = res
 		})
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.RangeScanCancel(scanUUID, 12, RangeScanCancelOptions{}, func(result *RangeScanCancelResult, err error) {
+	s.PushOp(createRes.RangeScanCancel(RangeScanCancelOptions{}, func(result *RangeScanCancelResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("RangeScanCancel operation failed: %v", err)
@@ -379,6 +379,60 @@ func (suite *StandardTestSuite) TestRangeScanRangeCancellation() {
 		})
 	}))
 	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestRangeScanConnectionInvalid() {
+	suite.EnsureSupportsFeature(TestFeatureRangeScan)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	scopeName := "rangeScanConnectionInvalid"
+	collectionName := "rangeScan"
+	_, err := testCreateScope(scopeName, suite.BucketName, agent)
+	suite.Require().Nil(err, err)
+	defer testDeleteScope(scopeName, suite.BucketName, agent, false)
+	_, err = testCreateCollection(collectionName, scopeName, suite.BucketName, agent)
+	suite.Require().Nil(err, err)
+	defer testDeleteCollection(collectionName, scopeName, suite.BucketName, agent, false)
+
+	value := "value"
+	docIDs := []string{"rangekeysonly-1269", "rangekeysonly-2048", "rangekeysonly-4378", "rangekeysonly-7159",
+		"rangekeysonly-8898", "rangekeysonly-8908", "rangekeysonly-19559", "rangekeysonly-20808",
+		"rangekeysonly-20998", "rangekeysonly-25889"}
+	muts := suite.setupRangeScan(docIDs, []byte(value), collectionName, scopeName)
+
+	var createRes *rangeScanCreateResult
+	s.PushOp(agent.RangeScanCreate(12,
+		RangeScanCreateOptions{
+			Sampling: &RangeScanCreateRandomSamplingConfig{
+				Samples: 10,
+			},
+			Snapshot: &RangeScanCreateSnapshotRequirements{
+				VbUUID: muts.vbuuid,
+				SeqNo:  muts.highSeqNo,
+			},
+			KeysOnly:       true,
+			ScopeName:      scopeName,
+			CollectionName: collectionName,
+		}, func(res RangeScanCreateResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("RangeScanCreate operation failed: %v", err)
+				}
+
+				createRes = res.(*rangeScanCreateResult)
+			})
+		}))
+	s.Wait(0)
+
+	createRes.connID = "somethingwrong"
+
+	_, err = createRes.RangeScanContinue(RangeScanContinueOptions{
+		Deadline: time.Now().Add(10 * time.Second),
+	}, func(items []RangeScanItem) {
+	}, func(result *RangeScanContinueResult, err error) {
+	})
+	suite.Require().ErrorIs(err, ErrConnectionIDInvalid)
 }
 
 func (suite *StandardTestSuite) verifyRangeScanTelemetry(agent *Agent) {
@@ -398,14 +452,14 @@ func (suite *StandardTestSuite) doRangeScan(vbID uint16, opts RangeScanCreateOpt
 	contOpts RangeScanContinueOptions) []RangeScanItem {
 	agent, s := suite.GetAgentAndHarness()
 
-	var scanUUID []byte
-	s.PushOp(agent.RangeScanCreate(vbID, opts, func(res *RangeScanCreateResult, err error) {
+	var createRes RangeScanCreateResult
+	s.PushOp(agent.RangeScanCreate(vbID, opts, func(res RangeScanCreateResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
 				s.Fatalf("RangeScanCreate operation failed: %v", err)
 			}
 
-			scanUUID = res.ScanUUUID
+			createRes = res
 		})
 	}))
 	s.Wait(0)
@@ -413,7 +467,7 @@ func (suite *StandardTestSuite) doRangeScan(vbID uint16, opts RangeScanCreateOpt
 	var data []RangeScanItem
 	for {
 		more := make(chan struct{}, 1)
-		s.PushOp(agent.RangeScanContinue(scanUUID, vbID, contOpts, func(items []RangeScanItem) {
+		s.PushOp(createRes.RangeScanContinue(contOpts, func(items []RangeScanItem) {
 			data = append(data, items...)
 		}, func(res *RangeScanContinueResult, err error) {
 			s.Wrap(func() {

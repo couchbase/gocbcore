@@ -51,9 +51,12 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 			return
 		}
 
-		res := RangeScanCreateResult{}
-		res.ScanUUUID = resp.Value
-		res.KeysOnly = opts.KeysOnly
+		res := rangeScanCreateResult{}
+		res.scanUUID = resp.Value
+		res.keysOnly = opts.KeysOnly
+		res.connID = resp.sourceConnID
+		res.vbID = vbID
+		res.parent = crud
 
 		tracer.Finish()
 		cb(&res, nil)
@@ -64,10 +67,6 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 		userFrame = &memd.UserImpersonationFrame{
 			User: []byte(opts.User),
 		}
-	}
-
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = crud.defaultRetryStrategy
 	}
 
 	createReq, err := opts.toRequest()
@@ -94,7 +93,6 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
-		RetryStrategy:    opts.RetryStrategy,
 		ScopeName:        opts.ScopeName,
 		CollectionName:   opts.CollectionName,
 	}
@@ -127,12 +125,12 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 	return op, nil
 }
 
-func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts RangeScanContinueOptions, dataCb RangeScanContinueDataCallback,
+func (createRes *rangeScanCreateResult) RangeScanContinue(opts RangeScanContinueOptions, dataCb RangeScanContinueDataCallback,
 	actionCb RangeScanContinueActionCallback) (PendingOp, error) {
-	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
 		return nil, errFeatureNotAvailable
 	}
-	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanContinue", opts.TraceContext)
+	tracer := createRes.parent.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanContinue", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -149,7 +147,7 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 
 		keysOnlyFlag := binary.BigEndian.Uint32(resp.Extras[0:])
 
-		items, err := parseRangeScanData(resp.Value, keysOnlyFlag == 0, crud.disableDecompression)
+		items, err := parseRangeScanData(resp.Value, keysOnlyFlag == 0, createRes.parent.disableDecompression)
 		if err != nil {
 			tracer.Finish()
 			actionCb(nil, err)
@@ -190,12 +188,8 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 		}
 	}
 
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = crud.defaultRetryStrategy
-	}
-
-	if len(scanUUID) != 16 {
-		return nil, wrapError(errInvalidArgument, fmt.Sprintf("scanUUID must be 16 bytes, was %d", len(scanUUID)))
+	if len(createRes.scanUUID) != 16 {
+		return nil, wrapError(errInvalidArgument, fmt.Sprintf("scanUUID must be 16 bytes, was %d", len(createRes.scanUUID)))
 	}
 
 	var deadlineMs uint32
@@ -204,7 +198,7 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 	}
 
 	extraBuf := make([]byte, 28)
-	copy(extraBuf[:16], scanUUID)
+	copy(extraBuf[:16], createRes.scanUUID)
 	binary.BigEndian.PutUint32(extraBuf[16:], opts.MaxCount)
 	binary.BigEndian.PutUint32(extraBuf[20:], deadlineMs)
 	binary.BigEndian.PutUint32(extraBuf[24:], opts.MaxBytes)
@@ -220,15 +214,22 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 			Key:                    nil,
 			Value:                  nil,
 			UserImpersonationFrame: userFrame,
-			Vbucket:                vbID,
+			Vbucket:                createRes.vbID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
-		RetryStrategy:    opts.RetryStrategy,
 		Persistent:       true,
 	}
 
-	op, err := crud.cidMgr.Dispatch(req)
+	// We're bypassing the usual route for sending requests so need to start the cmd trace ourselves.
+	createRes.parent.tracer.StartCmdTrace(req)
+	cli, err := createRes.parent.clientProvider.GetByConnID(createRes.connID)
+	if err != nil {
+		tracer.Finish()
+		return nil, err
+	}
+
+	err = cli.SendRequest(req)
 	if err != nil {
 		tracer.Finish()
 		return nil, err
@@ -253,14 +254,15 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 		}))
 	}
 
-	return op, nil
+	return req, nil
 }
 
-func (crud *crudComponent) RangeScanCancel(scanUUID []byte, vbID uint16, opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error) {
-	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+func (createRes *rangeScanCreateResult) RangeScanCancel(opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error) {
+	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
 		return nil, errFeatureNotAvailable
 	}
-	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanCancel", opts.TraceContext)
+
+	tracer := createRes.parent.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanCancel", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
 		if err != nil {
@@ -280,16 +282,12 @@ func (crud *crudComponent) RangeScanCancel(scanUUID []byte, vbID uint16, opts Ra
 		}
 	}
 
-	if opts.RetryStrategy == nil {
-		opts.RetryStrategy = crud.defaultRetryStrategy
-	}
-
-	if len(scanUUID) != 16 {
-		return nil, wrapError(errInvalidArgument, fmt.Sprintf("scanUUID must be 16 bytes, was %d", len(scanUUID)))
+	if len(createRes.scanUUID) != 16 {
+		return nil, wrapError(errInvalidArgument, fmt.Sprintf("scanUUID must be 16 bytes, was %d", len(createRes.scanUUID)))
 	}
 
 	extraBuf := make([]byte, 16)
-	copy(extraBuf[:16], scanUUID)
+	copy(extraBuf[:16], createRes.scanUUID)
 
 	req := &memdQRequest{
 		Packet: memd.Packet{
@@ -300,14 +298,19 @@ func (crud *crudComponent) RangeScanCancel(scanUUID []byte, vbID uint16, opts Ra
 			Key:                    nil,
 			Value:                  nil,
 			UserImpersonationFrame: userFrame,
-			Vbucket:                vbID,
+			Vbucket:                createRes.vbID,
 		},
 		Callback:         handler,
 		RootTraceContext: tracer.RootContext(),
-		RetryStrategy:    opts.RetryStrategy,
 	}
 
-	op, err := crud.cidMgr.Dispatch(req)
+	cli, err := createRes.parent.clientProvider.GetByConnID(createRes.connID)
+	if err != nil {
+		tracer.Finish()
+		return nil, err
+	}
+
+	err = cli.SendRequest(req)
 	if err != nil {
 		tracer.Finish()
 		return nil, err
@@ -332,7 +335,7 @@ func (crud *crudComponent) RangeScanCancel(scanUUID []byte, vbID uint16, opts Ra
 		}))
 	}
 
-	return op, nil
+	return req, nil
 }
 
 func parseRangeScanData(data []byte, keysOnly bool, disableDecompression bool) ([]RangeScanItem, error) {

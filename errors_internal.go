@@ -816,4 +816,6 @@ var (
 	errRangeScanMore           = ncError{ErrRangeScanMore}
 	errRangeScanComplete       = ncError{ErrRangeScanComplete}
 	errRangeScanVbUUIDNotEqual = ncError{ErrRangeScanVbUUIDNotEqual}
+
+	errConnectionIDInvalid = ncError{ErrConnectionIDInvalid}
 )

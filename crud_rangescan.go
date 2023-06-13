@@ -9,8 +9,6 @@ import (
 // RangeScanCreateOptions encapsulates the parameters for a RangeScanCreate operation.
 // Volatile: This API is subject to change at any time.
 type RangeScanCreateOptions struct {
-	RetryStrategy RetryStrategy
-
 	// Deadline will also be sent as a part of the payload if Snapshot is not nil.
 	Deadline time.Time
 
@@ -145,16 +143,36 @@ type RangeScanCreateSnapshotRequirements struct {
 
 // RangeScanCreateResult encapsulates the result of a RangeScanCreate operation.
 // Volatile: This API is subject to change at any time.
-type RangeScanCreateResult struct {
-	ScanUUUID []byte
-	KeysOnly  bool
+type RangeScanCreateResult interface {
+	ScanUUID() []byte
+	KeysOnly() bool
+
+	RangeScanContinue(opts RangeScanContinueOptions, dataCb RangeScanContinueDataCallback,
+		actionCb RangeScanContinueActionCallback) (PendingOp, error)
+	RangeScanCancel(opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error)
+}
+
+type rangeScanCreateResult struct {
+	scanUUID []byte
+	keysOnly bool
+
+	vbID   uint16
+	connID string
+
+	parent *crudComponent
+}
+
+func (createRes *rangeScanCreateResult) ScanUUID() []byte {
+	return createRes.scanUUID
+}
+
+func (createRes *rangeScanCreateResult) KeysOnly() bool {
+	return createRes.keysOnly
 }
 
 // RangeScanContinueOptions encapsulates the parameters for a RangeScanContinue operation.
 // Volatile: This API is subject to change at any time.
 type RangeScanContinueOptions struct {
-	RetryStrategy RetryStrategy
-
 	// Deadline will also be sent as a part of the payload if not zero.
 	Deadline time.Time
 
@@ -188,8 +206,7 @@ type RangeScanContinueResult struct {
 // RangeScanCancelOptions encapsulates the parameters for a RangeScanCancel operation.
 // Volatile: This API is subject to change at any time.
 type RangeScanCancelOptions struct {
-	RetryStrategy RetryStrategy
-	Deadline      time.Time
+	Deadline time.Time
 
 	// Internal: This should never be used and is not supported.
 	User string

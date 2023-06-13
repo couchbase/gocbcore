@@ -29,6 +29,10 @@ type dispatcher interface {
 	PipelineSnapshot() (*pipelineSnapshot, error)
 }
 
+type clientProvider interface {
+	GetByConnID(connID string) (*memdClient, error)
+}
+
 type kvMux struct {
 	muxPtr unsafe.Pointer
 
@@ -392,6 +396,30 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 
 		break
 	}
+}
+
+func (mux *kvMux) GetByConnID(connID string) (*memdClient, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
+	}
+
+	for _, p := range clientMux.pipelines {
+		p.clientsLock.Lock()
+		for _, pipeCli := range p.clients {
+			pipeCli.lock.Lock()
+			if pipeCli.client.connID == connID {
+				pipeCli.lock.Unlock()
+				p.clientsLock.Unlock()
+				return pipeCli.client, nil
+			}
+			pipeCli.lock.Unlock()
+		}
+		p.clientsLock.Unlock()
+	}
+
+	return nil, errConnectionIDInvalid
+
 }
 
 func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error) {

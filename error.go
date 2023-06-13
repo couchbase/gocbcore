@@ -162,6 +162,9 @@ var (
 	ErrRangeScanMore           = errors.New("range scan more")
 	ErrRangeScanComplete       = errors.New("range scan complete")
 	ErrRangeScanVbUUIDNotEqual = errors.New("range scan vb-uuid mismatch")
+
+	// Uncommitted: This API may change in the future.
+	ErrConnectionIDInvalid = errors.New("connection id unknown")
 )
 
 // Query Error Definitions RFC#58@15
