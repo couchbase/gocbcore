@@ -11,6 +11,7 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities_InitialConfig(
 		BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
 		BucketCapabilityCreateAsDeleted:      BucketCapabilityStatusUnknown,
 		BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnknown,
+		BucketCapabilityRangeScan:            BucketCapabilityStatusUnknown,
 	}, muxState.bucketCapabilities)
 }
 
@@ -26,5 +27,6 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities() {
 		BucketCapabilityDurableWrites:        BucketCapabilityStatusSupported,
 		BucketCapabilityCreateAsDeleted:      BucketCapabilityStatusUnsupported,
 		BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnsupported,
+		BucketCapabilityRangeScan:            BucketCapabilityStatusUnsupported,
 	}, muxState.bucketCapabilities)
 }

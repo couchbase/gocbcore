@@ -31,6 +31,7 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
 			BucketCapabilityCreateAsDeleted:      BucketCapabilityStatusUnknown,
 			BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnknown,
+			BucketCapabilityRangeScan:            BucketCapabilityStatusUnknown,
 		},
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
@@ -59,6 +60,12 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			mux.bucketCapabilities[BucketCapabilityReplaceBodyWithXattr] = BucketCapabilityStatusSupported
 		} else {
 			mux.bucketCapabilities[BucketCapabilityReplaceBodyWithXattr] = BucketCapabilityStatusUnsupported
+		}
+
+		if cfg.ContainsBucketCapability("rangeScan") {
+			mux.bucketCapabilities[BucketCapabilityRangeScan] = BucketCapabilityStatusSupported
+		} else {
+			mux.bucketCapabilities[BucketCapabilityRangeScan] = BucketCapabilityStatusUnsupported
 		}
 	}
 

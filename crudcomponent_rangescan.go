@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/golang/snappy"
 	"time"
+
+	"github.com/golang/snappy"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
@@ -38,6 +39,9 @@ type rangeScanCreateSnapshot struct {
 }
 
 func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOptions, cb RangeScanCreateCallback) (PendingOp, error) {
+	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+		return nil, errFeatureNotAvailable
+	}
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanCreate", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -125,6 +129,9 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 
 func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts RangeScanContinueOptions, dataCb RangeScanContinueDataCallback,
 	actionCb RangeScanContinueActionCallback) (PendingOp, error) {
+	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+		return nil, errFeatureNotAvailable
+	}
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanContinue", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -250,6 +257,9 @@ func (crud *crudComponent) RangeScanContinue(scanUUID []byte, vbID uint16, opts 
 }
 
 func (crud *crudComponent) RangeScanCancel(scanUUID []byte, vbID uint16, opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error) {
+	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+		return nil, errFeatureNotAvailable
+	}
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanCancel", opts.TraceContext)
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
