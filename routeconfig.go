@@ -143,16 +143,16 @@ func (config *routeConfig) ContainsBucketCapability(needleCap string) bool {
 
 func (config *routeConfig) IsNewerThan(oldCfg *routeConfig) bool {
 	if config.revEpoch < oldCfg.revEpoch {
-		logDebugf("Ignoring new configuration as it has an older revision epoch")
+		logInfof("Ignoring new configuration as it has an older revision epoch. Old: %d, new: %d", oldCfg.revEpoch, config.revEpoch)
 		return false
 	} else if config.revEpoch == oldCfg.revEpoch {
 		if config.revID == 0 {
-			logDebugf("Unversioned configuration data, switching.")
+			logInfof("Unversioned configuration data, switching.")
 		} else if config.revID == oldCfg.revID {
-			logDebugf("Ignoring configuration with identical revision number")
+			logInfof("Ignoring configuration with identical revision number - %d", config.revID)
 			return false
 		} else if config.revID < oldCfg.revID {
-			logDebugf("Ignoring new configuration as it has an older revision id")
+			logInfof("Ignoring new configuration as it has an older revision id. Old: %d, new: %d", oldCfg.revID, config.revID)
 			return false
 		}
 	}
