@@ -212,6 +212,10 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 
 	var seedNodeAddr string
 	if config.SecurityConfig.NoTLSSeedNode {
+		if !config.SecurityConfig.UseTLS {
+			return nil, wrapError(errInvalidArgument, "tls must be enabled if NoTLSSeedNode is enabled")
+		}
+
 		host, err := parseSeedNode(config.SeedConfig.HTTPAddrs)
 		if err != nil {
 			return nil, err
