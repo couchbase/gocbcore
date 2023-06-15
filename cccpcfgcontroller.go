@@ -59,6 +59,7 @@ func (ccc *cccpConfigController) setError(err error) {
 }
 
 func (ccc *cccpConfigController) Stop() {
+	logInfof("CCCP Looper stopping")
 	close(ccc.looperStopSig)
 }
 
@@ -77,6 +78,7 @@ func (ccc *cccpConfigController) DoLoop() error {
 		return err
 	}
 
+	logInfof("CCCP Looper stopped")
 	close(ccc.looperDoneSig)
 	return nil
 }

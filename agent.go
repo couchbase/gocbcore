@@ -430,6 +430,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
+	logInfof("Agent closing")
 	poller := agent.pollerController
 	if poller != nil {
 		poller.Stop()
@@ -451,6 +452,8 @@ func (agent *Agent) Close() error {
 	// Close the transports so that they don't hold open goroutines.
 	agent.http.Close()
 	close(agent.shutdownSig)
+
+	logInfof("Agent close complete")
 
 	return routeCloseErr
 }

@@ -429,6 +429,8 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipel
 }
 
 func (mux *kvMux) Close() error {
+	logInfof("KV Mux closing")
+
 	mux.cfgMgr.RemoveConfigWatcher(mux)
 	clientMux := mux.clear()
 
@@ -467,6 +469,8 @@ func (mux *kvMux) Close() error {
 	mux.drainPipelines(clientMux, cb)
 
 	mux.clientCloseWg.Wait()
+
+	logInfof("KV Mux closed")
 
 	return muxErr
 }

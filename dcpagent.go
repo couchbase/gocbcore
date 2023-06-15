@@ -386,6 +386,7 @@ func (agent *DCPAgent) IsSecure() bool {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *DCPAgent) Close() error {
+	logInfof("DCP agent closing")
 	routeCloseErr := agent.kvMux.Close()
 	agent.pollerController.Stop()
 
@@ -393,6 +394,8 @@ func (agent *DCPAgent) Close() error {
 	// specific looper wasn't used, it will be a nil value otherwise it
 	// will be an open channel till its closed to signal completion.
 	<-agent.pollerController.Done()
+
+	logInfof("DCP agent close complete")
 
 	return routeCloseErr
 }

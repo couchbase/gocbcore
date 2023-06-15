@@ -79,11 +79,11 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 
 func (pc *pollerController) Run() {
 	for {
-		logDebugf("Starting poller controller loop")
+		logInfof("Starting poller controller loop")
 		pc.controllerLock.Lock()
 		if pc.stopped {
 			pc.controllerLock.Unlock()
-			logDebugf("Poller controller stopped, exiting")
+			logInfof("Poller controller stopped, exiting")
 			return
 		}
 
@@ -127,6 +127,7 @@ func (pc *pollerController) Run() {
 
 // Stop should never be called more than once.
 func (pc *pollerController) Stop() {
+	logInfof("Stopping poller controller")
 	pc.controllerLock.Lock()
 	pc.stopped = true
 	controller := pc.activeController

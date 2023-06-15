@@ -3,12 +3,13 @@ package gocbcore
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type configStreamBlock struct {
@@ -91,6 +92,7 @@ func (hcc *baseHTTPConfigController) Done() chan struct{} {
 }
 
 func (hcc *baseHTTPConfigController) Stop() {
+	logDebugf("HTTP Looper stopping.")
 	close(hcc.looperStopSig)
 }
 
@@ -102,6 +104,7 @@ func (hcc *baseHTTPConfigController) Reset() {
 
 func (hcc *baseHTTPConfigController) DoLoop() {
 	hcc.doLoop()
+	logDebugf("HTTP Looper stopped.")
 	close(hcc.looperDoneSig)
 }
 
