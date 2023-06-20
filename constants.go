@@ -66,6 +66,7 @@ const (
 	BucketCapabilityCreateAsDeleted      BucketCapability = 0x01
 	BucketCapabilityReplaceBodyWithXattr BucketCapability = 0x02
 	BucketCapabilityRangeScan            BucketCapability = 0x03
+	BucketCapabilityReplicaRead          BucketCapability = 0x04
 )
 
 type BucketCapabilityStatus uint32

@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
+
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 func (suite *StandardTestSuite) TestSubdocXattrs() {
@@ -1498,6 +1501,72 @@ func (suite *StandardTestSuite) TestSubdocCasMismatch() {
 		s.Wrap(func() {
 			if !errors.Is(err, ErrDocumentExists) {
 				s.Fatalf("Mutate operation should have failed with Exists but was: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestLookupInReplicaReads() {
+	suite.EnsureSupportsFeature(TestFeatureSubdocReplicaReads)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	snap, err := agent.ConfigSnapshot()
+	suite.Require().NoError(err, err)
+
+	numReplicas, err := snap.NumReplicas()
+	suite.Require().NoError(err, err)
+
+	if numReplicas == 0 {
+		suite.T().Skip("Skipping test due to no replicas configured")
+	}
+
+	key := []byte(uuid.NewString()[:6])
+	value := []byte(`{"key":"value"}`)
+	s.PushOp(agent.Set(SetOptions{
+		Key:            key,
+		Value:          value,
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.LookupIn(LookupInOptions{
+		Key:   key,
+		Flags: memd.SubdocDocFlagReplicaRead,
+		Ops: []SubDocOp{
+			{
+				Op:   memd.SubDocOpGet,
+				Path: "key",
+			},
+		},
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		ReplicaIdx:     1,
+	}, func(res *LookupInResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Get operation failed: %v", err)
+			}
+
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+			if len(res.Ops) != 1 {
+				s.Fatalf("LookupIn operation wrong count was %d", len(res.Ops))
+			}
+			if res.Ops[0].Err != nil {
+				s.Fatalf("LookupIn operation failed: %v", res.Ops[0].Err)
+			}
+			if len(res.Ops[0].Value) == 0 {
+				s.Fatalf("LookupIn operation returned no value")
 			}
 		})
 	}))

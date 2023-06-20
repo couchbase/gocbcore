@@ -110,6 +110,9 @@ const (
 	FeatureReplaceBodyWithXattr = HelloFeature(0x19)
 
 	FeatureResourceUnits = HelloFeature(0x1a)
+
+	// FeatureSubdocReplicaRead indicates support for subdoc replica reads.
+	FeatureSubdocReplicaRead = HelloFeature(0x1c)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending
@@ -395,6 +398,8 @@ const (
 	// That is, to create a tombstone only.
 	// Internal: This should never be used and is not supported.
 	SubdocDocFlagCreateAsDeleted = SubdocDocFlag(0x08)
+
+	SubdocDocFlagReplicaRead = SubdocDocFlag(0x20)
 )
 
 // DurabilityLevel specifies the level to use for enhanced durability requirements.

@@ -54,6 +54,7 @@ var (
 	TestFeatureN1qlReasons          = TestFeatureCode("n1qlreasons")
 	TestFeatureResourceUnits        = TestFeatureCode("computeunits")
 	TestFeatureRangeScan            = TestFeatureCode("rangescan")
+	TestFeatureSubdocReplicaReads   = TestFeatureCode("subdocreplicas")
 )
 
 type TestFeatureFlag struct {

@@ -147,6 +147,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+		ReplicaIdx:       opts.ReplicaIdx,
 	}
 
 	op, err := crud.cidMgr.Dispatch(req)
@@ -277,6 +278,13 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		// We can get here before support status is actually known, we'll send the request unless we know for a fact
 		// that this is unsupported.
 		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityCreateAsDeleted, BucketCapabilityStatusUnsupported) {
+			return nil, errFeatureNotAvailable
+		}
+	}
+	if opts.Flags&memd.SubdocDocFlagReplicaRead != 0 {
+		// We can get here before support status is actually known, we'll send the request unless we know for a fact
+		// that this is unsupported.
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplicaRead, BucketCapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 	}

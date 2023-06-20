@@ -16,6 +16,7 @@ type LookupInOptions struct {
 	CollectionID   uint32
 	RetryStrategy  RetryStrategy
 	Deadline       time.Time
+	ReplicaIdx     int
 
 	// Internal: This should never be used and is not supported.
 	User string

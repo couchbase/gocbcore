@@ -742,6 +742,7 @@ func helloFeatures(props helloProps) []memd.HelloFeature {
 	features = append(features, memd.FeatureCreateAsDeleted)
 	features = append(features, memd.FeatureReplaceBodyWithXattr)
 	features = append(features, memd.FeaturePreserveExpiry)
+	features = append(features, memd.FeatureSubdocReplicaRead)
 
 	if props.SyncReplicationEnabled {
 		features = append(features, memd.FeatureSyncReplication)
