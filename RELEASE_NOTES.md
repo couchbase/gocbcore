@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 10.2.5 (21 June 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1426](GOCBC-1426):
+  Improved logging during agent shutdown.
+* [https://issues.couchbase.com/browse/GOCBC-1432](GOCBC-1432):
+  Improved logging around when a cluster config is rejected.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1413](GOCBC-1413):
+  Fixed issue where a panic would occur when UseTLS was set to false and NoTLSSeedNode set to true - no returns an error.
+* [https://issues.couchbase.com/browse/GOCBC-1429](GOCBC-1429):
+  Fixed issue where a node would incorrectly be identified as the seed node when running in ns_server mode.
+
 ## Version 10.2.4 (17 May 2023)
 
 ### New Features and Behavioral Changes
