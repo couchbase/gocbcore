@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 10.0.10 (22 June 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1401](GOCBC-1401):
+  Expose SeqNo on DCP rollback error
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1429](GOCBC-1429):
+  Fixed issue where a node would incorrectly be identified as the seed node when running in ns_server mode.
+
 ## Version 10.0.9 (15 March 2022)
 
 ### Fixed Issues
