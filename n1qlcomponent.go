@@ -255,6 +255,13 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 	return rawErrors, errorDescs, err
 }
 
+const (
+	// nolint: unused,deadcode,varcheck
+	useReplicaSupportLevelUnknown = uint32(iota)
+	useReplicaSupportLevelUnsupported
+	useReplicaSupportLevelSupported
+)
+
 type n1qlQueryComponent struct {
 	httpComponent httpComponentInterface
 	cfgMgr        configManager
@@ -263,6 +270,7 @@ type n1qlQueryComponent struct {
 	queryCache *n1qlQueryCache
 
 	enhancedPreparedSupported uint32
+	useReplicaSupported       uint32
 }
 
 type n1qlQueryCache struct {
@@ -337,6 +345,11 @@ func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 		nqc.queryCache.Invalidate()
 		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 	}
+	if cfg.ContainsClusterCapability(1, "n1ql", "readFromReplica") {
+		atomic.StoreUint32(&nqc.useReplicaSupported, useReplicaSupportLevelSupported)
+	} else {
+		atomic.StoreUint32(&nqc.useReplicaSupported, useReplicaSupportLevelUnsupported)
+	}
 }
 
 // N1QLQuery executes a N1QL query
@@ -354,6 +367,11 @@ func (nqc *n1qlQueryComponent) N1QLQuery(opts N1QLQueryOptions, cb N1QLQueryCall
 	statement := getMapValueString(payloadMap, "statement", "")
 	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
+	if _, ok := payloadMap["use_replica"]; ok {
+		if atomic.LoadUint32(&nqc.useReplicaSupported) == useReplicaSupportLevelUnsupported {
+			return nil, wrapN1QLError(nil, "", wrapError(errFeatureNotAvailable, "use replica is not supported by this cluster version"), "", 0)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ireq := &httpRequest{
@@ -424,6 +442,11 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 	statement := getMapValueString(payloadMap, "statement", "")
 	clientContextID := getMapValueString(payloadMap, "client_context_id", "")
 	readOnly := getMapValueBool(payloadMap, "readonly", false)
+	if _, ok := payloadMap["use_replica"]; ok {
+		if atomic.LoadUint32(&nqc.useReplicaSupported) == useReplicaSupportLevelUnsupported {
+			return nil, wrapN1QLError(nil, "", wrapError(errFeatureNotAvailable, "use replica is not supported by this cluster version"), "", 0)
+		}
+	}
 
 	cachedStmt := nqc.queryCache.Get(statement)
 
