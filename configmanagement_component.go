@@ -66,6 +66,15 @@ func (cm *configManagementComponent) TLSEnabled() bool {
 	return useSSL
 }
 
+func (cm *configManagementComponent) CurrentRev() (int64, int64) {
+	cm.configLock.Lock()
+	revID := cm.currentConfig.revID
+	revEpoch := cm.currentConfig.revEpoch
+	cm.configLock.Unlock()
+
+	return revID, revEpoch
+}
+
 func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	var routeCfg *routeConfig
 	cm.configLock.Lock()

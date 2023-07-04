@@ -121,6 +121,9 @@ const (
 
 	// FeatureDedupeNotMyVbucketClustermap indicates support for deduplicated cluster maps on a not my vbucket response.
 	FeatureDedupeNotMyVbucketClustermap = HelloFeature(0x1e)
+
+	// FeatureClusterMapKnownVersion indicates support for indicating the known version when fetching cluster maps.
+	FeatureClusterMapKnownVersion = HelloFeature(0x1d)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending

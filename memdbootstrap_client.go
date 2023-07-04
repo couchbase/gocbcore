@@ -289,6 +289,8 @@ type getConfigResponse struct {
 
 func (bc *memdBootstrapClient) ExecGetConfig(deadline time.Time) (chan getConfigResponse, error) {
 	completedCh := make(chan getConfigResponse, 1)
+	// Note that the revid/revepoch do not matter here, we only send GetConfig on bootstrap if we haven't actually
+	// seen a config yet.
 	err := bc.doBootstrapRequest(
 		&memdQRequest{
 			Packet: memd.Packet{

@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"encoding/binary"
 	"errors"
 	"math/rand"
 	"sync"
@@ -119,6 +120,7 @@ func (ccc *cccpConfigController) doLoop() error {
 		}
 
 		var foundConfig *cfgBucket
+		var configAlreadyLatest bool
 		var fallbackErr error
 		var wasCancelled bool
 		iter.Iterate(nodeIdx, func(pipeline *memdPipeline) bool {
@@ -147,21 +149,26 @@ func (ccc *cccpConfigController) doLoop() error {
 			fallbackErr = nil
 			ccc.setError(nil)
 
-			logDebugf("CCCPPOLL: Got Block: %s", string(cccpBytes))
+			if len(cccpBytes) > 0 {
+				logDebugf("CCCPPOLL: Got Block: %s", string(cccpBytes))
 
-			hostName, err := hostFromHostPort(pipeline.Address())
-			if err != nil {
-				logWarnf("CCCPPOLL: Failed to parse source address. %s", err)
-				return false
+				hostName, err := hostFromHostPort(pipeline.Address())
+				if err != nil {
+					logWarnf("CCCPPOLL: Failed to parse source address. %s", err)
+					return false
+				}
+
+				bk, err := parseConfig(cccpBytes, hostName)
+				if err != nil {
+					logWarnf("CCCPPOLL: Failed to parse CCCP config. %v", err)
+					return false
+				}
+
+				foundConfig = bk
+			} else {
+				logDebugf("CCCPPOLL: No block in response")
+				configAlreadyLatest = true
 			}
-
-			bk, err := parseConfig(cccpBytes, hostName)
-			if err != nil {
-				logWarnf("CCCPPOLL: Failed to parse CCCP config. %v", err)
-				return false
-			}
-
-			foundConfig = bk
 			return true
 		})
 		if fallbackErr != nil {
@@ -170,20 +177,24 @@ func (ccc *cccpConfigController) doLoop() error {
 			return fallbackErr
 		}
 
-		if foundConfig == nil {
-			// Only log the error at warn if it's unexpected.
-			// If we cancelled the request then we're shutting down or request was requeued and this isn't unexpected.
-			if wasCancelled {
-				logDebugf("CCCPPOLL: CCCP request was cancelled.")
-			} else {
-				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
-				ccc.noConfigFoundFn(err)
+		if configAlreadyLatest {
+			logDebugf("CCCPPOLL: Received empty config")
+		} else {
+			if foundConfig == nil {
+				// Only log the error at warn if it's unexpected.
+				// If we cancelled the request then we're shutting down or request was requeued and this isn't unexpected.
+				if wasCancelled {
+					logDebugf("CCCPPOLL: CCCP request was cancelled.")
+				} else {
+					logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
+					ccc.noConfigFoundFn(err)
+				}
+				continue
 			}
-			continue
-		}
 
-		logDebugf("CCCPPOLL: Received new config")
-		ccc.cfgMgr.OnNewConfig(foundConfig)
+			logDebugf("CCCPPOLL: Received new config")
+			ccc.cfgMgr.OnNewConfig(foundConfig)
+		}
 	}
 
 	return nil
@@ -191,10 +202,19 @@ func (ccc *cccpConfigController) doLoop() error {
 
 func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOut []byte, errOut error) {
 	signal := make(chan struct{}, 1)
+
+	var val []byte
+	if pipeline.SupportsFeature(memd.FeatureClusterMapKnownVersion) {
+		revID, revEpoch := ccc.cfgMgr.CurrentRev()
+		val = make([]byte, 16)
+		binary.BigEndian.PutUint64(val[0:], uint64(revEpoch))
+		binary.BigEndian.PutUint64(val[8:], uint64(revID))
+	}
 	req := &memdQRequest{
 		Packet: memd.Packet{
 			Magic:   memd.CmdMagicReq,
 			Command: memd.CmdGetClusterConfig,
+			Extras:  val,
 		},
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {

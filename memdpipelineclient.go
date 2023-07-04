@@ -5,6 +5,8 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 type clientWait struct {
@@ -298,4 +300,14 @@ func (pipecli *memdPipelineClient) CloseAndTakeClient() *memdClient {
 	logDebugf("Pipeline Client `%s/%p` has exited", pipecli.address, pipecli)
 
 	return client
+}
+
+func (pipecli *memdPipelineClient) SupportsFeature(feature memd.HelloFeature) bool {
+	pipecli.lock.Lock()
+	defer pipecli.lock.Unlock()
+	if pipecli.client == nil {
+		return false
+	}
+
+	return pipecli.client.SupportsFeature(feature)
 }

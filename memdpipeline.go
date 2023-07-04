@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 var (
@@ -66,6 +68,19 @@ func (pipeline *memdPipeline) Clients() []*memdPipelineClient {
 	pipeline.clientsLock.Lock()
 	defer pipeline.clientsLock.Unlock()
 	return pipeline.clients
+}
+
+func (pipeline *memdPipeline) SupportsFeature(feature memd.HelloFeature) bool {
+	pipeline.clientsLock.Lock()
+	defer pipeline.clientsLock.Unlock()
+	// If any of the connections do not support this feature then we consider it as unsupported.
+	for _, cli := range pipeline.clients {
+		if !cli.SupportsFeature(feature) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (pipeline *memdPipeline) Address() string {
