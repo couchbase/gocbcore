@@ -334,7 +334,9 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
-	if isCompressed && !client.disableDecompression {
+	// We always want to decompress cluster configs if they've been compressed.
+	alwaysDecompress := req.Command == memd.CmdGetClusterConfig || resp.Status == memd.StatusNotMyVBucket
+	if isCompressed && (!client.disableDecompression || alwaysDecompress) {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
 			req.processingLock.Unlock()

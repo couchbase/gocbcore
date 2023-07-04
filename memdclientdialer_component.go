@@ -723,6 +723,7 @@ func helloFeatures(props helloProps) []memd.HelloFeature {
 	// If the user wants on-the-wire compression, lets try to enable it
 	if props.CompressionEnabled {
 		features = append(features, memd.FeatureSnappy)
+		features = append(features, memd.FeatureSnappyEverywhere)
 	}
 
 	if props.DurationsEnabled {

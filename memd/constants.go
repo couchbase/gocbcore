@@ -95,7 +95,12 @@ const (
 	FeatureCollections = HelloFeature(0x12)
 
 	// FeatureOpenTracing indicates support for OpenTracing.
+	// DO NOT USE, this was experimentally added to the server and now removed.
+	// This code has been superceded by FeatureSnappyEverywhere below.
 	FeatureOpenTracing = HelloFeature(0x13)
+
+	// FeatureSnappyEverywhere indicates support for snappy compressed configs as well as documents.
+	FeatureSnappyEverywhere = HelloFeature(0x13)
 
 	// FeaturePreserveExpiry indicates support for preserve TTL.
 	FeaturePreserveExpiry = HelloFeature(0x14)
