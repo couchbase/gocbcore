@@ -366,6 +366,10 @@ func (mux *kvMux) DispatchDirect(req *memdQRequest) (PendingOp, error) {
 }
 
 func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
+	mux.requeueDirect(nil, req, isRetry)
+}
+
+func (mux *kvMux) requeueDirect(pipeline *memdPipeline, req *memdQRequest, isRetry bool) {
 	mux.tracer.StartCmdTrace(req)
 
 	handleError := func(err error) {
@@ -379,22 +383,31 @@ func (mux *kvMux) RequeueDirect(req *memdQRequest, isRetry bool) {
 
 	logDebugf("Request being requeued, Opaque=%d, Opcode=0x%x", req.Opaque, req.Command)
 
-	for {
-		pipeline, err := mux.RouteRequest(req)
+	if pipeline == nil {
+		var err error
+		pipeline, err = mux.RouteRequest(req)
 		if err != nil {
 			handleError(err)
 			return
 		}
+	}
 
-		err = pipeline.RequeueRequest(req)
-		if err == errPipelineClosed {
-			continue
-		} else if err != nil {
+	for {
+		err := pipeline.RequeueRequest(req)
+		if err == nil {
+			return
+		}
+
+		if !errors.Is(err, errPipelineClosed) {
 			handleError(err)
 			return
 		}
 
-		break
+		pipeline, err = mux.RouteRequest(req)
+		if err != nil {
+			handleError(err)
+			return
+		}
 	}
 }
 
@@ -691,24 +704,56 @@ func (mux *kvMux) waitAndRetryOperation(req *memdQRequest, reason RetryReason) b
 	return false
 }
 
-func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) bool {
+func (mux *kvMux) parseNotMyVbucketValue(value []byte, sourceAddr string) *cfgBucket {
 	// Grab just the hostname from the source address
-	sourceHost, err := hostFromHostPort(resp.sourceAddr)
+	sourceHost, err := hostFromHostPort(sourceAddr)
 	if err != nil {
 		logErrorf("NMV response source address was invalid, skipping config update")
-	} else {
-		// Try to parse the value as a bucket configuration
-		logDebugf("Got NMV Block: %v", string(resp.Value))
-		bk, err := parseConfig(resp.Value, sourceHost)
-		if err == nil {
-			// We need to push this upstream which will then update us with a new config.
-			mux.cfgMgr.OnNewConfig(bk)
-		}
+		return nil
+	}
+	// Try to parse the value as a bucket configuration
+	logDebugf("Got NMV Block: %v", string(value))
+	bk, err := parseConfig(value, sourceHost)
+	if err != nil {
+		return nil
 	}
 
-	if req.Command == memd.CmdRangeScanContinue {
-		// For range scan continue we never want to retry, the range scan is now invalid.
-		return false
+	return bk
+}
+
+func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) bool {
+	// For range scan continue we never want to retry, the range scan is now invalid.
+	isRetryableReq := req.Command != memd.CmdRangeScanContinue
+
+	if len(resp.Value) == 0 {
+		logDebugf("NMV response containing no new config")
+		if !isRetryableReq {
+			return false
+		}
+	} else {
+		bk := mux.parseNotMyVbucketValue(resp.Value, resp.sourceAddr)
+		if bk == nil {
+			if !isRetryableReq {
+				return false
+			}
+		} else {
+			// We need to push this upstream which will then internal update the state with a new config.
+			mux.cfgMgr.OnNewConfig(bk)
+
+			if !isRetryableReq {
+				return false
+			}
+
+			originalVBID := req.Vbucket
+			pipeline, err := mux.RouteRequest(req)
+			if err == nil {
+				// If the address or vbucket has changed then just redispatch directly.
+				if pipeline.Address() != resp.sourceAddr || originalVBID != req.Vbucket {
+					mux.requeueDirect(pipeline, req, true)
+					return true
+				}
+			}
+		}
 	}
 
 	// Redirect it!  This may actually come back to this server, but I won't tell

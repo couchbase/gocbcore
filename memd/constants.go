@@ -118,6 +118,9 @@ const (
 
 	// FeatureSubdocReplicaRead indicates support for subdoc replica reads.
 	FeatureSubdocReplicaRead = HelloFeature(0x1c)
+
+	// FeatureDedupeNotMyVbucketClustermap indicates support for deduplicated cluster maps on a not my vbucket response.
+	FeatureDedupeNotMyVbucketClustermap = HelloFeature(0x1e)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending

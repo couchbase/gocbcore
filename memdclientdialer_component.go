@@ -700,6 +700,9 @@ func helloFeatures(props helloProps) []memd.HelloFeature {
 	// Indicates that we understand select buckets.
 	features = append(features, memd.FeatureSelectBucket)
 
+	// Indicates that we understand nmv responses containing no config map.
+	features = append(features, memd.FeatureDedupeNotMyVbucketClustermap)
+
 	// If the user wants to use KV Error maps, lets enable them
 	if props.XErrorFeatureEnabled {
 		features = append(features, memd.FeatureXerror)
