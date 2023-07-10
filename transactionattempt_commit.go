@@ -418,6 +418,7 @@ func (t *transactionAttempt) commitStagedReplace(
 			if mutation.Staged == nil {
 				ecCb(classifyError(
 					wrapError(ErrIllegalState, "staged content is missing")))
+				return
 			}
 
 			_, err = mutation.Agent.MutateIn(MutateInOptions{
@@ -571,6 +572,7 @@ func (t *transactionAttempt) commitStagedInsert(
 			if mutation.Staged == nil {
 				ecCb(classifyError(
 					wrapError(ErrIllegalState, "staged content is missing")))
+				return
 			}
 
 			_, err = mutation.Agent.Add(AddOptions{
