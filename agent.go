@@ -122,6 +122,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 	compressionMinRatio := 0.83
 	useDurations := config.IoConfig.UseDurations
 	useOutOfOrder := config.IoConfig.UseOutOfOrderResponses
+	UseClusterMapNotifications := config.IoConfig.UseClusterMapNotifications
 
 	kvConnectTimeout := 7000 * time.Millisecond
 	if config.KVConfig.ConnectTimeout > 0 {
@@ -279,16 +280,17 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
-				CollectionsEnabled:     useCollections,
-				MutationTokensEnabled:  useMutationTokens,
-				CompressionEnabled:     useCompression,
-				DurationsEnabled:       useDurations,
-				OutOfOrderEnabled:      useOutOfOrder,
-				JSONFeatureEnabled:     useJSONHello,
-				XErrorFeatureEnabled:   useXErrorHello,
-				SyncReplicationEnabled: useSyncReplicationHello,
-				PITRFeatureEnabled:     usePITRHello,
-				ResourceUnitsEnabled:   useResourceUnits,
+				CollectionsEnabled:             useCollections,
+				MutationTokensEnabled:          useMutationTokens,
+				CompressionEnabled:             useCompression,
+				DurationsEnabled:               useDurations,
+				OutOfOrderEnabled:              useOutOfOrder,
+				JSONFeatureEnabled:             useJSONHello,
+				XErrorFeatureEnabled:           useXErrorHello,
+				SyncReplicationEnabled:         useSyncReplicationHello,
+				PITRFeatureEnabled:             usePITRHello,
+				ResourceUnitsEnabled:           useResourceUnits,
+				ClusterMapNotificationsEnabled: UseClusterMapNotifications,
 			},
 			Bucket:        c.bucketName,
 			UserAgent:     userAgent,
@@ -346,13 +348,13 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.tracer,
 	)
 
+	var poller configPollerController
 	if len(config.SeedConfig.MemdAddrs) == 0 && config.BucketName == "" {
 		// The http poller can't run without a bucket. We don't trigger an error for this case
 		// because AgentGroup users who use memcached buckets on non-default ports will end up here.
 		logDebugf("No bucket name specified and only http addresses specified, not running config poller")
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, nil)
 	} else {
-		var poller configPollerController
 		if config.SecurityConfig.NoTLSSeedNode {
 			poller = newSeedConfigController(srcHTTPAddrs[0].Address, c.bucketName,
 				httpPollerProperties{
@@ -376,11 +378,12 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 					c.cfgManager,
 				)
 			}
+			cccpFetcher := newCCCPConfigFetcher(confCccpMaxWait)
 			poller = newPollerController(
 				newCCCPConfigController(
 					cccpPollerProperties{
-						confCccpMaxWait:    confCccpMaxWait,
 						confCccpPollPeriod: confCccpPollPeriod,
+						cccpConfigFetcher:  cccpFetcher,
 					},
 					c.kvMux,
 					c.cfgManager,
@@ -391,6 +394,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 				c.cfgManager,
 				c.isPollingFallbackError,
 			)
+			c.cfgManager.SetConfigFetcher(cccpFetcher)
 		}
 		c.pollerController = poller
 		c.diagnostics = newDiagnosticsComponent(c.kvMux, c.httpMux, c.http, c.bucketName, c.defaultRetryStrategy, c.pollerController)
@@ -431,16 +435,9 @@ func (agent *Agent) Close() error {
 	poller := agent.pollerController
 	if poller != nil {
 		poller.Stop()
-
-		// Wait for our external looper goroutines to finish, note that if the
-		// specific looper wasn't used, it will be a nil value otherwise it
-		// will be an open channel till its closed to signal completion.
-		pollerCh := poller.Done()
-		if pollerCh != nil {
-			<-pollerCh
-		}
 	}
 	routeCloseErr := agent.kvMux.Close()
+	agent.cfgManager.Close()
 
 	if agent.zombieLogger != nil {
 		agent.zombieLogger.Stop()

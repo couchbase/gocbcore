@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"encoding/binary"
 	"errors"
 	"math/rand"
 	"sync"
@@ -14,7 +13,7 @@ type cccpConfigController struct {
 	muxer              dispatcher
 	cfgMgr             *configManagementComponent
 	confCccpPollPeriod time.Duration
-	confCccpMaxWait    time.Duration
+	cccpFetcher        *cccpConfigFetcher
 
 	looperStopSig chan struct{}
 	looperDoneSig chan struct{}
@@ -32,7 +31,7 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,
 		confCccpPollPeriod: props.confCccpPollPeriod,
-		confCccpMaxWait:    props.confCccpMaxWait,
+		cccpFetcher:        props.cccpConfigFetcher,
 
 		looperStopSig: make(chan struct{}),
 		looperDoneSig: make(chan struct{}),
@@ -44,7 +43,7 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 
 type cccpPollerProperties struct {
 	confCccpPollPeriod time.Duration
-	confCccpMaxWait    time.Duration
+	cccpConfigFetcher  *cccpConfigFetcher
 }
 
 func (ccc *cccpConfigController) Error() error {
@@ -62,10 +61,8 @@ func (ccc *cccpConfigController) setError(err error) {
 func (ccc *cccpConfigController) Stop() {
 	logInfof("CCCP Looper stopping")
 	close(ccc.looperStopSig)
-}
 
-func (ccc *cccpConfigController) Done() chan struct{} {
-	return ccc.looperDoneSig
+	<-ccc.looperDoneSig
 }
 
 // Reset must never be called concurrently with the Stop or whilst the poll loop is running.
@@ -123,8 +120,14 @@ func (ccc *cccpConfigController) doLoop() error {
 		var configAlreadyLatest bool
 		var fallbackErr error
 		var wasCancelled bool
+		var numNodesSupportNotifs int
 		iter.Iterate(nodeIdx, func(pipeline *memdPipeline) bool {
 			nodeIdx = (nodeIdx + 1) % numNodes
+			if pipeline.SupportsFeature(memd.FeatureClustermapChangeNotificationBrief) {
+				numNodesSupportNotifs++
+				return false
+			}
+
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
 				if ccc.isFallbackErrorFn(err) {
@@ -177,86 +180,53 @@ func (ccc *cccpConfigController) doLoop() error {
 			return fallbackErr
 		}
 
+		if numNodesSupportNotifs == numNodes {
+			continue
+		}
+
 		if configAlreadyLatest {
 			logDebugf("CCCPPOLL: Received empty config")
-		} else {
-			if foundConfig == nil {
-				// Only log the error at warn if it's unexpected.
-				// If we cancelled the request then we're shutting down or request was requeued and this isn't unexpected.
-				if wasCancelled {
-					logDebugf("CCCPPOLL: CCCP request was cancelled.")
-				} else {
-					logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
-					ccc.noConfigFoundFn(err)
-				}
-				continue
-			}
-
-			logDebugf("CCCPPOLL: Received new config")
-			ccc.cfgMgr.OnNewConfig(foundConfig)
+			continue
 		}
+
+		if foundConfig == nil {
+			// Only log the error at warn if it's unexpected.
+			// If we cancelled the request then we're shutting down or request was requeued and this isn't unexpected.
+			if wasCancelled {
+				logDebugf("CCCPPOLL: CCCP request was cancelled.")
+			} else {
+				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
+				ccc.noConfigFoundFn(err)
+			}
+			continue
+		}
+
+		logDebugf("CCCPPOLL: Received new config")
+		ccc.cfgMgr.OnNewConfig(foundConfig)
+
 	}
 
 	return nil
 }
 
-func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) (cfgOut []byte, errOut error) {
-	signal := make(chan struct{}, 1)
-
-	var val []byte
-	if pipeline.SupportsFeature(memd.FeatureClusterMapKnownVersion) {
-		revID, revEpoch := ccc.cfgMgr.CurrentRev()
-		val = make([]byte, 16)
-		binary.BigEndian.PutUint64(val[0:], uint64(revEpoch))
-		binary.BigEndian.PutUint64(val[8:], uint64(revID))
-	}
-	req := &memdQRequest{
-		Packet: memd.Packet{
-			Magic:   memd.CmdMagicReq,
-			Command: memd.CmdGetClusterConfig,
-			Extras:  val,
-		},
-		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
-			if resp != nil {
-				cfgOut = resp.Packet.Value
-			}
-			errOut = err
-			signal <- struct{}{}
-		},
-		RetryStrategy: newFailFastRetryStrategy(),
-	}
-	err := pipeline.SendRequest(req)
+func (ccc *cccpConfigController) getClusterConfig(pipeline *memdPipeline) ([]byte, error) {
+	revID, revEpoch := ccc.cfgMgr.CurrentRev()
+	cfg, err := ccc.cccpFetcher.GetClusterConfig(pipeline, revID, revEpoch, ccc.looperStopSig)
 	if err != nil {
+		if errors.Is(err, ErrTimeout) {
+			// We've timed out so lets check underlying connections to see if they're responsible.
+			clients := pipeline.Clients()
+			for _, cli := range clients {
+				err := cli.Error()
+				if err != nil {
+					logDebugf("Found error in pipeline client %p/%s: %v", cli, cli.address, err)
+					return nil, err
+				}
+			}
+		}
+
 		return nil, err
 	}
 
-	timeoutTmr := AcquireTimer(ccc.confCccpMaxWait)
-	select {
-	case <-signal:
-		ReleaseTimer(timeoutTmr, false)
-		return
-	case <-timeoutTmr.C:
-		ReleaseTimer(timeoutTmr, true)
-
-		// We've timed out so lets check underlying connections to see if they're responsible.
-		clients := pipeline.Clients()
-		for _, cli := range clients {
-			err := cli.Error()
-			if err != nil {
-				logDebugf("Found error in pipeline client %p/%s: %v", cli, cli.address, err)
-				req.cancelWithCallback(err)
-				<-signal
-				return
-			}
-		}
-		req.cancelWithCallback(errUnambiguousTimeout)
-		<-signal
-		return
-	case <-ccc.looperStopSig:
-		ReleaseTimer(timeoutTmr, false)
-		req.cancelWithCallback(errRequestCanceled)
-		<-signal
-		return
-
-	}
+	return cfg, nil
 }

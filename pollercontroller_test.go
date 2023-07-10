@@ -7,41 +7,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
-// This test tests that after calling stop then force http poller will not attempt to do work.
-func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndStopRace() {
-	ccp := &cccpConfigController{
-		looperStopSig: make(chan struct{}),
-		looperDoneSig: make(chan struct{}),
-	}
-
-	cliMux := &httpClientMux{
-		mgmtEpList: []routeEndpoint{
-			{
-				Address: "localhost:8091",
-			},
-		},
-	}
-	htt := &httpConfigController{
-		baseHTTPConfigController: &baseHTTPConfigController{
-			looperStopSig: make(chan struct{}),
-			looperDoneSig: make(chan struct{}),
-		},
-		muxer: &httpMux{
-			muxPtr: unsafe.Pointer(cliMux),
-		},
-	}
-
-	poller := newPollerController(ccp, htt, &configManagementComponent{}, func(err error) bool {
-		return false
-	})
-	poller.activeController = ccp
-
-	poller.Stop()
-	poller.ForceHTTPPoller()
-
-	suite.Assert().Equal(poller.cccpPoller, poller.activeController)
-}
-
 // This test tests the scenario where ForceHTTPPoller and OnNewRouteConfig deadlock.
 // This can happen when there are 2+ connections and one successfully bootstraps whilst the
 // other fails with bucket not found. If cccp successfully gets a config at the same time
@@ -79,7 +44,7 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 		cfgMgr:             cfgMgr,
 		muxer:              muxer,
 		confCccpPollPeriod: 10 * time.Second,
-		confCccpMaxWait:    5 * time.Second,
+		cccpFetcher:        newCCCPConfigFetcher(5 * time.Second),
 		isFallbackErrorFn: func(err error) bool {
 			return false
 		},
@@ -134,10 +99,14 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	// channel and start cccp back up again.
 	suite.Assert().Equal(poller.cccpPoller, active)
 
-	poller.Stop()
+	stoppedCh := make(chan struct{}, 1)
+	go func() {
+		poller.Stop()
+		close(stoppedCh)
+	}()
 
 	select {
-	case <-poller.Done():
+	case <-stoppedCh:
 	case <-time.After(2 * time.Second):
 		suite.T().Fatalf("Poller controller did not halt in required time")
 	}

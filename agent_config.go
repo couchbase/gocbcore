@@ -255,6 +255,9 @@ type IoConfig struct {
 	DisableSyncReplicationHello bool
 	EnablePITRHello             bool
 	UseCollections              bool
+
+	// Uncommitted: This API may change in the future.
+	UseClusterMapNotifications bool
 }
 
 func (config IoConfig) fromSpec(spec connstr.ResolvedConnSpec) (IoConfig, error) {

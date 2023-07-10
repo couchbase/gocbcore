@@ -12,16 +12,17 @@ import (
 )
 
 type helloProps struct {
-	MutationTokensEnabled  bool
-	CollectionsEnabled     bool
-	CompressionEnabled     bool
-	DurationsEnabled       bool
-	OutOfOrderEnabled      bool
-	JSONFeatureEnabled     bool
-	XErrorFeatureEnabled   bool
-	SyncReplicationEnabled bool
-	PITRFeatureEnabled     bool
-	ResourceUnitsEnabled   bool
+	MutationTokensEnabled          bool
+	CollectionsEnabled             bool
+	CompressionEnabled             bool
+	DurationsEnabled               bool
+	OutOfOrderEnabled              bool
+	JSONFeatureEnabled             bool
+	XErrorFeatureEnabled           bool
+	SyncReplicationEnabled         bool
+	PITRFeatureEnabled             bool
+	ResourceUnitsEnabled           bool
+	ClusterMapNotificationsEnabled bool
 }
 
 type bootstrapProps struct {
@@ -172,7 +173,8 @@ func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoo
 }
 
 func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, tlsConfig *dynTLSConfig,
-	auth AuthProvider, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler) (*memdClient, error) {
+	auth AuthProvider, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler,
+	serverRequestHandler serverRequestHandler) (*memdClient, error) {
 	mcc.serverFailuresLock.Lock()
 	failureTime := mcc.serverFailures[address.Address]
 	mcc.serverFailuresLock.Unlock()
@@ -189,7 +191,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 	}
 
 	deadline := time.Now().Add(mcc.kvConnectTimeout)
-	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler, tlsConfig)
+	client, err := mcc.dialMemdClient(cancelSig, address, deadline, postCompleteHandler, tlsConfig, serverRequestHandler)
 	if err != nil {
 		if !errors.Is(err, ErrRequestCanceled) {
 			mcc.serverFailuresLock.Lock()
@@ -232,7 +234,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 }
 
 func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, deadline time.Time,
-	postCompleteHandler postCompleteErrorHandler, dynTls *dynTLSConfig) (*memdClient, error) {
+	postCompleteHandler postCompleteErrorHandler, dynTls *dynTLSConfig, serverRequestHandler serverRequestHandler) (*memdClient, error) {
 	// Copy the tls configuration since we need to provide the hostname for each
 	// server that we connect to so that the certificate can be validated properly.
 	var tlsConfig *tls.Config
@@ -281,6 +283,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 		postCompleteHandler,
 		mcc.tracer,
 		mcc.zombieLogger,
+		serverRequestHandler,
 	)
 
 	return client, err
@@ -706,6 +709,9 @@ func helloFeatures(props helloProps) []memd.HelloFeature {
 	// Indicates that we understand known version cluster map requests.
 	features = append(features, memd.FeatureClusterMapKnownVersion)
 
+	// Indicates that we understand duplex communication.
+	features = append(features, memd.FeatureDuplex)
+
 	// If the user wants to use KV Error maps, lets enable them
 	if props.XErrorFeatureEnabled {
 		features = append(features, memd.FeatureXerror)
@@ -742,6 +748,10 @@ func helloFeatures(props helloProps) []memd.HelloFeature {
 
 	if props.OutOfOrderEnabled {
 		features = append(features, memd.FeatureUnorderedExec)
+	}
+
+	if props.ClusterMapNotificationsEnabled {
+		features = append(features, memd.FeatureClustermapChangeNotificationBrief)
 	}
 
 	// These flags are informational so don't actually enable anything

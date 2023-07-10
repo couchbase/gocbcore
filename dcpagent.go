@@ -50,6 +50,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	usePITRHello := config.IoConfig.EnablePITRHello
 	useXErrorHello := !config.IoConfig.DisableXErrorHello
 	useSyncReplicationHello := !config.IoConfig.DisableSyncReplicationHello
+	useClusterMapNotifications := config.IoConfig.UseClusterMapNotifications
 	dcpBufferSize := 20 * 1024 * 1024
 	compressionMinSize := 32
 	compressionMinRatio := 0.83
@@ -256,12 +257,13 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
-				CollectionsEnabled:     useCollections,
-				CompressionEnabled:     useCompression,
-				JSONFeatureEnabled:     useJSONHello,
-				PITRFeatureEnabled:     usePITRHello,
-				XErrorFeatureEnabled:   useXErrorHello,
-				SyncReplicationEnabled: useSyncReplicationHello,
+				CollectionsEnabled:             useCollections,
+				CompressionEnabled:             useCompression,
+				JSONFeatureEnabled:             useJSONHello,
+				PITRFeatureEnabled:             usePITRHello,
+				XErrorFeatureEnabled:           useXErrorHello,
+				SyncReplicationEnabled:         useSyncReplicationHello,
+				ClusterMapNotificationsEnabled: useClusterMapNotifications,
 			},
 			Bucket:        c.bucketName,
 			UserAgent:     userAgent,
@@ -333,10 +335,11 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				c.cfgManager,
 			)
 		}
+		cccpFetcher := newCCCPConfigFetcher(confCccpMaxWait)
 		poller = newPollerController(
 			newCCCPConfigController(
 				cccpPollerProperties{
-					confCccpMaxWait:    confCccpMaxWait,
+					cccpConfigFetcher:  cccpFetcher,
 					confCccpPollPeriod: confCccpPollPeriod,
 				},
 				c.kvMux,
@@ -348,6 +351,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			c.cfgManager,
 			c.isPollingFallbackError,
 		)
+		c.cfgManager.SetConfigFetcher(cccpFetcher)
 	}
 	c.pollerController = poller
 
@@ -383,13 +387,10 @@ func (agent *DCPAgent) IsSecure() bool {
 // any outstanding operations with ErrShutdown.
 func (agent *DCPAgent) Close() error {
 	logInfof("DCP agent closing")
-	routeCloseErr := agent.kvMux.Close()
-	agent.pollerController.Stop()
 
-	// Wait for our external looper goroutines to finish, note that if the
-	// specific looper wasn't used, it will be a nil value otherwise it
-	// will be an open channel till its closed to signal completion.
-	<-agent.pollerController.Done()
+	agent.pollerController.Stop()
+	routeCloseErr := agent.kvMux.Close()
+	agent.cfgManager.Close()
 
 	logInfof("DCP agent close complete")
 

@@ -1,7 +1,9 @@
 package gocbcore
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"sync"
 )
 
@@ -21,6 +23,12 @@ type configManagementComponent struct {
 	srcServers []routeEndpoint
 
 	seenConfig bool
+
+	configFetcher      *cccpConfigFetcher
+	configFetchSig     chan struct{}
+	configFetchSigLock sync.Mutex
+
+	shutdownSig chan struct{}
 }
 
 type configManagerProperties struct {
@@ -49,7 +57,13 @@ func newConfigManager(props configManagerProperties) *configManagementComponent 
 		currentConfig: &routeConfig{
 			revID: -1,
 		},
+		shutdownSig: make(chan struct{}),
 	}
+}
+
+// SetConfigFetcher sets the config fetcher for the manager, this must be done before OnNewConfig can be called.
+func (cm *configManagementComponent) SetConfigFetcher(fetcher *cccpConfigFetcher) {
+	cm.configFetcher = fetcher
 }
 
 func (cm *configManagementComponent) UseTLS(use bool) {
@@ -118,6 +132,96 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	}
 }
 
+func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipelineSnapshot, notif []byte) {
+	if cm.configFetcher == nil {
+		// No point in doing anything if we can't fetch a config anyway.
+		return
+	}
+	if len(notif) != 16 {
+		logWarnf("Invalid clustermap notification brief data size")
+		return
+	}
+	serverRevEpoch := int64(binary.BigEndian.Uint64(notif[0:]))
+	serverRevID := int64(binary.BigEndian.Uint64(notif[8:]))
+
+	var currentRev, currentEpoch int64
+	for {
+		currentRev, currentEpoch = cm.CurrentRev()
+
+		if serverRevEpoch < currentEpoch {
+			logInfof("Ignoring configuration notification as it has an older revision epoch. Old: %d, new: %d", currentEpoch, serverRevEpoch)
+			return
+		} else if serverRevEpoch == currentEpoch {
+			if serverRevID == 0 {
+				logInfof("Unversioned configuration notification data, switching.")
+			} else if serverRevID == currentRev {
+				logInfof("Ignoring configuration notification with identical revision number - %d", serverRevID)
+				return
+			} else if serverRevID < currentRev {
+				logInfof("Ignoring new configuration notification as it has an older revision id. Old: %d, new: %d", currentRev, serverRevID)
+				return
+			}
+		}
+
+		var waitSig chan struct{}
+		cm.configFetchSigLock.Lock()
+		if cm.configFetchSig == nil {
+			cm.configFetchSig = make(chan struct{})
+			cm.configFetchSigLock.Unlock()
+			break
+		}
+		waitSig = cm.configFetchSig
+		cm.configFetchSigLock.Unlock()
+
+		<-waitSig
+	}
+
+	numNodes := snapshot.NumPipelines()
+	nodeIdx := rand.Intn(numNodes) // #nosec G404
+
+	// We try to fetch the config from each node once.
+	// If we cannot get it from any node then we just return.
+	snapshot.Iterate(nodeIdx, func(pipeline *memdPipeline) bool {
+		nodeIdx = (nodeIdx + 1) % numNodes
+		cfgBytes, err := cm.configFetcher.GetClusterConfig(pipeline, currentRev, currentEpoch, cm.shutdownSig)
+		if err != nil {
+			logInfof("CfgManager: Failed to fetch config: %s", err)
+			return false
+		}
+		if len(cfgBytes) == 0 {
+			// The server didn't know about this revision.
+			return false
+		}
+
+		logDebugf("CfgManager: Got Block: %s", string(cfgBytes))
+
+		hostName, err := hostFromHostPort(pipeline.Address())
+		if err != nil {
+			logWarnf("CfgManager:Failed to parse source address. %s", err)
+			return false
+		}
+
+		bk, err := parseConfig(cfgBytes, hostName)
+		if err != nil {
+			logWarnf("CfgManager:Failed to parse config. %v", err)
+			return false
+		}
+
+		cm.OnNewConfig(bk)
+
+		return true
+	})
+
+	cm.configFetchSigLock.Lock()
+	close(cm.configFetchSig)
+	cm.configFetchSig = nil
+	cm.configFetchSigLock.Unlock()
+}
+
+func (cm *configManagementComponent) Close() {
+	close(cm.shutdownSig)
+}
+
 func (cm *configManagementComponent) Watchers() []routeConfigWatcher {
 	cm.watchersLock.Lock()
 	watchers := make([]routeConfigWatcher, len(cm.cfgChangeWatchers))
@@ -173,7 +277,7 @@ func (cm *configManagementComponent) canUpdateRouteConfig(cfg *routeConfig) bool
 
 	// Check some basic things to ensure consistency!
 	// If oldCfg name was empty and the new cfg isn't then we're moving from cluster to bucket connection.
-	if oldCfg.revID > -1 && (oldCfg.name != "" && cfg.name != "") {
+	if cfg.revID > -1 && (oldCfg.name != "" && cfg.name != "") {
 		if (cfg.vbMap == nil) != (oldCfg.vbMap == nil) {
 			logErrorf("Received a configuration with a different number of vbuckets %s-%s.  Ignoring.", oldCfg.name, cfg.name)
 			return false

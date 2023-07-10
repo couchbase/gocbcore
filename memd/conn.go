@@ -359,6 +359,8 @@ func (c *Conn) ReadPacket() (*Packet, int, error) {
 	case CmdMagicRes, cmdMagicResExt:
 		pkt.Magic = CmdMagicRes
 		pkt.Status = StatusCode(binary.BigEndian.Uint16(c.headerBuf[6:]))
+	case CmdMagicServerReq:
+		pkt.Magic = CmdMagicServerReq
 	default:
 		return nil, 0, errors.New("cannot decode status/vbucket for unknown packet magic")
 	}

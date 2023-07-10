@@ -87,13 +87,11 @@ func (hcc *baseHTTPConfigController) setError(err error) {
 	hcc.errLock.Unlock()
 }
 
-func (hcc *baseHTTPConfigController) Done() chan struct{} {
-	return hcc.looperDoneSig
-}
-
 func (hcc *baseHTTPConfigController) Stop() {
 	logDebugf("HTTP Looper stopping.")
 	close(hcc.looperStopSig)
+
+	<-hcc.looperDoneSig
 }
 
 // Reset must never be called concurrently with the Stop or whilst the poll loop is running.

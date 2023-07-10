@@ -31,6 +31,7 @@ func isCompressibleOp(command memd.CmdCode) bool {
 }
 
 type postCompleteErrorHandler func(resp *memdQResponse, req *memdQRequest, err error) (bool, error)
+type serverRequestHandler func(pak *memd.Packet)
 
 type memdClient struct {
 	lastActivity          int64
@@ -48,6 +49,7 @@ type memdClient struct {
 	streamEndNotSupported bool
 	breaker               circuitBreaker
 	postErrHandler        postCompleteErrorHandler
+	serverRequestHandler  serverRequestHandler
 	tracer                *tracerComponent
 	zombieLogger          *zombieLoggerComponent
 
@@ -85,17 +87,18 @@ type memdClientProps struct {
 }
 
 func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
-	tracer *tracerComponent, zombieLogger *zombieLoggerComponent) *memdClient {
+	tracer *tracerComponent, zombieLogger *zombieLoggerComponent, serverRequestHandler serverRequestHandler) *memdClient {
 	client := memdClient{
-		closeNotify:        make(chan bool),
-		connReleaseNotify:  make(chan struct{}),
-		connReleasedNotify: make(chan struct{}),
-		connID:             props.ClientID + "/" + formatCbUID(randomCbUID()),
-		postErrHandler:     postErrHandler,
-		tracer:             tracer,
-		zombieLogger:       zombieLogger,
-		conn:               conn,
-		opList:             newMemdOpMap(),
+		closeNotify:          make(chan bool),
+		connReleaseNotify:    make(chan struct{}),
+		connReleasedNotify:   make(chan struct{}),
+		connID:               props.ClientID + "/" + formatCbUID(randomCbUID()),
+		postErrHandler:       postErrHandler,
+		serverRequestHandler: serverRequestHandler,
+		tracer:               tracer,
+		zombieLogger:         zombieLogger,
+		conn:                 conn,
+		opList:               newMemdOpMap(),
 
 		dcpQueueSize:         props.DCPQueueSize,
 		compressionMinRatio:  props.CompressionMinRatio,
@@ -283,6 +286,12 @@ func (client *memdClient) classifyResponseStatusClass(status memd.StatusCode) st
 
 func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	defer memd.ReleasePacket(resp.Packet)
+
+	if resp.Magic == memd.CmdMagicServerReq {
+		logSchedf("Handling server request data. OP=0x%x", resp.Command)
+		client.serverRequestHandler(resp.Packet)
+		return
+	}
 
 	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Command, resp.Opaque, resp.Status)
 

@@ -13,6 +13,9 @@ const (
 	// CmdMagicRes indicates that the packet is a response.
 	CmdMagicRes = CmdMagic(0x81)
 
+	// CmdMagicServerReq indicates that the packet is a rquest originating from the server.
+	CmdMagicServerReq = CmdMagic(0x82)
+
 	// These are private rather than public as the library will automatically
 	// switch to and from these magics based on the use of frames within a packet.
 	cmdMagicReqExt = CmdMagic(0x08)
@@ -124,6 +127,9 @@ const (
 
 	// FeatureClusterMapKnownVersion indicates support for indicating the known version when fetching cluster maps.
 	FeatureClusterMapKnownVersion = HelloFeature(0x1d)
+
+	// FeatureClustermapChangeNotificationBrief indicates support for brief cluster map change notifications.
+	FeatureClustermapChangeNotificationBrief = HelloFeature(0x1f)
 )
 
 // StreamEndStatus represents the reason for a DCP stream ending

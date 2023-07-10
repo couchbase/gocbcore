@@ -821,7 +821,8 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, auth, authMechanisms, mux.handleOpRoutingResp)
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, auth, authMechanisms,
+				mux.handleOpRoutingResp, mux.handleServerRequest)
 		}
 		pipeline := newPipeline(trimmedHostPort, poolSize, mux.queueSize, getCurClientFn)
 
@@ -974,4 +975,24 @@ func (mux *kvMux) pipelineTakeover(oldMux, newMux *kvMuxState) {
 			logErrorf("Failed to properly close abandoned dead pipe (%s)", err)
 		}
 	}
+}
+
+func (mux *kvMux) handleServerRequest(pak *memd.Packet) {
+	if pak.Command == memd.CmdSet {
+		// We copy out the extras before handling the packet in its own goroutine.
+		// If we don't do this then the memdclient is going to free the packet and by the
+		// time that we access extras they'll be nil.
+		extras := make([]byte, len(pak.Extras))
+		copy(extras, pak.Extras)
+		go func() {
+			snapshot, err := mux.PipelineSnapshot()
+			if err != nil {
+				logInfof("Failed to get pipeline snapshot: %s", err)
+			}
+			mux.cfgMgr.OnNewConfigChangeNotifBrief(snapshot, extras)
+		}()
+		return
+	}
+
+	logWarnf("Received an unknown command type for a server request: OP=0x%x", pak.Command)
 }

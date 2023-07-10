@@ -73,6 +73,9 @@ func (pipeline *memdPipeline) Clients() []*memdPipelineClient {
 func (pipeline *memdPipeline) SupportsFeature(feature memd.HelloFeature) bool {
 	pipeline.clientsLock.Lock()
 	defer pipeline.clientsLock.Unlock()
+	if len(pipeline.clients) == 0 {
+		return false
+	}
 	// If any of the connections do not support this feature then we consider it as unsupported.
 	for _, cli := range pipeline.clients {
 		if !cli.SupportsFeature(feature) {
@@ -121,8 +124,9 @@ func (pipeline *memdPipeline) SendRequest(req *memdQRequest) error {
 }
 
 // Performs a takeover of another pipeline.  Note that this does not
-//  take over the requests queued in the old pipeline, and those must
-//  be drained and processed separately.
+//
+//	take over the requests queued in the old pipeline, and those must
+//	be drained and processed separately.
 func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 	if oldPipeline.address != pipeline.address {
 		logErrorf("Attempted pipeline takeover for differing address")

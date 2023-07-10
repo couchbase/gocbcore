@@ -22,13 +22,11 @@ type pollerController struct {
 type configPollerController interface {
 	Run()
 	Stop()
-	Done() chan struct{}
 	PollerError() error
 	ForceHTTPPoller()
 }
 
 type configPoller interface {
-	Done() chan struct{}
 	Stop()
 	Reset()
 	Error() error
@@ -138,17 +136,6 @@ func (pc *pollerController) Stop() {
 	}
 }
 
-func (pc *pollerController) Done() chan struct{} {
-	pc.controllerLock.Lock()
-	controller := pc.activeController
-	pc.controllerLock.Unlock()
-
-	if controller == nil {
-		return nil
-	}
-	return controller.Done()
-}
-
 type pollerErrorProvider interface {
 	PollerError() error
 }
@@ -195,9 +182,9 @@ func (pc *pollerController) ForceHTTPPoller() {
 		if pc.activeController == pc.cccpPoller {
 			logInfof("Stopping CCCP poller for HTTP polling takeover")
 			pc.activeController = nil
+			pc.cccpPoller.Stop()
 			pc.controllerLock.Unlock()
 
-			pc.cccpPoller.Stop()
 			return
 		}
 		pc.controllerLock.Unlock()
