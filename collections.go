@@ -100,6 +100,9 @@ type GetCollectionManifestOptions struct {
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Internal: This should never be used and is not supported.
+	User string
 }
 
 // GetAllCollectionManifestsOptions are the options available to the GetAllCollectionManifests command.
@@ -107,6 +110,9 @@ type GetAllCollectionManifestsOptions struct {
 	TraceContext  RequestSpanContext
 	RetryStrategy RetryStrategy
 	Deadline      time.Time
+
+	// Internal: This should never be used and is not supported.
+	User string
 }
 
 // GetCollectionIDOptions are the options available to the GetCollectionID command.
@@ -114,6 +120,9 @@ type GetCollectionIDOptions struct {
 	RetryStrategy RetryStrategy
 	TraceContext  RequestSpanContext
 	Deadline      time.Time
+
+	// Internal: This should never be used and is not supported.
+	User string
 }
 
 // GetCollectionIDResult encapsulates the result of a GetCollectionID operation.

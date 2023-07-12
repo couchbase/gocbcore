@@ -77,7 +77,7 @@ func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
 func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
 	// We cannot retry requests with no collection information.
 	// This also prevents the GetCollectionID requests from being automatically retried.
-	if req.CollectionName == "" && req.ScopeName == "" {
+	if isDefaultCollection(req.ScopeName, req.CollectionName) {
 		return false
 	}
 
@@ -125,15 +125,18 @@ func (cidMgr *collectionsComponent) GetCollectionManifest(opts GetCollectionMani
 		opts.RetryStrategy = cidMgr.defaultRetryStrategy
 	}
 
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: []byte(opts.User),
+		}
+	}
+
 	req := &memdQRequest{
 		Packet: memd.Packet{
-			Magic:    memd.CmdMagicReq,
-			Command:  memd.CmdCollectionsGetManifest,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    nil,
+			Magic:                  memd.CmdMagicReq,
+			Command:                memd.CmdCollectionsGetManifest,
+			UserImpersonationFrame: userFrame,
 		},
 		Callback:         handler,
 		RetryStrategy:    opts.RetryStrategy,
@@ -221,6 +224,12 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 			}))
 		}
 	}
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: []byte(opts.User),
+		}
+	}
 
 	iter.Iterate(0, func(pipeline *memdPipeline) bool {
 		handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -242,8 +251,9 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 
 		req := &memdQRequest{
 			Packet: memd.Packet{
-				Magic:   memd.CmdMagicReq,
-				Command: memd.CmdCollectionsGetManifest,
+				Magic:                  memd.CmdMagicReq,
+				Command:                memd.CmdCollectionsGetManifest,
+				UserImpersonationFrame: userFrame,
 			},
 			Callback:         handler,
 			RetryStrategy:    opts.RetryStrategy,
@@ -310,16 +320,24 @@ func (cidMgr *collectionsComponent) GetCollectionID(scopeName string, collection
 		keyCollectionName = "_default"
 	}
 
+	var userFrame *memd.UserImpersonationFrame
+	if len(opts.User) > 0 {
+		userFrame = &memd.UserImpersonationFrame{
+			User: []byte(opts.User),
+		}
+	}
+
 	req := &memdQRequest{
 		Packet: memd.Packet{
-			Magic:    memd.CmdMagicReq,
-			Command:  memd.CmdCollectionsGetID,
-			Datatype: 0,
-			Cas:      0,
-			Extras:   nil,
-			Key:      nil,
-			Value:    []byte(fmt.Sprintf("%s.%s", keyScopeName, keyCollectionName)),
-			Vbucket:  0,
+			Magic:                  memd.CmdMagicReq,
+			Command:                memd.CmdCollectionsGetID,
+			Datatype:               0,
+			Cas:                    0,
+			Extras:                 nil,
+			Key:                    nil,
+			Value:                  []byte(fmt.Sprintf("%s.%s", keyScopeName, keyCollectionName)),
+			Vbucket:                0,
+			UserImpersonationFrame: userFrame,
 		},
 		ReplicaIdx:       -1,
 		RetryStrategy:    opts.RetryStrategy,
@@ -547,13 +565,12 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 }
 
 func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, error) {
-	noCollection := req.CollectionName == "" && req.ScopeName == ""
-	defaultCollection := req.CollectionName == "_default" && req.ScopeName == "_default"
+	isDefaultCollectionName := isDefaultCollection(req.ScopeName, req.CollectionName)
 	collectionIDPresent := req.CollectionID > 0
 
 	// If the user didn't enable collections then we can just not bother with any collections logic.
 	if !cidMgr.dispatcher.CollectionsEnabled() {
-		if !(noCollection || defaultCollection) || collectionIDPresent {
+		if !isDefaultCollectionName || collectionIDPresent {
 			return nil, errCollectionsUnsupported
 		}
 		_, err := cidMgr.dispatcher.DispatchDirect(req)
@@ -564,7 +581,7 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 		return req, nil
 	}
 
-	if noCollection || defaultCollection || collectionIDPresent {
+	if isDefaultCollectionName || collectionIDPresent {
 		return cidMgr.dispatcher.DispatchDirect(req)
 	}
 
@@ -622,4 +639,8 @@ func setRequestCid(req *memdQRequest, cid uint32) error {
 	}
 	req.CollectionID = cid
 	return nil
+}
+
+func isDefaultCollection(scopeName, collectionName string) bool {
+	return (collectionName == "" || collectionName == "_default") && (scopeName == "" || scopeName == "_default")
 }
