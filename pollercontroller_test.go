@@ -126,9 +126,13 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	// This will hang if there's a deadlock between ForceHTTPPoller and OnNewRouteConfig within the poller controller.
 	suite.Assert().Nil(poller.PollerError())
 
+	poller.controllerLock.Lock()
+	active := poller.activeController
+	poller.controllerLock.Unlock()
+
 	// The ForceHTTPPoller should pick up that the poller has seen a config whilst it was waiting on the cccp done
 	// channel and start cccp back up again.
-	suite.Assert().Equal(poller.cccpPoller, poller.activeController)
+	suite.Assert().Equal(poller.cccpPoller, active)
 
 	poller.Stop()
 
