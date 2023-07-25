@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 10.2.6 (25 July 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1434](GOCBC-1434):
+  Added support for `LookupIn` replica reads.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1446](GOCBC-1446):
+  Fixed issue where calling `Commit` without any staged mutations would execute the callback with an error but not return from the function.
+* [https://issues.couchbase.com/browse/GOCBC-1429](GOCBC-1441):
+  Reverted [https://issues.couchbase.com/browse/GOCBC-1429](GOCBC-1429).
+
 ## Version 10.2.5 (21 June 2023)
 
 ### New Features and Behavioral Changes
