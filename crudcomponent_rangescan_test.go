@@ -104,7 +104,15 @@ func (suite *StandardTestSuite) TestRangeScanRangeLargeValues() {
 		}
 	}
 
-	suite.verifyRangeScanTelemetry(agent)
+	if suite.Assert().Contains(suite.tracer.Spans, nil) {
+		nilParents := suite.tracer.Spans[nil]
+		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
+			suite.AssertOpSpan(nilParents[0], "RangeScanCreate", agent.BucketName(), memd.CmdRangeScanCreate.Name(), 1, false, "")
+			suite.AssertOpSpan(nilParents[1], "RangeScanContinue", agent.BucketName(), memd.CmdRangeScanContinue.Name(), 1, false, "")
+		}
+	}
+
+	suite.VerifyKVMetrics(suite.meter, "RangeScanCreate", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestRangeScanRangeSmallValues() {
