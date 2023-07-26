@@ -65,10 +65,11 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 		if pc.activeController == pc.httpPoller {
 			logInfof("Found couchbase bucket and HTTP poller in use. Restarting poller run loop to start cccp.")
 			pc.activeController = nil
-			pc.controllerLock.Unlock()
 
 			// Stopping the poller will trigger the run loop to loop again.
 			pc.httpPoller.Stop()
+			pc.controllerLock.Unlock()
+
 			return
 		}
 		pc.controllerLock.Unlock()
