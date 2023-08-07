@@ -53,11 +53,11 @@ func (config *routeConfig) DebugString() string {
 	addEps := func(title string, eps routeEndpoints) {
 		fmt.Fprintf(&buffer, "%s Eps:\n", title)
 		fmt.Fprintln(&buffer, "  TLS:")
-		for _, ep := range eps.NonSSLEndpoints {
+		for _, ep := range eps.SSLEndpoints {
 			fmt.Fprintf(&buffer, "  - %s seed: %t\n", ep.Address, ep.IsSeedNode)
 		}
 		fmt.Fprintln(&buffer, "  Non-TLS:")
-		for _, ep := range eps.SSLEndpoints {
+		for _, ep := range eps.NonSSLEndpoints {
 			fmt.Fprintf(&buffer, "  - %s seed: %t\n", ep.Address, ep.IsSeedNode)
 		}
 	}
