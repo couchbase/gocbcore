@@ -13,6 +13,7 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities_InitialConfig(
 		BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnknown,
 		BucketCapabilityRangeScan:            BucketCapabilityStatusUnknown,
 		BucketCapabilityReplicaRead:          BucketCapabilityStatusUnknown,
+		BucketCapabilityNonDedupedHistory:    BucketCapabilityStatusUnknown,
 	}, muxState.bucketCapabilities)
 }
 
@@ -30,5 +31,6 @@ func (suite *StandardTestSuite) TestKvMuxState_BucketCapabilities() {
 		BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnsupported,
 		BucketCapabilityRangeScan:            BucketCapabilityStatusUnsupported,
 		BucketCapabilityReplicaRead:          BucketCapabilityStatusUnsupported,
+		BucketCapabilityNonDedupedHistory:    BucketCapabilityStatusUnsupported,
 	}, muxState.bucketCapabilities)
 }

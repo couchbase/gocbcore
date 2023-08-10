@@ -67,6 +67,7 @@ const (
 	BucketCapabilityReplaceBodyWithXattr BucketCapability = 0x02
 	BucketCapabilityRangeScan            BucketCapability = 0x03
 	BucketCapabilityReplicaRead          BucketCapability = 0x04
+	BucketCapabilityNonDedupedHistory    BucketCapability = 0x05
 )
 
 type BucketCapabilityStatus uint32
