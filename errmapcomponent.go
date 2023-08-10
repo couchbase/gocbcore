@@ -193,6 +193,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errDocumentNotJSON
 	case ErrMemdSubDocBadRange:
 		return errNumberTooBig
+	case ErrMemdSubDocPathMismatch:
+		return errPathMismatch
 	case ErrMemdBadDelta:
 		return errDeltaInvalid
 	case ErrMemdSubDocBadDelta:
