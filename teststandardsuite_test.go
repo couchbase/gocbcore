@@ -308,10 +308,11 @@ func makeAgentConfig(testConfig *TestConfig) AgentConfig {
 	config.FromConnStr(testConfig.ConnStr)
 
 	config.IoConfig = IoConfig{
-		UseDurations:           true,
-		UseMutationTokens:      true,
-		UseCollections:         true,
-		UseOutOfOrderResponses: true,
+		UseDurations:               true,
+		UseMutationTokens:          true,
+		UseCollections:             true,
+		UseOutOfOrderResponses:     true,
+		UseClusterMapNotifications: true,
 	}
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
