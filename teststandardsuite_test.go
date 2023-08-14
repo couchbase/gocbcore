@@ -329,10 +329,11 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 	config.FromConnStr(testConfig.ConnStr)
 
 	config.IoConfig = IoConfig{
-		UseDurations:           true,
-		UseMutationTokens:      true,
-		UseCollections:         true,
-		UseOutOfOrderResponses: true,
+		UseDurations:               true,
+		UseMutationTokens:          true,
+		UseCollections:             true,
+		UseOutOfOrderResponses:     true,
+		UseClusterMapNotifications: true,
 	}
 	config.TracerConfig.Tracer = suite.tracer
 	config.MeterConfig.Meter = suite.meter
