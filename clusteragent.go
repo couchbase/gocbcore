@@ -49,6 +49,15 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
+	httpIdleConnTimeout := 1000 * time.Millisecond
+	if config.HTTPConfig.IdleConnectionTimeout > 0 {
+		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
+	}
+	httpConnectTimeout := 30 * time.Second
+	if config.HTTPConfig.ConnectTimeout > 0 {
+		httpConnectTimeout = config.HTTPConfig.ConnectTimeout
+	}
+
 	circuitBreakerConfig := config.CircuitBreakerConfig
 	userAgent := config.UserAgent
 
@@ -83,7 +92,8 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 		httpClientProps{
 			maxIdleConns:        config.HTTPConfig.MaxIdleConns,
 			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
-			idleTimeout:         config.HTTPConfig.IdleConnectionTimeout,
+			idleTimeout:         httpIdleConnTimeout,
+			connectTimeout:      httpConnectTimeout,
 		},
 		c.httpMux,
 		c.tracer,

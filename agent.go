@@ -98,7 +98,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 	}
 	c.tlsConfig = tlsConfig
 
-	httpIdleConnTimeout := 4500 * time.Millisecond
+	httpIdleConnTimeout := 1000 * time.Millisecond
 	if config.HTTPConfig.IdleConnectionTimeout > 0 {
 		httpIdleConnTimeout = config.HTTPConfig.IdleConnectionTimeout
 	}
