@@ -868,8 +868,15 @@ func parseSeedNode(addrs []string) (string, error) {
 	if err != nil {
 		return "", wrapError(err, "cannot split host port for seed address")
 	}
-	if !net.ParseIP(host).IsLoopback() {
+	ip := net.ParseIP(host)
+	if !ip.IsLoopback() {
 		return "", wrapError(errInvalidArgument, "seed address must be loopback")
+	}
+
+	if ip.To4() == nil && ip.To16() != nil {
+		// This is a valid IP v6 address but SplitHostPort strips out the [] surrounding the host, which leads
+		// the later dial to fail with "too many colons in address".
+		return "[" + host + "]", nil
 	}
 
 	return host, nil
