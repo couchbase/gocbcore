@@ -11,7 +11,7 @@ import (
 
 	"github.com/couchbase/gocbcore/v10/memd"
 
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 )
 
 func isCompressibleOp(command memd.CmdCode) bool {
