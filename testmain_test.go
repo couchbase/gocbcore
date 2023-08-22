@@ -22,11 +22,17 @@ type testLogger struct {
 	Parent           Logger
 	LogCount         []uint64
 	suppressWarnings uint32
+	maxCCCPWarnings  uint32
+	cccpWarnings     uint32
 }
 
 func (logger *testLogger) Log(level LogLevel, offset int, format string, v ...interface{}) error {
 	if level >= 0 && level < LogMaxVerbosity {
 		if atomic.LoadUint32(&logger.suppressWarnings) == 1 && level == LogWarn {
+			level = LogInfo
+		}
+		if strings.Contains(format, "CCCPPOLL: Failed to retrieve CCCP config") &&
+			atomic.AddUint32(&logger.cccpWarnings, 1) <= logger.maxCCCPWarnings {
 			level = LogInfo
 		}
 		atomic.AddUint64(&logger.LogCount[level], 1)
@@ -43,10 +49,11 @@ func (logger *testLogger) SuppressWarnings(suppress bool) {
 	}
 }
 
-func createTestLogger() *testLogger {
+func createTestLogger(maxWarnings int) *testLogger {
 	return &testLogger{
-		Parent:   VerboseStdioLogger(),
-		LogCount: make([]uint64, LogMaxVerbosity),
+		Parent:          VerboseStdioLogger(),
+		LogCount:        make([]uint64, LogMaxVerbosity),
+		maxCCCPWarnings: uint32(maxWarnings),
 	}
 }
 
@@ -123,6 +130,8 @@ func TestMain(m *testing.M) {
 		"The number of collections to create, per scope")
 	mockPath := envFlagString("GCBMOCKPATH", "mock-path", "",
 		"Path to the mock, if not using a downloaded build")
+	maxCCCPWarnings := envFlagInt("GCBCCCPWARNINGS", "cccp-warnings", 3,
+		"Number of CCCP warning log messages to allow before considering messages a test fail")
 	flag.Parse()
 
 	clusterVersion, err := nodeVersionFromString(*clusterVersionStr)
@@ -194,7 +203,7 @@ func TestMain(m *testing.M) {
 
 	if !*disableLogger {
 		// Set up our special logger which logs the log level count
-		globalTestLogger = createTestLogger()
+		globalTestLogger = createTestLogger(*maxCCCPWarnings)
 		SetLogger(globalTestLogger)
 	}
 
