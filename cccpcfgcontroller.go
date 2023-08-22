@@ -73,6 +73,9 @@ func (ccc *cccpConfigController) Reset() {
 
 func (ccc *cccpConfigController) DoLoop() error {
 	if err := ccc.doLoop(); err != nil {
+		logInfof("CCCP Looper errored")
+		close(ccc.looperDoneSig)
+
 		return err
 	}
 
