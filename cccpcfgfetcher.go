@@ -19,7 +19,7 @@ func newCCCPConfigFetcher(reqTimeout time.Duration) *cccpConfigFetcher {
 
 func (ccc *cccpConfigFetcher) GetClusterConfig(pipeline *memdPipeline, revID, revEpoch int64, cancelSig chan struct{}) ([]byte, error) {
 	var extras []byte
-	if pipeline.SupportsFeature(memd.FeatureClusterMapKnownVersion) {
+	if revID > 0 && pipeline.SupportsFeature(memd.FeatureClusterMapKnownVersion) {
 		extras = make([]byte, 16)
 		binary.BigEndian.PutUint64(extras[0:], uint64(revEpoch))
 		binary.BigEndian.PutUint64(extras[8:], uint64(revID))
