@@ -339,9 +339,10 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				c.cfgManager,
 			)
 		}
-		cccpFetcher := newCCCPConfigFetcher(confCccpMaxWait)
-		poller = newPollerController(
-			newCCCPConfigController(
+		var cccpPoller *cccpConfigController
+		if config.EnableCCCPPoller {
+			cccpFetcher := newCCCPConfigFetcher(confCccpMaxWait)
+			cccpPoller = newCCCPConfigController(
 				cccpPollerProperties{
 					cccpConfigFetcher:  cccpFetcher,
 					confCccpPollPeriod: confCccpPollPeriod,
@@ -350,12 +351,15 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				c.cfgManager,
 				c.isPollingFallbackError,
 				c.onCCCPNoConfigFromAnyNode,
-			),
+			)
+			c.cfgManager.SetConfigFetcher(cccpFetcher)
+		}
+		poller = newPollerController(
+			cccpPoller,
 			httpPoller,
 			c.cfgManager,
 			c.isPollingFallbackError,
 		)
-		c.cfgManager.SetConfigFetcher(cccpFetcher)
 	}
 	c.pollerController = poller
 

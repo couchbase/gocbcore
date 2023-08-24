@@ -52,7 +52,7 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	}
 	atomic.SwapUint32(&pc.bucketConfigSeen, 1)
 
-	if cfg.bktType == bktTypeMemcached {
+	if cfg.bktType == bktTypeMemcached || pc.cccpPoller == nil {
 		return
 	}
 
@@ -76,7 +76,7 @@ func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
 	}()
 }
 
-func (pc *pollerController) Run() {
+func (pc *pollerController) runSinglePoller(doLoop func()) {
 	for {
 		logInfof("Starting poller controller loop")
 		pc.controllerLock.Lock()
@@ -86,12 +86,29 @@ func (pc *pollerController) Run() {
 			return
 		}
 
-		if pc.httpPoller != nil {
-			pc.httpPoller.Reset()
+		pc.activeController.Reset()
+		atomic.SwapUint32(&pc.bucketConfigSeen, 0)
+
+		pc.controllerLock.Unlock()
+		doLoop()
+	}
+}
+
+func (pc *pollerController) runDualPollers() {
+	for {
+		logInfof("Starting poller controller loop")
+		pc.controllerLock.Lock()
+		if pc.stopped {
+			pc.controllerLock.Unlock()
+			logInfof("Poller controller stopped, exiting")
+			return
 		}
+
+		pc.httpPoller.Reset()
 		pc.cccpPoller.Reset()
 
 		atomic.SwapUint32(&pc.bucketConfigSeen, 0)
+
 		pc.activeController = pc.cccpPoller
 		pc.controllerLock.Unlock()
 
@@ -112,16 +129,41 @@ func (pc *pollerController) Run() {
 			return
 		}
 
-		if pc.httpPoller == nil {
-			pc.controllerLock.Unlock()
-			logErrorf("CCCP poller has exited for http fallback but no http poller is configured, retrying CCCP")
-			continue
-		}
-
 		pc.activeController = pc.httpPoller
 		pc.controllerLock.Unlock()
 		pc.httpPoller.DoLoop()
 	}
+}
+
+func (pc *pollerController) Run() {
+	if pc.cccpPoller == nil && pc.httpPoller == nil {
+		logInfof("No cccp or http pollers registered, will not run poller controller loop")
+		return
+	}
+
+	if pc.cccpPoller == nil {
+		pc.controllerLock.Lock()
+		pc.activeController = pc.httpPoller
+		pc.controllerLock.Unlock()
+		pc.runSinglePoller(pc.httpPoller.DoLoop)
+		return
+	}
+
+	if pc.httpPoller == nil {
+		pc.controllerLock.Lock()
+		pc.activeController = pc.cccpPoller
+		pc.controllerLock.Unlock()
+		pc.runSinglePoller(func() {
+			err := pc.cccpPoller.DoLoop()
+			if err != nil {
+				logDebugf("CCCP poller has exited with err: %v", err)
+				logWarnf("CCCP poller has exited for http fallback but no http poller is configured, retrying CCCP")
+			}
+		})
+		return
+	}
+
+	pc.runDualPollers()
 }
 
 // Stop should never be called more than once.
