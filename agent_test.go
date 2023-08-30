@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
@@ -1666,14 +1668,30 @@ func (suite *StandardTestSuite) TestObserveSeqNo() {
 func (suite *StandardTestSuite) TestRandomGet() {
 	agent, s := suite.GetAgentAndHarness()
 
+	var mustHaveValue bool
+	var scope, collection string
+	if suite.SupportsFeature(TestFeatureCollections) {
+		mustHaveValue = true
+		scope = uuid.NewString()[:6]
+		collection = uuid.NewString()[:6]
+
+		_, err := testCreateScope(scope, agent.BucketName(), agent)
+		suite.Require().NoError(err)
+
+		_, err = testCreateCollection(collection, scope, agent.BucketName(), agent)
+		suite.Require().NoError(err)
+	}
+
+	suite.tracer.Reset()
+
 	distkeys, err := MakeDistKeys(agent, time.Now().Add(2*time.Second))
 	suite.Require().Nil(err, err)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
 			Key:            []byte(k),
 			Value:          []byte("Hello World!"),
-			CollectionName: suite.CollectionName,
-			ScopeName:      suite.ScopeName,
+			CollectionName: collection,
+			ScopeName:      scope,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -1685,8 +1703,8 @@ func (suite *StandardTestSuite) TestRandomGet() {
 	}
 
 	s.PushOp(agent.GetRandom(GetRandomOptions{
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
+		CollectionName: collection,
+		ScopeName:      scope,
 	}, func(res *GetRandomResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
@@ -1698,8 +1716,10 @@ func (suite *StandardTestSuite) TestRandomGet() {
 			if len(res.Key) == 0 {
 				s.Fatalf("Invalid key returned")
 			}
-			if len(res.Value) == 0 {
-				s.Fatalf("No value returned")
+			if mustHaveValue {
+				if len(res.Value) == 0 {
+					s.Fatalf("No value returned")
+				}
 			}
 		})
 	}))
