@@ -313,9 +313,10 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.tracer,
 		c.dialer,
 		&kvMuxState{
-			tlsConfig:      tlsConfig,
-			authMechanisms: c.authMechanisms,
-			auth:           config.SecurityConfig.Auth,
+			tlsConfig:          tlsConfig,
+			authMechanisms:     c.authMechanisms,
+			auth:               config.SecurityConfig.Auth,
+			expectedBucketName: c.bucketName,
 		},
 	)
 	c.collections = newCollectionIDManager(

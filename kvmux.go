@@ -36,6 +36,7 @@ type clientProvider interface {
 type kvMux struct {
 	muxPtr unsafe.Pointer
 
+	bucketName         string
 	collectionsEnabled bool
 	queueSize          int
 	poolSize           int
@@ -85,6 +86,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		noTLSSeedNode:      props.NoTLSSeedNode,
 		muxPtr:             unsafe.Pointer(muxState),
 		hasSeenConfigCh:    make(chan struct{}),
+		bucketName:         muxState.expectedBucketName,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -829,7 +831,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 		pipelines[i] = pipeline
 	}
 
-	return newKVMuxState(cfg, kvServerList, tlsConfig, authMechanisms, auth, pipelines,
+	return newKVMuxState(cfg, kvServerList, tlsConfig, authMechanisms, auth, mux.bucketName, pipelines,
 		newDeadPipeline(mux.queueSize))
 }
 

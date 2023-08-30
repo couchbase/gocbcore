@@ -10,6 +10,7 @@ type kvMuxState struct {
 
 	routeCfg routeConfig
 
+	expectedBucketName   string
 	bucketCapabilities   map[BucketCapability]BucketCapabilityStatus
 	collectionsSupported bool
 
@@ -20,13 +21,14 @@ type kvMuxState struct {
 }
 
 func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dynTLSConfig,
-	authMechanisms []AuthMechanism, auth AuthProvider, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
+	authMechanisms []AuthMechanism, auth AuthProvider, expectedBucketName string, pipelines []*memdPipeline, deadpipe *memdPipeline) *kvMuxState {
 	mux := &kvMuxState{
 		pipelines: pipelines,
 		deadPipe:  deadpipe,
 
 		routeCfg: *cfg,
 
+		expectedBucketName: expectedBucketName,
 		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
 			BucketCapabilityDurableWrites:        BucketCapabilityStatusUnknown,
 			BucketCapabilityCreateAsDeleted:      BucketCapabilityStatusUnknown,
@@ -45,7 +47,8 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 	}
 
 	// We setup with a fake config, this means that durability support is still unknown.
-	if cfg.revID > -1 {
+	// We only want to update bucket capabilities once we actually have a bucket config.
+	if cfg.revID > -1 && cfg.name == expectedBucketName {
 		if cfg.ContainsBucketCapability("durableWrite") {
 			mux.bucketCapabilities[BucketCapabilityDurableWrites] = BucketCapabilityStatusSupported
 		} else {

@@ -290,9 +290,10 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.tracer,
 		c.dialer,
 		&kvMuxState{
-			tlsConfig:      tlsConfig,
-			authMechanisms: c.authMechanisms,
-			auth:           config.SecurityConfig.Auth,
+			tlsConfig:          tlsConfig,
+			authMechanisms:     c.authMechanisms,
+			auth:               config.SecurityConfig.Auth,
+			expectedBucketName: c.bucketName,
 		},
 	)
 	c.httpMux = newHTTPMux(

@@ -17,7 +17,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 		revID: -1,
 	}
 	// Mux state as if we haven't received a config yet.
-	muxState := newKVMuxState(cfg, nil, nil, nil, nil, nil, nil)
+	muxState := newKVMuxState(cfg, nil, nil, nil, nil, "", nil, nil)
 
 	mux := kvMux{}
 	mux.updateState(nil, muxState)
