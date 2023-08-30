@@ -344,7 +344,7 @@ func (mcc *memdClientDialerComponent) dcpBootstrap(client *dcpBootstrapClient, d
 
 func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline time.Time,
 	authMechanisms []AuthMechanism, authProvider AuthProvider) error {
-	logDebugf("Memdclient `%s/%p` Fetching cluster client data", client.Address(), client)
+	logDebugf("Memdclient %s Fetching cluster client data", client.LoggerID())
 
 	bucket := mcc.bootstrapProps.Bucket
 	features := helloFeatures(mcc.bootstrapProps.HelloProps)
@@ -352,14 +352,14 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 
 	helloCh, err := client.ExecHello(clientInfoStr, features, deadline)
 	if err != nil {
-		logDebugf("Memdclient `%s/%p` Failed to execute HELLO (%v)", client.Address(), client, err)
+		logDebugf("Memdclient %s Failed to execute HELLO (%v)", client.LoggerID(), err)
 		return err
 	}
 
 	errMapCh, err := client.ExecGetErrorMap(2, deadline)
 	if err != nil {
 		// GetErrorMap isn't integral to bootstrap succeeding
-		logDebugf("Memdclient `%s/%p`Failed to execute Get error map (%v)", client.Address(), client, err)
+		logDebugf("Memdclient %s Failed to execute Get error map (%v)", client.LoggerID(), err)
 	}
 
 	var listMechsCh chan SaslListMechsCompleted
@@ -373,7 +373,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		listMechsCh = make(chan SaslListMechsCompleted, 1)
 		err = client.SaslListMechs(deadline, func(mechs []AuthMechanism, err error) {
 			if err != nil {
-				logDebugf("Memdclient `%s/%p` Failed to fetch list auth mechs (%v)", client.Address(), client, err)
+				logDebugf("Memdclient %s Failed to fetch list auth mechs (%v)", client.LoggerID(), err)
 			}
 			listMechsCh <- SaslListMechsCompleted{
 				Err:   err,
@@ -381,12 +381,12 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 			}
 		})
 		if err != nil {
-			logDebugf("Memdclient `%s/%p` Failed to execute list auth mechs (%v)", client.Address(), client, err)
+			logDebugf("Memdclient %s Failed to execute list auth mechs (%v)", client.LoggerID(), err)
 		}
 
 		completedAuthCh, continueAuthCh, err = firstAuthMethod()
 		if err != nil {
-			logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
+			logDebugf("Memdclient %s Failed to execute auth (%v)", client.LoggerID(), err)
 			return err
 		}
 	}
@@ -399,7 +399,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		if bucket != "" {
 			selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 			if err != nil {
-				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+				logDebugf("Memdclient %s Failed to execute select bucket (%v)", client.LoggerID(), err)
 				return err
 			}
 		}
@@ -407,7 +407,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 			configCh, err = client.ExecGetConfig(deadline)
 			if err != nil {
 				// Getting a config isn't essential to bootstrap.
-				logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+				logDebugf("Memdclient %s Failed to execute get config (%v)", client.LoggerID(), err)
 			}
 		}
 	} else {
@@ -416,7 +416,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 
 	helloResp := <-helloCh
 	if helloResp.Err != nil {
-		logDebugf("Memdclient `%s/%p` Failed to hello with server (%v)", client.Address(), client, helloResp.Err)
+		logDebugf("Memdclient %s Failed to hello with server (%v)", client.LoggerID(), helloResp.Err)
 		return helloResp.Err
 	}
 
@@ -425,7 +425,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		if errMapResp.Err == nil {
 			mcc.bootstrapProps.ErrMapManager.StoreErrorMap(errMapResp.Bytes)
 		} else {
-			logDebugf("Memdclient `%s/%p` Failed to fetch kv error map (%s)", client.Address(), client, errMapResp.Err)
+			logDebugf("Memdclient %s Failed to fetch kv error map (%s)", client.LoggerID(), errMapResp.Err)
 		}
 	}
 
@@ -434,9 +434,9 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		listMechsResp := <-listMechsCh
 		if listMechsResp.Err == nil {
 			serverAuthMechanisms = listMechsResp.Mechs
-			logDebugf("Memdclient `%s/%p` Server supported auth mechanisms: %v", client.Address(), client, serverAuthMechanisms)
+			logDebugf("Memdclient %s Server supported auth mechanisms: %v", client.LoggerID(), serverAuthMechanisms)
 		} else {
-			logDebugf("Memdclient `%s/%p` Failed to fetch auth mechs from server (%v)", client.Address(), client, listMechsResp.Err)
+			logDebugf("Memdclient %s Failed to fetch auth mechs from server (%v)", client.LoggerID(), listMechsResp.Err)
 		}
 	}
 
@@ -444,7 +444,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 	if completedAuthCh != nil {
 		authErr := <-completedAuthCh
 		if authErr != nil {
-			logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
+			logDebugf("Memdclient %s Failed to perform auth against server (%v)", client.LoggerID(), authErr)
 			if errors.Is(authErr, ErrRequestCanceled) {
 				// There's no point in us trying different mechanisms if something has cancelled bootstrapping.
 				return authErr
@@ -463,7 +463,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 
 				// If we've got here then the auth mechanism we tried is unsupported so let's keep trying with the next
 				// supported mechanism.
-				logInfof("Memdclient `%p` Unsupported authentication mechanism, will attempt to find next supported mechanism", client)
+				logInfof("Memdclient `%s` Unsupported authentication mechanism, will attempt to find next supported mechanism", client.ConnID())
 			}
 
 			for {
@@ -471,11 +471,11 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 				var mech AuthMechanism
 				found, mech, authMechanisms = findNextAuthMechanism(authMechanisms, serverAuthMechanisms)
 				if !found {
-					logDebugf("Memdclient `%s/%p` Failed to authenticate, all options exhausted", client.Address(), client)
+					logDebugf("Memdclient %s Failed to authenticate, all options exhausted", client.LoggerID())
 					return authErr
 				}
 
-				logDebugf("Memdclient `%s/%p` Retrying authentication with found supported mechanism: %s", client.Address(), client, mech)
+				logDebugf("Memdclient %s Retrying authentication with found supported mechanism: %s", client.LoggerID(), mech)
 				nextAuthFunc := mcc.buildAuthHandler(client, authProvider, deadline, mech)
 				if nextAuthFunc == nil {
 					// This can't really happen but just in case it somehow does.
@@ -484,14 +484,14 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 				}
 				completedAuthCh, continueAuthCh, err = nextAuthFunc()
 				if err != nil {
-					logDebugf("Memdclient `%s/%p` Failed to execute auth (%v)", client.Address(), client, err)
+					logDebugf("Memdclient %s Failed to execute auth (%v)", client.LoggerID(), err)
 					return err
 				}
 				if continueAuthCh == nil {
 					if bucket != "" {
 						selectCh, err = client.ExecSelectBucket([]byte(bucket), deadline)
 						if err != nil {
-							logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+							logDebugf("Memdclient %s Failed to execute select bucket (%v)", client.LoggerID(), err)
 							return err
 						}
 					}
@@ -499,7 +499,7 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 						configCh, err = client.ExecGetConfig(deadline)
 						if err != nil {
 							// Getting a config isn't essential to bootstrap.
-							logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+							logDebugf("Memdclient %s Failed to execute get config (%v)", client.LoggerID(), err)
 						}
 					}
 				} else {
@@ -510,13 +510,13 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 					break
 				}
 
-				logDebugf("Memdclient `%s/%p` Failed to perform auth against server (%v)", client.Address(), client, authErr)
+				logDebugf("Memdclient %s Failed to perform auth against server (%v)", client.LoggerID(), authErr)
 				if errors.Is(authErr, ErrAuthenticationFailure) || errors.Is(err, ErrRequestCanceled) {
 					return authErr
 				}
 			}
 		}
-		logDebugf("Memdclient `%s/%p` Authenticated successfully", client.Address(), client)
+		logDebugf("Memdclient %s Authenticated successfully", client.LoggerID())
 	}
 
 	var selectErr error
@@ -534,23 +534,23 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 			// We don't want this to block us completing bootstrap.
 			go mcc.cfgManager.OnNewConfig(configResp.Config)
 		} else {
-			logDebugf("Memdclient `%s/%p` Failed to perform config fetch against server (%v)", client.Address(), client, err)
+			logDebugf("Memdclient %s Failed to perform config fetch against server (%v)", client.LoggerID(), err)
 			if errors.Is(err, ErrDocumentNotFound) {
-				logDebugf("Memdclient `%s/%p` detected that CCCP is unsupported, informing upstream", client.Address(), client)
+				logDebugf("Memdclient %s detected that CCCP is unsupported, informing upstream", client.LoggerID())
 				mcc.sendErrorToCCCPUnsupportedHandlers()
 			}
 		}
 	}
 
 	if selectErr != nil {
-		logDebugf("Memdclient `%s/%p` Failed to perform select bucket against server (%v)", client.Address(), client, selectErr)
+		logDebugf("Memdclient %s Failed to perform select bucket against server (%v)", client.LoggerID(), selectErr)
 		return selectErr
 	}
 
 	client.Features(helloResp.SrvFeatures)
 
-	logDebugf("Memdclient `%s/%p` Client Features: %+v", client.Address(), client, features)
-	logDebugf("Memdclient `%s/%p` Server Features: %+v", client.Address(), client, helloResp.SrvFeatures)
+	logDebugf("Memdclient %s Client Features: %+v", client.LoggerID(), features)
+	logDebugf("Memdclient %s Server Features: %+v", client.LoggerID(), helloResp.SrvFeatures)
 
 	return nil
 }
@@ -584,7 +584,7 @@ func (mcc *memdClientDialerComponent) continueAfterAuth(client bootstrapClient, 
 			var err error
 			execCh, err = client.ExecSelectBucket([]byte(bucketName), deadline)
 			if err != nil {
-				logDebugf("Memdclient `%s/%p` Failed to execute select bucket (%v)", client.Address(), client, err)
+				logDebugf("Memdclient %s Failed to execute select bucket (%v)", client.LoggerID(), err)
 				selectCh <- err
 				return
 			}
@@ -596,7 +596,7 @@ func (mcc *memdClientDialerComponent) continueAfterAuth(client bootstrapClient, 
 			execConfigCh, err = client.ExecGetConfig(deadline)
 			if err != nil {
 				// Getting a config isn't essential to bootstrap.
-				logDebugf("Memdclient `%s/%p` Failed to execute get config (%v)", client.Address(), client, err)
+				logDebugf("Memdclient %s Failed to execute get config (%v)", client.LoggerID(), err)
 				close(configCh)
 				return
 			}

@@ -130,10 +130,16 @@ func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, de
 		Deadline: deadline,
 	}
 
+	dialID := formatCbUID(randomCbUID())
+	logDebugf("Dialling new client connection for %s, dial id = %s", address, dialID)
+
 	baseConn, err := d.DialContext(ctx, "tcp", address)
 	if err != nil {
+		logDebugf("Failed to dial client connection for %s, dial id = %s", address, dialID)
 		return nil, err
 	}
+
+	logDebugf("Dialled new client connection for %s, dial id = %s", address, dialID)
 
 	tcpConn, isTCPConn := baseConn.(*net.TCPConn)
 	if !isTCPConn || tcpConn == nil {

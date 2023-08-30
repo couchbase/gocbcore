@@ -15,6 +15,7 @@ type bootstrapableClient interface {
 	ConnID() string
 	SupportsFeature(feature memd.HelloFeature) bool
 	Features([]memd.HelloFeature)
+	loggerID() string
 }
 
 type bootstrapClient interface {
@@ -29,6 +30,7 @@ type bootstrapClient interface {
 	SaslListMechs(deadline time.Time, cb func(mechs []AuthMechanism, err error)) error
 	ExecHello(clientID string, features []memd.HelloFeature, deadline time.Time) (chan ExecHelloResponse, error)
 	ExecGetConfig(deadline time.Time) (chan getConfigResponse, error)
+	LoggerID() string
 }
 
 // Due to AuthProvider we are currently tied to bootstrapping passing around a deadline and the bootstrap
@@ -62,6 +64,10 @@ func (bc *memdBootstrapClient) Features(features []memd.HelloFeature) {
 
 func (bc *memdBootstrapClient) SupportsFeature(feature memd.HelloFeature) bool {
 	return bc.client.SupportsFeature(feature)
+}
+
+func (client *memdBootstrapClient) LoggerID() string {
+	return client.client.loggerID()
 }
 
 func (bc *memdBootstrapClient) SaslAuth(k, v []byte, deadline time.Time, cb func(b []byte, err error)) error {

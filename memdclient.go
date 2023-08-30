@@ -258,7 +258,7 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 		}
 	}
 
-	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.Address(), req.Command, req.Opaque)
+	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.loggerID(), req.Command, req.Opaque)
 
 	client.tracer.StartNetTrace(req)
 
@@ -288,12 +288,12 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	defer memd.ReleasePacket(resp.Packet)
 
 	if resp.Magic == memd.CmdMagicServerReq {
-		logSchedf("Handling server request data. OP=0x%x", resp.Command)
+		logSchedf("Handling server request data on %s. OP=0x%x", client.loggerID(), resp.Command)
 		client.serverRequestHandler(resp.Packet)
 		return
 	}
 
-	logSchedf("Handling response data. OP=0x%x. Opaque=%d. Status:%d", resp.Command, resp.Opaque, resp.Status)
+	logSchedf("Handling response data on %s. OP=0x%x. Opaque=%d. Status:%d", client.loggerID(), resp.Command, resp.Opaque, resp.Status)
 
 	stClass := client.classifyResponseStatusClass(resp.Status)
 
