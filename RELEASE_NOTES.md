@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.2.7 (30 August 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1458](GOCBC-1458):
+  Updated route config log output.
+* [https://issues.couchbase.com/browse/GOCBC-1465](GOCBC-1465):
+  Fixed issue where NoTLSSeedNode localhost ipv6 seed was parsed incorrectly.
+
 ## Version 10.2.6 (25 July 2023)
 
 ### New Features and Behavioral Changes
