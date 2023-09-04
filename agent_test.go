@@ -1670,6 +1670,8 @@ func (suite *StandardTestSuite) TestRandomGet() {
 
 	var mustHaveValue bool
 	var scope, collection string
+	var durability memd.DurabilityLevel
+	var duraTimeout time.Duration
 	if suite.SupportsFeature(TestFeatureCollections) {
 		mustHaveValue = true
 		scope = uuid.NewString()[:6]
@@ -1680,6 +1682,12 @@ func (suite *StandardTestSuite) TestRandomGet() {
 
 		_, err = testCreateCollection(collection, scope, agent.BucketName(), agent)
 		suite.Require().NoError(err)
+
+		if agent.kvMux.NumReplicas() > 0 {
+			// We use persist to force the doc to disk.
+			durability = memd.DurabilityLevelPersistToMajority
+			duraTimeout = 5 * time.Second
+		}
 	}
 
 	suite.tracer.Reset()
@@ -1688,10 +1696,12 @@ func (suite *StandardTestSuite) TestRandomGet() {
 	suite.Require().Nil(err, err)
 	for _, k := range distkeys {
 		s.PushOp(agent.Set(SetOptions{
-			Key:            []byte(k),
-			Value:          []byte("Hello World!"),
-			CollectionName: collection,
-			ScopeName:      scope,
+			Key:                    []byte(k),
+			Value:                  []byte("Hello World!"),
+			CollectionName:         collection,
+			ScopeName:              scope,
+			DurabilityLevel:        durability,
+			DurabilityLevelTimeout: duraTimeout,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
 				if err != nil {
@@ -1702,32 +1712,42 @@ func (suite *StandardTestSuite) TestRandomGet() {
 		s.Wait(0)
 	}
 
-	s.PushOp(agent.GetRandom(GetRandomOptions{
-		CollectionName: collection,
-		ScopeName:      scope,
-	}, func(res *GetRandomResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("Get operation failed: %v", err)
-			}
-			if res.Cas == Cas(0) {
-				s.Fatalf("Invalid cas received")
-			}
-			if len(res.Key) == 0 {
-				s.Fatalf("Invalid key returned")
-			}
-			if mustHaveValue {
-				if len(res.Value) == 0 {
-					s.Fatalf("No value returned")
+	var attempts int
+	var res *GetRandomResult
+	suite.Require().Eventually(func() bool {
+		attempts++
+		s.PushOp(agent.GetRandom(GetRandomOptions{
+			CollectionName: collection,
+			ScopeName:      scope,
+		}, func(res1 *GetRandomResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					suite.T().Logf("Get operation failed: %v", err)
+					return
 				}
-			}
-		})
-	}))
-	s.Wait(0)
+				res = res1
+			})
+		}))
+		s.Wait(0)
+
+		return res != nil
+	}, 10*time.Second, 500*time.Millisecond)
+
+	if res.Cas == Cas(0) {
+		s.Fatalf("Invalid cas received")
+	}
+	if len(res.Key) == 0 {
+		s.Fatalf("Invalid key returned")
+	}
+	if mustHaveValue {
+		if len(res.Value) == 0 {
+			s.Fatalf("No value returned")
+		}
+	}
 
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
-		if suite.Assert().Equal(len(distkeys)+1, len(nilParents)) {
+		if suite.Assert().Equal(len(distkeys)+attempts, len(nilParents)) {
 			for i, k := range distkeys {
 				suite.AssertOpSpan(nilParents[i], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, k)
 			}
@@ -1736,7 +1756,7 @@ func (suite *StandardTestSuite) TestRandomGet() {
 	}
 
 	suite.VerifyKVMetrics(suite.meter, "Set", len(distkeys), false, false)
-	suite.VerifyKVMetrics(suite.meter, "GetRandom", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "GetRandom", attempts, false, false)
 }
 
 func (suite *StandardTestSuite) TestStats() {
