@@ -11,6 +11,7 @@ type pollerController struct {
 	controllerLock   sync.Mutex
 	stopped          bool
 	bucketConfigSeen uint32
+	stoppedSig       chan struct{}
 
 	cccpPoller *cccpConfigController
 	httpPoller *httpConfigController
@@ -39,6 +40,7 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 		httpPoller:        httpPoller,
 		cfgMgr:            cfgMgr,
 		isFallbackErrorFn: errorFn,
+		stoppedSig:        make(chan struct{}),
 	}
 	cfgMgr.AddConfigWatcher(pc)
 
@@ -136,6 +138,7 @@ func (pc *pollerController) runDualPollers() {
 }
 
 func (pc *pollerController) Run() {
+	defer close(pc.stoppedSig)
 	if pc.cccpPoller == nil && pc.httpPoller == nil {
 		logInfof("No cccp or http pollers registered, will not run poller controller loop")
 		return
@@ -177,6 +180,8 @@ func (pc *pollerController) Stop() {
 	if controller != nil {
 		controller.Stop()
 	}
+
+	<-pc.stoppedSig
 }
 
 type pollerErrorProvider interface {

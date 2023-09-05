@@ -2,14 +2,16 @@ package gocbcore
 
 type seedConfigController struct {
 	*baseHTTPConfigController
-	seed    string
-	iterNum uint64
+	seed       string
+	iterNum    uint64
+	stoppedSig chan struct{}
 }
 
 func newSeedConfigController(seed, bucketName string, props httpPollerProperties,
 	cfgMgr *configManagementComponent) *seedConfigController {
 	scc := &seedConfigController{
-		seed: seed,
+		seed:       seed,
+		stoppedSig: make(chan struct{}),
 	}
 	scc.baseHTTPConfigController = newBaseHTTPConfigController(bucketName, props, cfgMgr, scc.GetEndpoint)
 
@@ -25,13 +27,15 @@ func (scc *seedConfigController) GetEndpoint(iterNum uint64) string {
 	return scc.seed
 }
 
-// Pause was added solely for testing purposes and we don't need to do anything with it for this.
-// Once we move to Gocaves for mocking then Pause will go away.
-func (scc *seedConfigController) Pause(paused bool) {
+func (scc *seedConfigController) Stop() {
+	logInfof("Seed poller stopping.")
+	scc.baseHTTPConfigController.Stop()
+	<-scc.stoppedSig
 }
 
 func (scc *seedConfigController) Run() {
 	scc.DoLoop()
+	close(scc.stoppedSig)
 }
 
 func (scc *seedConfigController) PollerError() error {

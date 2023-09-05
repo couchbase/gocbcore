@@ -40,7 +40,6 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 
 	ccp := &cccpConfigController{
 		looperStopSig:      make(chan struct{}),
-		looperDoneSig:      make(chan struct{}),
 		cfgMgr:             cfgMgr,
 		muxer:              muxer,
 		confCccpPollPeriod: 10 * time.Second,
@@ -59,7 +58,6 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	htt := &httpConfigController{
 		baseHTTPConfigController: &baseHTTPConfigController{
 			looperStopSig: make(chan struct{}),
-			looperDoneSig: make(chan struct{}),
 		},
 		muxer: &httpMux{
 			muxPtr: unsafe.Pointer(cliMux),
@@ -110,4 +108,140 @@ func (suite *UnitTestSuite) TestPollerControllerForceHTTPAndNewConfig() {
 	case <-time.After(2 * time.Second):
 		suite.T().Fatalf("Poller controller did not halt in required time")
 	}
+}
+
+func (suite *UnitTestSuite) TestPollerControllerStopBeforeRun() {
+	cfgMgr := &configManagementComponent{
+		currentConfig: &routeConfig{
+			revID: -1,
+		},
+	}
+
+	muxer := new(mockDispatcher)
+	muxer.On("PipelineSnapshot").Return(&pipelineSnapshot{
+		state: &kvMuxState{
+			routeCfg: routeConfig{
+				revID: -1,
+			},
+		},
+		idx: 0,
+	}, nil)
+
+	ccp := &cccpConfigController{
+		looperStopSig:      make(chan struct{}),
+		cfgMgr:             cfgMgr,
+		muxer:              muxer,
+		confCccpPollPeriod: 10 * time.Second,
+		cccpFetcher:        newCCCPConfigFetcher(5 * time.Second),
+		isFallbackErrorFn: func(err error) bool {
+			return false
+		},
+	}
+	cliMux := &httpClientMux{
+		mgmtEpList: []routeEndpoint{
+			{
+				Address: "localhost:8091",
+			},
+		},
+	}
+	htt := &httpConfigController{
+		baseHTTPConfigController: &baseHTTPConfigController{
+			looperStopSig: make(chan struct{}),
+		},
+		muxer: &httpMux{
+			muxPtr: unsafe.Pointer(cliMux),
+		},
+	}
+
+	poller := newPollerController(ccp, htt, cfgMgr, func(err error) bool {
+		return false
+	})
+
+	stopped := make(chan struct{})
+	go func() {
+		poller.Run()
+		close(stopped)
+	}()
+	poller.Stop()
+
+	<-stopped
+}
+
+func (suite *UnitTestSuite) TestPollerControllerStopBeforeRunCCCPOnly() {
+	cfgMgr := &configManagementComponent{
+		currentConfig: &routeConfig{
+			revID: -1,
+		},
+	}
+
+	muxer := new(mockDispatcher)
+	muxer.On("PipelineSnapshot").Return(&pipelineSnapshot{
+		state: &kvMuxState{
+			routeCfg: routeConfig{
+				revID: -1,
+			},
+		},
+		idx: 0,
+	}, nil)
+
+	ccp := &cccpConfigController{
+		looperStopSig:      make(chan struct{}),
+		cfgMgr:             cfgMgr,
+		confCccpPollPeriod: 10 * time.Second,
+		muxer:              muxer,
+		cccpFetcher:        newCCCPConfigFetcher(5 * time.Second),
+		isFallbackErrorFn: func(err error) bool {
+			return false
+		},
+	}
+
+	poller := newPollerController(ccp, nil, cfgMgr, func(err error) bool {
+		return false
+	})
+
+	stopped := make(chan struct{})
+	go func() {
+		poller.Run()
+		close(stopped)
+	}()
+	poller.Stop()
+
+	<-stopped
+}
+
+func (suite *UnitTestSuite) TestPollerControllerStopBeforeRunHTTPOnly() {
+	cfgMgr := &configManagementComponent{
+		currentConfig: &routeConfig{
+			revID: -1,
+		},
+	}
+
+	cliMux := &httpClientMux{
+		mgmtEpList: []routeEndpoint{
+			{
+				Address: "localhost:8091",
+			},
+		},
+	}
+	htt := &httpConfigController{
+		baseHTTPConfigController: &baseHTTPConfigController{
+			looperStopSig: make(chan struct{}),
+		},
+		muxer: &httpMux{
+			muxPtr: unsafe.Pointer(cliMux),
+		},
+	}
+
+	poller := newPollerController(nil, htt, cfgMgr, func(err error) bool {
+		return false
+	})
+
+	stopped := make(chan struct{})
+	go func() {
+		poller.Run()
+		close(stopped)
+	}()
+	poller.Stop()
+
+	<-stopped
 }

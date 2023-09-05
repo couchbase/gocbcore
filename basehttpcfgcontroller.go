@@ -46,7 +46,6 @@ type baseHTTPConfigController struct {
 	endpointCallback     func(uint64) string
 
 	looperStopSig chan struct{}
-	looperDoneSig chan struct{}
 
 	fetchErr error
 	errLock  sync.Mutex
@@ -70,7 +69,6 @@ func newBaseHTTPConfigController(bucketName string, props httpPollerProperties, 
 		bucketName:           bucketName,
 
 		looperStopSig: make(chan struct{}),
-		looperDoneSig: make(chan struct{}),
 
 		endpointCallback: endpointCallback,
 	}
@@ -90,20 +88,16 @@ func (hcc *baseHTTPConfigController) setError(err error) {
 func (hcc *baseHTTPConfigController) Stop() {
 	logDebugf("HTTP Looper stopping.")
 	close(hcc.looperStopSig)
-
-	<-hcc.looperDoneSig
 }
 
 // Reset must never be called concurrently with the Stop or whilst the poll loop is running.
 func (hcc *baseHTTPConfigController) Reset() {
 	hcc.looperStopSig = make(chan struct{})
-	hcc.looperDoneSig = make(chan struct{})
 }
 
 func (hcc *baseHTTPConfigController) DoLoop() {
 	hcc.doLoop()
 	logDebugf("HTTP Looper stopped.")
-	close(hcc.looperDoneSig)
 }
 
 func (hcc *baseHTTPConfigController) doLoop() {

@@ -16,7 +16,6 @@ type cccpConfigController struct {
 	cccpFetcher        *cccpConfigFetcher
 
 	looperStopSig chan struct{}
-	looperDoneSig chan struct{}
 
 	fetchErr error
 	errLock  sync.Mutex
@@ -34,7 +33,6 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		cccpFetcher:        props.cccpConfigFetcher,
 
 		looperStopSig: make(chan struct{}),
-		looperDoneSig: make(chan struct{}),
 
 		isFallbackErrorFn: isFallbackErrorFn,
 		noConfigFoundFn:   noConfigFoundFn,
@@ -61,26 +59,21 @@ func (ccc *cccpConfigController) setError(err error) {
 func (ccc *cccpConfigController) Stop() {
 	logInfof("CCCP Looper stopping")
 	close(ccc.looperStopSig)
-
-	<-ccc.looperDoneSig
 }
 
 // Reset must never be called concurrently with the Stop or whilst the poll loop is running.
 func (ccc *cccpConfigController) Reset() {
 	ccc.looperStopSig = make(chan struct{})
-	ccc.looperDoneSig = make(chan struct{})
 }
 
 func (ccc *cccpConfigController) DoLoop() error {
 	if err := ccc.doLoop(); err != nil {
 		logInfof("CCCP Looper errored")
-		close(ccc.looperDoneSig)
 
 		return err
 	}
 
 	logInfof("CCCP Looper stopped")
-	close(ccc.looperDoneSig)
 	return nil
 }
 
