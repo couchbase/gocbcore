@@ -75,9 +75,7 @@ func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
 }
 
 func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
-	// We cannot retry requests with no collection information.
-	// This also prevents the GetCollectionID requests from being automatically retried.
-	if isDefaultCollection(req.ScopeName, req.CollectionName) {
+	if !canRetryOnCollectionUnknown(req) {
 		return false
 	}
 
@@ -85,6 +83,13 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 	if shouldRetry {
 		go func() {
 			time.Sleep(time.Until(retryTime))
+			if isDefaultCollection(req.ScopeName, req.CollectionName) {
+				// If the request is against the default collection then there's no point trying to
+				// refresh the cid, instead we just retry the operation.
+				cidMgr.dispatcher.RequeueDirect(req, true)
+				return
+			}
+
 			cidMgr.requeue(req)
 		}()
 	}
@@ -639,6 +644,21 @@ func setRequestCid(req *memdQRequest, cid uint32) error {
 	}
 	req.CollectionID = cid
 	return nil
+}
+
+func canRetryOnCollectionUnknown(req *memdQRequest) bool {
+	switch req.Command {
+	case memd.CmdCollectionsGetID:
+		return false
+	case memd.CmdRangeScanContinue:
+		return false
+	case memd.CmdRangeScanCancel:
+		return false
+	case memd.CmdDcpStreamReq:
+		return false
+	}
+
+	return true
 }
 
 func isDefaultCollection(scopeName, collectionName string) bool {
