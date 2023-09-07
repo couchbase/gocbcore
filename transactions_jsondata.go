@@ -46,7 +46,7 @@ type jsonAtrMutation struct {
 
 type jsonAtrAttempt struct {
 	TransactionID string `json:"tid,omitempty"`
-	ExpiryTime    uint   `json:"exp,omitempty"`
+	ExpiryTime    int    `json:"exp,omitempty"`
 	State         string `json:"st,omitempty"`
 
 	PendingCAS    string `json:"tst,omitempty"`
