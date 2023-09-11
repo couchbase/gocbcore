@@ -519,14 +519,14 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 		logDebugf("Memdclient %s Authenticated successfully", client.LoggerID())
 	}
 
-	var selectErr error
 	if selectCh != nil {
-		selectErr = <-selectCh
+		selectErr := <-selectCh
+		if selectErr != nil {
+			logDebugf("Memdclient %s Failed to perform select bucket against server (%v)", client.LoggerID(), selectErr)
+			return selectErr
+		}
 	}
 
-	// If we've done a config fetch then we try to read the result of that before checking if select bucket succeeded.
-	// We might have managed to get a config even if select bucket failed, e.g. if we're bootstrapping against a non-kv
-	// node.
 	if configCh != nil {
 		configResp := <-configCh
 		err = configResp.Err
@@ -540,11 +540,6 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 				mcc.sendErrorToCCCPUnsupportedHandlers()
 			}
 		}
-	}
-
-	if selectErr != nil {
-		logDebugf("Memdclient %s Failed to perform select bucket against server (%v)", client.LoggerID(), selectErr)
-		return selectErr
 	}
 
 	client.Features(helloResp.SrvFeatures)
