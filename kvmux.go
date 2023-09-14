@@ -645,6 +645,11 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 			if mux.waitAndRetryOperation(req, MemdWriteFailure) {
 				return true, nil
 			}
+		} else if errors.Is(err, ErrMemdConfigOnly) {
+			logWarnf("Received config-only status, will attempt to refresh config map and retry operation")
+			if mux.handleConfigOnly(resp, req) {
+				return true, nil
+			}
 		} else if resp != nil && resp.Magic == memd.CmdMagicRes {
 			// We don't know anything about this error so send it to the error map
 			shouldRetry := mux.errMapMgr.ShouldRetry(resp.Status)
@@ -761,6 +766,26 @@ func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) boo
 	// Redirect it!  This may actually come back to this server, but I won't tell
 	//   if you don't ;)
 	return mux.waitAndRetryOperation(req, KVNotMyVBucketRetryReason)
+}
+
+func (mux *kvMux) handleConfigOnly(resp *memdQResponse, req *memdQRequest) bool {
+	snapshot, err := mux.PipelineSnapshot()
+	if err != nil {
+		logInfof("Failed to get pipeline snapshot: %s", err)
+		// Not much we can do here, attempt a retry.
+		mux.RequeueDirect(req, true)
+		return true
+	}
+
+	go func() {
+		// Don't block the client read loop whilst we apply the config and redispatch.
+		// For a start if the node this status has originated from is now not in the config then
+		// calling RefreshConfig will end up blocking because we're holding the client read thread open
+		// whilst also trying to shutdown the client.
+		mux.cfgMgr.RefreshConfig(snapshot)
+		mux.RequeueDirect(req, true)
+	}()
+	return true
 }
 
 func (mux *kvMux) drainPipelines(clientMux *kvMuxState, cb func(req *memdQRequest)) {
@@ -990,6 +1015,7 @@ func (mux *kvMux) handleServerRequest(pak *memd.Packet) {
 			snapshot, err := mux.PipelineSnapshot()
 			if err != nil {
 				logInfof("Failed to get pipeline snapshot: %s", err)
+				return
 			}
 			mux.cfgMgr.OnNewConfigChangeNotifBrief(snapshot, extras)
 		}()

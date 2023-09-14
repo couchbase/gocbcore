@@ -140,6 +140,25 @@ func (cm *configManagementComponent) onNewConfig(cfg *cfgBucket) bool {
 	return true
 }
 
+func (cm *configManagementComponent) RefreshConfig(snapshot *pipelineSnapshot) {
+	currentRev, currentEpoch := cm.CurrentRev()
+	cm.configFetchSigLock.Lock()
+	if cm.configFetchSig != nil {
+		// Someone else is already fetching a config so let's bail out.
+		cm.configFetchSigLock.Unlock()
+		return
+	}
+	cm.configFetchSig = make(chan struct{})
+	cm.configFetchSigLock.Unlock()
+
+	cm.fetchConfig(snapshot, currentRev, currentEpoch)
+
+	cm.configFetchSigLock.Lock()
+	close(cm.configFetchSig)
+	cm.configFetchSig = nil
+	cm.configFetchSigLock.Unlock()
+}
+
 func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipelineSnapshot, notif []byte) {
 	if cm.configFetcher == nil {
 		// No point in doing anything if we can't fetch a config anyway.
@@ -184,6 +203,15 @@ func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipel
 		<-waitSig
 	}
 
+	cm.fetchConfig(snapshot, currentRev, currentEpoch)
+
+	cm.configFetchSigLock.Lock()
+	close(cm.configFetchSig)
+	cm.configFetchSig = nil
+	cm.configFetchSigLock.Unlock()
+}
+
+func (cm *configManagementComponent) fetchConfig(snapshot *pipelineSnapshot, currentRev, currentEpoch int64) {
 	numNodes := snapshot.NumPipelines()
 	nodeIdx := rand.Intn(numNodes) // #nosec G404
 
@@ -221,11 +249,6 @@ func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipel
 
 		return cm.onNewConfig(bk)
 	})
-
-	cm.configFetchSigLock.Lock()
-	close(cm.configFetchSig)
-	cm.configFetchSig = nil
-	cm.configFetchSigLock.Unlock()
 }
 
 func (cm *configManagementComponent) Close() {

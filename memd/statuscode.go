@@ -38,6 +38,9 @@ const (
 	// StatusLocked occurs when an operation fails due to the document being locked.
 	StatusLocked = StatusCode(0x09)
 
+	// StatusConfigOnly occurs when an operation fails on a node because the bucket is in config-only mode
+	StatusConfigOnly = StatusCode(0x0d)
+
 	// StatusAuthStale occurs when authentication credentials have become invalidated.
 	StatusAuthStale = StatusCode(0x1f)
 

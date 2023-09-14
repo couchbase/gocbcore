@@ -55,6 +55,10 @@ var (
 	// ErrMemdLocked occurs when a document is already locked.
 	ErrMemdLocked = makeKvStatusError(memd.StatusLocked)
 
+	// ErrMemdConfigOnly occurs when an operation cannot be executed against a node because the bucket is in config-only
+	// mode.
+	ErrMemdConfigOnly = makeKvStatusError(memd.StatusConfigOnly)
+
 	// ErrMemdAuthStale occurs when authentication credentials have become invalidated.
 	ErrMemdAuthStale = makeKvStatusError(memd.StatusAuthStale)
 
