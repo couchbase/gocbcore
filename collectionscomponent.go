@@ -511,12 +511,12 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 
 			// We successfully got the cid, the GetCollectionID itself will have handled setting the ID on this cache,
 			// so lets reset the op queue and requeue all of our requests.
-			logDebugf("Collection %s.%s refresh succeeded, requeuing requests", req.ScopeName, req.CollectionName)
 			cid.lock.Lock()
 			opQueue := cid.opQueue
 			cid.opQueue = newMemdOpQueue()
 			cid.lock.Unlock()
 
+			logDebugf("Collection %s.%s refresh succeeded, requeuing %d requests", req.ScopeName, req.CollectionName, opQueue.items.Len())
 			opQueue.Close()
 			opQueue.Drain(func(request *memdQRequest) {
 				request.AddResourceUnitsFromUnitResult(result.Internal.ResourceUnits)
@@ -543,7 +543,18 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	case unknownCid:
 		logDebugf("Collection %s.%s unknown, refreshing id", req.ScopeName, req.CollectionName)
 		cid.setID(pendingCid)
-		cid.opQueue = newMemdOpQueue()
+		newOpQueue := newMemdOpQueue()
+		if cid.opQueue != nil {
+			// Drain the old queue into the new one so that we move over outstanding requests.
+			cid.opQueue.Close()
+			cid.opQueue.Drain(func(request *memdQRequest) {
+				err := newOpQueue.Push(request, 0)
+				if err != nil {
+					request.tryCallback(nil, err)
+				}
+			})
+		}
+		cid.opQueue = newOpQueue
 
 		// We attempt to send the refresh inside of the lock, that way we haven't released the lock and allowed an op
 		// to get queued if we need to move the status back to unknown. Without doing this it's possible for one or
