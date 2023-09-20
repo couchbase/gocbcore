@@ -4,12 +4,135 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 
 	"github.com/stretchr/testify/mock"
 )
+
+func (suite *StandardTestSuite) TestCidRetries() {
+	suite.EnsureSupportsFeature(TestFeatureCollections)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	bucketName := suite.BucketName
+	scopeName := suite.ScopeName
+	collectionName := "testCidRetries"
+
+	_, err := testCreateCollection(collectionName, scopeName, bucketName, agent)
+	if err != nil {
+		suite.T().Logf("Failed to create collection: %v", err)
+	}
+
+	// prime the cid map cache
+	s.PushOp(agent.GetCollectionID(scopeName, collectionName, GetCollectionIDOptions{},
+		func(result *GetCollectionIDResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("Get CID operation failed: %v", err)
+				}
+			})
+		}),
+	)
+	s.Wait(0)
+
+	// delete the collection
+	_, err = testDeleteCollection(collectionName, scopeName, bucketName, agent, true)
+	if err != nil {
+		suite.T().Fatalf("Failed to delete collection: %v", err)
+	}
+
+	// recreate
+	_, err = testCreateCollection(collectionName, scopeName, bucketName, agent)
+	if err != nil {
+		suite.T().Fatalf("Failed to create collection: %v", err)
+	}
+
+	// Set should succeed as we detect cid unknown, fetch the cid and then retry again. This should happen
+	// even if we don't set a retry strategy.
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("test"),
+		Value:          []byte("{}"),
+		CollectionName: collectionName,
+		ScopeName:      scopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	// Get
+	s.PushOp(agent.Get(GetOptions{
+		Key:            []byte("test"),
+		CollectionName: collectionName,
+		ScopeName:      scopeName,
+	}, func(res *GetResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Get operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+
+	s.Wait(0)
+}
+
+func (suite *StandardTestSuite) TestCollectionsRefreshUnknownMultipleOps() {
+	suite.EnsureSupportsFeature(TestFeatureCollections)
+
+	agent, _ := suite.GetAgentAndHarness()
+
+	bucketName := suite.BucketName
+	scopeName := suite.ScopeName
+	collectionName := uuid.NewString()[:6]
+
+	// Setup operations which will get queued waiting for the collection refresh.
+	deadline := time.Now().Add(15 * time.Second)
+	ch := make(chan error, 10)
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		_, err := agent.Set(SetOptions{
+			Key:            []byte(uuid.NewString()[:6]),
+			Value:          []byte("{}"),
+			CollectionName: collectionName,
+			ScopeName:      scopeName,
+			Deadline:       deadline,
+		}, func(res *StoreResult, err error) {
+			ch <- err
+			wg.Done()
+		})
+		suite.Require().NoError(err)
+	}
+
+	// Now create the collection which should trigger all of the operations to be dispatched.
+	_, err := testCreateCollection(collectionName, scopeName, bucketName, agent)
+	suite.Require().NoError(err)
+	wg.Wait()
+	close(ch)
+
+	for {
+		err, ok := <-ch
+		if !ok {
+			break
+		}
+
+		suite.Require().NoError(err)
+	}
+}
 
 // When the SDK starts up collections support is unknown.
 // This test is for the scenario when a request is made whilst collections support is unknown
