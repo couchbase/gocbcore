@@ -304,6 +304,8 @@ func (createRes *rangeScanCreateResult) RangeScanCancel(opts RangeScanCancelOpti
 		RootTraceContext: tracer.RootContext(),
 	}
 
+	// We're bypassing the usual route for sending requests so need to start the cmd trace ourselves.
+	createRes.parent.tracer.StartCmdTrace(req)
 	cli, err := createRes.parent.clientProvider.GetByConnID(createRes.connID)
 	if err != nil {
 		tracer.Finish()
