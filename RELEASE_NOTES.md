@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.2.8 (25 September 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1479](GOCBC-1479):
+  Do not apply cluster configs during bootstrap if select bucket fails.
+
 ## Version 10.2.7 (30 August 2023)
 
 ### Fixed Issues
