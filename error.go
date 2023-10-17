@@ -165,6 +165,10 @@ var (
 
 	// Uncommitted: This API may change in the future.
 	ErrConnectionIDInvalid = errors.New("connection id unknown")
+
+	// Uncommitted: This API may change in the future
+	// Signals that an operation was cancelled due to the circuit breaker being open
+	ErrCircuitBreakerOpen = errors.New("circuit breaker open")
 )
 
 // Query Error Definitions RFC#58@15
