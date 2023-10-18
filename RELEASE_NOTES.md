@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 10.2.9 (18 October 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1485](GOCBC-1485):
+  Retry requests when resetting cid cache queue.
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1489](GOCBC-1489):
+  Expose `ErrCircuitBreakerOpen`.
+
 ## Version 10.2.8 (25 September 2023)
 
 ### New Features and Behavioral Changes
