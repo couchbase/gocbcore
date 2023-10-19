@@ -880,3 +880,44 @@ func (suite *StandardTestSuite) TestAgentConfig_MaxQueueSize() {
 		})
 	}
 }
+
+func (suite *StandardTestSuite) TestAgentConfig_UseClusterMapNotifications() {
+	tests := []struct {
+		name     string
+		connStr  string
+		expected bool
+		wantErr  bool
+	}{
+		{
+			name:     "true",
+			connStr:  "couchbase://10.112.192.101?enable_cluster_config_notifications=true",
+			expected: true,
+		},
+		{
+			name:     "false",
+			connStr:  "couchbase://10.112.192.101?enable_cluster_config_notifications=false",
+			expected: false,
+		},
+		{
+			name:    "invalid",
+			connStr: "couchbase://10.112.192.101?enable_cluster_config_notifications=squirrel",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		suite.T().Run(tt.name, func(t *testing.T) {
+			config := &AgentConfig{}
+			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
+				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if config.IoConfig.UseClusterMapNotifications != tt.expected {
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.IoConfig.UseDurations)
+			}
+		})
+	}
+}
