@@ -207,6 +207,8 @@ func TestMain(m *testing.M) {
 		SetLogger(globalTestLogger)
 	}
 
+	EnableHttpResponseTracking()
+
 	result := m.Run()
 
 	if globalBenchSuite != nil {
@@ -264,6 +266,9 @@ func TestMain(m *testing.M) {
 		result = 1
 	} else {
 		log.Printf("No goroutines appear to have leaked (%d before == %d after)", initialGoroutineCount, finalGoroutineCount)
+	}
+	if !ReportLeakedHttpResponses() {
+		result = 1
 	}
 
 	os.Exit(result)

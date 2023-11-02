@@ -274,6 +274,8 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		}
 		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
 
+		hresp = wrapHttpResponse(hresp) // nolint: bodyclose
+
 		respOut := HTTPResponse{
 			Endpoint:      endpoint,
 			StatusCode:    hresp.StatusCode,

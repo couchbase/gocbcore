@@ -296,6 +296,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 							state = PingStateError
 						}
 					} else {
+						defer resp.Body.Close()
 						if resp.StatusCode > 200 {
 							state = PingStateError
 							b, pErr := ioutil.ReadAll(resp.Body)
@@ -710,6 +711,10 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 								cancel()
 							}
 							return
+						}
+						err = resp.Body.Close()
+						if err != nil {
+							logDebugf("Failed to close response body: %s", err)
 						}
 						if resp.StatusCode != 200 {
 							logDebugf("Non-200 status code returned for HTTP request for service %d: %d", service, resp.StatusCode)
