@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.2.10 (21 November 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1542](GOCBC-1542):
+  Dropped "identical revision" log line down to debug level.
+
 ## Version 10.2.9 (18 October 2023)
 
 ### Fixed Issues
