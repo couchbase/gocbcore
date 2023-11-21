@@ -1,5 +1,55 @@
 # Release Notes
 
+## Version 10.3.0 (21 November 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1439](GOCBC-1439):
+  Improvements for faster failover.
+  Added support for SnappyEverywhere Hello.
+  Added support for cluster config known versions.
+  Added support for NMVB deduplicated response bodies
+  Added support for brief cluster map notifications, see: `AgentConfig{}.UseClusterMapNotifications`
+* [https://issues.couchbase.com/browse/GOCBC-1451](GOCBC-1451):
+  Updated DCP agents to only use HTTP polling.
+* [https://issues.couchbase.com/browse/GOCBC-1542](GOCBC-1542):
+  Dropped "identical revision" log line down to debug level.
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1449](GOCBC-1449):
+  Fixed issue where `GetCollectionManifest`, `GetAllCollectionManifests` and a`GetCollectionID` options were missing user impersonation.
+* [https://issues.couchbase.com/browse/GOCBC-1471](GOCBC-1471):
+  Fixed issue where calling Close on an Agent before polling has started up would lead to the poller failing to stop.
+
+## Version 10.2.9 (18 October 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1483](GOCBC-1483):
+  Retry requests when resetting cid cache queue.
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1489](GOCBC-1489):
+  Expose `ErrCircuitBreakerOpen`.
+
+## Version 10.2.8 (25 September 2023)
+
+### New Features and Behavioral Changes
+
+* [https://issues.couchbase.com/browse/GOCBC-1479](GOCBC-1479):
+  Do not apply cluster configs during bootstrap if select bucket fails.
+
+## Version 10.2.7 (30 August 2023)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1458](GOCBC-1458):
+  Updated route config log output.
+* [https://issues.couchbase.com/browse/GOCBC-1465](GOCBC-1465):
+  Fixed issue where NoTLSSeedNode localhost ipv6 seed was parsed incorrectly.
+
 ## Version 10.2.6 (25 July 2023)
 
 ### New Features and Behavioral Changes
