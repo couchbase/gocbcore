@@ -149,7 +149,7 @@ func (config *routeConfig) IsNewerThan(oldCfg *routeConfig) bool {
 		if config.revID == 0 {
 			logInfof("Unversioned configuration data, switching.")
 		} else if config.revID == oldCfg.revID {
-			logInfof("Ignoring configuration with identical revision number - %d", config.revID)
+			logDebugf("Ignoring configuration with identical revision number - %d", config.revID)
 			return false
 		} else if config.revID < oldCfg.revID {
 			logInfof("Ignoring new configuration as it has an older revision id. Old: %d, new: %d", oldCfg.revID, config.revID)
