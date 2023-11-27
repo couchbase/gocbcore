@@ -74,6 +74,7 @@ func (cm *configManagementComponent) OnNewConfig(cfg *cfgBucket) {
 	} else {
 		routeCfg = cm.buildFirstRouteConfig(cfg, cm.useSSL)
 		if routeCfg == nil {
+			cm.configLock.Unlock()
 			// If the routeCfg isn't valid then ignore it.
 			return
 		}
@@ -204,7 +205,7 @@ func (cm *configManagementComponent) buildFirstRouteConfig(config *cfgBucket, us
 
 		if cm.localLoopbackAddr == nil {
 			logWarnf("Ignoring config, nodesExt entry contained no thisNode node")
-			return nil
+			return &routeConfig{}
 		}
 	}
 	if cm.networkType != "" && cm.networkType != "auto" {
