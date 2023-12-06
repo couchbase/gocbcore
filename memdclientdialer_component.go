@@ -71,6 +71,7 @@ type memdBootstrapDCPProps struct {
 	disableBufferAcknowledgement bool
 	useOSOBackfill               bool
 	useStreamID                  bool
+	useChangeStreams             bool
 	useExpiryOpcode              bool
 	backfillOrderStr             string
 	priorityStr                  string
@@ -305,6 +306,12 @@ func (mcc *memdClientDialerComponent) dcpBootstrap(client *dcpBootstrapClient, d
 
 	if mcc.dcpBootstrapProps.priorityStr != "" {
 		if err := client.ExecDcpControl("set_priority", mcc.dcpBootstrapProps.priorityStr, deadline); err != nil {
+			return err
+		}
+	}
+
+	if mcc.dcpBootstrapProps.useChangeStreams {
+		if err := client.ExecDcpControl("change_streams", "true", deadline); err != nil {
 			return err
 		}
 	}

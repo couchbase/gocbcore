@@ -450,6 +450,47 @@ func (suite *StandardTestSuite) TestDCPAgentConfig_EnableDCPExpiry() {
 	}
 }
 
+func (suite *StandardTestSuite) TestDCPAgentConfig_EnableDCPChangeStreams() {
+	tests := []struct {
+		name     string
+		connStr  string
+		expected bool
+		wantErr  bool
+	}{
+		{
+			name:     "true",
+			connStr:  "couchbase://10.112.192.101?enable_dcp_change_streams=true",
+			expected: true,
+		},
+		{
+			name:     "false",
+			connStr:  "couchbase://10.112.192.101?enable_dcp_change_streams=false",
+			expected: false,
+		},
+		{
+			name:    "invalid",
+			connStr: "couchbase://10.112.192.101?enable_dcp_change_streams=squirrel",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		suite.T().Run(tt.name, func(t *testing.T) {
+			config := &DCPAgentConfig{}
+			if err := config.FromConnStr(tt.connStr); (err != nil) != tt.wantErr {
+				t.Errorf("FromConnStr() error = %v, wanted error = %t", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if config.DCPConfig.UseChangeStreams != tt.expected {
+				suite.T().Fatalf("Expected %t but was %t", tt.expected, config.DCPConfig.UseChangeStreams)
+			}
+		})
+	}
+}
+
 func (suite *StandardTestSuite) TestDCPAgentConfig_KVPoolSize() {
 	tests := []struct {
 		name     string

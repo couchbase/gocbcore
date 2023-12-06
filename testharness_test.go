@@ -39,6 +39,7 @@ var (
 	TestFeatureFts                  = TestFeatureCode("fts")
 	TestFeatureErrMap               = TestFeatureCode("errmap")
 	TestFeatureCollections          = TestFeatureCode("collections")
+	TestFeatureDCPChangeStreams     = TestFeatureCode("dcpchangestreams")
 	TestFeatureDCPExpiry            = TestFeatureCode("dcpexpiry")
 	TestFeatureDCPDeleteTimes       = TestFeatureCode("dcpdeletetimes")
 	TestFeatureMemd                 = TestFeatureCode("memd")
