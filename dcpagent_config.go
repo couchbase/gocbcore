@@ -35,11 +35,12 @@ type DCPAgentConfig struct {
 
 // DCPConfig specifies DCP specific configuration options.
 type DCPConfig struct {
-	AgentPriority   DcpAgentPriority
-	UseExpiryOpcode bool
-	UseStreamID     bool
-	UseOSOBackfill  bool
-	BackfillOrder   DCPBackfillOrder
+	AgentPriority    DcpAgentPriority
+	UseChangeStreams bool
+	UseExpiryOpcode  bool
+	UseStreamID      bool
+	UseOSOBackfill   bool
+	BackfillOrder    DCPBackfillOrder
 
 	BufferSize                   int
 	DisableBufferAcknowledgement bool
@@ -71,6 +72,15 @@ func (config DCPConfig) fromSpec(spec connstr.ResolvedConnSpec) (DCPConfig, erro
 			return DCPConfig{}, fmt.Errorf("dcp buffer size option must be a number")
 		}
 		config.BufferSize = int(val)
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "enable_dcp_change_streams"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return DCPConfig{}, fmt.Errorf("enable_dcp_change_streams option must be a boolean")
+		}
+		config.UseChangeStreams = val
 	}
 
 	// This option is experimental
@@ -115,6 +125,7 @@ func (config *DCPAgentConfig) redacted() interface{} {
 //	orphaned_response_logging_interval (duration) - How often to print the orphan log records.
 //	orphaned_response_logging_sample_size (int) - The maximum number of orphan log records to track.
 //	dcp_priority (int) - Specifies the priority to request from the Cluster when connecting for DCP.
+//	enable_dcp_change_streams (bool) - Enables the DCP connection to allow history snapshots in DCP streams.
 //	enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
 //	kv_pool_size (int) - The number of connections to create to each kv node.
 //	max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.

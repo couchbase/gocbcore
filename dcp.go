@@ -56,6 +56,16 @@ func (s SnapshotState) HasOnDisk() bool {
 	return uint32(s)&2 != 0
 }
 
+// HasHistory returns whether this snapshot represents a view of history.
+func (s SnapshotState) HasHistory() bool {
+	return uint32(s)&16 != 0
+}
+
+// HasMayDuplicateKeys returns whether this snapshot may contain duplicate keys.
+func (s SnapshotState) HasMayDuplicateKeys() bool {
+	return uint32(s)&32 != 0
+}
+
 // FailoverEntry represents a single entry in the server fail-over log.
 type FailoverEntry struct {
 	VbUUID VbUUID

@@ -45,6 +45,8 @@ func (suite *DCPTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	}
 
 	switch feature {
+	case TestFeatureDCPChangeStreams:
+		return !suite.ClusterVersion.Lower(srvVer720)
 	case TestFeatureDCPExpiry:
 		return !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeatureDCPDeleteTimes:
@@ -77,7 +79,7 @@ func (suite *DCPTestSuite) SetupSuite() {
 	}
 
 	suite.dcpAgent, err = suite.initDCPAgent(
-		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry)),
+		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry), false),
 		"test-stream",
 		flags,
 	)
@@ -152,7 +154,7 @@ func (suite *DCPTestSuite) initAgent(config AgentConfig) (*Agent, error) {
 	return agent, nil
 }
 
-func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryEnabled bool) DCPAgentConfig {
+func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryEnabled bool, changeStreamsEnabled bool) DCPAgentConfig {
 	config := DCPAgentConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
@@ -161,6 +163,10 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 
 	if expiryEnabled {
 		config.DCPConfig.UseExpiryOpcode = true
+	}
+
+	if changeStreamsEnabled {
+		config.DCPConfig.UseChangeStreams = true
 	}
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
@@ -712,6 +718,46 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 	}
 }
 
+// Increase historyRetentionSeconds for bucket to ensure preserve change history.
+func (suite *DCPTestSuite) TestChangeStreamsAgent() {
+	suite.T().Skip("Skipping test by default")
+
+	suite.EnsureSupportsFeature(TestFeatureDCPChangeStreams)
+
+	flags := memd.DcpOpenFlagProducer
+
+	if suite.SupportsFeature(TestFeatureDCPDeleteTimes) {
+		flags |= memd.DcpOpenFlagIncludeDeleteTimes
+	}
+
+	dcpAgent, err := suite.initDCPAgent(
+		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry), true),
+		"test-change-streams",
+		flags,
+	)
+	suite.Require().Nil(err, err)
+	defer dcpAgent.Close()
+
+	mutations, deletionKeys := suite.runMutations("", "")
+
+	suite.runDCPStream(dcpAgent)
+
+	// Compaction can run and cause expirations to be hidden from us
+	suite.Assert().Equal(suite.NumMutations, len(suite.so.counter.mutations))
+	suite.Assert().Equal(suite.NumDeletions, len(suite.so.counter.deletions))
+	suite.Assert().InDelta(suite.NumExpirations, len(suite.so.counter.expirations), float64(suite.NumExpirations))
+
+	for key, val := range mutations {
+		if suite.Assert().Contains(suite.so.counter.mutations, key) {
+			suite.Assert().Equal(string(suite.so.counter.mutations[key].Value), val)
+		}
+	}
+
+	for _, key := range deletionKeys {
+		suite.Assert().Contains(suite.so.counter.deletions, key)
+	}
+}
+
 func (suite *DCPTestSuite) TestNSAgent() {
 	flags := memd.DcpOpenFlagProducer
 
@@ -719,7 +765,7 @@ func (suite *DCPTestSuite) TestNSAgent() {
 		flags |= memd.DcpOpenFlagIncludeDeleteTimes
 	}
 
-	srcCfg := suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry))
+	srcCfg := suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry), false)
 	if len(srcCfg.SeedConfig.HTTPAddrs) == 0 {
 		suite.T().Skip("Skipping test due to no HTTP addresses")
 	}

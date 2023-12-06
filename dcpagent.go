@@ -253,6 +253,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				disableBufferAcknowledgement: config.DCPConfig.DisableBufferAcknowledgement,
 				useOSOBackfill:               config.DCPConfig.UseOSOBackfill,
 				useStreamID:                  config.DCPConfig.UseStreamID,
+				useChangeStreams:             config.DCPConfig.UseChangeStreams,
 				useExpiryOpcode:              config.DCPConfig.UseExpiryOpcode,
 				backfillOrderStr:             dcpBackfillOrderStr,
 				priorityStr:                  dcpPriorityStr,
