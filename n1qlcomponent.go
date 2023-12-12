@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -205,45 +206,103 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 		firstErr := errorDescs[0]
 		errCode := firstErr.Code
 		errCodeGroup := errCode / 1000
+		msgLower := strings.ToLower(firstErr.Message)
 
-		if errCodeGroup == 4 {
-			err = errPlanningFailure
-		}
-		if errCodeGroup == 5 {
-			err = errInternalServerFailure
-		}
-		if errCodeGroup == 12 || errCodeGroup == 14 && errCode != 12004 && errCode != 12016 {
+		switch errCodeGroup {
+		case 1:
+			switch errCode {
+			case 1065:
+				if strings.Contains(msgLower, "query_context") {
+					err = wrapError(errFeatureNotAvailable, "this server requires that a query context be used for queries")
+				} else if strings.Contains(msgLower, "preserve_expiry") {
+					err = wrapError(errFeatureNotAvailable, "this server does not support preserve expiry")
+				} else if strings.Contains(msgLower, "use_replica") {
+					err = wrapError(errFeatureNotAvailable, "this server does not support use replica")
+				}
+			case 1080:
+				// This can happen when the server starts streaming responses - at this point our timeout is already
+				// canceled. But then the streaming takes longer than the configured timeout, in which case the query
+				// engine will proactively send us a timeout and we need to convert it.
+				err = errUnambiguousTimeout
+			case 1191:
+				err = errRateLimitedFailure
+			case 1192:
+				err = errRateLimitedFailure
+			case 1193:
+				err = errRateLimitedFailure
+			case 1194:
+				err = errRateLimitedFailure
+			case 1197:
+				err = wrapError(errFeatureNotAvailable, "this server requires that a query context be used for queries")
+			}
+		case 3:
+			switch errCode {
+			case 3000:
+				err = errParsingFailure
+			case 3230:
+				if strings.Contains(msgLower, "advisor") || strings.Contains(msgLower, "advise") {
+					err = wrapError(errFeatureNotAvailable, "query index advisor is not supported on community edition")
+				} else if strings.Contains(msgLower, "query window functions") {
+					err = wrapError(errFeatureNotAvailable, "query window functions are not supported on community edition")
+				}
+			}
+		case 4:
+			switch errCode {
+			case 4040:
+				err = errPreparedStatementFailure
+			case 4050:
+				err = errPreparedStatementFailure
+			case 4060:
+				err = errPreparedStatementFailure
+			case 4070:
+				err = errPreparedStatementFailure
+			case 4080:
+				err = errPreparedStatementFailure
+			case 4090:
+				err = errPreparedStatementFailure
+			case 4300:
+				err = errIndexExists
+			default:
+				err = errPlanningFailure
+			}
+		case 5:
+			switch errCode {
+			case 5000:
+				if match, matchErr := regexp.MatchString(".*?ndex .*? not found.*", msgLower); matchErr == nil && match {
+					err = errIndexNotFound
+				} else if match, matchErr := regexp.MatchString(".*?ndex does not exist.*", msgLower); matchErr == nil && match {
+					err = errIndexNotFound
+				} else if match, matchErr := regexp.MatchString(".*?ndex .*? already exist.*", msgLower); matchErr == nil && match {
+					err = errIndexExists
+				} else if strings.Contains(msgLower,
+					"limit for number of indexes that can be created per scope has been reached") {
+					err = errQuotaLimitedFailure
+				} else {
+					err = errInternalServerFailure
+				}
+			default:
+				err = errInternalServerFailure
+			}
+		case 10:
+			err = errAuthenticationFailure
+		case 12:
+			switch errCode {
+			case 12004:
+				err = errIndexNotFound
+			case 12016:
+				err = errIndexNotFound
+			case 12009:
+				err = extractN1QL12009Error(firstErr)
+			default:
+				err = errIndexFailure
+			}
+		case 13:
+			switch errCode {
+			case 13014:
+				err = errAuthenticationFailure
+			}
+		case 14:
 			err = errIndexFailure
-		}
-		if errCode == 4040 || errCode == 4050 || errCode == 4060 || errCode == 4070 || errCode == 4080 || errCode == 4090 {
-			err = errPreparedStatementFailure
-		}
-
-		if errCode == 1191 || errCode == 1192 || errCode == 1193 || errCode == 1194 {
-			err = errRateLimitedFailure
-		}
-		if errCode == 5000 && strings.Contains(strings.ToLower(firstErr.Message),
-			"limit for number of indexes that can be created per scope has been reached") {
-			err = errQuotaLimitedFailure
-		}
-		if errCode == 1080 {
-			err = errUnambiguousTimeout
-		}
-
-		if errCode == 3000 {
-			err = errParsingFailure
-		}
-		if errCode == 12009 {
-			err = extractN1QL12009Error(firstErr)
-		}
-		if errCode == 13014 {
-			err = errAuthenticationFailure
-		}
-		if errCode == 1197 {
-			err = wrapError(errFeatureNotAvailable, "this server requires that a query context be used for queries")
-		}
-		if errCodeGroup == 10 {
-			err = errAuthenticationFailure
 		}
 	}
 	var rawErrors string

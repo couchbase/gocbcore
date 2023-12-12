@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/stretchr/testify/mock"
 )
 
@@ -1256,5 +1260,247 @@ func (suite *UnitTestSuite) TestN1QLMB50643() {
 
 	suite.Assert().Equal(0, mrs.retries)
 
-	suite.Assert().True(errors.Is(err, ErrIndexFailure), "Expected doc not found but was %s", err)
+	suite.Assert().True(errors.Is(err, ErrIndexNotFound), "Expected index not found but was %s", err)
+}
+
+func (suite *UnitTestSuite) TestN1QLErrorCodes() {
+	type test struct {
+		code        uint32
+		msg         string
+		reason      map[string]interface{}
+		expectedErr error
+		raw         string
+	}
+
+	type jsonN1QLError struct {
+		Code    uint32                 `json:"code"`
+		Message string                 `json:"msg,omitempty"`
+		Reason  map[string]interface{} `json:"reason,omitempty"`
+	}
+
+	makeRaw := func(code uint32, msg string) string {
+		n1qlErr := []jsonN1QLError{
+			{
+				Code:    code,
+				Message: msg,
+			},
+		}
+
+		b, err := json.Marshal(n1qlErr)
+		suite.Require().NoError(err)
+
+		return string(b)
+	}
+
+	tests := []test{
+		{
+			code:        1000,
+			expectedErr: nil,
+		},
+		{
+			code:        3000,
+			expectedErr: errParsingFailure,
+		},
+		{
+			code:        3001,
+			expectedErr: nil,
+		},
+		{
+			code:        4000,
+			expectedErr: errPlanningFailure,
+		},
+		{
+			code:        5000,
+			expectedErr: errInternalServerFailure,
+		},
+		{
+			code:        5000,
+			expectedErr: errIndexNotFound,
+			msg:         "Index test not found",
+		},
+		{
+			code:        5000,
+			expectedErr: errIndexNotFound,
+			msg:         "Index does not exist",
+		},
+		{
+			code:        5000,
+			expectedErr: errIndexExists,
+			msg:         "Index test already exist",
+		},
+		{
+			code:        5000,
+			expectedErr: errQuotaLimitedFailure,
+			msg:         "limit for number of indexes that can be created per scope has been reached",
+		},
+		{
+			code:        10000,
+			expectedErr: errAuthenticationFailure,
+		},
+		{
+			code:        12000,
+			expectedErr: errIndexFailure,
+		},
+		{
+			code:        14000,
+			expectedErr: errIndexFailure,
+		},
+		{
+			code:        1065,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "query_context",
+		},
+		{
+			code:        1065,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "preserve_expiry",
+		},
+		{
+			code:        1065,
+			expectedErr: nil,
+			msg:         "something_else",
+		},
+		{
+			code:        1065,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "use_replica",
+		},
+		{
+			code:        1080,
+			expectedErr: errUnambiguousTimeout,
+		},
+		{
+			code:        1191,
+			expectedErr: errRateLimitedFailure,
+		},
+		{
+			code:        1192,
+			expectedErr: errRateLimitedFailure,
+		},
+		{
+			code:        1193,
+			expectedErr: errRateLimitedFailure,
+		},
+		{
+			code:        1194,
+			expectedErr: errRateLimitedFailure,
+		},
+		{
+			code:        1197,
+			expectedErr: errFeatureNotAvailable,
+		},
+		{
+			code:        3230,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "advisor",
+		},
+		{
+			code:        3230,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "advise",
+		},
+		{
+			code:        3230,
+			expectedErr: errFeatureNotAvailable,
+			msg:         "query window functions",
+		},
+		{
+			code:        4040,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4050,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4060,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4070,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4080,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4090,
+			expectedErr: errPreparedStatementFailure,
+		},
+		{
+			code:        4300,
+			expectedErr: errIndexExists,
+		},
+		{
+			code:        12004,
+			expectedErr: errIndexNotFound,
+		},
+		{
+			code:        12016,
+			expectedErr: errIndexNotFound,
+		},
+		{
+			code: 12009,
+			reason: map[string]interface{}{
+				"code": float64(12033),
+			},
+			expectedErr: errCasMismatch,
+		},
+		{
+			code: 12009,
+			reason: map[string]interface{}{
+				"code": float64(17012),
+			},
+			expectedErr: errDocumentExists,
+		},
+		{
+			code: 12009,
+			reason: map[string]interface{}{
+				"code": float64(17014),
+			},
+			expectedErr: errDocumentNotFound,
+		},
+		{
+			code: 12009,
+			reason: map[string]interface{}{
+				"code": float64(11111),
+			},
+			expectedErr: errDMLFailure,
+		},
+		{
+			code:        13014,
+			expectedErr: errAuthenticationFailure,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.T().Run(fmt.Sprintf("Error code %d", tt.code), func(t *testing.T) {
+			type respBody struct {
+				Errors []jsonN1QLError
+			}
+
+			body := respBody{
+				Errors: []jsonN1QLError{
+					{
+						Code:    tt.code,
+						Message: tt.msg,
+						Reason:  tt.reason,
+					},
+				},
+			}
+
+			b, err := json.Marshal(body)
+			assert.NoError(t, err)
+
+			raw, descs, err := parseN1QLError(b)
+			assert.ErrorIs(t, err, tt.expectedErr)
+			if tt.expectedErr == nil {
+				assert.Equal(t, makeRaw(tt.code, tt.msg), raw)
+			}
+			require.Equal(t, 1, len(descs))
+			assert.Equal(t, tt.code, descs[0].Code)
+			assert.Equal(t, tt.reason, descs[0].Reason)
+		})
+	}
 }
