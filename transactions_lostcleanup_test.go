@@ -289,7 +289,7 @@ func (suite *StandardTestSuite) TestLostCleanupProcessRollback() {
 	}, func(result *DeleteResult, err error) {
 		h.Wrap(func() {
 			if err != nil && !errors.Is(err, ErrDocumentNotFound) {
-				s.Fatalf("Remove operation failed: %v", err)
+				h.Fatalf("Remove operation failed: %v", err)
 			}
 		})
 	}))

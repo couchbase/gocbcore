@@ -2,6 +2,8 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
@@ -92,6 +94,11 @@ func (errMgr *errMapComponent) EnhanceKvError(err error, resp *memdQResponse, re
 
 		errMapData := errMgr.getKvErrMapData(enhErr.StatusCode)
 		if errMapData != nil {
+			var unknownStatusErr *unknownKvStatusCodeError
+			if errors.As(err, &unknownStatusErr) {
+				enhErr.InnerError = fmt.Errorf("%s (0x%02x)", errMapData.Description, int(resp.Status))
+			}
+
 			enhErr.ErrorName = errMapData.Name
 			enhErr.ErrorDescription = errMapData.Description
 		}

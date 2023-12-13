@@ -18,11 +18,19 @@ func makeKvStatusError(code memd.StatusCode) error {
 	return err
 }
 
+type unknownKvStatusCodeError struct {
+	code memd.StatusCode
+}
+
+func (e unknownKvStatusCodeError) Error() string {
+	return e.code.String()
+}
+
 func getKvStatusCodeError(code memd.StatusCode) error {
 	if err := statusCodeErrorMap[code]; err != nil {
 		return err
 	}
-	return errors.New(code.String())
+	return &unknownKvStatusCodeError{code: code}
 }
 
 var (
