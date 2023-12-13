@@ -131,6 +131,7 @@ var (
 	ErrDocumentNotFound                  = errors.New("document not found")
 	ErrDocumentUnretrievable             = errors.New("document unretrievable")
 	ErrDocumentLocked                    = errors.New("document locked")
+	ErrDocumentNotLocked                 = errors.New("document not locked")
 	ErrValueTooLarge                     = errors.New("value too large")
 	ErrDocumentExists                    = errors.New("document exists")
 	ErrValueNotJSON                      = errors.New("value not json")

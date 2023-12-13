@@ -1,10 +1,50 @@
 package gocbcore
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
+
+func (suite *StandardTestSuite) TestDocumentNotLocked() {
+	suite.EnsureSupportsFeature(TestFeatureDocNotLocked)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	docID := uuid.NewString()
+
+	var cas Cas
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte(docID),
+		Value:          []byte("test"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			cas = res.Cas
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Unlock(UnlockOptions{
+		Key:            []byte(docID),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+		Cas:            cas,
+	}, func(result *UnlockResult, err error) {
+		s.Wrap(func() {
+			if !errors.Is(err, ErrDocumentNotLocked) {
+				s.Fatalf("Unlock operation failed with unexpected error, should've been not locked: %v", err)
+			}
+		})
+	}))
+	s.Wait(0)
+}
 
 func (suite *StandardTestSuite) TestResourceUnits() {
 	suite.EnsureSupportsFeature(TestFeatureResourceUnits)

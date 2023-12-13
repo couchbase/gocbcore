@@ -41,6 +41,10 @@ const (
 	// StatusConfigOnly occurs when an operation fails on a node because the bucket is in config-only mode
 	StatusConfigOnly = StatusCode(0x0d)
 
+	// StatusNotLocked occurs when an unlock operation occurs against a document that is not locked.
+	// Added in 7.6.0 under MB-58088.
+	StatusNotLocked = StatusCode(0x0e)
+
 	// StatusAuthStale occurs when authentication credentials have become invalidated.
 	StatusAuthStale = StatusCode(0x1f)
 
@@ -242,6 +246,12 @@ func (code StatusCode) String() string {
 		return "operation sent to incorrect server"
 	case StatusNoBucket:
 		return "not connected to a bucket"
+	case StatusLocked:
+		return "document was locked"
+	case StatusConfigOnly:
+		return "bucket is in config-only mode"
+	case StatusNotLocked:
+		return "document was not locked"
 	case StatusAuthStale:
 		return "authentication context is stale, try re-authenticating"
 	case StatusAuthError:

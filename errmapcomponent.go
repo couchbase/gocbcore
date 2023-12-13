@@ -170,6 +170,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 			return errCasMismatch
 		}
 		return errDocumentLocked
+	case ErrMemdNotLocked:
+		return errDocumentNotLocked
 	case ErrMemdTooBig:
 		return errValueTooLarge
 	case ErrMemdSubDocNotJSON:

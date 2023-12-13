@@ -744,6 +744,7 @@ var (
 	errDocumentNotFound                  = ncError{ErrDocumentNotFound}
 	errDocumentUnretrievable             = ncError{ErrDocumentUnretrievable}
 	errDocumentLocked                    = ncError{ErrDocumentLocked}
+	errDocumentNotLocked                 = ncError{ErrDocumentNotLocked}
 	errValueTooLarge                     = ncError{ErrValueTooLarge}
 	errDocumentExists                    = ncError{ErrDocumentExists}
 	errNotStored                         = ncError{ErrNotStored}

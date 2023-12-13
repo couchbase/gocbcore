@@ -25,6 +25,7 @@ var (
 	srvVer720   = NodeVersion{7, 2, 0, 0, 0, ""}
 	srvVer720DP = NodeVersion{7, 2, 0, 0, 0, "dp"}
 	srvVer750   = NodeVersion{7, 5, 0, 0, 0, ""}
+	srvVer760   = NodeVersion{7, 6, 0, 0, 0, ""}
 	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
@@ -56,6 +57,7 @@ var (
 	TestFeatureResourceUnits        = TestFeatureCode("computeunits")
 	TestFeatureRangeScan            = TestFeatureCode("rangescan")
 	TestFeatureSubdocReplicaReads   = TestFeatureCode("subdocreplicas")
+	TestFeatureDocNotLocked         = TestFeatureCode("notlocked")
 )
 
 type TestFeatureFlag struct {

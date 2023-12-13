@@ -67,6 +67,9 @@ var (
 	// mode.
 	ErrMemdConfigOnly = makeKvStatusError(memd.StatusConfigOnly)
 
+	// ErrMemdNotLocked occurs when an operation attempts to unlock a document which is not locked.
+	ErrMemdNotLocked = makeKvStatusError(memd.StatusNotLocked)
+
 	// ErrMemdAuthStale occurs when authentication credentials have become invalidated.
 	ErrMemdAuthStale = makeKvStatusError(memd.StatusAuthStale)
 
