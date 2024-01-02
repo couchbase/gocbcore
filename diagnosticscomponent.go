@@ -138,7 +138,7 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 						RetryStrategy: retryStrat,
 					}
 
-					curOp, err := dc.kvMux.DispatchDirectToAddress(req, pipeline)
+					curOp, err := dc.kvMux.DispatchDirectToAddress(req, pipeline.Address())
 					if err != nil {
 						op.lock.Lock()
 						op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{

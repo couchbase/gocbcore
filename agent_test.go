@@ -153,7 +153,7 @@ func (suite *StandardTestSuite) TestPreserveExpiryReplace() {
 			}
 			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
 			if res.Expiry < expectedExpiry {
-				s.Fatalf("Invalid expiry received")
+				s.Fatalf("Invalid expiry received, expected %d, was %d", expectedExpiry, res.Expiry)
 			}
 		})
 	}))
