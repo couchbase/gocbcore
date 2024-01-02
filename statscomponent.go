@@ -153,7 +153,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 			RetryStrategy:    opts.RetryStrategy,
 		}
 
-		curOp, err := sc.kvMux.DispatchDirectToAddress(req, pipeline)
+		curOp, err := sc.kvMux.DispatchDirectToAddress(req, pipeline.Address())
 		if err != nil {
 			statsLock.Lock()
 			stats[serverAddress] = SingleServerStats{

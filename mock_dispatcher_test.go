@@ -57,9 +57,9 @@ func (_m *mockDispatcher) DispatchDirect(req *memdQRequest) (PendingOp, error) {
 	return r0, r1
 }
 
-// DispatchDirectToAddress provides a mock function with given fields: req, pipeline
-func (_m *mockDispatcher) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error) {
-	ret := _m.Called(req, pipeline)
+// DispatchDirectToAddress provides a mock function with given fields: req, address
+func (_m *mockDispatcher) DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error) {
+	ret := _m.Called(req, address)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DispatchDirectToAddress")
@@ -67,19 +67,19 @@ func (_m *mockDispatcher) DispatchDirectToAddress(req *memdQRequest, pipeline *m
 
 	var r0 PendingOp
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*memdQRequest, *memdPipeline) (PendingOp, error)); ok {
-		return rf(req, pipeline)
+	if rf, ok := ret.Get(0).(func(*memdQRequest, string) (PendingOp, error)); ok {
+		return rf(req, address)
 	}
-	if rf, ok := ret.Get(0).(func(*memdQRequest, *memdPipeline) PendingOp); ok {
-		r0 = rf(req, pipeline)
+	if rf, ok := ret.Get(0).(func(*memdQRequest, string) PendingOp); ok {
+		r0 = rf(req, address)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(PendingOp)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(*memdQRequest, *memdPipeline) error); ok {
-		r1 = rf(req, pipeline)
+	if rf, ok := ret.Get(1).(func(*memdQRequest, string) error); ok {
+		r1 = rf(req, address)
 	} else {
 		r1 = ret.Error(1)
 	}

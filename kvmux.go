@@ -22,7 +22,7 @@ type bucketCapabilityVerifier interface {
 type dispatcher interface {
 	DispatchDirect(req *memdQRequest) (PendingOp, error)
 	RequeueDirect(req *memdQRequest, isRetry bool)
-	DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error)
+	DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error)
 	CollectionsEnabled() bool
 	SupportsCollections() bool
 	SetPostCompleteErrorHandler(handler postCompleteErrorHandler)
@@ -437,7 +437,7 @@ func (mux *kvMux) GetByConnID(connID string) (*memdClient, error) {
 
 }
 
-func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipeline) (PendingOp, error) {
+func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (PendingOp, error) {
 	mux.tracer.StartCmdTrace(req)
 	req.dispatchTime = time.Now()
 
@@ -449,6 +449,23 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, pipeline *memdPipel
 	req.ReplicaIdx = -999999999
 
 	for {
+		clientMux := mux.getState()
+		if clientMux == nil {
+			return nil, errShutdown
+		}
+
+		var pipeline *memdPipeline
+		for _, p := range clientMux.pipelines {
+			if p.Address() == address {
+				pipeline = p
+				break
+			}
+		}
+
+		if pipeline == nil {
+			return nil, errInvalidServer
+		}
+
 		err := pipeline.SendRequest(req)
 		if err == errPipelineClosed {
 			continue

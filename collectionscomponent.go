@@ -265,7 +265,7 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 			RootTraceContext: opts.TraceContext,
 		}
 
-		curOp, err := cidMgr.dispatcher.DispatchDirectToAddress(req, pipeline)
+		curOp, err := cidMgr.dispatcher.DispatchDirectToAddress(req, pipeline.Address())
 		if err == nil {
 			setTimer(req)
 
