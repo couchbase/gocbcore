@@ -976,7 +976,7 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryRetryPrepare4050() {
 	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
 
 	n1qlC.enhancedPreparedSupported = 1
-	n1qlC.queryCache.Put("SELECT 1=1", &n1qlQueryCacheEntry{
+	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{
 		name: "somename",
 	})
 	test := map[string]interface{}{
@@ -1029,7 +1029,7 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryFailReprepare() {
 	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
 
 	n1qlC.enhancedPreparedSupported = 1
-	n1qlC.queryCache.Put("SELECT 1=1", &n1qlQueryCacheEntry{
+	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{
 		name: "somename",
 	})
 	test := map[string]interface{}{
@@ -1503,4 +1503,95 @@ func (suite *UnitTestSuite) TestN1QLErrorCodes() {
 			assert.Equal(t, tt.reason, descs[0].Reason)
 		})
 	}
+}
+
+func (suite *UnitTestSuite) TestN1QLEnhPreparedDifferentiatesQueryContext() {
+	body := []byte(`{"results":[]}`)
+	r := ioutil.NopCloser(bytes.NewReader(body))
+	resp := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(body)),
+		Body:          r,
+	}
+	r2 := ioutil.NopCloser(bytes.NewReader(body))
+	resp2 := &HTTPResponse{
+		Endpoint:      "whatever",
+		StatusCode:    200,
+		ContentLength: int64(len(body)),
+		Body:          r2,
+	}
+
+	configC := new(mockConfigManager)
+	configC.On("AddConfigWatcher", mock.Anything)
+
+	httpC := new(mockHttpComponentInterface)
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp, nil).Once().Run(func(args mock.Arguments) {
+		req := args.Get(0).(*httpRequest)
+		var body map[string]interface{}
+		suite.Require().NoError(json.Unmarshal(req.Body, &body))
+
+		statement := body["prepared"]
+		suite.Assert().Equal("cluster_level_plan", statement)
+
+		suite.Assert().NotContains(body, "auto_execute")
+	})
+	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
+		Return(resp2, nil).Once().Run(func(args mock.Arguments) {
+		req := args.Get(0).(*httpRequest)
+		var body map[string]interface{}
+		suite.Require().NoError(json.Unmarshal(req.Body, &body))
+
+		statement := body["prepared"]
+		suite.Assert().Equal("scope_level_plan", statement)
+
+		suite.Assert().NotContains(body, "auto_execute")
+	})
+
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+
+	n1qlC.enhancedPreparedSupported = 1
+	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{
+		name: "cluster_level_plan",
+	})
+	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1", Context: "default.test"}, &n1qlQueryCacheEntry{
+		name: "scope_level_plan",
+	})
+	test := map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+	}
+	payload, err := json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh := make(chan error, 1)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:       payload,
+		RetryStrategy: NewBestEffortRetryStrategy(nil),
+		Deadline:      time.Now().Add(100 * time.Millisecond),
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().NoError(err, err)
+	suite.Require().NoError(<-waitCh)
+
+	test = map[string]interface{}{
+		"statement":         "SELECT 1=1",
+		"client_context_id": "1234",
+		"query_context":     "default.test",
+	}
+	payload, err = json.Marshal(test)
+	suite.Require().Nil(err, err)
+
+	waitCh = make(chan error, 1)
+	_, err = n1qlC.PreparedN1QLQuery(N1QLQueryOptions{
+		Payload:       payload,
+		RetryStrategy: NewBestEffortRetryStrategy(nil),
+		Deadline:      time.Now().Add(100 * time.Millisecond),
+	}, func(reader *N1QLRowReader, err error) {
+		waitCh <- err
+	})
+	suite.Require().NoError(err, err)
+	suite.Require().NoError(<-waitCh)
 }

@@ -333,35 +333,40 @@ type n1qlQueryComponent struct {
 }
 
 type n1qlQueryCache struct {
-	cache     map[string]*n1qlQueryCacheEntry
+	cache     map[n1qlQueryCacheStatementContext]*n1qlQueryCacheEntry
 	cacheLock sync.RWMutex
+}
+
+type n1qlQueryCacheStatementContext struct {
+	Statement string
+	Context   string
 }
 
 func newN1qlQueryCache() *n1qlQueryCache {
 	return &n1qlQueryCache{
-		cache: make(map[string]*n1qlQueryCacheEntry),
+		cache: make(map[n1qlQueryCacheStatementContext]*n1qlQueryCacheEntry),
 	}
 }
 
 func (cache *n1qlQueryCache) Invalidate() {
 	cache.cacheLock.Lock()
-	cache.cache = make(map[string]*n1qlQueryCacheEntry)
+	cache.cache = make(map[n1qlQueryCacheStatementContext]*n1qlQueryCacheEntry)
 	cache.cacheLock.Unlock()
 }
 
-func (cache *n1qlQueryCache) Put(statement string, entry *n1qlQueryCacheEntry) {
+func (cache *n1qlQueryCache) Put(statement n1qlQueryCacheStatementContext, entry *n1qlQueryCacheEntry) {
 	cache.cacheLock.Lock()
 	cache.cache[statement] = entry
 	cache.cacheLock.Unlock()
 }
 
-func (cache *n1qlQueryCache) Delete(statement string) {
+func (cache *n1qlQueryCache) Delete(statement n1qlQueryCacheStatementContext) {
 	cache.cacheLock.Lock()
 	delete(cache.cache, statement)
 	cache.cacheLock.Unlock()
 }
 
-func (cache *n1qlQueryCache) Get(statement string) *n1qlQueryCacheEntry {
+func (cache *n1qlQueryCache) Get(statement n1qlQueryCacheStatementContext) *n1qlQueryCacheEntry {
 	cache.cacheLock.RLock()
 	entry := cache.cache[statement]
 	if entry == nil {
@@ -506,8 +511,13 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 			return nil, wrapN1QLError(nil, "", wrapError(errFeatureNotAvailable, "use replica is not supported by this cluster version"), "", 0)
 		}
 	}
+	queryCtx := getMapValueString(payloadMap, "query_context", "")
+	statementCtx := n1qlQueryCacheStatementContext{
+		Statement: statement,
+		Context:   queryCtx,
+	}
 
-	cachedStmt := nqc.queryCache.Get(statement)
+	cachedStmt := nqc.queryCache.Get(statementCtx)
 
 	enhanced := atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 1
 
@@ -540,7 +550,7 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 			return results, nil
 		}
 
-		retryErr := nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statement)
+		retryErr := nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statementCtx)
 		if retryErr != nil {
 			return nil, retryErr
 		}
@@ -579,15 +589,15 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 		var res *N1QLRowReader
 		var err error
 		if enhanced {
-			res, err = nqc.executeEnhPrepared(req, payloadMap, statement, start)
+			res, err = nqc.executeEnhPrepared(req, payloadMap, statementCtx, start)
 		} else {
-			res, err = nqc.executeOldPrepared(req, payloadMap, statement, start)
+			res, err = nqc.executeOldPrepared(req, payloadMap, statementCtx, start)
 		}
 		if err == nil {
 			return res, nil
 		}
 
-		err = nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statement)
+		err = nqc.preparedStatementMaybeEvictAndRetry(req, err, start, statementCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -595,7 +605,7 @@ func (nqc *n1qlQueryComponent) executePrepared(ctx context.Context, cancel conte
 }
 
 func (nqc *n1qlQueryComponent) preparedStatementMaybeEvictAndRetry(req *httpRequest, originalErr error, start time.Time,
-	statement string) error {
+	statementCtx n1qlQueryCacheStatementContext) error {
 	var err *N1QLError
 	if !errors.As(originalErr, &err) {
 		return originalErr
@@ -610,7 +620,7 @@ func (nqc *n1qlQueryComponent) preparedStatementMaybeEvictAndRetry(req *httpRequ
 			retryReason = QueryPreparedStatementFailureRetryReason
 
 			// If the error is because of a prepared statement issue then we need to evict the cache entry and reprepare.
-			nqc.queryCache.Delete(statement)
+			nqc.queryCache.Delete(statementCtx)
 		}
 
 		if retryReason == nil {
@@ -635,7 +645,7 @@ func (nqc *n1qlQueryComponent) preparedStatementMaybeEvictAndRetry(req *httpRequ
 				RetryAttempts:    req.retryCount,
 				LastDispatchedTo: req.Endpoint,
 			}
-			return wrapN1QLError(req, statement, err, "", 0)
+			return wrapN1QLError(req, statementCtx.Statement, err, "", 0)
 		case <-time.After(time.Until(retryTime)):
 			return nil
 		}
@@ -645,8 +655,8 @@ func (nqc *n1qlQueryComponent) preparedStatementMaybeEvictAndRetry(req *httpRequ
 }
 
 func (nqc *n1qlQueryComponent) executeEnhPrepared(ireq *httpRequest, payloadMap map[string]interface{},
-	statement string, start time.Time) (*N1QLRowReader, error) {
-	cacheRes, err := nqc.execute(ireq, payloadMap, statement, start)
+	statementCtx n1qlQueryCacheStatementContext, start time.Time) (*N1QLRowReader, error) {
+	cacheRes, err := nqc.execute(ireq, payloadMap, statementCtx.Statement, start)
 	if err != nil {
 		return nil, err
 	}
@@ -660,20 +670,20 @@ func (nqc *n1qlQueryComponent) executeEnhPrepared(ireq *httpRequest, payloadMap 
 	cachedStmt := &n1qlQueryCacheEntry{}
 	cachedStmt.name = preparedName
 
-	nqc.queryCache.Put(statement, cachedStmt)
+	nqc.queryCache.Put(statementCtx, cachedStmt)
 
 	return cacheRes, nil
 }
 
-func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap map[string]interface{}, statement string,
+func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap map[string]interface{}, statementCtx n1qlQueryCacheStatementContext,
 	start time.Time) (*N1QLRowReader, error) {
 	delete(payloadMap, "prepared")
 	delete(payloadMap, "encoded_plan")
 	delete(payloadMap, "auto_execute")
-	prepStatement := "PREPARE " + statement
+	prepStatement := "PREPARE " + statementCtx.Statement
 	payloadMap["statement"] = prepStatement
 
-	cacheRes, err := nqc.execute(ireq, payloadMap, statement, start)
+	cacheRes, err := nqc.execute(ireq, payloadMap, statementCtx.Statement, start)
 	if err != nil {
 		return nil, err
 	}
@@ -685,15 +695,15 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap 
 		if metaErr == nil {
 			raw, descs, err := parseN1QLError(meta)
 			if err != nil {
-				n1qlError = wrapN1QLError(ireq, statement, err, raw, 0)
+				n1qlError = wrapN1QLError(ireq, statementCtx.Statement, err, raw, 0)
 				n1qlError.Errors = descs
 			} else if len(descs) > 0 {
-				n1qlError = wrapN1QLError(ireq, statement, nil, raw, 0)
+				n1qlError = wrapN1QLError(ireq, statementCtx.Statement, nil, raw, 0)
 				n1qlError.Errors = descs
 			}
 		}
 		if n1qlError == nil {
-			n1qlError = wrapN1QLError(ireq, statement, errCliInternalError, "", 0)
+			n1qlError = wrapN1QLError(ireq, statementCtx.Statement, errCliInternalError, "", 0)
 		}
 
 		return nil, n1qlError
@@ -702,21 +712,21 @@ func (nqc *n1qlQueryComponent) executeOldPrepared(ireq *httpRequest, payloadMap 
 	var prepData n1qlJSONPrepData
 	err = json.Unmarshal(b, &prepData)
 	if err != nil {
-		return nil, wrapN1QLError(ireq, statement, err, "", 0)
+		return nil, wrapN1QLError(ireq, statementCtx.Statement, err, "", 0)
 	}
 
 	cachedStmt := &n1qlQueryCacheEntry{}
 	cachedStmt.name = prepData.Name
 	cachedStmt.encodedPlan = prepData.EncodedPlan
 
-	nqc.queryCache.Put(statement, cachedStmt)
+	nqc.queryCache.Put(statementCtx, cachedStmt)
 
 	// Attempt to execute our cached query plan
 	delete(payloadMap, "statement")
 	payloadMap["prepared"] = cachedStmt.name
 	payloadMap["encoded_plan"] = cachedStmt.encodedPlan
 
-	resp, err := nqc.execute(ireq, payloadMap, statement, start)
+	resp, err := nqc.execute(ireq, payloadMap, statementCtx.Statement, start)
 	if err != nil {
 		return nil, err
 	}
