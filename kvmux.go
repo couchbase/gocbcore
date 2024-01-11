@@ -646,6 +646,13 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 				if mux.waitAndRetryOperation(req, SocketNotAvailableRetryReason) {
 					return true, nil
 				}
+			} else {
+				// If the request has been dispatched then the retry reason is in flight.
+				// For not causing a breaking change reasons we use socket not available for all idempotent
+				// requests.
+				if mux.waitAndRetryOperation(req, SocketCloseInFlightRetryReason) {
+					return true, nil
+				}
 			}
 		} else if errors.Is(err, ErrMemdClientClosed) && !mux.closed() {
 			if req.Command == memd.CmdGetClusterConfig {
