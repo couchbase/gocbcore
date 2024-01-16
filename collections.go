@@ -15,7 +15,7 @@ const (
 type ManifestCollection struct {
 	UID    uint32
 	Name   string
-	MaxTTL uint32
+	MaxTTL int32
 }
 
 // UnmarshalJSON is a custom implementation of json unmarshaling.
@@ -23,7 +23,7 @@ func (item *ManifestCollection) UnmarshalJSON(data []byte) error {
 	decData := struct {
 		UID    string `json:"uid"`
 		Name   string `json:"name"`
-		MaxTTL uint32 `json:"maxTTL"`
+		MaxTTL int32  `json:"maxTTL"`
 	}{}
 	if err := json.Unmarshal(data, &decData); err != nil {
 		return err
