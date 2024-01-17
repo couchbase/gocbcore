@@ -1525,10 +1525,12 @@ func (suite *StandardTestSuite) TestLookupInReplicaReads() {
 	key := []byte(uuid.NewString()[:6])
 	value := []byte(`{"key":"value"}`)
 	s.PushOp(agent.Set(SetOptions{
-		Key:            key,
-		Value:          value,
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
+		Key:                    key,
+		Value:                  value,
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
 			if err != nil {
