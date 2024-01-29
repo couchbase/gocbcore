@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -37,6 +38,8 @@ func (q *SearchRowReader) Close() error {
 
 // SearchQueryOptions represents the various options available for a search query.
 type SearchQueryOptions struct {
+	BucketName    string
+	ScopeName     string
 	IndexName     string
 	Payload       []byte
 	RetryStrategy RetryStrategy
@@ -153,7 +156,13 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 	query := payloadMap["query"]
 
 	ctx, cancel := context.WithCancel(context.Background())
-	reqURI := fmt.Sprintf("/api/index/%s/query", opts.IndexName)
+	var reqURI string
+	if opts.BucketName != "" && opts.ScopeName != "" {
+		reqURI = fmt.Sprintf("/api/bucket/%s/scope/%s/index/%s/query",
+			url.PathEscape(opts.BucketName), url.PathEscape(opts.ScopeName), url.PathEscape(opts.IndexName))
+	} else {
+		reqURI = fmt.Sprintf("/api/index/%s/query", url.PathEscape(opts.IndexName))
+	}
 	ireq := &httpRequest{
 		Service:          FtsService,
 		Method:           "POST",
