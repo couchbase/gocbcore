@@ -4,12 +4,12 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusNoState() {
 	// No mux state, shouldn't actually happen in practise.
 	mux := kvMux{}
 
-	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusSupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusSupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnsupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusSupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnsupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusSupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() {
@@ -22,12 +22,12 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 	mux := kvMux{}
 	mux.updateState(nil, muxState)
 
-	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusSupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusSupported))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnsupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusSupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnsupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusSupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported() {
@@ -36,20 +36,20 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported()
 		routeCfg: routeConfig{
 			revID: 1,
 		},
-		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
-			BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusUnsupported,
+		bucketCapabilities: map[BucketCapability]CapabilityStatus{
+			BucketCapabilityReplaceBodyWithXattr: CapabilityStatusUnsupported,
 		},
 	}
 
 	mux := kvMux{}
 	mux.updateState(nil, muxState)
 
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusSupported))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusSupported))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnsupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusSupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnsupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusSupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
 func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
@@ -58,18 +58,18 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
 		routeCfg: routeConfig{
 			revID: 1,
 		},
-		bucketCapabilities: map[BucketCapability]BucketCapabilityStatus{
-			BucketCapabilityReplaceBodyWithXattr: BucketCapabilityStatusSupported,
+		bucketCapabilities: map[BucketCapability]CapabilityStatus{
+			BucketCapabilityReplaceBodyWithXattr: CapabilityStatusSupported,
 		},
 	}
 
 	mux := kvMux{}
 	mux.updateState(nil, muxState)
 
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnknown))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusSupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnknown))
-	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusSupported))
-	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, BucketCapabilityStatusUnsupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnknown))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusSupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnsupported))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnknown))
+	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusSupported))
+	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }

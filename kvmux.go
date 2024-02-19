@@ -16,7 +16,7 @@ import (
 )
 
 type bucketCapabilityVerifier interface {
-	HasBucketCapabilityStatus(cap BucketCapability, status BucketCapabilityStatus) bool
+	HasBucketCapabilityStatus(cap BucketCapability, status CapabilityStatus) bool
 }
 
 type dispatcher interface {
@@ -261,19 +261,19 @@ func (mux *kvMux) SupportsCollections() bool {
 	return clientMux.collectionsSupported
 }
 
-func (mux *kvMux) HasBucketCapabilityStatus(cap BucketCapability, status BucketCapabilityStatus) bool {
+func (mux *kvMux) HasBucketCapabilityStatus(cap BucketCapability, status CapabilityStatus) bool {
 	clientMux := mux.getState()
 	if clientMux == nil {
-		return status == BucketCapabilityStatusUnknown
+		return status == CapabilityStatusUnknown
 	}
 
 	return clientMux.HasBucketCapabilityStatus(cap, status)
 }
 
-func (mux *kvMux) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
+func (mux *kvMux) BucketCapabilityStatus(cap BucketCapability) CapabilityStatus {
 	clientMux := mux.getState()
 	if clientMux == nil || clientMux.RevID() == -1 {
-		return BucketCapabilityStatusUnknown
+		return CapabilityStatusUnknown
 	}
 
 	return clientMux.BucketCapabilityStatus(cap)

@@ -126,7 +126,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		if opts.Flags&memd.SubdocDocFlagReplicaRead != 0 {
 			// We can get here before support status is actually known, we'll send the request unless we know for a fact
 			// that this is unsupported.
-			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplicaRead, BucketCapabilityStatusUnsupported) {
+			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplicaRead, CapabilityStatusUnsupported) {
 				return nil, errFeatureNotAvailable
 			}
 		}
@@ -253,7 +253,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	var duraLevelFrame *memd.DurabilityLevelFrame
 	var duraTimeoutFrame *memd.DurabilityTimeoutFrame
 	if opts.DurabilityLevel > 0 {
-		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, BucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityDurableWrites, CapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 		duraLevelFrame = &memd.DurabilityLevelFrame{
@@ -285,7 +285,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	if opts.Flags&memd.SubdocDocFlagCreateAsDeleted != 0 {
 		// We can get here before support status is actually known, we'll send the request unless we know for a fact
 		// that this is unsupported.
-		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityCreateAsDeleted, BucketCapabilityStatusUnsupported) {
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityCreateAsDeleted, CapabilityStatusUnsupported) {
 			return nil, errFeatureNotAvailable
 		}
 	}
@@ -319,7 +319,7 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 		if op.Op == memd.SubDocOpReplaceBodyWithXattr {
 			// We can get here before support status is actually known, we'll send the request unless we know for a fact
 			// that this is unsupported.
-			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, BucketCapabilityStatusUnsupported) {
+			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplaceBodyWithXattr, CapabilityStatusUnsupported) {
 				return nil, errFeatureNotAvailable
 			}
 		}

@@ -39,7 +39,7 @@ type rangeScanCreateSnapshot struct {
 }
 
 func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOptions, cb RangeScanCreateCallback) (PendingOp, error) {
-	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+	if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, CapabilityStatusUnsupported) {
 		return nil, errFeatureNotAvailable
 	}
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanCreate", opts.TraceContext)
@@ -127,7 +127,7 @@ func (crud *crudComponent) RangeScanCreate(vbID uint16, opts RangeScanCreateOpti
 
 func (createRes *rangeScanCreateResult) RangeScanContinue(opts RangeScanContinueOptions, dataCb RangeScanContinueDataCallback,
 	actionCb RangeScanContinueActionCallback) (PendingOp, error) {
-	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, CapabilityStatusUnsupported) {
 		return nil, errFeatureNotAvailable
 	}
 	tracer := createRes.parent.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "RangeScanContinue", opts.TraceContext)
@@ -258,7 +258,7 @@ func (createRes *rangeScanCreateResult) RangeScanContinue(opts RangeScanContinue
 }
 
 func (createRes *rangeScanCreateResult) RangeScanCancel(opts RangeScanCancelOptions, cb RangeScanCancelCallback) (PendingOp, error) {
-	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, BucketCapabilityStatusUnsupported) {
+	if createRes.parent.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityRangeScan, CapabilityStatusUnsupported) {
 		return nil, errFeatureNotAvailable
 	}
 

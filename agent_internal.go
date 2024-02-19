@@ -15,6 +15,6 @@ func (agent *Agent) Internal() *AgentInternal {
 }
 
 // BucketCapabilityStatus returns the current status for a given bucket capability.
-func (ai *AgentInternal) BucketCapabilityStatus(cap BucketCapability) BucketCapabilityStatus {
+func (ai *AgentInternal) BucketCapabilityStatus(cap BucketCapability) CapabilityStatus {
 	return ai.agent.kvMux.BucketCapabilityStatus(cap)
 }

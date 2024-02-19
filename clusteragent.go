@@ -100,7 +100,7 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 	)
 	c.n1ql = newN1QLQueryComponent(c.http, c, c.tracer)
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)
-	c.search = newSearchQueryComponent(c.http, c.tracer)
+	c.search = newSearchQueryComponent(c.http, c, c.tracer)
 	c.views = newViewQueryComponent(c.http, c.tracer)
 	// diagnostics at this level will never need to hook KV. There are no persistent connections
 	// so Diagnostics calls should be blocked. Ping and WaitUntilReady will only try HTTP services.

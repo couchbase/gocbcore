@@ -70,20 +70,26 @@ const (
 	BucketCapabilityNonDedupedHistory    BucketCapability = 0x05
 )
 
-type BucketCapabilityStatus uint32
+type CapabilityStatus uint32
 
 const (
-	BucketCapabilityStatusUnknown     BucketCapabilityStatus = 0x00
-	BucketCapabilityStatusSupported   BucketCapabilityStatus = 0x01
-	BucketCapabilityStatusUnsupported BucketCapabilityStatus = 0x02
+	CapabilityStatusUnknown CapabilityStatus = iota
+	CapabilityStatusSupported
+	CapabilityStatusUnsupported
 )
 
-// ClusterCapability represents a capability that the cluster supports
-type ClusterCapability uint32
+// Deprecated: Use CapabilityStatus instead
+type BucketCapabilityStatus = CapabilityStatus
 
 const (
-	// ClusterCapabilityEnhancedPreparedStatements represents that the cluster supports enhanced prepared statements.
-	ClusterCapabilityEnhancedPreparedStatements = ClusterCapability(0x01)
+	// Deprecated: Use CapabilityStatusUnknown instead
+	BucketCapabilityStatusUnknown = CapabilityStatusUnknown
+
+	// Deprecated: Use CapabilityStatusSupported instead
+	BucketCapabilityStatusSupported = CapabilityStatusSupported
+
+	// Deprecated: Use CapabilityStatusUnsupported instead
+	BucketCapabilityStatusUnsupported = CapabilityStatusUnsupported
 )
 
 // DCPBackfillOrder represents the order in which vBuckets will be backfilled by the cluster.
