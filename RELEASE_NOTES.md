@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.3.2 (20 February 2024)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1585](https://issues.couchbase.com/browse/GOCBC-1585):
+  If non-idempotent requests fail due to the socket closing while they are in-flight, they are now exposed to the retry orchestrator, with the reason `SocketCloseInFlightRetryReason`.
+* [GOCBC-1591](https://issues.couchbase.com/browse/GOCBC-1591):
+  Added support for scoped search indexes.
+
 ## Version 10.3.1 (17 January 2024)
 
 ### New Features and Behavioral Changes
