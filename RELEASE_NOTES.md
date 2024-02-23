@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.2.12 (23 February 2024)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1585](https://issues.couchbase.com/browse/GOCBC-1585):
+  If non-idempotent requests fail due to the socket closing while they are in-flight, they are now exposed to the retry orchestrator, with the reason `SocketCloseInFlightRetryReason`.
+
 ## Version 10.2.11 (18 January 2024)
 
 ### Fixed Issues
