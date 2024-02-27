@@ -120,7 +120,7 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 type SearchCapability uint32
 
 const (
-	SearchCapabilityScopedIndexes = iota
+	SearchCapabilityScopedIndexes SearchCapability = iota
 	SearchCapabilityVectorSearch
 )
 
