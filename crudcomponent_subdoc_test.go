@@ -1412,39 +1412,20 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 	}))
 	s.Wait(0)
 
-	// Get
-	s.PushOp(agent.GetMeta(GetMetaOptions{
-		Key:            []byte("testmutateinpreserveExpiry"),
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-	}, func(res *GetMetaResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("GetMeta operation failed: %v", err)
-			}
-			if res.Cas == Cas(0) {
-				s.Fatalf("Invalid cas received")
-			}
-			expectedExpiry := uint32(time.Now().Unix() + int64(expiry-5))
-			if res.Expiry < expectedExpiry {
-				s.Fatalf("Invalid expiry received")
-			}
-		})
-	}))
-	s.Wait(0)
+	suite.verifyExpiryUsingHLC("testmutateinpreserveExpiry", agent, s, expiry)
 
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testmutateinpreserveExpiry")
 			suite.AssertOpSpan(nilParents[1], "MutateIn", agent.BucketName(), memd.CmdSubDocMultiMutation.Name(), 1, false, "testmutateinpreserveExpiry")
-			suite.AssertOpSpan(nilParents[2], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "testmutateinpreserveExpiry")
+			suite.AssertOpSpan(nilParents[2], "LookupIn", agent.BucketName(), memd.CmdSubDocMultiLookup.Name(), 1, false, "testmutateinpreserveExpiry")
 		}
 	}
 
 	suite.VerifyKVMetrics(suite.meter, "Set", 1, false, false)
 	suite.VerifyKVMetrics(suite.meter, "MutateIn", 1, false, false)
-	suite.VerifyKVMetrics(suite.meter, "GetMeta", 1, false, false)
+	suite.VerifyKVMetrics(suite.meter, "LookupIn", 1, false, false)
 }
 
 func (suite *StandardTestSuite) TestSubdocCasMismatch() {
