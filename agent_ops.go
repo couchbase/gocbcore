@@ -283,25 +283,20 @@ func (agent *Agent) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, error
 type WaitUntilReadyCallback func(*WaitUntilReadyResult, error)
 
 // RangeScanCreateCallback is invoked upon completion of a RangeScanCreate operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCreateCallback func(RangeScanCreateResult, error)
 
 // RangeScanCreate creates a new range scan against a vbucket.
-// Volatile: This API is subject to change at any time.
 func (agent *Agent) RangeScanCreate(vbID uint16, opts RangeScanCreateOptions, cb RangeScanCreateCallback) (PendingOp, error) {
 	return agent.crud.RangeScanCreate(vbID, opts, cb)
 }
 
 // RangeScanContinueDataCallback is invoked upon receipt of a RangeScanContinue response containing data.
-// Volatile: This API is subject to change at any time.
 type RangeScanContinueDataCallback func([]RangeScanItem)
 
 // RangeScanContinueActionCallback is invoked upon receipt of a RangeScanContinue response representing an action.
-// Volatile: This API is subject to change at any time.
 type RangeScanContinueActionCallback func(*RangeScanContinueResult, error)
 
 // RangeScanCancelCallback is invoked upon completion of a RangeScanCancel operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCancelCallback func(*RangeScanCancelResult, error)
 
 // WaitForConfigSnapshotOptions encapsulates the parameters for a WaitForConfigSnapshot operation.

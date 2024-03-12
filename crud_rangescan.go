@@ -7,7 +7,6 @@ import (
 )
 
 // RangeScanCreateOptions encapsulates the parameters for a RangeScanCreate operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCreateOptions struct {
 	// Deadline will also be sent as a part of the payload if Snapshot is not nil.
 	Deadline time.Time
@@ -142,7 +141,6 @@ type RangeScanCreateSnapshotRequirements struct {
 }
 
 // RangeScanCreateResult encapsulates the result of a RangeScanCreate operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCreateResult interface {
 	ScanUUID() []byte
 	KeysOnly() bool
@@ -171,7 +169,6 @@ func (createRes *rangeScanCreateResult) KeysOnly() bool {
 }
 
 // RangeScanContinueOptions encapsulates the parameters for a RangeScanContinue operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanContinueOptions struct {
 	// Deadline will also be sent as a part of the payload if not zero.
 	Deadline time.Time
@@ -197,14 +194,12 @@ type RangeScanItem struct {
 }
 
 // RangeScanContinueResult encapsulates the result of a RangeScanContinue operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanContinueResult struct {
 	More     bool
 	Complete bool
 }
 
 // RangeScanCancelOptions encapsulates the parameters for a RangeScanCancel operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCancelOptions struct {
 	Deadline time.Time
 
@@ -215,5 +210,4 @@ type RangeScanCancelOptions struct {
 }
 
 // RangeScanCancelResult encapsulates the result of a RangeScanCancel operation.
-// Volatile: This API is subject to change at any time.
 type RangeScanCancelResult struct{}

@@ -256,7 +256,6 @@ type IoConfig struct {
 	EnablePITRHello             bool
 	UseCollections              bool
 
-	// Uncommitted: This API may change in the future.
 	UseClusterMapNotifications bool
 }
 
@@ -290,7 +289,6 @@ func (config IoConfig) fromSpec(spec connstr.ResolvedConnSpec) (IoConfig, error)
 		config.UseOutOfOrderResponses = val
 	}
 
-	// Uncommitted: This option may change in the future
 	if valStr, ok := fetchOption(spec, "enable_cluster_config_notifications"); ok {
 		val, err := strconv.ParseBool(valStr)
 		if err != nil {
