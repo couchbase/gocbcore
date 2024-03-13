@@ -1,5 +1,13 @@
 # Release Notes
 
+## Version 10.4.0 (13 March 2024)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1614](https://issues.couchbase.com/browse/GOCBC-1614):
+  Updated API stability level of range scan to committed 
+  Updated API stability level of `UseClusterMapNotifications` to committed 
+
 ## Version 10.3.2 (20 February 2024)
 
 ### New Features and Behavioral Changes
