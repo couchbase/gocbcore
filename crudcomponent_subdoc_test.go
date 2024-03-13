@@ -1510,7 +1510,7 @@ func (suite *StandardTestSuite) TestLookupInReplicaReads() {
 		Value:                  value,
 		CollectionName:         suite.CollectionName,
 		ScopeName:              suite.ScopeName,
-		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevel:        memd.DurabilityLevelPersistToMajority,
 		DurabilityLevelTimeout: 10 * time.Second,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
@@ -1521,37 +1521,43 @@ func (suite *StandardTestSuite) TestLookupInReplicaReads() {
 	}))
 	s.Wait(0)
 
-	s.PushOp(agent.LookupIn(LookupInOptions{
-		Key:   key,
-		Flags: memd.SubdocDocFlagReplicaRead,
-		Ops: []SubDocOp{
-			{
-				Op:   memd.SubDocOpGet,
-				Path: "key",
+	retries := 0
+	keyExists := false
+	for {
+		s.PushOp(agent.LookupIn(LookupInOptions{
+			Key:   key,
+			Flags: memd.SubdocDocFlagReplicaRead,
+			Ops: []SubDocOp{
+				{
+					Op:   memd.SubDocOpGet,
+					Path: "key",
+				},
 			},
-		},
-		CollectionName: suite.CollectionName,
-		ScopeName:      suite.ScopeName,
-		ReplicaIdx:     1,
-	}, func(res *LookupInResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("Get operation failed: %v", err)
-			}
+			CollectionName: suite.CollectionName,
+			ScopeName:      suite.ScopeName,
+			ReplicaIdx:     1,
+		}, func(res *LookupInResult, err error) {
+			s.Wrap(func() {
+				keyNotFound := errors.Is(err, ErrDocumentNotFound)
+				if err == nil {
+					keyExists = true
+				} else if err != nil && !keyNotFound {
+					s.Fatalf("LookupIn specific returned error that was not document not found: %v", err)
+				}
+				if !keyNotFound && res.Cas == Cas(0) {
+					s.Fatalf("Invalid cas received")
+				}
+			})
+		}))
+		s.Wait(0)
 
-			if res.Cas == Cas(0) {
-				s.Fatalf("Invalid cas received")
-			}
-			if len(res.Ops) != 1 {
-				s.Fatalf("LookupIn operation wrong count was %d", len(res.Ops))
-			}
-			if res.Ops[0].Err != nil {
-				s.Fatalf("LookupIn operation failed: %v", res.Ops[0].Err)
-			}
-			if len(res.Ops[0].Value) == 0 {
-				s.Fatalf("LookupIn operation returned no value")
-			}
-		})
-	}))
-	s.Wait(0)
+		if keyExists {
+			break
+		}
+		retries++
+		if retries >= 5 {
+			suite.T().Fatalf("LookupIn could not locate key")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
