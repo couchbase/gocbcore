@@ -140,13 +140,13 @@ func (c *Client) step2(in []byte) error {
 	if len(fields) != 3 {
 		return fmt.Errorf("expected 3 fields in first SCRAM-SHA-1 server message, got %d: %q", len(fields), in)
 	}
-	if !bytes.HasPrefix(fields[0], []byte("r=")) || len(fields[0]) < 2 {
+	if !bytes.HasPrefix(fields[0], []byte("r=")) {
 		return fmt.Errorf("server sent an invalid SCRAM-SHA-1 nonce: %q", fields[0])
 	}
-	if !bytes.HasPrefix(fields[1], []byte("s=")) || len(fields[1]) < 6 {
+	if !bytes.HasPrefix(fields[1], []byte("s=")) {
 		return fmt.Errorf("server sent an invalid SCRAM-SHA-1 salt: %q", fields[1])
 	}
-	if !bytes.HasPrefix(fields[2], []byte("i=")) || len(fields[2]) < 6 {
+	if !bytes.HasPrefix(fields[2], []byte("i=")) {
 		return fmt.Errorf("server sent an invalid SCRAM-SHA-1 iteration count: %q", fields[2])
 	}
 
