@@ -737,7 +737,15 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 
 			switch desiredState {
 			case ClusterStateDegraded:
-				if atomic.LoadUint32(&connected) > 0 {
+				if !forceWait && len(epList) == 0 {
+					op.lock.Lock()
+					op.handledOneLocked()
+					op.lock.Unlock()
+
+					return
+				}
+				// If there are no entries in the epList then the service is not online and so cannot be ready.
+				if len(epList) > 0 && atomic.LoadUint32(&connected) > 0 {
 					op.lock.Lock()
 					op.handledOneLocked()
 					op.lock.Unlock()
