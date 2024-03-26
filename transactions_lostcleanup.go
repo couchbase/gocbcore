@@ -122,6 +122,7 @@ type stdLostTransactionCleaner struct {
 	newLocationCh       chan lostATRLocationWithShutdown
 	stop                chan struct{}
 	atrLocationFinder   TransactionsLostCleanupATRLocationProviderFn
+	processWaitGroup    sync.WaitGroup
 
 	numResourceUnitOps uint32
 	readUnits          uint32
@@ -305,6 +306,8 @@ func (ltc *stdLostTransactionCleaner) updateResourceUnitsError(err error) {
 }
 
 func (ltc *stdLostTransactionCleaner) removeClient(uuid string, locations map[TransactionLostATRLocation]chan struct{}) error {
+	ltc.processWaitGroup.Wait()
+
 	var err error
 	var wg sync.WaitGroup
 	for l := range locations {
@@ -424,7 +427,9 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 
 func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
 	logSchedf("Running cleanup %s on %s", ltc.uuid, location.location)
+	ltc.processWaitGroup.Add(1)
 	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
+		ltc.processWaitGroup.Done()
 		if err != nil {
 			logDebugf("Cleanup failed for %s on %s", ltc.uuid, location.location)
 			// See comment in process for explanation of why we have a goroutine here.
@@ -500,6 +505,7 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 			for _, atr := range recordDetails.AtrsHandledByClient {
 				select {
 				case <-ltc.stop:
+					cb(nil)
 					return
 				case <-time.After(d):
 				}
