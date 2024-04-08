@@ -159,6 +159,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer750)
 	case TestFeatureDocNotLocked:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer760)
+	case TestFeatureCavesUnreliable:
+		return !suite.IsMockServer()
 	}
 
 	panic("found unsupported feature code")
@@ -258,14 +260,36 @@ func (suite *StandardTestSuite) StartTest(name TestName) TestSpec {
 
 	// Prime the agent to ensure that operations are clear to send without messing with tracing spans.
 	s := suite.GetHarness()
-	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
-		s.Wrap(func() {
+	if suite.SupportsFeature(TestFeatureCavesUnreliable) {
+		s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("WaitUntilReady failed with error: %v", err)
+				}
+			})
+		}))
+		s.Wait(6)
+	} else {
+		// Caves has a bug where waituntilready doesn't always succeed so just retry.
+		success := suite.tryUntil(time.Now().Add(60*time.Second), 1*time.Second, func() bool {
+			wait := make(chan error, 1)
+			s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+				s.Wrap(func() {
+					wait <- err
+				})
+			}))
+			s.Wait(6)
+
+			err := <-wait
 			if err != nil {
-				s.Fatalf("WaitUntilReady failed with error: %v", err)
+				suite.T().Logf("WaitUntilReady failed: %v", err)
+				return false
 			}
+
+			return true
 		})
-	}))
-	s.Wait(6)
+		suite.Require().True(success, "WaitUntilReady did not succeed in time")
+	}
 
 	return TestSpec{
 		Agent:      agent,

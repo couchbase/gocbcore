@@ -375,6 +375,8 @@ func (suite *StandardTestSuite) TestBasicOps() {
 }
 
 func (suite *StandardTestSuite) TestCasMismatch() {
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
+
 	agent, s := suite.GetAgentAndHarness()
 
 	// Set
@@ -2213,6 +2215,7 @@ func (suite *StandardTestSuite) TestAgentWaitForConfigSnapshotSteadyState() {
 
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
 
 	cfg := makeAgentConfig(globalTestConfig)
 	agent, err := CreateAgent(&cfg)
@@ -2298,6 +2301,8 @@ func (suite *StandardTestSuite) VerifyConnectedToBucketHTTP(agent *Agent, bucket
 }
 
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
+
 	cfg := makeAgentConfig(globalTestConfig)
 	cfg.BucketName = globalTestConfig.BucketName
 	agent, err := CreateAgent(&cfg)
@@ -2310,6 +2315,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
 
 	cfg := suite.makeAgentGroupConfig(globalTestConfig)
 	ag, err := CreateAgentGroup(&cfg)
@@ -2341,6 +2347,8 @@ func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
 
 // This test cannot run against mock as the mock does not respond with 200 status code for all of the endpoints.
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyBucket() {
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
+
 	cfg := suite.makeAgentGroupConfig(globalTestConfig)
 	ag, err := CreateAgentGroup(&cfg)
 	suite.Require().Nil(err, err)

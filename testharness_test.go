@@ -58,6 +58,7 @@ var (
 	TestFeatureRangeScan            = TestFeatureCode("rangescan")
 	TestFeatureSubdocReplicaReads   = TestFeatureCode("subdocreplicas")
 	TestFeatureDocNotLocked         = TestFeatureCode("notlocked")
+	TestFeatureCavesUnreliable      = TestFeatureCode("cavesunreliable")
 )
 
 type TestFeatureFlag struct {
