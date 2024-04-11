@@ -1,9 +1,9 @@
 module github.com/couchbase/gocbcore/v10
 
 require (
-	github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1
+	github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259
 	github.com/golang/snappy v0.0.4
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.8.2
 )
 
