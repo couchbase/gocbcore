@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 10.4.1 (17 April 2024)
+
+### Fixed issues
+
+* [GOCBC-1615](https://issues.couchbase.com/browse/GOCBC-1615):
+  Removed superfluous validations from SCRAM client.
+* [GOCBC-1622](https://issues.couchbase.com/browse/GOCBC-1622):
+  Updated handling of degraded target state for `WaitUntilReady`.
+
+
 ## Version 10.4.0 (13 March 2024)
 
 ### New Features and Behavioral Changes
