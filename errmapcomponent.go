@@ -154,6 +154,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errNotStored
 	case ErrMemdCollectionNotFound:
 		return errCollectionNotFound
+	case ErrMemdScopeNotFound:
+		return errScopeNotFound
 	case ErrMemdUnknownCommand:
 		return errUnsupportedOperation
 	case ErrMemdNotSupported:

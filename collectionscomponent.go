@@ -98,7 +98,7 @@ func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) b
 }
 
 func (cidMgr *collectionsComponent) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
-	if errors.Is(err, ErrCollectionNotFound) {
+	if errors.Is(err, ErrCollectionNotFound) || errors.Is(err, ErrScopeNotFound) {
 		if cidMgr.handleCollectionUnknown(req) {
 			return true, nil
 		}
@@ -478,7 +478,7 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 	_, err = cid.parent.GetCollectionID(req.ScopeName, req.CollectionName, GetCollectionIDOptions{TraceContext: req.RootTraceContext},
 		func(result *GetCollectionIDResult, err error) {
 			if err != nil {
-				if errors.Is(err, ErrCollectionNotFound) {
+				if errors.Is(err, ErrCollectionNotFound) || errors.Is(err, ErrScopeNotFound) {
 					// The collection is unknown so we need to mark the cid unknown and attempt to retry the request.
 					// Retrying the request will requeue it in the cid manager so either it will pick up the unknown cid
 					// and cause a refresh or another request will and this one will get queued within the cache.

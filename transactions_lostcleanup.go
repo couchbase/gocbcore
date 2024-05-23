@@ -434,7 +434,7 @@ func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, 
 			logDebugf("Cleanup failed for %s on %s", ltc.uuid, location.location)
 			// See comment in process for explanation of why we have a goroutine here.
 			go func() {
-				if errors.Is(err, ErrCollectionNotFound) {
+				if errors.Is(err, ErrCollectionNotFound) || errors.Is(err, ErrScopeNotFound) {
 					logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
 						location.location.BucketName,
 						location.location.ScopeName,
