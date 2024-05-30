@@ -329,13 +329,22 @@ func (agent *DCPAgent) IsSecure() bool {
 // Close shuts down the agent, disconnecting from all servers and failing
 // any outstanding operations with ErrShutdown.
 func (agent *DCPAgent) Close() error {
-	routeCloseErr := agent.kvMux.Close()
-	agent.pollerController.Stop()
+	poller := agent.pollerController
+	if poller != nil {
+		poller.Stop()
+	}
 
-	// Wait for our external looper goroutines to finish, note that if the
-	// specific looper wasn't used, it will be a nil value otherwise it
-	// will be an open channel till its closed to signal completion.
-	<-agent.pollerController.Done()
+	routeCloseErr := agent.kvMux.Close()
+
+	if poller != nil {
+		// Wait for our external looper goroutines to finish, note that if the
+		// specific looper wasn't used, it will be a nil value otherwise it
+		// will be an open channel till its closed to signal completion.
+		pollerCh := poller.Done()
+		if pollerCh != nil {
+			<-pollerCh
+		}
+	}
 
 	return routeCloseErr
 }
