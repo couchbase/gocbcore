@@ -402,6 +402,8 @@ func (agent *DCPAgent) Close() error {
 	routeCloseErr := agent.kvMux.Close()
 	agent.cfgManager.Close()
 
+	agent.http.Close()
+
 	logInfof("DCP agent close complete")
 
 	return routeCloseErr

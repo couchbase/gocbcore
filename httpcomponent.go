@@ -30,6 +30,8 @@ type httpComponent struct {
 	userAgent            string
 	tracer               *tracerComponent
 	defaultRetryStrategy RetryStrategy
+
+	shutdownSig chan struct{}
 }
 
 type httpComponentProps struct {
@@ -50,6 +52,7 @@ func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, mux
 		userAgent:            props.UserAgent,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		tracer:               tracer,
+		shutdownSig:          make(chan struct{}),
 	}
 
 	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.idleTimeout,
@@ -59,6 +62,11 @@ func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, mux
 }
 
 func (hc *httpComponent) Close() {
+	close(hc.shutdownSig)
+	
+	if err := hc.muxer.Close(); err != nil {
+		logDebugf("Error closing http muxer: %s", err)
+	}
 	if tsport, ok := hc.cli.Transport.(*http.Transport); ok {
 		tsport.CloseIdleConnections()
 	} else {
@@ -148,6 +156,16 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			select {
 			case <-time.After(req.Deadline.Sub(start)):
 				atomic.StoreUint32(&cancellationIsTimeout, 1)
+				ctxCancel()
+			case <-hc.shutdownSig:
+				ctxCancel()
+			case <-doneCh:
+			}
+		}()
+	} else {
+		go func() {
+			select {
+			case <-hc.shutdownSig:
 				ctxCancel()
 			case <-doneCh:
 			}
@@ -491,7 +509,11 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int,
 			}
 
 			// We set up the transport to point at the BaseConfig from the dynamic TLS system.
-			httpTLSConfig := hc.muxer.Get().tlsConfig
+			clientMux := hc.muxer.Get()
+			if clientMux == nil {
+				return nil, errShutdown
+			}
+			httpTLSConfig := clientMux.tlsConfig
 			if httpTLSConfig == nil {
 				return nil, errors.New("TLS is not configured on this Agent")
 			}

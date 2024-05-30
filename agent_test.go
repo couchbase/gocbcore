@@ -2761,6 +2761,89 @@ func (suite *StandardTestSuite) TestAgentNSServerScheme() {
 	}
 }
 
+func (suite *StandardTestSuite) TestOpsAfterClose() {
+	cfg := makeAgentConfig(globalTestConfig)
+	agent, err := CreateAgent(&cfg)
+	suite.Require().Nil(err, err)
+	err = agent.Close()
+	suite.Require().NoError(err)
+
+	suite.Run("Ping", func() {
+		s := suite.GetHarness()
+		s.PushOp(agent.Ping(PingOptions{}, func(result *PingResult, err error) {
+			s.Wrap(func() {
+				suite.Require().NoError(err)
+
+				suite.Assert().Equal(int64(0), result.ConfigRev)
+				if suite.Assert().Contains(result.Services, MemdService) {
+					res := result.Services[MemdService][0]
+					suite.Assert().ErrorIs(res.Error, ErrShutdown)
+					suite.Assert().Equal(PingStateError, res.State)
+				}
+				if suite.Assert().Contains(result.Services, MgmtService) {
+					res := result.Services[MgmtService][0]
+					suite.Assert().ErrorIs(res.Error, ErrShutdown)
+					suite.Assert().Equal(PingStateError, res.State)
+				}
+			})
+		}))
+		s.Wait(0)
+	})
+
+	suite.Run("WaitUntilReady", func() {
+		s := suite.GetHarness()
+		s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+			s.Wrap(func() {
+				suite.Require().ErrorIs(err, ErrShutdown)
+			})
+		}))
+		s.Wait(0)
+	})
+
+	suite.Run("KV Op", func() {
+		_, err := agent.Get(GetOptions{
+			Key: []byte("test"),
+		}, func(result *GetResult, err error) {
+		})
+		suite.Require().ErrorIs(err, ErrShutdown)
+	})
+
+	suite.Run("Mgmt Op", func() {
+		s := suite.GetHarness()
+		s.PushOp(agent.DoHTTPRequest(&HTTPRequest{
+			Service:  MgmtService,
+			Method:   "GET",
+			Endpoint: "/",
+		}, func(result *HTTPResponse, err error) {
+			s.Wrap(func() {
+				suite.Require().ErrorIs(err, ErrShutdown)
+			})
+		}))
+		s.Wait(0)
+	})
+
+	suite.Run("Query Op", func() {
+		s := suite.GetHarness()
+
+		payload := struct {
+			Statement string
+		}{
+			Statement: "Select 1",
+		}
+
+		b, _ := json.Marshal(payload)
+
+		s.PushOp(agent.N1QLQuery(N1QLQueryOptions{
+			Payload: b,
+		}, func(result *N1QLRowReader, err error) {
+			s.Wrap(func() {
+				suite.Require().ErrorIs(err, ErrShutdown)
+			})
+		}))
+		s.Wait(0)
+	})
+}
+
 // These functions are likely temporary.
 
 type testManifestWithError struct {

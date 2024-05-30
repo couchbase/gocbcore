@@ -29,7 +29,11 @@ func newHTTPMux(breakerCfg CircuitBreakerConfig, cfgMgr configManager, muxState 
 }
 
 func (mux *httpMux) Get() *httpClientMux {
-	return (*httpClientMux)(atomic.LoadPointer(&mux.muxPtr))
+	muxCfg := atomic.LoadPointer(&mux.muxPtr)
+	if muxCfg == nil {
+		return nil
+	}
+	return (*httpClientMux)(muxCfg)
 }
 
 func (mux *httpMux) Update(old, new *httpClientMux) bool {
@@ -94,6 +98,10 @@ func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 
 func (mux *httpMux) UpdateTLS(tlsConfig *dynTLSConfig, auth AuthProvider) {
 	oldMux := mux.Get()
+	if oldMux == nil {
+		logWarnf("HTTP mux received TLS update after shutdown")
+		return
+	}
 
 	endpoints := mux.buildEndpoints(&oldMux.srcConfig, tlsConfig != nil)
 

@@ -66,6 +66,19 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 	for {
 		iter, err := dc.kvMux.PipelineSnapshot()
 		if err != nil {
+			if errors.Is(err, ErrShutdown) {
+				op.lock.Lock()
+				op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
+					Error: errShutdown,
+					Scope: op.bucketName,
+					ID:    uuid.New().String(),
+					State: PingStateError,
+				})
+				op.handledOneLocked(0)
+				op.lock.Unlock()
+				return
+			}
+
 			logErrorf("failed to get pipeline snapshot")
 
 			select {
@@ -78,13 +91,15 @@ func (dc *diagnosticsComponent) pingKV(ctx context.Context, interval time.Durati
 					cancelReason = errUnambiguousTimeout
 				}
 
+				op.lock.Lock()
 				op.results[MemdService] = append(op.results[MemdService], EndpointPingResult{
 					Error: cancelReason,
 					Scope: op.bucketName,
 					ID:    uuid.New().String(),
 					State: PingStateTimeout,
 				})
-				op.handledOneLocked(iter.RevID())
+				op.handledOneLocked(0)
+				op.lock.Unlock()
 				return
 			case <-time.After(interval):
 				continue
@@ -241,6 +256,19 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 
 	for {
 		clientMux := muxer.Get()
+		if clientMux == nil {
+			op.lock.Lock()
+			op.results[service] = append(op.results[service], EndpointPingResult{
+				Error: errShutdown,
+				Scope: op.bucketName,
+				ID:    uuid.New().String(),
+				State: PingStateError,
+			})
+			op.handledOneLocked(0)
+			op.lock.Unlock()
+			return
+		}
+
 		if clientMux.revID > -1 {
 			var epList []routeEndpoint
 			switch service {
@@ -482,6 +510,11 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 	for {
 		iter, err := dc.kvMux.PipelineSnapshot()
 		if err != nil {
+			if errors.Is(err, ErrShutdown) {
+				op.cancel(err)
+				return
+			}
+
 			logErrorf("failed to get pipeline snapshot: %v", err)
 
 			shouldRetry, until := retryOrchMaybeRetry(op, NoPipelineSnapshotRetryReason)
@@ -641,6 +674,10 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 
 	for {
 		clientMux := muxer.Get()
+		if clientMux == nil {
+			op.cancel(errShutdown)
+			return
+		}
 		var connectErr error
 		if clientMux.revID == -1 {
 			// We've not seen a config so let's see if we've been informed about any errors.
