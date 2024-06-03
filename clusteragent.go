@@ -162,8 +162,10 @@ func (agent *clusterAgent) OnNewRouteConfig(cfg *routeConfig) {
 
 	agent.revID = cfg.revID
 	agent.revLock.Unlock()
+	
 	agent.configWatchLock.Lock()
-	watchers := agent.configWatchers
+	watchers := make([]routeConfigWatcher, len(agent.configWatchers))
+	copy(watchers, agent.configWatchers)
 	agent.configWatchLock.Unlock()
 
 	for _, watcher := range watchers {
