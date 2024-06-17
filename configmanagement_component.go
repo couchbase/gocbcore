@@ -183,7 +183,7 @@ func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipel
 			if serverRevID == 0 {
 				logInfof("Unversioned configuration notification data, switching.")
 			} else if serverRevID == currentRev {
-				logInfof("Ignoring configuration notification with identical revision number - %d", serverRevID)
+				logDebugf("Ignoring configuration notification with identical revision number - %d", serverRevID)
 				return
 			} else if serverRevID < currentRev {
 				logInfof("Ignoring new configuration notification as it has an older revision id. Old: %d, new: %d", currentRev, serverRevID)
