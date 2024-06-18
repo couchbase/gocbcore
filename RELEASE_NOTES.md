@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 9.1.11 (18 June 2024)
+
+### Fixed Issues
+
+* [https://issues.couchbase.com/browse/GOCBC-1635](GOCBC-1635):
+  Fixed issue where a race between the poller controller stop and done calls could cause agent close to hang indefinitely.
+
 ## Version 9.1.10 (3 May 2023)
 
 ### Fixed Issues
