@@ -31,9 +31,10 @@ type memdQRequest struct {
 	memd.Packet
 
 	// Static routing properties
-	ReplicaIdx int
-	Callback   callback
-	Persistent bool
+	ReplicaIdx  int
+	Callback    callback
+	Persistent  bool
+	ServerGroup string
 
 	// This tracks when the request was dispatched so that we can
 	//  properly prioritize older requests to try and meet timeout

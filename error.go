@@ -85,6 +85,11 @@ var (
 	// Per GOCBC-1356, it can also be returned on some paths when inserting a document, and in that context indicates
 	// that the document already exists.
 	ErrNotStored = errors.New("document was not stored")
+
+	// ErrServerGroupMismatch occurs when a server group is requested for an operation but no replicas exist for that
+	// vbucket id.
+	// Uncommitted: This API may change in the future.
+	ErrServerGroupMismatch = errors.New("vbucket id does not have any replica in requested server group")
 )
 
 // Shared Error Definitions RFC#58@15

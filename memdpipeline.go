@@ -24,6 +24,7 @@ type memdPipeline struct {
 	clients     []*memdPipelineClient
 	clientsLock sync.Mutex
 	isSeedNode  bool
+	serverGroup string
 }
 
 func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
@@ -34,6 +35,7 @@ func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn m
 		maxItems:    maxItems,
 		queue:       newMemdOpQueue(),
 		isSeedNode:  endpoint.IsSeedNode,
+		serverGroup: endpoint.ServerGroup,
 	}
 }
 
@@ -88,6 +90,10 @@ func (pipeline *memdPipeline) SupportsFeature(feature memd.HelloFeature) bool {
 
 func (pipeline *memdPipeline) Address() string {
 	return pipeline.address
+}
+
+func (pipeline *memdPipeline) ServerGroup() string {
+	return pipeline.serverGroup
 }
 
 func (pipeline *memdPipeline) StartClients() {

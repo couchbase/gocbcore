@@ -156,6 +156,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
 		ReplicaIdx:       opts.ReplicaIdx,
+		ServerGroup:      opts.ServerGroup,
 	}
 
 	op, err := crud.cidMgr.Dispatch(req)

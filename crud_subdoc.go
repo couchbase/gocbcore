@@ -18,6 +18,9 @@ type LookupInOptions struct {
 	Deadline       time.Time
 	ReplicaIdx     int
 
+	// Uncommitted: This API may change in the future.
+	ServerGroup string
+
 	// Internal: This should never be used and is not supported.
 	User string
 

@@ -93,3 +93,34 @@ func (pi ConfigSnapshot) NumServers() (int, error) {
 func (pi ConfigSnapshot) BucketUUID() string {
 	return pi.state.UUID()
 }
+
+func (pi ConfigSnapshot) KeyToServersByServerGroup(key []byte) (map[string][]int, error) {
+	vbID, err := pi.KeyToVbucket(key)
+	if err != nil {
+		return nil, err
+	}
+
+	numReplicas, err := pi.NumReplicas()
+	if err != nil {
+		return nil, err
+	}
+
+	numServers := numReplicas + 1
+
+	serverMap := make(map[string][]int)
+	for i := 0; i < numServers; i++ {
+		srvIndex, err := pi.VbucketToServer(vbID, uint32(i))
+		if err != nil {
+			return nil, err
+		}
+
+		group := pi.state.pipelines[srvIndex].ServerGroup()
+		if _, ok := serverMap[group]; !ok {
+			serverMap[group] = make([]int, 0)
+		}
+
+		serverMap[group] = append(serverMap[group], i)
+	}
+
+	return serverMap, nil
+}

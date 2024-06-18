@@ -11,8 +11,9 @@ type routeEndpoints struct {
 }
 
 type routeEndpoint struct {
-	Address    string
-	IsSeedNode bool
+	Address     string
+	IsSeedNode  bool
+	ServerGroup string
 }
 
 type routeConfig struct {

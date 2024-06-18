@@ -333,6 +333,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		CollectionName:   opts.CollectionName,
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
+		ServerGroup:      opts.ServerGroup,
 	}
 
 	op, err := crud.cidMgr.Dispatch(req)

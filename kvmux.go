@@ -307,10 +307,10 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 			}
 
 			srvIdx, err = clientMux.VBMap().NodeByVbucket(req.Vbucket, uint32(repIdx))
-
 			if err != nil {
 				return nil, err
 			}
+
 		} else if bktType == bktTypeMemcached {
 			if repIdx > 0 {
 				// Error. Memcached buckets don't understand replicas!
@@ -330,6 +330,11 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 			// This means that we're using GCCCP and not connected to a bucket
 			return nil, errGCCCPInUse
 		}
+	}
+
+	pipeline := clientMux.GetPipeline(srvIdx)
+	if req.ServerGroup != "" && pipeline.serverGroup != req.ServerGroup {
+		return nil, ErrServerGroupMismatch
 	}
 
 	return clientMux.GetPipeline(srvIdx), nil
@@ -867,8 +872,9 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	pipelines := make([]*memdPipeline, len(kvServerList))
 	for i, hostPort := range kvServerList {
 		trimmedHostPort := routeEndpoint{
-			Address:    trimSchemePrefix(hostPort.Address),
-			IsSeedNode: hostPort.IsSeedNode,
+			Address:     trimSchemePrefix(hostPort.Address),
+			IsSeedNode:  hostPort.IsSeedNode,
+			ServerGroup: hostPort.ServerGroup,
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
