@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 10.5.0 (18 June 2024)
+
+### Fixed issues
+
+* [GOCBC-1636](https://issues.couchbase.com/browse/GOCBC-1636):
+  Fixed race in clusterAgent (only used by AgentGroup().
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1631](https://issues.couchbase.com/browse/GOCBC-1631):
+  Handle scope not found error from memcached, and treat it the same as collection not found for retry behaviour.
+* [GOCBC-1626](https://issues.couchbase.com/browse/GOCBC-1626):
+  Updated behaviour of ping and http requests on agent close to cancel in flight requests and prevent requests from being sent after close.
+
 ## Version 10.4.1 (17 April 2024)
 
 ### Fixed issues
