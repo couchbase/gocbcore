@@ -129,16 +129,18 @@ func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Requ
 }
 
 func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
+	req.processingLock.Lock()
 	if req.cmdTraceSpan != nil {
+		req.processingLock.Unlock()
 		logWarnf("Attempted to start tracing on traced request OP=0x%x, Opaque=%d", req.Command, req.Opaque)
 		return
 	}
 
 	if req.RootTraceContext == nil {
+		req.processingLock.Unlock()
 		return
 	}
 
-	req.processingLock.Lock()
 	req.cmdTraceSpan = tc.tracer.RequestSpan(req.RootTraceContext, req.Packet.Command.Name())
 	req.processingLock.Unlock()
 }
@@ -192,7 +194,7 @@ func (tc *tracerComponent) ResponseValueRecord(service, operation string, start 
 	recorder.RecordValue(duration)
 }
 
-func stopCmdTrace(req *memdQRequest) {
+func stopCmdTraceLocked(req *memdQRequest) {
 	if req.RootTraceContext == nil {
 		return
 	}
@@ -209,17 +211,17 @@ func stopCmdTrace(req *memdQRequest) {
 	req.cmdTraceSpan = nil
 }
 
-func cancelReqTrace(req *memdQRequest, local, remote string) {
+func cancelReqTraceLocked(req *memdQRequest, local, remote string) {
 	if req.cmdTraceSpan != nil {
 		if req.netTraceSpan != nil {
-			stopNetTrace(req, nil, local, remote)
+			stopNetTraceLocked(req, nil, local, remote)
 		}
 
-		stopCmdTrace(req)
+		stopCmdTraceLocked(req)
 	}
 }
 
-func stopNetTrace(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress string) {
+func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress string) {
 	if req.cmdTraceSpan == nil {
 		return
 	}

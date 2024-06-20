@@ -278,7 +278,7 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		remoteAddr = waitingIn.Address()
 	}
 
-	cancelReqTrace(req, localAddr, remoteAddr)
+	cancelReqTraceLocked(req, localAddr, remoteAddr)
 	req.processingLock.Unlock()
 
 	return true

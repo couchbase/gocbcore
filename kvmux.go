@@ -931,7 +931,9 @@ func (mux *kvMux) requeueRequests(oldMuxState *kvMuxState) {
 	sort.Sort(memdQRequestSorter(requestList))
 
 	for _, req := range requestList {
-		stopCmdTrace(req)
+		req.processingLock.Lock()
+		stopCmdTraceLocked(req)
+		req.processingLock.Unlock()
 
 		// If the command is a get cluster config then we cancel it rather than requeuing.
 		// Get cluster config is explicitly sent a specific pipeline so we do not want to requeue.

@@ -339,7 +339,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	req.AddResourceUnits(resp.ReadUnitsFrame, resp.WriteUnitsFrame)
 
 	if !req.Persistent {
-		stopNetTrace(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
+		stopNetTraceLocked(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
 	}
 
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
@@ -370,7 +370,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	}
 
 	if !req.Persistent {
-		stopCmdTrace(req)
+		stopCmdTraceLocked(req)
 	}
 
 	req.processingLock.Unlock()

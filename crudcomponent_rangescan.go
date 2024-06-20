@@ -165,11 +165,13 @@ func (createRes *rangeScanCreateResult) RangeScanContinue(opts RangeScanContinue
 
 		if res.More || res.Complete {
 
-			// This is effectively the same as calling cancelReqTrace, this will set the cmd and net spans to
+			// This is effectively the same as calling cancelReqTraceLocked, this will set the cmd and net spans to
 			// nil on the request - meaning that the internal cancel below will not cause issues when it calls
-			// cancelReqTrace.
-			stopNetTrace(req, resp, resp.remoteAddr, resp.sourceAddr)
-			stopCmdTrace(req)
+			// cancelReqTraceLocked.
+			req.processingLock.Lock()
+			stopNetTraceLocked(req, resp, resp.remoteAddr, resp.sourceAddr)
+			stopCmdTraceLocked(req)
+			req.processingLock.Unlock()
 
 			// As this is a persistent request, we must manually cancel it to remove
 			// it from the pending ops list.
