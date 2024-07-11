@@ -165,7 +165,6 @@ func (ccc *cccpConfigController) doLoop() error {
 
 				foundConfig = bk
 			} else {
-				logDebugf("CCCPPOLL: No block in response")
 				configAlreadyLatest = true
 			}
 			return true
