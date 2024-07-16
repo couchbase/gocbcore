@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.2.13 (16 July 2024)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1652](https://issues.couchbase.com/browse/GOCBC-1652):
+  Adjust logging for config management.
+
 ## Version 10.2.12 (23 February 2024)
 
 ### New Features and Behavioral Changes
