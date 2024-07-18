@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 10.5.1 (18 July 2024)
+
+### Fixed issues
+
+* [GOCBC-1644](https://issues.couchbase.com/browse/GOCBC-1644):
+  Fixed race that could occur when a request was retried and cancelled at the same time.
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1645](https://issues.couchbase.com/browse/GOCBC-1645):
+* [GOCBC-1640](https://issues.couchbase.com/browse/GOCBC-1640):
+  Adjust logging for config management.
+
 ## Version 10.5.0 (18 June 2024)
 
 ### Fixed issues
