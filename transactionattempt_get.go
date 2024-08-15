@@ -16,6 +16,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -77,7 +78,7 @@ func (t *transactionAttempt) get(
 			}
 
 			t.mavRead(opts.Agent, opts.OboUser, opts.ScopeName, opts.CollectionName, opts.Key, opts.NoRYOW,
-				"", forceNonFatal, func(result *TransactionGetResult, err error) {
+				"", forceNonFatal, opts.ServerGroup, func(result *TransactionGetResult, err error) {
 					if err != nil {
 						endAndCb(nil, err)
 						return
@@ -113,6 +114,7 @@ func (t *transactionAttempt) mavRead(
 	disableRYOW bool,
 	resolvingATREntry string,
 	forceNonFatal bool,
+	serverGroup string,
 	cb func(*TransactionGetResult, error),
 ) {
 	t.fetchDocWithMeta(
@@ -122,6 +124,7 @@ func (t *transactionAttempt) mavRead(
 		collectionName,
 		key,
 		forceNonFatal,
+		serverGroup,
 		func(doc *transactionGetDoc, err error) {
 			if err != nil {
 				cb(nil, err)
@@ -264,7 +267,7 @@ func (t *transactionAttempt) mavRead(
 								t.logger.logInfof(t.id, "ATR entry missing, rerunning mav read")
 								// The ATR entry is missing, it's likely that we just raced the other transaction
 								// cleaning up it's documents and then cleaning itself up.  Lets run ATR resolution.
-								t.mavRead(agent, oboUser, scopeName, collectionName, key, disableRYOW, doc.TxnMeta.ID.Attempt, forceNonFatal, cb)
+								t.mavRead(agent, oboUser, scopeName, collectionName, key, disableRYOW, doc.TxnMeta.ID.Attempt, forceNonFatal, serverGroup, cb)
 								return
 							}
 
@@ -348,6 +351,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 	collectionName string,
 	key []byte,
 	forceNonFatal bool,
+	serverGroup string,
 	cb func(*transactionGetDoc, error),
 ) {
 	ecCb := func(doc *transactionGetDoc, cerr *classifiedError) {
@@ -378,6 +382,11 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				Reason:            TransactionErrorReasonTransactionFailed,
 			}))
 		default:
+			if errors.Is(cerr.Source, ErrDocumentUnretrievable) {
+				cb(nil, ErrDocumentUnretrievable)
+				return
+			}
+
 			cb(nil, t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				CanStillCommit:    forceNonFatal,
@@ -400,31 +409,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 			deadline = time.Now().Add(t.keyValueTimeout)
 		}
 
-		_, err = agent.LookupIn(LookupInOptions{
-			ScopeName:      scopeName,
-			CollectionName: collectionName,
-			Key:            key,
-			Ops: []SubDocOp{
-				{
-					Op:    memd.SubDocOpGet,
-					Path:  "$document",
-					Flags: memd.SubdocFlagXattrPath,
-				},
-				{
-					Op:    memd.SubDocOpGet,
-					Path:  "txn",
-					Flags: memd.SubdocFlagXattrPath,
-				},
-				{
-					Op:    memd.SubDocOpGetDoc,
-					Path:  "",
-					Flags: 0,
-				},
-			},
-			Deadline: deadline,
-			Flags:    memd.SubdocDocFlagAccessDeleted,
-			User:     oboUser,
-		}, func(result *LookupInResult, err error) {
+		handler := func(result *LookupInResult, err error) {
 			if err != nil {
 				ecCb(nil, classifyError(err))
 				return
@@ -467,9 +452,66 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				Cas:     result.Cas,
 				Deleted: result.Internal.IsDeleted,
 			}, nil)
-		})
-		if err != nil {
-			ecCb(nil, classifyError(err))
+		}
+
+		if serverGroup == "" {
+			_, err = agent.LookupIn(LookupInOptions{
+				ScopeName:      scopeName,
+				CollectionName: collectionName,
+				Key:            key,
+				Ops: []SubDocOp{
+					{
+						Op:    memd.SubDocOpGet,
+						Path:  "$document",
+						Flags: memd.SubdocFlagXattrPath,
+					},
+					{
+						Op:    memd.SubDocOpGet,
+						Path:  "txn",
+						Flags: memd.SubdocFlagXattrPath,
+					},
+					{
+						Op:    memd.SubDocOpGetDoc,
+						Path:  "",
+						Flags: 0,
+					},
+				},
+				Deadline: deadline,
+				Flags:    memd.SubdocDocFlagAccessDeleted,
+				User:     oboUser,
+			}, handler)
+			if err != nil {
+				ecCb(nil, classifyError(err))
+			}
+		} else {
+			_, err = agent.crud.LookupInServerGroup(serverGroup, LookupInOptions{
+				ScopeName:      scopeName,
+				CollectionName: collectionName,
+				Key:            key,
+				Ops: []SubDocOp{
+					{
+						Op:    memd.SubDocOpGet,
+						Path:  "$document",
+						Flags: memd.SubdocFlagXattrPath,
+					},
+					{
+						Op:    memd.SubDocOpGet,
+						Path:  "txn",
+						Flags: memd.SubdocFlagXattrPath,
+					},
+					{
+						Op:    memd.SubDocOpGetDoc,
+						Path:  "",
+						Flags: 0,
+					},
+				},
+				Deadline: deadline,
+				// Flags:    memd.SubdocDocFlagAccessDeleted, See: MB-63241
+				User: oboUser,
+			}, handler)
+			if err != nil {
+				ecCb(nil, classifyError(err))
+			}
 		}
 	})
 }

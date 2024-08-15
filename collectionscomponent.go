@@ -269,7 +269,7 @@ func (cidMgr *collectionsComponent) GetAllCollectionManifests(opts GetAllCollect
 		if err == nil {
 			setTimer(req)
 
-			op.ops = append(op.ops, curOp)
+			op.AddOp(curOp)
 			return false
 		}
 

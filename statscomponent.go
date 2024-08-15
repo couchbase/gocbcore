@@ -184,7 +184,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 			}))
 		}
 
-		op.ops = append(op.ops, curOp)
+		op.AddOp(curOp)
 	}
 
 	return op, nil

@@ -584,6 +584,11 @@ func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnap
 		cancelCh: make(chan struct{}),
 	}
 
+	var deadlineCh <-chan time.Time
+	if !deadline.IsZero() {
+		deadlineCh = time.After(time.Until(deadline))
+	}
+
 	start := time.Now()
 	go func() {
 		select {
@@ -591,7 +596,7 @@ func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnap
 			cb(nil, errShutdown)
 		case <-op.cancelCh:
 			cb(nil, errRequestCanceled)
-		case <-time.After(time.Until(deadline)):
+		case <-deadlineCh:
 			cb(nil, &TimeoutError{
 				InnerError:   errUnambiguousTimeout,
 				OperationID:  "WaitForConfigSnapshot",

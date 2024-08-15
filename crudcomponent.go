@@ -7,27 +7,33 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
+type configSnapshotProvider interface {
+	WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnapshotCallback) (PendingOp, error)
+}
+
 type crudComponent struct {
-	cidMgr               *collectionsComponent
-	defaultRetryStrategy RetryStrategy
-	tracer               *tracerComponent
-	errMapManager        *errMapComponent
-	featureVerifier      bucketCapabilityVerifier
-	clientProvider       clientProvider
-	disableDecompression bool
+	cidMgr                 *collectionsComponent
+	defaultRetryStrategy   RetryStrategy
+	tracer                 *tracerComponent
+	errMapManager          *errMapComponent
+	featureVerifier        bucketCapabilityVerifier
+	clientProvider         clientProvider
+	disableDecompression   bool
+	configSnapshotProvider configSnapshotProvider
 }
 
 func newCRUDComponent(cidMgr *collectionsComponent, defaultRetryStrategy RetryStrategy, tracerCmpt *tracerComponent,
 	errMapManager *errMapComponent, featureVerifier bucketCapabilityVerifier, clientProvider clientProvider,
-	disableDecompression bool) *crudComponent {
+	disableDecompression bool, configSnapshotProvider configSnapshotProvider) *crudComponent {
 	return &crudComponent{
-		cidMgr:               cidMgr,
-		defaultRetryStrategy: defaultRetryStrategy,
-		tracer:               tracerCmpt,
-		errMapManager:        errMapManager,
-		featureVerifier:      featureVerifier,
-		disableDecompression: disableDecompression,
-		clientProvider:       clientProvider,
+		cidMgr:                 cidMgr,
+		defaultRetryStrategy:   defaultRetryStrategy,
+		tracer:                 tracerCmpt,
+		errMapManager:          errMapManager,
+		featureVerifier:        featureVerifier,
+		disableDecompression:   disableDecompression,
+		clientProvider:         clientProvider,
+		configSnapshotProvider: configSnapshotProvider,
 	}
 }
 

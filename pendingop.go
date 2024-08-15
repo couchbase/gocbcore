@@ -1,6 +1,9 @@
 package gocbcore
 
-import "sync/atomic"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // PendingOp represents an outstanding operation within the client.
 // This can be used to cancel an operation before it completes.
@@ -14,10 +17,36 @@ type multiPendingOp struct {
 	ops          []PendingOp
 	completedOps uint32
 	isIdempotent bool
+	cancelled    bool
+	lock         sync.Mutex
+}
+
+func (mp *multiPendingOp) Len() int {
+	mp.lock.Lock()
+	defer mp.lock.Unlock()
+	return len(mp.ops)
+}
+
+func (mp *multiPendingOp) AddOp(op PendingOp) {
+	mp.lock.Lock()
+	if mp.cancelled {
+		mp.lock.Unlock()
+		op.Cancel()
+		return
+	}
+
+	mp.ops = append(mp.ops, op)
+	mp.lock.Unlock()
 }
 
 func (mp *multiPendingOp) Cancel() {
-	for _, op := range mp.ops {
+	mp.lock.Lock()
+	mp.cancelled = true
+	var ops []PendingOp
+	ops = append(ops, mp.ops...)
+	mp.lock.Unlock()
+
+	for _, op := range ops {
 		op.Cancel()
 	}
 }

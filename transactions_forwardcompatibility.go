@@ -48,6 +48,7 @@ func TransactionsProtocolExtensions() []string {
 		"EXT_SINGLE_QUERY",
 		"EXT_INSERT_EXISTING",
 		"EXT_QUERY_CONTEXT",
+		"EXT_REPLICA_FROM_PREFERRED_GROUP",
 	}
 }
 
@@ -63,26 +64,27 @@ type forwardCompatExtension string
 
 // nolint: deadcode,varcheck
 const (
-	forwardCompatExtensionTransactionID            forwardCompatExtension = "TI"
-	forwardCompatExtensionDeferredCommit           forwardCompatExtension = "DC"
-	forwardCompatExtensionTimeOptUnstaging         forwardCompatExtension = "TO"
-	forwardCompatExtensionMemoryOptUnstaging       forwardCompatExtension = "MO"
-	forwardCompatExtensionCustomMetadataCollection forwardCompatExtension = "CM"
-	forwardCompatExtensionBinaryMetadata           forwardCompatExtension = "BM"
-	forwardCompatExtensionQuery                    forwardCompatExtension = "QU"
-	forwardCompatExtensionStoreDurability          forwardCompatExtension = "SD"
-	forwardCompatExtensionRemoveCompleted          forwardCompatExtension = "RC"
-	forwardCompatExtensionAllKvCombinations        forwardCompatExtension = "CO"
-	forwardCompatExtensionUnknownATRStates         forwardCompatExtension = "UA"
-	forwardCompatExtensionBFCBD3787                forwardCompatExtension = "BF3787"
-	forwardCompatExtensionBFCBD3705                forwardCompatExtension = "BF3705"
-	forwardCompatExtensionBFCBD3838                forwardCompatExtension = "BF3838"
-	forwardCompatExtensionBFCBD3791                forwardCompatExtension = "BF3791"
-	forwardCompatExtensionBFCBD3794                forwardCompatExtension = "BF3794"
-	forwardCompatExtensionSDKIntegration           forwardCompatExtension = "SI"
-	forwardCompatExtensionSingleQuery              forwardCompatExtension = "SQ"
-	forwardCompatExtensionInsertExisting           forwardCompatExtension = "IX"
-	forwardCompatExtensionQueryContext             forwardCompatExtension = "QC"
+	forwardCompatExtensionTransactionID             forwardCompatExtension = "TI"
+	forwardCompatExtensionDeferredCommit            forwardCompatExtension = "DC"
+	forwardCompatExtensionTimeOptUnstaging          forwardCompatExtension = "TO"
+	forwardCompatExtensionMemoryOptUnstaging        forwardCompatExtension = "MO"
+	forwardCompatExtensionCustomMetadataCollection  forwardCompatExtension = "CM"
+	forwardCompatExtensionBinaryMetadata            forwardCompatExtension = "BM"
+	forwardCompatExtensionQuery                     forwardCompatExtension = "QU"
+	forwardCompatExtensionStoreDurability           forwardCompatExtension = "SD"
+	forwardCompatExtensionRemoveCompleted           forwardCompatExtension = "RC"
+	forwardCompatExtensionAllKvCombinations         forwardCompatExtension = "CO"
+	forwardCompatExtensionUnknownATRStates          forwardCompatExtension = "UA"
+	forwardCompatExtensionBFCBD3787                 forwardCompatExtension = "BF3787"
+	forwardCompatExtensionBFCBD3705                 forwardCompatExtension = "BF3705"
+	forwardCompatExtensionBFCBD3838                 forwardCompatExtension = "BF3838"
+	forwardCompatExtensionBFCBD3791                 forwardCompatExtension = "BF3791"
+	forwardCompatExtensionBFCBD3794                 forwardCompatExtension = "BF3794"
+	forwardCompatExtensionSDKIntegration            forwardCompatExtension = "SI"
+	forwardCompatExtensionSingleQuery               forwardCompatExtension = "SQ"
+	forwardCompatExtensionInsertExisting            forwardCompatExtension = "IX"
+	forwardCompatExtensionQueryContext              forwardCompatExtension = "QC"
+	forwardCompatExtensionReplicaFromPreferredGroup forwardCompatExtension = "RP"
 )
 
 type forwardCompatStage string
@@ -132,6 +134,7 @@ var supportedforwardCompatExtensions = []forwardCompatExtension{
 	forwardCompatExtensionSingleQuery,
 	forwardCompatExtensionInsertExisting,
 	forwardCompatExtensionQueryContext,
+	forwardCompatExtensionReplicaFromPreferredGroup,
 }
 
 func jsonForwardCompatToForwardCompat(fc map[string][]jsonForwardCompatibilityEntry) map[string][]TransactionForwardCompatibilityEntry {

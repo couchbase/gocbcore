@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -30,6 +31,7 @@ func (sol *subdocOpList) Reorder(ops []SubDocOp) {
 	sol.ops = append(xAttrOps, sops...)
 	sol.indexes = append(xAttrIndexes, opIndexes...)
 }
+
 func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "LookupIn", opts.TraceContext)
 
@@ -176,6 +178,118 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	}
 
 	return op, nil
+}
+
+func (crud *crudComponent) LookupInServerGroup(serverGroup string, opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
+	parentOp := &multiPendingOp{
+		isIdempotent: true,
+	}
+	snapshotOp, err := crud.configSnapshotProvider.WaitForConfigSnapshot(opts.Deadline, func(result *WaitForConfigSnapshotResult, err error) {
+		if err != nil {
+			parentOp.IncrementCompletedOps()
+			cb(nil, err)
+			return
+		}
+
+		if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityReplicaRead, CapabilityStatusUnsupported) {
+			cb(nil, errFeatureNotAvailable)
+			return
+		}
+
+		snapshot := result.Snapshot
+
+		var servers []int
+		serverGroups, err := snapshot.KeyToServersByServerGroup(opts.Key)
+		if err != nil {
+			parentOp.IncrementCompletedOps()
+			cb(nil, err)
+			return
+		}
+
+		for group, srvIdx := range serverGroups {
+			if group == serverGroup {
+				servers = append(servers, srvIdx...)
+			}
+		}
+
+		op := &multiPendingOp{
+			isIdempotent: true,
+		}
+		parentOp.AddOp(op)
+		// At this point mark the snapshot op as being completed.
+		parentOp.IncrementCompletedOps()
+		numServers := len(servers)
+
+		var res *LookupInResult
+		var resLock sync.Mutex
+
+		opCompleted := func() {
+			parentOp.IncrementCompletedOps()
+			completed := op.IncrementCompletedOps()
+			if numServers-int(completed) == 0 {
+				if res == nil {
+					cb(nil, errDocumentUnretrievable)
+					return
+				}
+
+				cb(res, nil)
+			}
+		}
+
+		for _, replicaIdx := range servers {
+			flags := opts.Flags
+			if replicaIdx > 0 {
+				flags = flags | memd.SubdocDocFlagReplicaRead
+			}
+			curOp, err := crud.LookupIn(LookupInOptions{
+				Key:            opts.Key,
+				Flags:          flags,
+				Ops:            opts.Ops,
+				CollectionName: opts.CollectionName,
+				ScopeName:      opts.ScopeName,
+				CollectionID:   opts.CollectionID,
+				RetryStrategy:  opts.RetryStrategy,
+				Deadline:       opts.Deadline,
+				ReplicaIdx:     replicaIdx,
+				ServerGroup:    serverGroup,
+				User:           opts.User,
+				TraceContext:   opts.TraceContext,
+			}, func(result *LookupInResult, err error) {
+				if err != nil {
+					opCompleted()
+					return
+				}
+
+				var shouldCancel bool
+				resLock.Lock()
+				if res == nil {
+					res = result
+					shouldCancel = true
+				}
+				resLock.Unlock()
+				opCompleted()
+
+				if shouldCancel {
+					op.Cancel()
+				}
+			})
+			if err != nil {
+				continue
+			}
+			op.AddOp(curOp)
+		}
+		if op.Len() == 0 {
+			parentOp.IncrementCompletedOps()
+			cb(nil, errDocumentUnretrievable)
+			return
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	parentOp.AddOp(snapshotOp)
+
+	return parentOp, nil
 }
 
 func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (PendingOp, error) {

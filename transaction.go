@@ -234,6 +234,10 @@ type TransactionGetOptions struct {
 	// to naturally read any mutations they have performed.
 	// VOLATILE: This parameter is subject to change.
 	NoRYOW bool
+
+	// ServerGroup specifies to attempt to fetch the key from all nodes within
+	// the specified group, returning the first successful result.
+	ServerGroup string
 }
 
 // TransactionMutableItemMetaATR represents the ATR for meta.
