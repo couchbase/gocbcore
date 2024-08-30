@@ -213,6 +213,11 @@ func (cm *configManagementComponent) OnNewConfigChangeNotifBrief(snapshot *pipel
 }
 
 func (cm *configManagementComponent) fetchConfig(snapshot *pipelineSnapshot, currentRev, currentEpoch int64) {
+	if cm.configFetcher == nil {
+		logDebugf("CfgManager: Cannot fetch config as the configFetcher is unset, likely because the agent is in ns server mode")
+		return
+	}
+
 	numNodes := snapshot.NumPipelines()
 	nodeIdx := rand.Intn(numNodes) // #nosec G404
 
