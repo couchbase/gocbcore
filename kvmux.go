@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -819,7 +820,11 @@ func (mux *kvMux) handleConfigOnly(resp *memdQResponse, req *memdQRequest) bool 
 
 func (mux *kvMux) drainPipelines(clientMux *kvMuxState, cb func(req *memdQRequest)) {
 	for _, pipeline := range clientMux.pipelines {
-		logDebugf("Draining queue %+v", pipeline)
+		logDebugf("Draining queue. Address=`%s`. Num Clients=%d. Server Group=`%s`. Op Queue={%s}",
+			pipeline.Address(),
+			len(pipeline.Clients()),
+			pipeline.ServerGroup(),
+			strings.ReplaceAll(pipeline.queue.debugString(), "\n", ", "))
 		pipeline.Drain(cb)
 	}
 	if clientMux.deadPipe != nil {
