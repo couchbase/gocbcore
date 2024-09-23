@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 10.5.2 (24 September 2024)
+
+### Fixed issues
+
+* [GOCBC-1659](https://jira.issues.couchbase.com/browse/GOCBC-1659): Fixed nil pointer dereference in "ns-server mode" where an attempt was made to refresh the config using CCCP upon receiving a 0x0d (config-only) KV status.
+* [GOCBC-1660](https://jira.issues.couchbase.com/browse/GOCBC-1660): Fixed potential data race that was occurring because the value of a lock was being logged in kvMux.
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1632](https://jira.issues.couchbase.com/browse/GOCBC-1632): Added support for server groups in GetOneReplica & LookupIn, at uncommitted API stability level.
+
 ## Version 10.5.1 (18 July 2024)
 
 ### Fixed issues
