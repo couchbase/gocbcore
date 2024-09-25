@@ -39,6 +39,9 @@ type routeConfig struct {
 
 	bucketCapabilities    []string
 	bucketCapabilitiesVer string
+
+	clusterUUID string
+	clusterName string
 }
 
 func (config *routeConfig) DebugString() string {

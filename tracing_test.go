@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/stretchr/testify/mock"
 	"time"
 )
 
@@ -245,4 +246,22 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentRoot() {
 			suite.AssertOpSpan(parents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
 		}
 	}
+}
+
+func (suite *StandardTestSuite) TestTracerComponentTracksClusterLabels() {
+	cfgMgr := new(mockConfigManager)
+	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.tracerComponent"))
+
+	tc := newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr)
+
+	suite.Assert().Empty(tc.ClusterLabels().ClusterName)
+	suite.Assert().Empty(tc.ClusterLabels().ClusterUUID)
+
+	tc.OnNewRouteConfig(&routeConfig{
+		clusterName: "test-cluster",
+		clusterUUID: "48d5d855660452102a8c279dc6155e01",
+	})
+
+	suite.Assert().Equal("test-cluster", tc.ClusterLabels().ClusterName)
+	suite.Assert().Equal("48d5d855660452102a8c279dc6155e01", tc.ClusterLabels().ClusterUUID)
 }

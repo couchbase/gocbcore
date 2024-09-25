@@ -19,3 +19,9 @@ func (ag *AgentGroup) Internal() *AgentGroupInternal {
 func (agi *AgentGroupInternal) SearchCapabilityStatus(cap SearchCapability) CapabilityStatus {
 	return agi.agentGroup.clusterAgent.search.capabilityStatus(cap)
 }
+
+// ClusterLabels returns the cluster name and cluster UUID from the cluster associated with this agent group.
+// Internal: This should never be used and is not supported.
+func (agi *AgentGroupInternal) ClusterLabels() ClusterLabels {
+	return agi.agentGroup.clusterAgent.tracer.ClusterLabels()
+}

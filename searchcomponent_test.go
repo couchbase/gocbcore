@@ -73,9 +73,9 @@ func (suite *UnitTestSuite) TestSearchComponentRouteConfigHandling() {
 
 func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 	configC := new(mockConfigManager)
-	configC.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.searchQueryComponent"))
+	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 	sqc.caps[SearchCapabilityVectorSearch] = CapabilityStatusUnsupported
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusSupported
 
@@ -93,9 +93,9 @@ func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 
 func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 	configC := new(mockConfigManager)
-	configC.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.searchQueryComponent"))
+	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusUnsupported
 
 	opts := SearchQueryOptions{

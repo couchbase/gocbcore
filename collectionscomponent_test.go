@@ -145,7 +145,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 	cfgMgr.On("RemoveConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
 	dispatcher := new(mockDispatcher)
@@ -191,7 +191,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownSuppo
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 
@@ -247,7 +247,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 	cfgMgr.On("RemoveConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
 	dispatcher := new(mockDispatcher)
@@ -311,7 +311,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownColle
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 
@@ -365,7 +365,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 	cfgMgr.On("RemoveConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
 	dispatcher := new(mockDispatcher)
@@ -393,7 +393,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownGener
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 
@@ -447,7 +447,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownUnsup
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 	cfgMgr.On("RemoveConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
 	dispatcher := new(mockDispatcher)
@@ -458,7 +458,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsStateUnknownUnsup
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 
@@ -506,7 +506,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsUnsupported() {
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
@@ -517,7 +517,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsUnsupported() {
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -567,7 +567,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
@@ -613,7 +613,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -663,7 +663,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
@@ -726,7 +726,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1
@@ -774,7 +774,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 	sName := "_default"
 
 	cfgMgr := new(mockConfigManager)
-	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
+	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
 
 	initialDispatchesDoneCh := make(chan struct{})
 
@@ -841,7 +841,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		DefaultRetryStrategy: &failFastRetryStrategy{},
 		MaxQueueSize:         100},
 		dispatcher,
-		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}),
+		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
 	cidMgr.configSeen = 1

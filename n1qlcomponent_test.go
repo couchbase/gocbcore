@@ -680,7 +680,7 @@ func (suite *UnitTestSuite) TestN1QLErrorsAndResults() {
 	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
 		Return(resp, nil)
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	test := map[string]interface{}{
 		"statement":         "SELECT 1=1",
@@ -739,7 +739,7 @@ func (suite *UnitTestSuite) TestN1QLOldPreparedErrorsAndResults() {
 	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
 		Return(resp, nil)
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	test := map[string]interface{}{
 		"statement":         "SELECT 1=1",
@@ -785,7 +785,7 @@ func (suite *UnitTestSuite) TestN1QLOldPreparedUnknownErrorsAndResults() {
 	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
 		Return(resp, nil)
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	test := map[string]interface{}{
 		"statement":         "SELECT 1=1",
@@ -831,7 +831,7 @@ func (suite *UnitTestSuite) TestN1QLErrUnknownErrorsAndResults() {
 	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
 		Return(resp, nil)
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	test := map[string]interface{}{
 		"statement":         "SELECT 1=1",
@@ -900,7 +900,7 @@ func (suite *UnitTestSuite) doN1QLRequest(respData []byte, statusCode int, retry
 		Body:       respData,
 	}
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	test := map[string]interface{}{
 		"statement":         "SELECT 1=1",
@@ -973,7 +973,7 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryRetryPrepare4050() {
 		suite.Assert().True(autoExec.(bool))
 	})
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	n1qlC.enhancedPreparedSupported = 1
 	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{
@@ -1026,7 +1026,7 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedKnownQueryFailReprepare() {
 	httpC.On("DoInternalHTTPRequest", mock.AnythingOfType("*gocbcore.httpRequest"), false).
 		Return(resp2, nil).Once()
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	n1qlC.enhancedPreparedSupported = 1
 	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{
@@ -1549,7 +1549,7 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedDifferentiatesQueryContext() {
 		suite.Assert().NotContains(body, "auto_execute")
 	})
 
-	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}))
+	n1qlC := newN1QLQueryComponent(httpC, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
 
 	n1qlC.enhancedPreparedSupported = 1
 	n1qlC.queryCache.Put(n1qlQueryCacheStatementContext{Statement: "SELECT 1=1"}, &n1qlQueryCacheEntry{

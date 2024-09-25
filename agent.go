@@ -72,17 +72,9 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 	logInfof("SDK Version: gocbcore/%s", goCbCoreVersionStr)
 	logInfof("Creating new agent: %+v", config)
 
-	tracer := config.TracerConfig.Tracer
-	if tracer == nil {
-		tracer = noopTracer{}
-	}
-
-	tracerCmpt := newTracerComponent(tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter)
-
 	c := &Agent{
 		clientID:   formatCbUID(randomCbUID()),
 		bucketName: config.BucketName,
-		tracer:     tracerCmpt,
 
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 
@@ -266,6 +258,8 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 			SeedNodeAddr: seedNodeAddr,
 		},
 	)
+
+	c.tracer = newTracerComponent(config.TracerConfig.Tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c.cfgManager)
 
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{

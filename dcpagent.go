@@ -137,7 +137,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		dcpBackfillOrderStr = "sequential"
 	}
 
-	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, nil)
+	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, nil, nil)
 
 	c := &DCPAgent{
 		clientID:   formatCbUID(randomCbUID()),

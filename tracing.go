@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,7 +22,7 @@ type RequestSpan interface {
 	SetAttribute(key string, value interface{})
 }
 
-// RequestSpanContext is the interface for for external span contexts that can be passed in into the SDK option blocks.
+// RequestSpanContext is the interface for external span contexts that can be passed in into the SDK option blocks.
 type RequestSpanContext interface {
 }
 
@@ -72,21 +73,41 @@ func (tracer *opTracer) RootContext() RequestSpanContext {
 	return tracer.parentContext
 }
 
+// ClusterLabels encapsulates the cluster UUID and cluster name as published by the server.
+type ClusterLabels struct {
+	ClusterUUID string
+	ClusterName string
+}
+
 type tracerComponent struct {
 	tracer                    RequestTracer
 	bucket                    string
 	noRootTraceSpans          bool
 	metrics                   Meter
 	valueRecorderAttribsCache sync.Map
+	cfgMgr                    configManager
+	clusterLabels             atomic.Value
 }
 
-func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool, metrics Meter) *tracerComponent {
-	return &tracerComponent{
-		tracer:           tracer,
+func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool, metrics Meter, cfgMgr configManager) *tracerComponent {
+	reqTracer := tracer
+	if reqTracer == nil {
+		reqTracer = noopTracer{}
+	}
+
+	tc := &tracerComponent{
+		tracer:           reqTracer,
 		bucket:           bucket,
 		noRootTraceSpans: noRootTraceSpans,
 		metrics:          metrics,
+		cfgMgr:           cfgMgr,
 	}
+
+	if cfgMgr != nil && (tracer != nil || metrics != nil) {
+		cfgMgr.AddConfigWatcher(tc)
+	}
+
+	return tc
 }
 
 func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext RequestSpanContext) *opTracer {
@@ -99,6 +120,13 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 
 	opSpan := tc.tracer.RequestSpan(parentContext, operationName)
 	opSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+	labels := tc.ClusterLabels()
+	if labels.ClusterName != "" {
+		opSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+	}
+	if labels.ClusterUUID != "" {
+		opSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+	}
 
 	return &opTracer{
 		parentContext: parentContext,
@@ -113,6 +141,13 @@ func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) 
 
 func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32) {
 	span.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+	labels := tc.ClusterLabels()
+	if labels.ClusterName != "" {
+		span.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+	}
+	if labels.ClusterUUID != "" {
+		span.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+	}
 	span.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
 	if id != "" {
 		span.SetAttribute(spanAttribOperationIDKey, id)
@@ -142,6 +177,14 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 	}
 
 	req.cmdTraceSpan = tc.tracer.RequestSpan(req.RootTraceContext, req.Packet.Command.Name())
+	req.cmdTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+	labels := tc.ClusterLabels()
+	if labels.ClusterName != "" {
+		req.cmdTraceSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+	}
+	if labels.ClusterUUID != "" {
+		req.cmdTraceSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+	}
 	req.processingLock.Unlock()
 }
 
@@ -159,6 +202,14 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 	}
 
 	req.netTraceSpan = tc.tracer.RequestSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
+	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+	labels := tc.ClusterLabels()
+	if labels.ClusterName != "" {
+		req.netTraceSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+	}
+	if labels.ClusterUUID != "" {
+		req.netTraceSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+	}
 	req.processingLock.Unlock()
 }
 
@@ -177,6 +228,13 @@ func (tc *tracerComponent) ResponseValueRecord(service, operation string, start 
 		if operation != "" {
 			attribs.(map[string]string)[metricAttribOperationKey] = operation
 		}
+		clusterLabels := tc.ClusterLabels()
+		if clusterLabels.ClusterUUID != "" {
+			attribs.(map[string]string)[metricAttribClusterUUIDKey] = clusterLabels.ClusterUUID
+		}
+		if clusterLabels.ClusterName != "" {
+			attribs.(map[string]string)[metricAttribClusterNameKey] = clusterLabels.ClusterName
+		}
 		tc.valueRecorderAttribsCache.Store(key, attribs)
 	}
 
@@ -194,6 +252,21 @@ func (tc *tracerComponent) ResponseValueRecord(service, operation string, start 
 	recorder.RecordValue(duration)
 }
 
+func (tc *tracerComponent) OnNewRouteConfig(cfg *routeConfig) {
+	tc.clusterLabels.Store(ClusterLabels{
+		ClusterUUID: cfg.clusterUUID,
+		ClusterName: cfg.clusterName,
+	})
+}
+
+func (tc *tracerComponent) ClusterLabels() ClusterLabels {
+	v := tc.clusterLabels.Load()
+	if v == nil {
+		return ClusterLabels{}
+	}
+	return v.(ClusterLabels)
+}
+
 func stopCmdTraceLocked(req *memdQRequest) {
 	if req.RootTraceContext == nil {
 		return
@@ -204,7 +277,6 @@ func stopCmdTraceLocked(req *memdQRequest) {
 		return
 	}
 
-	req.cmdTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
 	req.cmdTraceSpan.SetAttribute(spanAttribNumRetries, req.RetryAttempts())
 
 	req.cmdTraceSpan.End()
@@ -231,7 +303,6 @@ func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, re
 		return
 	}
 
-	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
 	req.netTraceSpan.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
 	if resp != nil {
 		req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, strconv.Itoa(int(resp.Opaque)))

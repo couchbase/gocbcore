@@ -26,19 +26,11 @@ type clusterAgent struct {
 }
 
 func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
-
-	tracer := config.TracerConfig.Tracer
-	if tracer == nil {
-		tracer = noopTracer{}
-	}
-
-	tracerCmpt := newTracerComponent(tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter)
-
 	c := &clusterAgent{
-		tracer: tracerCmpt,
-
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 	}
+
+	c.tracer = newTracerComponent(config.TracerConfig.Tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c)
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
 	if err != nil {
@@ -162,7 +154,7 @@ func (agent *clusterAgent) OnNewRouteConfig(cfg *routeConfig) {
 
 	agent.revID = cfg.revID
 	agent.revLock.Unlock()
-	
+
 	agent.configWatchLock.Lock()
 	watchers := make([]routeConfigWatcher, len(agent.configWatchers))
 	copy(watchers, agent.configWatchers)

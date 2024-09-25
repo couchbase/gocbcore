@@ -108,6 +108,8 @@ const (
 const (
 	spanNameDispatchToServer    = "dispatch_to_server"
 	spanAttribDBSystemKey       = "db.system"
+	spanAttribClusterUUIDKey    = "db.couchbase.cluster_uuid"
+	spanAttribClusterNameKey    = "db.couchbase.cluster_name"
 	spanAttribDBSystemValue     = "couchbase"
 	spanAttribNetTransportKey   = "net.transport"
 	spanAttribNetTransportValue = "IP.TCP"
@@ -124,6 +126,8 @@ const (
 const (
 	metricAttribServiceKey           = "db.couchbase.service"
 	metricAttribOperationKey         = "db.operation"
+	metricAttribClusterUUIDKey       = "db.couchbase.cluster_uuid"
+	metricAttribClusterNameKey       = "db.couchbase.cluster_name"
 	meterNameCBOperations            = "db.couchbase.operations"
 	metricValueServiceKeyValue       = "kv"
 	metricValueServiceQueryValue     = "n1ql"
