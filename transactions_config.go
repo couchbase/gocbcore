@@ -212,6 +212,10 @@ type TransactionsConfig struct {
 		EnableExplicitATRs      bool
 		EnableMutationCaching   bool
 		NumATRs                 int
+
+		// UnstagingParallelismLimit limits the number of mutations that can be unstaged in parallel when
+		// EnableParallelUnstaging is set. If 0, there is no limit.
+		UnstagingParallelismLimit int
 	}
 }
 
@@ -222,12 +226,12 @@ func (config *TransactionsConfig) String() string {
 
 	return fmt.Sprintf("CustomATRLocation:%s ExpirationTime:%s DurabilityLevel:%s KeyValueTimeout:%s CleanupWindow:%s "+
 		"CleanupClientAttempts:%t CleanupLostAttempts:%t CleanupQueueSize:%d BucketAgentProvider:%p LostCleanupATRLocationProvider:%p "+
-		"Internal:{EnableNonFatalGets:%t EnableParallelUnstaging:%t "+"EnableExplicitATRs:%t EnableMutationCaching:%t NumATRs:%d}",
+		"Internal:{EnableNonFatalGets:%t EnableParallelUnstaging:%t "+"EnableExplicitATRs:%t EnableMutationCaching:%t NumATRs:%d UnstagingParallelismLimit:%d}",
 		config.CustomATRLocation, config.ExpirationTime, transactionDurabilityLevelToString(config.DurabilityLevel),
 		config.KeyValueTimeout, config.CleanupWindow, config.CleanupClientAttempts, config.CleanupLostAttempts, config.CleanupQueueSize,
 		config.BucketAgentProvider, config.LostCleanupATRLocationProvider, config.Internal.EnableNonFatalGets,
 		config.Internal.EnableParallelUnstaging, config.Internal.EnableExplicitATRs, config.Internal.EnableMutationCaching,
-		config.Internal.NumATRs)
+		config.Internal.NumATRs, config.Internal.UnstagingParallelismLimit)
 }
 
 // TransactionOptions specifies options which can be overridden on a per transaction basis.

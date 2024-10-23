@@ -120,13 +120,25 @@ func (t *transactionAttempt) rollback(
 						numMutations := len(t.stagedMutations)
 						waitCh := make(chan mutResult, numMutations)
 
+						// If unstagingParallelismLimit is 0, then there is no limit.
+						var parallelismGuardCh chan struct{}
+						if t.unstagingParallelismLimit > 0 {
+							parallelismGuardCh = make(chan struct{}, t.unstagingParallelismLimit)
+						}
+
 						// Unlike the RFC we do insert and replace separately. We have a bug in gocbcore where subdocs
 						// will raise doc exists rather than a cas mismatch so we need to do these ops separately to tell
 						// how to handle that error.
 						for _, mutation := range t.stagedMutations {
+							if parallelismGuardCh != nil {
+								parallelismGuardCh <- struct{}{}
+							}
 							removeStagedMutation(mutation, func(err *TransactionOperationFailedError) {
 								waitCh <- mutResult{
 									Err: err,
+								}
+								if parallelismGuardCh != nil {
+									<-parallelismGuardCh
 								}
 							})
 						}

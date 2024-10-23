@@ -24,19 +24,20 @@ import (
 
 type transactionAttempt struct {
 	// immutable state
-	expiryTime              time.Time
-	txnStartTime            time.Time
-	keyValueTimeout         time.Duration
-	durabilityLevel         TransactionDurabilityLevel
-	transactionID           string
-	id                      string
-	hooks                   TransactionHooks
-	enableNonFatalGets      bool
-	enableParallelUnstaging bool
-	enableExplicitATRs      bool
-	enableMutationCaching   bool
-	atrLocation             TransactionATRLocation
-	bucketAgentProvider     TransactionsBucketAgentProviderFn
+	expiryTime                time.Time
+	txnStartTime              time.Time
+	keyValueTimeout           time.Duration
+	durabilityLevel           TransactionDurabilityLevel
+	transactionID             string
+	id                        string
+	hooks                     TransactionHooks
+	enableNonFatalGets        bool
+	enableParallelUnstaging   bool
+	enableExplicitATRs        bool
+	enableMutationCaching     bool
+	unstagingParallelismLimit int
+	atrLocation               TransactionATRLocation
+	bucketAgentProvider       TransactionsBucketAgentProviderFn
 
 	// mutable state
 	state             TransactionAttemptState
