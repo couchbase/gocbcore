@@ -223,6 +223,7 @@ func (t *transactionAttempt) mavRead(
 			docMeta := &TransactionMutableItemMeta{
 				TransactionID: doc.TxnMeta.ID.Transaction,
 				AttemptID:     doc.TxnMeta.ID.Attempt,
+				OperationID:   doc.TxnMeta.ID.Operation,
 				ATR: TransactionMutableItemMetaATR{
 					BucketName:     doc.TxnMeta.ATR.BucketName,
 					ScopeName:      doc.TxnMeta.ATR.ScopeName,

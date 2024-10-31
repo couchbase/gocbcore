@@ -17,6 +17,7 @@ package gocbcore
 import (
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -70,6 +71,7 @@ func (t *transactionAttempt) insert(
 		collectionName := opts.CollectionName
 		key := opts.Key
 		value := opts.Value
+		operationID := uuid.New().String()
 
 		t.checkExpiredAtomic(hookInsert, key, false, func(cerr *classifiedError) {
 			if cerr != nil {
@@ -92,7 +94,7 @@ func (t *transactionAttempt) insert(
 					t.logger.logInfof(t.id, "Staged remove exists on doc, performing replace")
 					t.stageReplace(
 						agent, oboUser, scopeName, collectionName, key,
-						value, existingMutation.Cas,
+						value, existingMutation.Cas, operationID,
 						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
@@ -135,7 +137,7 @@ func (t *transactionAttempt) insert(
 
 				t.stageInsert(
 					agent, oboUser, scopeName, collectionName, key,
-					value, 0,
+					value, 0, operationID,
 					func(result *TransactionGetResult, err error) {
 						endAndCb(result, err)
 					})
@@ -153,8 +155,16 @@ func (t *transactionAttempt) resolveConflictedInsert(
 	collectionName string,
 	key []byte,
 	value json.RawMessage,
+	operationID string,
 	cb func(*TransactionGetResult, error),
 ) {
+	t.logger.logInfof(t.id, "Resolving conflicted insert for %s opId=%s", newLoggableDocKey(
+		agent.BucketName(),
+		scopeName,
+		collectionName,
+		key,
+	), operationID)
+
 	t.getMetaForConflictedInsert(agent, oboUser, scopeName, collectionName, key,
 		func(isTombstone bool, txnMeta *jsonTxnXattr, cas Cas, err error) {
 			if err != nil {
@@ -170,13 +180,14 @@ func (t *transactionAttempt) resolveConflictedInsert(
 				}
 
 				// There wasn't actually a staged mutation there.
-				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, cb)
 				return
 			}
 
 			meta := &TransactionMutableItemMeta{
 				TransactionID: txnMeta.ID.Transaction,
 				AttemptID:     txnMeta.ID.Attempt,
+				OperationID:   txnMeta.ID.Operation,
 				ATR: TransactionMutableItemMetaATR{
 					BucketName:     txnMeta.ATR.BucketName,
 					ScopeName:      txnMeta.ATR.ScopeName,
@@ -210,11 +221,45 @@ func (t *transactionAttempt) resolveConflictedInsert(
 
 					// We have guards in place within the write write conflict polling to prevent miss-use when
 					// an existing mutation must have been discovered before it's safe to overwrite.  This logic
-					// is unneccessary, as is the forwards compatibility check when resolving conflicted inserts
+					// is unnecessary, as is the forwards compatibility check when resolving conflicted inserts
 					// so we can safely just ignore it.
 					if meta.TransactionID == t.transactionID && meta.AttemptID == t.id {
-						t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
-						return
+						if meta.OperationID == operationID {
+							stagedInfo := &transactionStagedMutation{
+								OpType:         TransactionStagedMutationInsert,
+								Agent:          agent,
+								OboUser:        oboUser,
+								ScopeName:      scopeName,
+								CollectionName: collectionName,
+								Key:            key,
+								Staged:         value,
+								OperationID:    operationID,
+								Cas:            cas,
+							}
+							t.recordStagedMutation(stagedInfo, func() {
+								cb(&TransactionGetResult{
+									agent:          stagedInfo.Agent,
+									oboUser:        stagedInfo.OboUser,
+									scopeName:      stagedInfo.ScopeName,
+									collectionName: stagedInfo.CollectionName,
+									key:            stagedInfo.Key,
+									Value:          stagedInfo.Staged,
+									Cas:            stagedInfo.Cas,
+									Meta:           meta,
+								}, nil)
+							})
+
+							return
+						} else {
+							cb(nil, t.operationFailed(operationFailedDef{
+								Cerr:              classifyError(ErrConcurrentOperationsDetectedOnSameDocument),
+								ShouldNotRetry:    true,
+								ShouldNotRollback: false,
+								Reason:            TransactionErrorReasonTransactionFailed,
+							}))
+
+							return
+						}
 					}
 
 					t.writeWriteConflictPoll(forwardCompatStageWWCInserting, agent, oboUser, scopeName, collectionName, key, cas, meta, nil, func(err *TransactionOperationFailedError) {
@@ -229,7 +274,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 								return
 							}
 
-							t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+							t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, cb)
 						})
 					})
 				})
@@ -244,6 +289,7 @@ func (t *transactionAttempt) stageInsert(
 	key []byte,
 	value json.RawMessage,
 	cas Cas,
+	operationID string,
 	cb func(*TransactionGetResult, error),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
@@ -257,7 +303,7 @@ func (t *transactionAttempt) stageInsert(
 		switch cerr.Class {
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
-				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, cb)
+				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, cb)
 			})
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
@@ -284,7 +330,7 @@ func (t *transactionAttempt) stageInsert(
 		case TransactionErrorClassFailDocAlreadyExists:
 			fallthrough
 		case TransactionErrorClassFailCasMismatch:
-			t.resolveConflictedInsert(agent, oboUser, scopeName, collectionName, key, value, cb)
+			t.resolveConflictedInsert(agent, oboUser, scopeName, collectionName, key, value, operationID, cb)
 		default:
 			cb(nil, t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
@@ -315,11 +361,13 @@ func (t *transactionAttempt) stageInsert(
 				CollectionName: collectionName,
 				Key:            key,
 				Staged:         value,
+				OperationID:    operationID,
 			}
 
 			var txnMeta jsonTxnXattr
 			txnMeta.ID.Transaction = t.transactionID
 			txnMeta.ID.Attempt = t.id
+			txnMeta.ID.Operation = operationID
 			txnMeta.ATR.CollectionName = t.atrCollectionName
 			txnMeta.ATR.ScopeName = t.atrScopeName
 			txnMeta.ATR.BucketName = t.atrAgent.BucketName()

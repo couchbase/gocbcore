@@ -71,6 +71,7 @@ type TransactionStagedMutation struct {
 	Key            []byte
 	Cas            Cas
 	Staged         json.RawMessage
+	OperationID    string
 }
 
 type transactionStagedMutation struct {
@@ -82,4 +83,5 @@ type transactionStagedMutation struct {
 	Key            []byte
 	Cas            Cas
 	Staged         json.RawMessage
+	OperationID    string
 }

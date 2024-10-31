@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
 )
 
 func (t *transactionAttempt) Replace(opts TransactionReplaceOptions, cb TransactionStoreCallback) error {
@@ -70,6 +71,7 @@ func (t *transactionAttempt) replace(
 		value := opts.Value
 		cas := opts.Document.Cas
 		meta := opts.Document.Meta
+		operationID := uuid.New().String()
 
 		t.checkExpiredAtomic(hookReplace, key, false, func(cerr *classifiedError) {
 			if cerr != nil {
@@ -92,7 +94,7 @@ func (t *transactionAttempt) replace(
 					t.logger.logInfof(t.id, "Staged insert exists on doc, performing insert")
 					t.stageInsert(
 						agent, oboUser, scopeName, collectionName, key,
-						value, cas,
+						value, cas, operationID,
 						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
@@ -142,7 +144,7 @@ func (t *transactionAttempt) replace(
 
 						t.stageReplace(
 							agent, oboUser, scopeName, collectionName, key,
-							value, cas,
+							value, cas, operationID,
 							func(result *TransactionGetResult, err error) {
 								endAndCb(result, err)
 							})
@@ -162,6 +164,7 @@ func (t *transactionAttempt) stageReplace(
 	key []byte,
 	value json.RawMessage,
 	cas Cas,
+	operationID string,
 	cb func(*TransactionGetResult, error),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
@@ -250,6 +253,7 @@ func (t *transactionAttempt) stageReplace(
 				CollectionName: collectionName,
 				Key:            key,
 				Staged:         value,
+				OperationID:    operationID,
 			}
 
 			var txnMeta jsonTxnXattr

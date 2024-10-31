@@ -78,11 +78,6 @@ func (t *transactionAttempt) commit(
 
 		t.applyStateBits(transactionStateBitShouldNotCommit, 0)
 
-		if t.state == TransactionAttemptStateNothingWritten {
-			unlockAndCb(nil)
-			return
-		}
-
 		t.checkExpiredAtomic(hookCommit, []byte{}, false, func(cerr *classifiedError) {
 			if cerr != nil {
 				unlockAndCb(t.operationFailed(operationFailedDef{
@@ -91,6 +86,11 @@ func (t *transactionAttempt) commit(
 					ShouldNotRollback: false,
 					Reason:            TransactionErrorReasonTransactionExpired,
 				}))
+				return
+			}
+
+			if t.state == TransactionAttemptStateNothingWritten {
+				unlockAndCb(nil)
 				return
 			}
 

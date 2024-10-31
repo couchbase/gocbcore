@@ -253,6 +253,7 @@ type TransactionMutableItemMetaATR struct {
 type TransactionMutableItemMeta struct {
 	TransactionID string                                            `json:"txn"`
 	AttemptID     string                                            `json:"atmpt"`
+	OperationID   string                                            `json:"op"`
 	ATR           TransactionMutableItemMetaATR                     `json:"atr"`
 	ForwardCompat map[string][]TransactionForwardCompatibilityEntry `json:"fc,omitempty"`
 }

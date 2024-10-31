@@ -171,7 +171,7 @@ func (t *transactionAttempt) checkCanCommitLocked() *TransactionOperationFailedE
 	if (stateBits & transactionStateBitShouldNotCommit) != 0 {
 		return t.operationFailed(operationFailedDef{
 			Cerr: classifyError(
-				wrapError(ErrPreviousOperationFailed, "previous operation prevents commit")),
+				wrapError(ErrCommitNotPermitted, "previous operation prevents commit")),
 			ShouldNotRetry:    true,
 			ShouldNotRollback: false,
 			Reason:            TransactionErrorReasonTransactionFailed,
@@ -191,7 +191,7 @@ func (t *transactionAttempt) checkCanRollbackLocked() *TransactionOperationFaile
 	if (stateBits & transactionStateBitShouldNotRollback) != 0 {
 		return t.operationFailed(operationFailedDef{
 			Cerr: classifyError(
-				wrapError(ErrPreviousOperationFailed, "previous operation prevents rollback")),
+				wrapError(ErrRollbackNotPermitted, "previous operation prevents rollback")),
 			ShouldNotRetry:    true,
 			ShouldNotRollback: false,
 			Reason:            TransactionErrorReasonTransactionFailed,

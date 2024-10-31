@@ -16,6 +16,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"github.com/google/uuid"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
@@ -67,6 +68,7 @@ func (t *transactionAttempt) remove(
 		key := opts.Document.key
 		cas := opts.Document.Cas
 		meta := opts.Document.Meta
+		operationID := uuid.New().String()
 
 		t.checkExpiredAtomic(hookRemove, key, false, func(cerr *classifiedError) {
 			if cerr != nil {
@@ -138,7 +140,7 @@ func (t *transactionAttempt) remove(
 
 						t.stageRemove(
 							agent, oboUser, scopeName, collectionName, key,
-							cas,
+							cas, operationID,
 							func(result *TransactionGetResult, err *TransactionOperationFailedError) {
 								endAndCb(result, err)
 							})
@@ -158,6 +160,7 @@ func (t *transactionAttempt) stageRemove(
 	collectionName string,
 	key []byte,
 	cas Cas,
+	operationID string,
 	cb func(*TransactionGetResult, *TransactionOperationFailedError),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
@@ -245,6 +248,7 @@ func (t *transactionAttempt) stageRemove(
 				ScopeName:      scopeName,
 				CollectionName: collectionName,
 				Key:            key,
+				OperationID:    operationID,
 			}
 
 			var txnMeta jsonTxnXattr

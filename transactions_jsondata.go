@@ -67,6 +67,7 @@ type jsonAtrAttempt struct {
 type jsonTxnXattrID struct {
 	Transaction string `json:"txn,omitempty"`
 	Attempt     string `json:"atmpt,omitempty"`
+	Operation   string `json:"op,omitempty"`
 }
 
 type jsonTxnXattrATR struct {
