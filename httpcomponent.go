@@ -43,6 +43,7 @@ type httpClientProps struct {
 	connectTimeout      time.Duration
 	maxIdleConns        int
 	maxIdleConnsPerHost int
+	maxConnsPerHost     int
 	idleTimeout         time.Duration
 }
 
@@ -55,7 +56,7 @@ func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, mux
 		shutdownSig:          make(chan struct{}),
 	}
 
-	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.idleTimeout,
+	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.maxConnsPerHost, clientProps.idleTimeout,
 		clientProps.connectTimeout)
 
 	return hc
@@ -63,7 +64,7 @@ func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, mux
 
 func (hc *httpComponent) Close() {
 	close(hc.shutdownSig)
-	
+
 	if err := hc.muxer.Close(); err != nil {
 		logDebugf("Error closing http muxer: %s", err)
 	}
@@ -488,7 +489,7 @@ func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTL
 	}
 }
 
-func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, connectTimeout time.Duration) *http.Client {
+func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost int, idleTimeout time.Duration, connectTimeout time.Duration) *http.Client {
 	httpDialer := &net.Dialer{
 		Timeout:   connectTimeout,
 		KeepAlive: 30 * time.Second,
@@ -528,6 +529,7 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int,
 		},
 		MaxIdleConns:        maxIdleConns,
 		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		MaxConnsPerHost:     maxConnsPerHost,
 		IdleConnTimeout:     idleTimeout,
 	}
 

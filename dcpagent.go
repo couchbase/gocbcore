@@ -312,6 +312,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
 			idleTimeout:         httpIdleConnTimeout,
 			connectTimeout:      httpConnectTimeout,
+			maxConnsPerHost:     config.HTTPConfig.MaxConnsPerHost,
 		},
 		c.httpMux,
 		c.tracer,

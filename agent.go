@@ -338,6 +338,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 			maxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,
 			idleTimeout:         httpIdleConnTimeout,
 			connectTimeout:      httpConnectTimeout,
+			maxConnsPerHost:     config.HTTPConfig.MaxConnsPerHost,
 		},
 		c.httpMux,
 		c.tracer,

@@ -317,7 +317,9 @@ type HTTPConfig struct {
 	MaxIdleConns int
 	// MaxIdleConnsPerHost controls the maximum idle (keep-alive) connections to keep per-host.
 	MaxIdleConnsPerHost int
-	ConnectTimeout      time.Duration
+	// MaxConnsPerHost controls the maximum number of connections to keep per-host.
+	MaxConnsPerHost int
+	ConnectTimeout  time.Duration
 	// IdleConnTimeout is the maximum amount of time an idle (keep-alive) connection will remain idle before closing
 	// itself.
 	IdleConnectionTimeout time.Duration
@@ -338,6 +340,14 @@ func (config HTTPConfig) fromSpec(spec connstr.ResolvedConnSpec) (HTTPConfig, er
 			return HTTPConfig{}, fmt.Errorf("max_perhost_idle_http_connections option must be a number")
 		}
 		config.MaxIdleConnsPerHost = int(val)
+	}
+
+	if valStr, ok := fetchOption(spec, "max_perhost_http_connections"); ok {
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("max_perhost_http_connections option must be a number")
+		}
+		config.MaxConnsPerHost = int(val)
 	}
 
 	if valStr, ok := fetchOption(spec, "idle_http_connection_timeout"); ok {
