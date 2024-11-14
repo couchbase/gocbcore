@@ -767,6 +767,8 @@ func (mux *kvMux) handleNotMyVbucket(resp *memdQResponse, req *memdQRequest) boo
 	// For range scan continue we never want to retry, the range scan is now invalid.
 	isRetryableReq := req.Command != memd.CmdRangeScanContinue
 
+	logSchedf("Received NMV for request. OP=0x%x. Opaque=%d. Vbid: %d", req.Command, req.Opaque, req.Vbucket)
+
 	if len(resp.Value) == 0 {
 		logDebugf("NMV response containing no new config")
 		if !isRetryableReq {

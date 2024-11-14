@@ -258,7 +258,7 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 		}
 	}
 
-	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d", client.conn.LocalAddr(), client.loggerID(), req.Command, req.Opaque)
+	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d. Vbid=%d", client.conn.LocalAddr(), client.loggerID(), req.Command, req.Opaque, req.Vbucket)
 
 	client.tracer.StartNetTrace(req)
 
