@@ -22,6 +22,9 @@ const (
 
 	// Common flags compression for disabled compression.
 	cfCmprNone = 0 << 29
+
+	// Common flags compression for unknown compression.
+	cfCmprUnknown = 1 << 29
 )
 
 // DataType represents the type of data for a value
@@ -70,9 +73,9 @@ func EncodeCommonFlags(valueType DataType, compression CompressionType) uint32 {
 
 	switch compression {
 	case NoCompression:
-		// flags |= 0
+		flags |= cfCmprNone
 	case UnknownCompression:
-		// flags |= ?
+		flags |= cfCmprUnknown
 	}
 
 	return flags
