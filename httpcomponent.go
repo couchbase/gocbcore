@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -210,7 +209,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 				Endpoint: endpoint,
 			})
 			if err != nil {
-				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, endpoint); err != nil {
+				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, endpoint, true); err != nil {
 					return nil, err
 				}
 				denylist = append(denylist, endpoint)
@@ -231,65 +230,70 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
 		if err != nil {
 			logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
+
+			// We check for net errors first, an i/o timeout can satisfy the DeadlineExceeded check and then we'd end
+			// up returning an i/o timeout error to the user.
+			var retryReason RetryReason
+			if os.IsTimeout(err) {
+				retryReason = SocketNotAvailableRetryReason
+			} else if errors.Is(err, io.ErrUnexpectedEOF) {
+				retryReason = SocketCloseInFlightRetryReason
+			} else {
+				var netErr *net.OpError
+				if errors.As(err, &netErr) {
+					// We need to be care about what we consider not available, if the request has been written to the
+					// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
+					// caution.
+					if netErr.Op == "dial" {
+						retryReason = SocketNotAvailableRetryReason
+					} else {
+						retryReason = SocketCloseInFlightRetryReason
+					}
+				} else {
+					var dnsErr *net.DNSError
+					if errors.As(err, &dnsErr) {
+						retryReason = SocketNotAvailableRetryReason
+					}
+				}
+			}
+
+			if retryReason != nil {
+				err := hc.maybeWait(req, retryReason, err, start, endpoint, false)
+				if err != nil {
+					return nil, err
+				}
+
+				continue
+			}
+
 			// Because we don't use the http request context itself to perform timeouts we need to do some translation
 			// of the error message here for better UX.
 			if errors.Is(err, context.Canceled) {
 				isTimeout := atomic.LoadUint32(&cancellationIsTimeout)
 				if isTimeout == 1 {
+					var base error
 					if req.IsIdempotent {
-						err = &TimeoutError{
-							InnerError:       errUnambiguousTimeout,
-							OperationID:      "http",
-							Opaque:           req.Identifier(),
-							TimeObserved:     time.Since(start),
-							RetryReasons:     req.retryReasons,
-							RetryAttempts:    req.retryCount,
-							LastDispatchedTo: endpoint,
-						}
+						base = errUnambiguousTimeout
 					} else {
-						err = &TimeoutError{
-							InnerError:       errAmbiguousTimeout,
-							OperationID:      "http",
-							Opaque:           req.Identifier(),
-							TimeObserved:     time.Since(start),
-							RetryReasons:     req.retryReasons,
-							RetryAttempts:    req.retryCount,
-							LastDispatchedTo: endpoint,
-						}
+						base = errAmbiguousTimeout
+					}
+
+					err = &TimeoutError{
+						InnerError:       base,
+						OperationID:      "http",
+						Opaque:           req.Identifier(),
+						TimeObserved:     time.Since(start),
+						RetryReasons:     req.retryReasons,
+						RetryAttempts:    req.retryCount,
+						LastDispatchedTo: endpoint,
 					}
 				} else {
 					err = errRequestCanceled
 				}
 			}
 
-			isUserError := false
-			isUserError = isUserError || errors.Is(err, context.DeadlineExceeded)
-			isUserError = isUserError || errors.Is(err, context.Canceled)
-			isUserError = isUserError || errors.Is(err, ErrRequestCanceled)
-			isUserError = isUserError || errors.Is(err, ErrTimeout)
-			if isUserError {
-				return nil, err
-			}
-
-			var retryReason RetryReason
-			if os.IsTimeout(err) || errors.Is(err, syscall.ECONNREFUSED) {
-				// Whilst the above comment holds true for once requests are actually sent the dial itself can actually
-				// timeout, at which point we don't get context canceled.
-				retryReason = SocketNotAvailableRetryReason
-			} else if errors.Is(err, io.ErrUnexpectedEOF) {
-				retryReason = SocketCloseInFlightRetryReason
-			}
-
-			if retryReason == nil {
-				return nil, err
-			}
-
-			err := hc.maybeWait(req, retryReason, err, start, endpoint)
-			if err != nil {
-				return nil, err
-			}
-
-			continue
+			// If we've got to here then either the error is ours timeout/canceled or we don't know it.
+			return nil, err
 		}
 		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
 
@@ -396,8 +400,7 @@ func (hc *httpComponent) checkEndpointExists(service ServiceType, endpoint strin
 	return nil
 }
 
-func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time,
-	endpoint string) error {
+func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time, endpoint string, returnOriginalOnTimeout bool) error {
 	shouldRetry, retryTime := retryOrchMaybeRetry(req, retryReason)
 	if !shouldRetry {
 		return err
@@ -407,19 +410,31 @@ func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, er
 	case <-time.After(time.Until(retryTime)):
 		// continue!
 	case <-time.After(time.Until(req.Deadline)):
-		if errors.Is(err, context.DeadlineExceeded) {
-			err = &TimeoutError{
-				InnerError:       errAmbiguousTimeout,
-				OperationID:      "http",
-				Opaque:           req.Identifier(),
-				TimeObserved:     time.Since(start),
-				RetryReasons:     req.retryReasons,
-				RetryAttempts:    req.retryCount,
-				LastDispatchedTo: endpoint,
+		if returnOriginalOnTimeout {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = &TimeoutError{
+					InnerError:       errUnambiguousTimeout,
+					OperationID:      "http",
+					Opaque:           req.Identifier(),
+					TimeObserved:     time.Since(start),
+					RetryReasons:     req.retryReasons,
+					RetryAttempts:    req.retryCount,
+					LastDispatchedTo: endpoint,
+				}
 			}
+
+			return err
 		}
 
-		return err
+		return &TimeoutError{
+			InnerError:       errUnambiguousTimeout,
+			OperationID:      "http",
+			Opaque:           req.Identifier(),
+			TimeObserved:     time.Since(start),
+			RetryReasons:     req.retryReasons,
+			RetryAttempts:    req.retryCount,
+			LastDispatchedTo: endpoint,
+		}
 	}
 
 	return nil
