@@ -1,8 +1,18 @@
 # Release Notes
 
+## Version 10.5.3 (25 November 2024)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1658](https://jira.issues.couchbase.com/browse/GOCBC-1658): Include cluster name & cluster UUID in all spans & metrics recorded by the SDK, if the server publishes them.
+* [GOCBC-1680](https://jira.issues.couchbase.com/browse/GOCBC-1673): Added support for `ExtParallelUnstaging`.
+* [GOCBC-1674](https://jira.issues.couchbase.com/browse/GOCBC-1674): Added `MaxConnsPerHost` to `HTTPConfig`.
+* [GOCBC-1677](https://jira.issues.couchbase.com/browse/GOCBC-1677): The vbucket ID is now logged when sending a memcached request.
+* [GOCBC-1680](https://jira.issues.couchbase.com/browse/GOCBC-1680): Improved retry handling for HTTP operations.
+
 ## Version 10.5.2 (24 September 2024)
 
-### Fixed issues
+### Fixed Issues
 
 * [GOCBC-1659](https://jira.issues.couchbase.com/browse/GOCBC-1659): Fixed nil pointer dereference in "ns-server mode" where an attempt was made to refresh the config using CCCP upon receiving a 0x0d (config-only) KV status.
 * [GOCBC-1660](https://jira.issues.couchbase.com/browse/GOCBC-1660): Fixed potential data race that was occurring because the value of a lock was being logged in kvMux.
@@ -13,7 +23,7 @@
 
 ## Version 10.5.1 (18 July 2024)
 
-### Fixed issues
+### Fixed Issues
 
 * [GOCBC-1644](https://issues.couchbase.com/browse/GOCBC-1644):
   Fixed race that could occur when a request was retried and cancelled at the same time.
@@ -26,7 +36,7 @@
 
 ## Version 10.5.0 (18 June 2024)
 
-### Fixed issues
+### Fixed Issues
 
 * [GOCBC-1636](https://issues.couchbase.com/browse/GOCBC-1636):
   Fixed race in clusterAgent (only used by AgentGroup().
@@ -40,7 +50,7 @@
 
 ## Version 10.4.1 (17 April 2024)
 
-### Fixed issues
+### Fixed Issues
 
 * [GOCBC-1615](https://issues.couchbase.com/browse/GOCBC-1615):
   Removed superfluous validations from SCRAM client.
@@ -79,7 +89,7 @@
 * [GOCBC-1561](https://issues.couchbase.com/browse/GOCBC-1561):
   Use the KV error map description as the error message when receiving an unknown KV status code.
 
-### Fixed issues
+### Fixed Issues
 
 * [GOCBC-1550](https://issues.couchbase.com/browse/GOCBC-1550):
   Fixed issue where the SDK deadlocks if it is in ns_server mode and the server provides a config which does not contain a `thisNode` entry.
@@ -433,7 +443,7 @@
 
 ## Version 10.0.3 (21 September 2021)
 
-###New Features and Behavioral Changes
+### New Features and Behavioral Changes
 
 * [GOCBC-1162](https://issues.couchbase.com/browse/GOCBC-1162):
   Added support for initially bootstrapping the SDK over nonTLS when TLS is in use.
@@ -449,7 +459,7 @@
 
 ## Version 10.0.2 (17 August 2021)
 
-###New Features and Behavioral Changes
+### New Features and Behavioral Changes
 
 * [GOCBC-1146](https://issues.couchbase.com/browse/GOCBC-1146):
   Added support for user impersonation to non-KV services.
@@ -473,7 +483,7 @@
 
 ## Version 10.0.0 (15 July 2021) (Do not use, see v10.0.1)
 
-###New Features and Behavioral Changes
+### New Features and Behavioral Changes
 
 * [GOCBC-901](https://issues.couchbase.com/browse/GOCBC-901):
   Broke the `AgentConfig` up into grouped components.
@@ -516,7 +526,7 @@
 
 ## Version 9.1.4 (20 April 2021)
 
-###New Features and Behavioral Changes
+### New Features and Behavioral Changes
 
 * [GOCBC-1071](https://issues.couchbase.com/browse/GOCBC-1071):
   Updated SDK to use new protocol level changes for get collection id.
