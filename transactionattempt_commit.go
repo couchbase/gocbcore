@@ -265,11 +265,6 @@ func (t *transactionAttempt) fetchBeforeUnstage(
 		return
 	}
 
-	if mutation.Staged != nil {
-		ecCb(nil)
-		return
-	}
-
 	t.checkExpiredAtomic(hookCommitDoc, mutation.Key, false, func(cerr *classifiedError) {
 		if cerr != nil {
 			t.setExpiryOvertimeAtomic()

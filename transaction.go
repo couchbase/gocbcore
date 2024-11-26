@@ -40,7 +40,6 @@ type Transaction struct {
 	unstagingParallelismLimit int
 	enableNonFatalGets        bool
 	enableExplicitATRs        bool
-	enableMutationCaching     bool
 	atrLocation               TransactionATRLocation
 	bucketAgentProvider       TransactionsBucketAgentProviderFn
 
@@ -82,7 +81,6 @@ func (t *Transaction) NewAttempt() error {
 		transactionID:             t.transactionID,
 		enableNonFatalGets:        t.enableNonFatalGets,
 		enableParallelUnstaging:   t.enableParallelUnstaging,
-		enableMutationCaching:     t.enableMutationCaching,
 		enableExplicitATRs:        t.enableExplicitATRs,
 		unstagingParallelismLimit: t.unstagingParallelismLimit,
 		atrLocation:               t.atrLocation,
@@ -198,7 +196,6 @@ func (t *Transaction) resumeAttempt(txnData *jsonSerializedAttempt) error {
 		transactionID:             t.transactionID,
 		enableNonFatalGets:        t.enableNonFatalGets,
 		enableParallelUnstaging:   t.enableParallelUnstaging,
-		enableMutationCaching:     t.enableMutationCaching,
 		enableExplicitATRs:        t.enableExplicitATRs,
 		unstagingParallelismLimit: t.unstagingParallelismLimit,
 		atrLocation:               t.atrLocation,

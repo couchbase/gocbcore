@@ -315,9 +315,7 @@ func (t *transactionAttempt) recordStagedMutation(
 	stagedInfo *transactionStagedMutation,
 	cb func(),
 ) {
-	if !t.enableMutationCaching {
-		stagedInfo.Staged = nil
-	}
+	stagedInfo.Staged = nil
 
 	t.lock.Lock(func(unlock func()) {
 		mutIdx, _ := t.getStagedMutationLocked(

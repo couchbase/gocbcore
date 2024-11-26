@@ -34,7 +34,6 @@ type transactionAttempt struct {
 	enableNonFatalGets        bool
 	enableParallelUnstaging   bool
 	enableExplicitATRs        bool
-	enableMutationCaching     bool
 	unstagingParallelismLimit int
 	atrLocation               TransactionATRLocation
 	bucketAgentProvider       TransactionsBucketAgentProviderFn
