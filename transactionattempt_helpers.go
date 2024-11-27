@@ -768,3 +768,29 @@ func (t *transactionAttempt) ensureCleanUpRequest() {
 
 	t.addCleanupRequest(req)
 }
+
+func (t *transactionAttempt) supportsReplaceBodyWithXattr(agent *Agent, operationID string, cb func(bool, *TransactionOperationFailedError)) *TransactionOperationFailedError {
+	_, err := agent.kvMux.blockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			cb(false, t.operationFailed(operationFailedDef{
+				Cerr:              classifyError(err),
+				ShouldNotRetry:    true,
+				ShouldNotRollback: true,
+				Reason:            TransactionErrorReasonTransactionFailedPostCommit,
+			}))
+			return
+		}
+
+		isSupported := clientMux.HasBucketCapabilityStatus(BucketCapabilityReviveDocument, CapabilityStatusSupported)
+		cb(isSupported, nil)
+	})
+	if err != nil {
+		return t.operationFailed(operationFailedDef{
+			Cerr:              classifyError(err),
+			ShouldNotRetry:    true,
+			ShouldNotRollback: true,
+			Reason:            TransactionErrorReasonTransactionFailedPostCommit,
+		})
+	}
+	return nil
+}

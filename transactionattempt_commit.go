@@ -115,29 +115,40 @@ func (t *transactionAttempt) commit(
 						mutation *transactionStagedMutation,
 						unstageCb func(*TransactionOperationFailedError),
 					) {
-						t.fetchBeforeUnstage(mutation, func(err *TransactionOperationFailedError) {
+						err := t.supportsReplaceBodyWithXattr(mutation.Agent, "commit", func(supportsReplaceBody bool, err *TransactionOperationFailedError) {
 							if err != nil {
 								unstageCb(err)
 								return
 							}
 
-							switch mutation.OpType {
-							case TransactionStagedMutationInsert:
-								t.commitStagedInsert(*mutation, false, unstageCb)
-							case TransactionStagedMutationReplace:
-								t.commitStagedReplace(*mutation, false, false, unstageCb)
-							case TransactionStagedMutationRemove:
-								t.commitStagedRemove(*mutation, false, unstageCb)
-							default:
-								unstageCb(t.operationFailed(operationFailedDef{
-									Cerr: classifyError(
-										wrapError(ErrIllegalState, "unexpected staged mutation type")),
-									ShouldNotRetry:    true,
-									ShouldNotRollback: true,
-									Reason:            TransactionErrorReasonTransactionFailedPostCommit,
-								}))
-							}
+							t.fetchBeforeUnstage(mutation, supportsReplaceBody, func(err *TransactionOperationFailedError) {
+								if err != nil {
+									unstageCb(err)
+									return
+								}
+
+								switch mutation.OpType {
+								case TransactionStagedMutationInsert:
+									t.commitStagedInsert(*mutation, false, supportsReplaceBody, unstageCb)
+								case TransactionStagedMutationReplace:
+									t.commitStagedReplace(*mutation, false, false, supportsReplaceBody, unstageCb)
+								case TransactionStagedMutationRemove:
+									t.commitStagedRemove(*mutation, false, unstageCb)
+								default:
+									unstageCb(t.operationFailed(operationFailedDef{
+										Cerr: classifyError(
+											wrapError(ErrIllegalState, "unexpected staged mutation type")),
+										ShouldNotRetry:    true,
+										ShouldNotRollback: true,
+										Reason:            TransactionErrorReasonTransactionFailedPostCommit,
+									}))
+								}
+							})
 						})
+						if err != nil {
+							unstageCb(err)
+							return
+						}
 					}
 
 					var mutErrs []*TransactionOperationFailedError
@@ -231,6 +242,7 @@ func (t *transactionAttempt) commit(
 
 func (t *transactionAttempt) fetchBeforeUnstage(
 	mutation *transactionStagedMutation,
+	supportsReplaceBody bool,
 	cb func(*TransactionOperationFailedError),
 ) {
 	ecCb := func(cerr *classifiedError) {
@@ -261,6 +273,11 @@ func (t *transactionAttempt) fetchBeforeUnstage(
 	}
 
 	if mutation.OpType != TransactionStagedMutationInsert && mutation.OpType != TransactionStagedMutationReplace {
+		ecCb(nil)
+		return
+	}
+
+	if supportsReplaceBody {
 		ecCb(nil)
 		return
 	}
@@ -334,6 +351,7 @@ func (t *transactionAttempt) commitStagedReplace(
 	mutation transactionStagedMutation,
 	forceWrite bool,
 	ambiguityResolution bool,
+	supportsReplaceBody bool,
 	cb func(*TransactionOperationFailedError),
 ) {
 	ecCb := func(cerr *classifiedError) {
@@ -359,7 +377,7 @@ func (t *transactionAttempt) commitStagedReplace(
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
 				ambiguityResolution = true
-				t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, cb)
+				t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, supportsReplaceBody, cb)
 			})
 		case TransactionErrorClassFailDocAlreadyExists:
 			cerr.Class = TransactionErrorClassFailCasMismatch
@@ -368,7 +386,7 @@ func (t *transactionAttempt) commitStagedReplace(
 			if !ambiguityResolution {
 				time.AfterFunc(3*time.Millisecond, func() {
 					forceWrite = true
-					t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, cb)
+					t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, supportsReplaceBody, cb)
 				})
 				return
 			}
@@ -380,12 +398,12 @@ func (t *transactionAttempt) commitStagedReplace(
 				Reason:            TransactionErrorReasonTransactionFailedPostCommit,
 			}))
 		case TransactionErrorClassFailDocNotFound:
-			t.commitStagedInsert(mutation, ambiguityResolution, cb)
+			t.commitStagedInsert(mutation, ambiguityResolution, supportsReplaceBody, cb)
 			return
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
 			time.AfterFunc(3*time.Millisecond, func() {
-				t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, cb)
+				t.commitStagedReplace(mutation, forceWrite, ambiguityResolution, supportsReplaceBody, cb)
 			})
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
@@ -422,35 +440,51 @@ func (t *transactionAttempt) commitStagedReplace(
 				cas = 0
 			}
 
-			if mutation.Staged == nil {
-				ecCb(classifyError(
-					wrapError(ErrIllegalState, "staged content is missing")))
-				return
+			var specs []SubDocOp
+			if supportsReplaceBody {
+				specs = make([]SubDocOp, 2)
+				specs[0] = SubDocOp{
+					Op:    memd.SubDocOpReplaceBodyWithXattr,
+					Flags: memd.SubdocFlagXattrPath,
+					Path:  "txn.op.stgd",
+				}
+				specs[1] = SubDocOp{
+					Op:    memd.SubDocOpDelete,
+					Path:  "txn",
+					Flags: memd.SubdocFlagXattrPath,
+				}
+			} else {
+				if mutation.Staged == nil {
+					ecCb(classifyError(
+						wrapError(ErrIllegalState, "staged content is missing")))
+					return
+				}
+
+				specs = make([]SubDocOp, 3)
+				specs[0] = SubDocOp{
+					Op:    memd.SubDocOpDictSet,
+					Path:  "txn",
+					Flags: memd.SubdocFlagXattrPath,
+					Value: []byte{110, 117, 108, 108}, // null
+				}
+				specs[1] = SubDocOp{
+					Op:    memd.SubDocOpDelete,
+					Path:  "txn",
+					Flags: memd.SubdocFlagXattrPath,
+				}
+				specs[2] = SubDocOp{
+					Op:    memd.SubDocOpSetDoc,
+					Path:  "",
+					Value: mutation.Staged,
+				}
 			}
 
 			_, err = mutation.Agent.MutateIn(MutateInOptions{
-				ScopeName:      mutation.ScopeName,
-				CollectionName: mutation.CollectionName,
-				Key:            mutation.Key,
-				Cas:            cas,
-				Ops: []SubDocOp{
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-						Value: []byte{110, 117, 108, 108}, // null
-					},
-					{
-						Op:    memd.SubDocOpDelete,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-					{
-						Op:    memd.SubDocOpSetDoc,
-						Path:  "",
-						Value: mutation.Staged,
-					},
-				},
+				ScopeName:              mutation.ScopeName,
+				CollectionName:         mutation.CollectionName,
+				Key:                    mutation.Key,
+				Cas:                    cas,
+				Ops:                    specs,
 				Deadline:               deadline,
 				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
 				DurabilityLevelTimeout: duraTimeout,
@@ -497,6 +531,7 @@ func (t *transactionAttempt) commitStagedReplace(
 func (t *transactionAttempt) commitStagedInsert(
 	mutation transactionStagedMutation,
 	ambiguityResolution bool,
+	supportsReplaceBody bool,
 	cb func(*TransactionOperationFailedError),
 ) {
 	ecCb := func(cerr *classifiedError) {
@@ -522,7 +557,7 @@ func (t *transactionAttempt) commitStagedInsert(
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
 				ambiguityResolution = true
-				t.commitStagedInsert(mutation, ambiguityResolution, cb)
+				t.commitStagedInsert(mutation, ambiguityResolution, supportsReplaceBody, cb)
 			})
 		case TransactionErrorClassFailDocAlreadyExists:
 			cerr.Class = TransactionErrorClassFailCasMismatch
@@ -530,7 +565,7 @@ func (t *transactionAttempt) commitStagedInsert(
 		case TransactionErrorClassFailCasMismatch:
 			if !ambiguityResolution {
 				time.AfterFunc(3*time.Millisecond, func() {
-					t.commitStagedReplace(mutation, true, ambiguityResolution, cb)
+					t.commitStagedReplace(mutation, true, ambiguityResolution, supportsReplaceBody, cb)
 				})
 				return
 			}
@@ -544,7 +579,7 @@ func (t *transactionAttempt) commitStagedInsert(
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
 			time.AfterFunc(3*time.Millisecond, func() {
-				t.commitStagedInsert(mutation, ambiguityResolution, cb)
+				t.commitStagedInsert(mutation, ambiguityResolution, supportsReplaceBody, cb)
 			})
 		case TransactionErrorClassFailHard:
 			cb(t.operationFailed(operationFailedDef{
@@ -576,9 +611,58 @@ func (t *transactionAttempt) commitStagedInsert(
 
 			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
 
-			if mutation.Staged == nil {
-				ecCb(classifyError(
-					wrapError(ErrIllegalState, "staged content is missing")))
+			if supportsReplaceBody {
+				_, err := mutation.Agent.MutateIn(MutateInOptions{
+					ScopeName:              mutation.ScopeName,
+					CollectionName:         mutation.CollectionName,
+					Key:                    mutation.Key,
+					Deadline:               deadline,
+					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+					DurabilityLevelTimeout: duraTimeout,
+					User:                   mutation.OboUser,
+					Cas:                    mutation.Cas,
+					Flags:                  memd.SubdocDocFlagReviveDocument | memd.SubdocDocFlagAccessDeleted,
+					Ops: []SubDocOp{
+						{
+							Op:    memd.SubDocOpReplaceBodyWithXattr,
+							Flags: memd.SubdocFlagXattrPath,
+							Path:  "txn.op.stgd",
+						},
+						{
+							Op:    memd.SubDocOpDelete,
+							Path:  "txn",
+							Flags: memd.SubdocFlagXattrPath,
+						},
+					},
+				}, func(result *MutateInResult, err error) {
+					if err != nil {
+						ecCb(classifyError(err))
+						return
+					}
+
+					t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+					t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
+						if err != nil {
+							ecCb(classifyHookError(err))
+							return
+						}
+
+						t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+							if err != nil {
+								ecCb(classifyHookError(err))
+								return
+							}
+
+							ecCb(nil)
+						})
+					})
+				})
+				if err != nil {
+					ecCb(classifyError(err))
+					return
+				}
+
 				return
 			}
 

@@ -13,6 +13,12 @@ type PendingOp interface {
 	Cancel()
 }
 
+var noopOp = noopPendingOp{}
+
+type noopPendingOp struct{}
+
+func (*noopPendingOp) Cancel() {}
+
 type multiPendingOp struct {
 	ops          []PendingOp
 	completedOps uint32
