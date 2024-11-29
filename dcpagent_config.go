@@ -127,10 +127,11 @@ func (config *DCPAgentConfig) redacted() interface{} {
 //	dcp_priority (int) - Specifies the priority to request from the Cluster when connecting for DCP.
 //	enable_dcp_change_streams (bool) - Enables the DCP connection to allow history snapshots in DCP streams.
 //	enable_dcp_expiry (bool) - Whether to enable the feature to distinguish between explicit delete and expired delete on DCP.
-//	kv_pool_size (int) - The number of connections to create to each kv node.
+//	kv_pool_size (int) - The number of connections to create to each KV node.
 //	max_queue_size (int) - The maximum number of requests that can be queued for sending per connection.
-//	max_idle_http_connections (int) - Maximum number of idle http connections in the pool.
-//	max_perhost_idle_http_connections (int) - Maximum number of idle http connections in the pool per host.
+//	max_perhost_http_connections (int) - The maximum number of HTTP connections in the pool per host.
+//	max_idle_http_connections (int) - Maximum number of idle HTTP connections in the pool.
+//	max_perhost_idle_http_connections (int) - Maximum number of idle HTTP connections in the pool per host.
 //	idle_http_connection_timeout (duration) - Maximum length of time for an idle connection to stay in the pool in ms.
 //	http_redial_period (duration) - The maximum length of time for the HTTP poller to stay connected before reconnecting.
 //	http_retry_delay (duration) - The length of time to wait between HTTP poller retries if connecting fails.
