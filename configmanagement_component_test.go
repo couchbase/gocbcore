@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -157,5 +158,201 @@ func (suite *UnitTestSuite) TestConfigComponentRevEpoch() {
 				}
 			}
 		})
+	}
+}
+
+type testAlternateAddressesRouteConfigMgr struct {
+	cfg       *routeConfig
+	cfgCalled bool
+}
+
+func (taa *testAlternateAddressesRouteConfigMgr) OnNewRouteConfig(cfg *routeConfig) {
+	taa.cfgCalled = true
+	taa.cfg = cfg
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "external" {
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "auto",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "external" {
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "auto",
+		SrcMemdAddrs: []routeEndpoint{{Address: "172.17.0.4:11210"}},
+		UseTLS:       false,
+	})
+
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "default" {
+		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "default",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "default" {
+		suite.T().Fatalf("Expected agent networkType to be default, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "external",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "external" {
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.AltAddresses["external"].Ports.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses_without_ports.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "external",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "external" {
+		suite.T().Fatalf("Expected agent networkType to be external, was %s", networkType)
+	}
+
+	for i, server := range mgr.cfg.kvServerList.NonSSLEndpoints {
+		cfgBkNode := cfgBk.NodesExt[i]
+		port := cfgBkNode.Services.Kv
+		cfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.AltAddresses["external"].Hostname, port)
+		if server.Address != cfgBkServer {
+			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
+	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+
+	mgr := &testAlternateAddressesRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "invalid",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
+		UseTLS:       false,
+	})
+
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	networkType := cfgManager.NetworkType()
+	if networkType != "invalid" {
+		suite.T().Fatalf("Expected agent networkType to be invalid, was %s", networkType)
+	}
+
+	if mgr.cfgCalled {
+		suite.T().Fatalf("Expected route config to not be propagated, was propagated")
 	}
 }
