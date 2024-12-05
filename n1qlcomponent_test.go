@@ -347,7 +347,7 @@ func (suite *StandardTestSuite) TestN1QLCancel() {
 		agent.httpMux,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, agent.tracer)
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -438,14 +438,7 @@ func (suite *StandardTestSuite) TestN1QLTimeout() {
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().Equal(len(nilParents), 1) {
-			span := nilParents[0]
-			suite.Assert().Equal("N1QLQuery", span.Name)
-			suite.Assert().Equal(1, len(span.Tags))
-			suite.Assert().Equal("couchbase", span.Tags["db.system"])
-			suite.Assert().True(span.Finished)
-
-			_, ok := span.Spans[spanNameDispatchToServer]
-			suite.Assert().False(ok)
+			suite.AssertHTTPSpanNoDispatch(nilParents[0], "N1QLQuery")
 		}
 	}
 
@@ -491,7 +484,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedCancel() {
 		agent.httpMux,
 		agent.tracer,
 	)
-	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
+	n1qlCpt := newN1QLQueryComponent(httpCpt, &configManagementComponent{}, agent.tracer)
 
 	resCh := make(chan *N1QLRowReader)
 	errCh := make(chan error)
@@ -582,14 +575,7 @@ func (suite *StandardTestSuite) TestN1QLPreparedTimeout() {
 	if suite.Assert().Contains(suite.tracer.Spans, nil) {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().Equal(len(nilParents), 1) {
-			span := nilParents[0]
-			suite.Assert().Equal("PreparedN1QLQuery", span.Name)
-			suite.Assert().Equal(1, len(span.Tags))
-			suite.Assert().Equal("couchbase", span.Tags["db.system"])
-			suite.Assert().True(span.Finished)
-
-			_, ok := span.Spans[spanNameDispatchToServer]
-			suite.Assert().False(ok)
+			suite.AssertHTTPSpanNoDispatch(nilParents[0], "PreparedN1QLQuery")
 		}
 	}
 

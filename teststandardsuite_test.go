@@ -161,6 +161,8 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer760)
 	case TestFeatureCavesUnreliable:
 		return !suite.IsMockServer()
+	case TestFeatureClusterLabels:
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer764)
 	}
 
 	panic("found unsupported feature code")

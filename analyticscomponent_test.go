@@ -237,7 +237,7 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 		agent.httpMux,
 		agent.tracer,
 	)
-	cbasCpt := newAnalyticsQueryComponent(httpCpt, &tracerComponent{tracer: suite.tracer, metrics: suite.meter})
+	cbasCpt := newAnalyticsQueryComponent(httpCpt, agent.tracer)
 
 	resCh := make(chan *AnalyticsRowReader)
 	errCh := make(chan error)
@@ -329,14 +329,7 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 		nilParents := suite.tracer.Spans[nil]
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			if suite.Assert().Equal(len(nilParents), 1) {
-				span := nilParents[0]
-				suite.Assert().Equal("AnalyticsQuery", span.Name)
-				suite.Assert().Equal(1, len(span.Tags))
-				suite.Assert().Equal("couchbase", span.Tags["db.system"])
-				suite.Assert().True(span.Finished)
-
-				_, ok := span.Spans[spanNameDispatchToServer]
-				suite.Assert().False(ok)
+				suite.AssertHTTPSpanNoDispatch(nilParents[0], "AnalyticsQuery")
 			}
 		}
 	}
