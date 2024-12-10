@@ -125,37 +125,43 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 	return ireq, nil
 }
 
+type httpRequestState struct {
+	denylist              []string
+	start                 time.Time
+	endpointAddress       string
+	cancellationIsTimeout uint32
+}
+
 func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck bool) (*HTTPResponse, error) {
 	if req.Service == MemdService {
 		return nil, errInvalidService
 	}
 
-	// This creates a context that has a parent with no cancel function. As such WithCancel will not setup any
-	// extra go routines and we only need to call cancel on (non-timeout) failure.
+	state := &httpRequestState{
+		start: time.Now(),
+	}
+
+	// This creates a context that has a parent with no cancel function. As such WithCancel will not set up any
+	// extra go routines, and we only need to call cancel on (non-timeout) failure.
 	ctx := req.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ctx, ctxCancel := context.WithCancel(ctx)
 
-	// This is easy to do with a bool and defer than to ensure that we cancel after every error.
 	doneCh := make(chan struct{}, 1)
-	querySuccess := false
 	defer func() {
 		doneCh <- struct{}{}
-		if !querySuccess {
-			ctxCancel()
-		}
 	}()
 
-	start := time.Now()
-	var cancellationIsTimeout uint32
 	// Having no deadline is a legitimate case.
 	if !req.Deadline.IsZero() {
 		go func() {
 			select {
-			case <-time.After(req.Deadline.Sub(start)):
-				atomic.StoreUint32(&cancellationIsTimeout, 1)
+			case <-time.After(req.Deadline.Sub(state.start)):
+				// We use cancellationIsTimeout instead of a context with a deadline, as we want the timeout to only
+				// apply to the request-response part of the operation, not in the stream that we will return.
+				atomic.StoreUint32(&state.cancellationIsTimeout, 1)
 				ctxCancel()
 			case <-hc.shutdownSig:
 				ctxCancel()
@@ -173,144 +179,156 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}
 
 	if !skipConfigCheck {
-		if err := hc.waitForConfig(ctx, req.IsIdempotent, &cancellationIsTimeout); err != nil {
+		if err := hc.waitForConfig(ctx, req.IsIdempotent, &state.cancellationIsTimeout); err != nil {
+			ctxCancel()
 			return nil, err
 		}
 	}
 
 	generator := newHTTPRequestGenerator(ctx, req, hc.userAgent)
 
-	var denylist []string
 	for {
-		address := req.Endpoint
-		if address == "" {
-			var err error
-			endpoint, err := hc.randomEndpoint(req.Service, denylist)
-			if err != nil {
-				return nil, err
-			}
-			address = endpoint.Address
-		} else {
-			err := hc.checkEndpointAddressExists(req.Service, address)
-			if err != nil {
-				return nil, err
-			}
-		}
-		var creds []UserPassPair
-		if req.Username == "" && req.Password == "" {
-			auth := hc.muxer.Auth()
-			if auth == nil {
-				// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
-				return nil, errCliInternalError
-			}
-
-			var err error
-			creds, err = auth.Credentials(AuthCredsRequest{
-				Service:  req.Service,
-				Endpoint: address,
-			})
-			if err != nil {
-				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, address, true); err != nil {
-					return nil, err
-				}
-				denylist = append(denylist, address)
-
-				continue
-			}
-		}
-
-		hreq, err := generator.NewRequest(address, creds)
+		resp, retry, err := hc.doHTTPRequestAttempt(req, generator, state)
 		if err != nil {
+			ctxCancel()
 			return nil, err
 		}
-
-		dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
-		logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
-		// we can't close the body of this response as it's long-lived beyond the function
-		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
-		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
-		if err != nil {
-			logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
-
-			// We check for net errors first, an i/o timeout can satisfy the DeadlineExceeded check and then we'd end
-			// up returning an i/o timeout error to the user.
-			var retryReason RetryReason
-			if os.IsTimeout(err) {
-				retryReason = SocketNotAvailableRetryReason
-			} else if errors.Is(err, io.ErrUnexpectedEOF) {
-				retryReason = SocketCloseInFlightRetryReason
-			} else {
-				var netErr *net.OpError
-				if errors.As(err, &netErr) {
-					// We need to be care about what we consider not available, if the request has been written to the
-					// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
-					// caution.
-					if netErr.Op == "dial" {
-						retryReason = SocketNotAvailableRetryReason
-					} else {
-						retryReason = SocketCloseInFlightRetryReason
-					}
-				} else {
-					var dnsErr *net.DNSError
-					if errors.As(err, &dnsErr) {
-						retryReason = SocketNotAvailableRetryReason
-					}
-				}
-			}
-
-			if retryReason != nil {
-				err := hc.maybeWait(req, retryReason, err, start, address, false)
-				if err != nil {
-					return nil, err
-				}
-
-				continue
-			}
-
-			// Because we don't use the http request context itself to perform timeouts we need to do some translation
-			// of the error message here for better UX.
-			if errors.Is(err, context.Canceled) {
-				isTimeout := atomic.LoadUint32(&cancellationIsTimeout)
-				if isTimeout == 1 {
-					var base error
-					if req.IsIdempotent {
-						base = errUnambiguousTimeout
-					} else {
-						base = errAmbiguousTimeout
-					}
-
-					err = &TimeoutError{
-						InnerError:       base,
-						OperationID:      "http",
-						Opaque:           req.Identifier(),
-						TimeObserved:     time.Since(start),
-						RetryReasons:     req.retryReasons,
-						RetryAttempts:    req.retryCount,
-						LastDispatchedTo: address,
-					}
-				} else {
-					err = errRequestCanceled
-				}
-			}
-
-			// If we've got to here then either the error is ours timeout/canceled or we don't know it.
-			return nil, err
-		}
-		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
-
-		hresp = wrapHttpResponse(hresp) // nolint: bodyclose
-
-		respOut := HTTPResponse{
-			Endpoint:      address,
-			StatusCode:    hresp.StatusCode,
-			ContentLength: hresp.ContentLength,
-			Body:          hresp.Body,
+		if retry {
+			continue
 		}
 
-		querySuccess = true
-
-		return &respOut, nil
+		return resp, nil
 	}
+}
+
+func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpRequestGenerator, state *httpRequestState) (*HTTPResponse, bool, error) {
+	state.endpointAddress = req.Endpoint
+	if state.endpointAddress == "" {
+		var err error
+		endpoint, err := hc.randomEndpoint(req.Service, state.denylist)
+		if err != nil {
+			return nil, false, err
+		}
+		state.endpointAddress = endpoint.Address
+	} else {
+		err := hc.checkEndpointAddressExists(req.Service, state.endpointAddress)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	var creds []UserPassPair
+	if req.Username == "" && req.Password == "" {
+		auth := hc.muxer.Auth()
+		if auth == nil {
+			// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
+			return nil, false, errCliInternalError
+		}
+
+		var err error
+		creds, err = auth.Credentials(AuthCredsRequest{
+			Service:  req.Service,
+			Endpoint: state.endpointAddress,
+		})
+		if err != nil {
+			if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, state.start, state.endpointAddress, true); err != nil {
+				return nil, false, err
+			}
+			state.denylist = append(state.denylist, state.endpointAddress)
+
+			// Retry
+			return nil, true, nil
+		}
+	}
+
+	hreq, err := generator.NewRequest(state.endpointAddress, creds)
+	if err != nil {
+		return nil, false, err
+	}
+
+	dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
+	logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
+	// we can't close the body of this response as it's long-lived beyond the function
+	hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
+	hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
+	if err != nil {
+		logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
+
+		// We check for net errors first, an i/o timeout can satisfy the DeadlineExceeded check and then we'd end
+		// up returning an i/o timeout error to the user.
+		var retryReason RetryReason
+		if os.IsTimeout(err) {
+			retryReason = SocketNotAvailableRetryReason
+		} else if errors.Is(err, io.ErrUnexpectedEOF) {
+			retryReason = SocketCloseInFlightRetryReason
+		} else {
+			var netErr *net.OpError
+			if errors.As(err, &netErr) {
+				// We need to be care about what we consider not available, if the request has been written to the
+				// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
+				// caution.
+				if netErr.Op == "dial" {
+					retryReason = SocketNotAvailableRetryReason
+				} else {
+					retryReason = SocketCloseInFlightRetryReason
+				}
+			} else {
+				var dnsErr *net.DNSError
+				if errors.As(err, &dnsErr) {
+					retryReason = SocketNotAvailableRetryReason
+				}
+			}
+		}
+
+		if retryReason != nil {
+			err := hc.maybeWait(req, retryReason, err, state.start, state.endpointAddress, false)
+			if err != nil {
+				return nil, false, err
+			}
+
+			// Retry
+			return nil, true, nil
+		}
+
+		// Because we don't use the http request context itself to perform timeouts we need to do some translation
+		// of the error message here for better UX.
+		if errors.Is(err, context.Canceled) {
+			isTimeout := atomic.LoadUint32(&state.cancellationIsTimeout)
+			if isTimeout == 1 {
+				var base error
+				if req.IsIdempotent {
+					base = errUnambiguousTimeout
+				} else {
+					base = errAmbiguousTimeout
+				}
+				err = &TimeoutError{
+					InnerError:       base,
+					OperationID:      "http",
+					Opaque:           req.Identifier(),
+					TimeObserved:     time.Since(state.start),
+					RetryReasons:     req.retryReasons,
+					RetryAttempts:    req.retryCount,
+					LastDispatchedTo: state.endpointAddress,
+				}
+			} else {
+				err = errRequestCanceled
+			}
+		}
+
+		// If we've got to here then either the error is ours timeout/canceled or we don't know it.
+		return nil, false, err
+	}
+	logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
+
+	hresp = wrapHttpResponse(hresp) // nolint: bodyclose
+
+	respOut := HTTPResponse{
+		Endpoint:      state.endpointAddress,
+		StatusCode:    hresp.StatusCode,
+		ContentLength: hresp.ContentLength,
+		Body:          hresp.Body,
+	}
+
+	return &respOut, false, nil
 }
 
 func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, cancellationIsTimeout *uint32) error {
