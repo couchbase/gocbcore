@@ -54,6 +54,8 @@ type AgentConfig struct {
 
 	MeterConfig MeterConfig
 
+	TelemetryConfig TelemetryConfig
+
 	InternalConfig InternalConfig
 }
 
@@ -311,6 +313,14 @@ type MeterConfig struct {
 	Meter Meter
 }
 
+// TelemetryConfig specifies ns_server telemetry related configuration options.
+// # VOLATILE
+//
+// This API is VOLATILE is subject to change at any time.
+type TelemetryConfig struct {
+	TelemetryReporter *TelemetryReporter
+}
+
 // HTTPConfig specifies http related configuration options.
 type HTTPConfig struct {
 	// MaxIdleConns controls the maximum number of idle (keep-alive) connections across all hosts.
@@ -320,7 +330,7 @@ type HTTPConfig struct {
 	// MaxConnsPerHost controls the maximum number of connections to keep per-host.
 	MaxConnsPerHost int
 	ConnectTimeout  time.Duration
-	// IdleConnTimeout is the maximum amount of time an idle (keep-alive) connection will remain idle before closing
+	// IdleConnectionTimeout is the maximum amount of time an idle (keep-alive) connection will remain idle before closing
 	// itself.
 	IdleConnectionTimeout time.Duration
 }

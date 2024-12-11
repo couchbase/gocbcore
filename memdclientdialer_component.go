@@ -103,7 +103,8 @@ type memdBoostrapCCCPUnsupportedHandler interface {
 }
 
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent, cfgManager *configManagementComponent) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent,
+	cfgManager *configManagementComponent) *memdClientDialerComponent {
 	dialer := &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,

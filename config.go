@@ -53,12 +53,13 @@ type cfgNodeAltAddress struct {
 }
 
 type cfgNodeExt struct {
-	Services     cfgNodeServices              `json:"services"`
-	Hostname     string                       `json:"hostname"`
-	ThisNode     bool                         `json:"thisNode"`
-	AltAddresses map[string]cfgNodeAltAddress `json:"alternateAddresses"`
-	ServerGroup  string                       `json:"serverGroup"`
-	NodeUUID     string                       `json:"nodeUUID"`
+	Services         cfgNodeServices              `json:"services"`
+	Hostname         string                       `json:"hostname"`
+	ThisNode         bool                         `json:"thisNode"`
+	AltAddresses     map[string]cfgNodeAltAddress `json:"alternateAddresses"`
+	ServerGroup      string                       `json:"serverGroup"`
+	NodeUUID         string                       `json:"nodeUUID"`
+	AppTelemetryPath string                       `json:"appTelemetryPath"`
 }
 
 // VBucketServerMap is the a mapping of vbuckets to nodes.
@@ -106,16 +107,17 @@ type localLoopbackAddress struct {
 // been sourced from that node.
 func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstConnect bool, loopbackAddr *localLoopbackAddress) *routeConfig {
 	var (
-		kvServerList   = routeEndpoints{}
-		capiEpList     = routeEndpoints{}
-		mgmtEpList     = routeEndpoints{}
-		n1qlEpList     = routeEndpoints{}
-		ftsEpList      = routeEndpoints{}
-		cbasEpList     = routeEndpoints{}
-		eventingEpList = routeEndpoints{}
-		gsiEpList      = routeEndpoints{}
-		backupEpList   = routeEndpoints{}
-		bktType        bucketType
+		kvServerList       = routeEndpoints{}
+		capiEpList         = routeEndpoints{}
+		mgmtEpList         = routeEndpoints{}
+		n1qlEpList         = routeEndpoints{}
+		ftsEpList          = routeEndpoints{}
+		cbasEpList         = routeEndpoints{}
+		eventingEpList     = routeEndpoints{}
+		gsiEpList          = routeEndpoints{}
+		backupEpList       = routeEndpoints{}
+		appTelemetryEpList = routeEndpoints{}
+		bktType            bucketType
 	)
 
 	switch cfg.NodeLocator {
@@ -180,6 +182,11 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			}
 			if endpoints.mgmtEp.Address != "" {
 				mgmtEpList.NonSSLEndpoints = append(mgmtEpList.NonSSLEndpoints, endpoints.mgmtEp)
+				if node.AppTelemetryPath != "" {
+					ep := endpoints.mgmtEp
+					ep.Address = strings.Replace(ep.Address, "http://", "ws://", 1) + node.AppTelemetryPath
+					appTelemetryEpList.NonSSLEndpoints = append(appTelemetryEpList.NonSSLEndpoints, ep)
+				}
 			}
 			if endpoints.n1qlEp.Address != "" {
 				n1qlEpList.NonSSLEndpoints = append(n1qlEpList.NonSSLEndpoints, endpoints.n1qlEp)
@@ -212,6 +219,11 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			}
 			if endpoints.mgmtEpSSL.Address != "" {
 				mgmtEpList.SSLEndpoints = append(mgmtEpList.SSLEndpoints, endpoints.mgmtEpSSL)
+				if node.AppTelemetryPath != "" {
+					ep := endpoints.mgmtEpSSL
+					ep.Address = strings.Replace(ep.Address, "https://", "wss://", 1) + node.AppTelemetryPath
+					appTelemetryEpList.SSLEndpoints = append(appTelemetryEpList.SSLEndpoints, ep)
+				}
 			}
 			if endpoints.n1qlEpSSL.Address != "" {
 				n1qlEpList.SSLEndpoints = append(n1qlEpList.SSLEndpoints, endpoints.n1qlEpSSL)
@@ -291,6 +303,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		eventingEpList:         eventingEpList,
 		gsiEpList:              gsiEpList,
 		backupEpList:           backupEpList,
+		appTelemetryEpList:     appTelemetryEpList,
 		bktType:                bktType,
 		clusterCapabilities:    cfg.ClusterCapabilities,
 		clusterCapabilitiesVer: cfg.ClusterCapabilitiesVer,

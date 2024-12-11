@@ -23,5 +23,6 @@ updatemocks:
 	mockery --name dispatcher --output . --testonly --inpackage
 	mockery --name configManager --output . --testonly --inpackage
 	mockery --name httpComponentInterface --output . --testonly --inpackage
+	mockery --name telemetryStore --output . --testonly --inpackage
 
 .PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check bench updatemocks

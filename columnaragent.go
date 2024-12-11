@@ -159,6 +159,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
+		nil,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,

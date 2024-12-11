@@ -264,6 +264,9 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d. Vbid=%d", client.conn.LocalAddr(), client.loggerID(), req.Command, req.Opaque, req.Vbucket)
 
+	if req.telemetryRecorder != nil {
+		req.telemetryRecorder.Start()
+	}
 	client.tracer.StartNetTrace(req)
 
 	err := client.conn.WritePacket(packet)
@@ -344,6 +347,10 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	if !req.Persistent {
 		stopNetTraceLocked(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
+
+		if req.telemetryRecorder != nil {
+			req.telemetryRecorder.FinishAndRecord(telemetryOutcomeSuccess)
+		}
 	}
 
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0

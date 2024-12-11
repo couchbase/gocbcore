@@ -12,6 +12,7 @@ import (
 type httpRequest struct {
 	Service          ServiceType
 	Endpoint         string
+	NodeUUID         string
 	Method           string
 	Path             string
 	Username         string

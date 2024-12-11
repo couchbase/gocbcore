@@ -30,6 +30,7 @@ type Agent struct {
 	errMap       *errMapComponent
 	collections  *collectionsComponent
 	tracer       *tracerComponent
+	telemetry    *telemetryComponent
 	http         *httpComponent
 	diagnostics  *diagnosticsComponent
 	crud         *crudComponent
@@ -261,6 +262,17 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 
 	c.tracer = newTracerComponent(config.TracerConfig.Tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c.cfgManager)
 
+	if !config.SecurityConfig.NoTLSSeedNode {
+		c.telemetry = newTelemetryComponent(telemetryComponentProps{
+			reporter:   config.TelemetryConfig.TelemetryReporter,
+			auth:       config.SecurityConfig.Auth,
+			tlsConfig:  tlsConfig,
+			agent:      agentName(userAgent),
+			cfgMgr:     c.cfgManager,
+			bucketName: config.BucketName,
+		})
+	}
+
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
 			ServerWaitTimeout:    serverWaitTimeout,
@@ -305,6 +317,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
+		c.telemetry,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,
@@ -342,6 +355,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		},
 		c.httpMux,
 		c.tracer,
+		c.telemetry,
 	)
 
 	var poller configPollerController

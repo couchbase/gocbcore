@@ -340,7 +340,7 @@ func makeAgentConfig(testConfig *TestConfig) AgentConfig {
 	return config
 }
 
-func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) AgentGroupConfig {
+func makeAgentGroupConfig(testConfig *TestConfig) AgentGroupConfig {
 	config := AgentGroupConfig{}
 	config.FromConnStr(testConfig.ConnStr)
 
@@ -351,8 +351,6 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 		UseOutOfOrderResponses:     true,
 		UseClusterMapNotifications: true,
 	}
-	config.TracerConfig.Tracer = suite.tracer
-	config.MeterConfig.Meter = suite.meter
 	config.InternalConfig.EnableResourceUnitsTrackingHello = true
 
 	config.SecurityConfig.Auth = testConfig.Authenticator
@@ -366,6 +364,15 @@ func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) Age
 			config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 		}
 	}
+
+	return config
+}
+
+func (suite *StandardTestSuite) makeAgentGroupConfig(testConfig *TestConfig) AgentGroupConfig {
+	config := makeAgentGroupConfig(testConfig)
+
+	config.TracerConfig.Tracer = suite.tracer
+	config.MeterConfig.Meter = suite.meter
 
 	return config
 }

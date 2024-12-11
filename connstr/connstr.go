@@ -103,7 +103,7 @@ func (spec ConnSpec) GetOptionString(name string) string {
 
 // Parse parses the connection string into a ConnSpec.
 func Parse(connStr string) (out ConnSpec, err error) {
-	partMatcher := regexp.MustCompile(`((.*):\/\/)?(([^\/?:]*)(:([^\/?:@]*))?@)?([^\/?]*)(\/([^\?]*))?(\?(.*))?`)
+	partMatcher := regexp.MustCompile(`(([a-zA-Z0-9_+\-.]*):\/\/)?(([^\/?:]*)(:([^\/?:@]*))?@)?([^\/?]*)(\/([^\?]*))?(\?(.*))?`)
 	hostMatcher := regexp.MustCompile(`((\[[^\]]+\]+)|([^;\,\:]+))(:([0-9]*))?(;\,)?`)
 	parts := partMatcher.FindStringSubmatch(connStr)
 	var onlyAllowSingleHost bool

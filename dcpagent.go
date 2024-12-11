@@ -295,6 +295,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
+		nil,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,
@@ -322,6 +323,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		},
 		c.httpMux,
 		c.tracer,
+		nil,
 	)
 
 	var poller configPollerController

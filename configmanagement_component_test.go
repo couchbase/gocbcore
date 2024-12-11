@@ -408,3 +408,54 @@ func (suite *UnitTestSuite) TestConfigWithNodeUUIDs() {
 		}
 	}
 }
+
+func (suite *UnitTestSuite) TestConfigWithAppTelemetry() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_app_telemetry.json")
+
+	mgr := &testRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "default",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.106.129:11210"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	expectedNonSSLEndpoints := []routeEndpoint{
+		{
+			Address:     "ws://192.168.106.128:8091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "2ef565f7abff0a3f827cb2ab31dfcdc4",
+		},
+		{
+			Address:     "ws://192.168.106.129:8091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "9a5e59ac41a1cc006c4850805e43cfe0",
+		},
+		{
+			Address:     "ws://192.168.106.130:8091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "badcf695fc523f63bf55cc56d3a1c787",
+		},
+	}
+	expectedSSLEndpoints := []routeEndpoint{
+		{
+			Address:     "wss://192.168.106.128:18091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "2ef565f7abff0a3f827cb2ab31dfcdc4",
+		},
+		{
+			Address:     "wss://192.168.106.129:18091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "9a5e59ac41a1cc006c4850805e43cfe0",
+		},
+		{
+			Address:     "wss://192.168.106.130:18091/_appTelemetry",
+			ServerGroup: "Group 1",
+			NodeUUID:    "badcf695fc523f63bf55cc56d3a1c787",
+		},
+	}
+
+	suite.Assert().ElementsMatch(expectedNonSSLEndpoints, mgr.cfg.appTelemetryEpList.NonSSLEndpoints)
+	suite.Assert().ElementsMatch(expectedSSLEndpoints, mgr.cfg.appTelemetryEpList.SSLEndpoints)
+}

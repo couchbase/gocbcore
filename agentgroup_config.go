@@ -31,6 +31,7 @@ func (config *AgentGroupConfig) toAgentConfig() *AgentConfig {
 		OrphanReporterConfig: config.OrphanReporterConfig,
 		MeterConfig:          config.MeterConfig,
 		TracerConfig:         config.TracerConfig,
+		TelemetryConfig:      config.TelemetryConfig,
 		InternalConfig:       config.InternalConfig,
 	}
 }

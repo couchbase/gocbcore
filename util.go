@@ -43,17 +43,20 @@ func formatCbUID(data []byte) string {
 		data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7])
 }
 
-func clientInfoString(connID, userAgent string) string {
+func agentName(userAgent string) string {
 	agentName := "gocbcore/" + goCbCoreVersionStr
 	if userAgent != "" {
 		agentName += " " + userAgent
 	}
+	return agentName
+}
 
+func clientInfoString(connID, userAgent string) string {
 	clientInfo := struct {
 		Agent  string `json:"a"`
 		ConnID string `json:"i"`
 	}{
-		Agent:  agentName,
+		Agent:  agentName(userAgent),
 		ConnID: connID,
 	}
 	clientInfoBytes, err := json.Marshal(clientInfo)

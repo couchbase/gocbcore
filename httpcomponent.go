@@ -27,6 +27,7 @@ type httpComponent struct {
 	muxer                *httpMux
 	userAgent            string
 	tracer               *tracerComponent
+	telemetry            *telemetryComponent
 	defaultRetryStrategy RetryStrategy
 
 	shutdownSig chan struct{}
@@ -45,12 +46,13 @@ type httpClientProps struct {
 	idleTimeout         time.Duration
 }
 
-func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent) *httpComponent {
+func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent, telemetry *telemetryComponent) *httpComponent {
 	hc := &httpComponent{
 		muxer:                muxer,
 		userAgent:            props.UserAgent,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		tracer:               tracer,
+		telemetry:            telemetry,
 		shutdownSig:          make(chan struct{}),
 	}
 
@@ -127,7 +129,8 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 type httpRequestState struct {
 	denylist              []string
 	start                 time.Time
-	endpointAddress       string
+	lastAttemptStart      time.Time
+	endpoint              routeEndpoint
 	cancellationIsTimeout uint32
 }
 
@@ -189,28 +192,41 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	for {
 		resp, retry, err := hc.doHTTPRequestAttempt(req, generator, state)
 		if err != nil {
+			outcome := telemetryOutcomeError
+			if errors.Is(err, ErrTimeout) {
+				outcome = telemetryOutcomeTimedout
+			} else if errors.Is(err, ErrRequestCanceled) {
+				outcome = telemetryOutcomeCanceled
+			}
+			hc.recordTelemetry(state, req, outcome)
 			ctxCancel()
 			return nil, err
 		}
 		if retry {
+			hc.recordTelemetry(state, req, telemetryOutcomeError)
 			continue
 		}
+		hc.recordTelemetry(state, req, telemetryOutcomeSuccess)
 
 		return resp, nil
 	}
 }
 
 func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpRequestGenerator, state *httpRequestState) (*HTTPResponse, bool, error) {
-	state.endpointAddress = req.Endpoint
-	if state.endpointAddress == "" {
+	state.lastAttemptStart = time.Now()
+
+	state.endpoint = routeEndpoint{
+		Address:  req.Endpoint,
+		NodeUUID: req.NodeUUID,
+	}
+	if state.endpoint.Address == "" {
 		var err error
-		endpoint, err := hc.randomEndpoint(req.Service, state.denylist)
+		state.endpoint, err = hc.randomEndpoint(req.Service, state.denylist)
 		if err != nil {
 			return nil, false, err
 		}
-		state.endpointAddress = endpoint.Address
 	} else {
-		err := hc.checkEndpointAddressExists(req.Service, state.endpointAddress)
+		err := hc.checkEndpointAddressExists(req.Service, state.endpoint.Address)
 		if err != nil {
 			return nil, false, err
 		}
@@ -226,20 +242,20 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 		var err error
 		creds, err = auth.Credentials(AuthCredsRequest{
 			Service:  req.Service,
-			Endpoint: state.endpointAddress,
+			Endpoint: state.endpoint.Address,
 		})
 		if err != nil {
-			if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, state.start, state.endpointAddress, true); err != nil {
+			if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, state.start, state.endpoint.Address, true); err != nil {
 				return nil, false, err
 			}
-			state.denylist = append(state.denylist, state.endpointAddress)
+			state.denylist = append(state.denylist, state.endpoint.Address)
 
 			// Retry
 			return nil, true, nil
 		}
 	}
 
-	hreq, err := generator.NewRequest(state.endpointAddress, creds)
+	hreq, err := generator.NewRequest(state.endpoint.Address, creds)
 	if err != nil {
 		return nil, false, err
 	}
@@ -279,7 +295,7 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 		}
 
 		if retryReason != nil {
-			err := hc.maybeWait(req, retryReason, err, state.start, state.endpointAddress, false)
+			err := hc.maybeWait(req, retryReason, err, state.start, state.endpoint.Address, false)
 			if err != nil {
 				return nil, false, err
 			}
@@ -306,7 +322,7 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 					TimeObserved:     time.Since(state.start),
 					RetryReasons:     req.retryReasons,
 					RetryAttempts:    req.retryCount,
-					LastDispatchedTo: state.endpointAddress,
+					LastDispatchedTo: state.endpoint.Address,
 				}
 			} else {
 				err = errRequestCanceled
@@ -321,13 +337,34 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 	hresp = wrapHttpResponse(hresp) // nolint: bodyclose
 
 	respOut := HTTPResponse{
-		Endpoint:      state.endpointAddress,
+		Endpoint:      state.endpoint.Address,
 		StatusCode:    hresp.StatusCode,
 		ContentLength: hresp.ContentLength,
 		Body:          hresp.Body,
 	}
 
 	return &respOut, false, nil
+}
+
+func (hc *httpComponent) recordTelemetry(state *httpRequestState, req *httpRequest, outcome telemetryOutcome) {
+	if hc.telemetry == nil {
+		return
+	}
+	switch req.Service {
+	case N1qlService, FtsService, CbasService, MgmtService, EventingService:
+		// We only report app telemetry metrics for these HTTP services
+		break
+	default:
+		return
+	}
+
+	hc.telemetry.RecordOp(telemetryOperationAttributes{
+		node:     trimSchemePrefix(state.endpoint.Address),
+		nodeUUID: state.endpoint.NodeUUID,
+		duration: time.Since(state.lastAttemptStart),
+		outcome:  outcome,
+		service:  req.Service,
+	})
 }
 
 func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, cancellationIsTimeout *uint32) error {

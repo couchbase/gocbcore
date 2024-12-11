@@ -13,6 +13,8 @@ type clusterAgentConfig struct {
 
 	MeterConfig MeterConfig
 
+	TelemetryConfig TelemetryConfig
+
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig
 }

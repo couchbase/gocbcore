@@ -11,6 +11,7 @@ type clusterAgent struct {
 
 	httpMux     *httpMux
 	tracer      *tracerComponent
+	telemetry   *telemetryComponent
 	http        *httpComponent
 	diagnostics *diagnosticsComponent
 	n1ql        *n1qlQueryComponent
@@ -30,11 +31,24 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 		defaultRetryStrategy: config.DefaultRetryStrategy,
 	}
 
+	userAgent := config.UserAgent
+
 	c.tracer = newTracerComponent(config.TracerConfig.Tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c)
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	// App telemetry not supported in ns_server mode
+	if !config.SecurityConfig.NoTLSSeedNode {
+		c.telemetry = newTelemetryComponent(telemetryComponentProps{
+			reporter:  config.TelemetryConfig.TelemetryReporter,
+			auth:      config.SecurityConfig.Auth,
+			tlsConfig: tlsConfig,
+			agent:     agentName(userAgent),
+			cfgMgr:    c,
+		})
 	}
 
 	if c.defaultRetryStrategy == nil {
@@ -51,7 +65,6 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 	}
 
 	circuitBreakerConfig := config.CircuitBreakerConfig
-	userAgent := config.UserAgent
 
 	httpEpList := routeEndpoints{}
 	for _, hostPort := range config.SeedConfig.HTTPAddrs {
@@ -89,6 +102,7 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 		},
 		c.httpMux,
 		c.tracer,
+		c.telemetry,
 	)
 	c.n1ql = newN1QLQueryComponent(c.http, c, c.tracer)
 	c.analytics = newAnalyticsQueryComponent(c.http, c.tracer)

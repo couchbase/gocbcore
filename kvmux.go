@@ -44,8 +44,9 @@ type kvMux struct {
 	cfgMgr             *configManagementComponent
 	errMapMgr          *errMapComponent
 
-	tracer *tracerComponent
-	dialer *memdClientDialerComponent
+	tracer    *tracerComponent
+	telemetry *telemetryComponent
+	dialer    *memdClientDialerComponent
 
 	postCompleteErrHandler postCompleteErrorHandler
 
@@ -74,7 +75,7 @@ type kvMuxProps struct {
 }
 
 func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *errMapComponent, tracer *tracerComponent,
-	dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
+	telemetry *telemetryComponent, dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,
 		poolSize:           props.PoolSize,
@@ -82,6 +83,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		cfgMgr:             cfgMgr,
 		errMapMgr:          errMapMgr,
 		tracer:             tracer,
+		telemetry:          telemetry,
 		dialer:             dialer,
 		shutdownSig:        make(chan struct{}),
 		noTLSSeedNode:      props.NoTLSSeedNode,
@@ -239,7 +241,7 @@ func (mux *kvMux) NumPipelines() int {
 	return clientMux.NumPipelines()
 }
 
-// CollectionsEnaled returns whether or not the kv mux was created with collections enabled.
+// CollectionsEnabled returns whether or not the kv mux was created with collections enabled.
 func (mux *kvMux) CollectionsEnabled() bool {
 	return mux.collectionsEnabled
 }
@@ -882,18 +884,19 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	logDebugf(buffer.String())
 
 	pipelines := make([]*memdPipeline, len(kvServerList))
-	for i, hostPort := range kvServerList {
-		trimmedHostPort := routeEndpoint{
-			Address:     trimSchemePrefix(hostPort.Address),
-			IsSeedNode:  hostPort.IsSeedNode,
-			ServerGroup: hostPort.ServerGroup,
+	for i, endpoint := range kvServerList {
+		trimmedEndpoint := routeEndpoint{
+			Address:     trimSchemePrefix(endpoint.Address),
+			IsSeedNode:  endpoint.IsSeedNode,
+			ServerGroup: endpoint.ServerGroup,
+			NodeUUID:    endpoint.NodeUUID,
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, auth, authMechanisms,
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedEndpoint, tlsConfig, auth, authMechanisms,
 				mux.handleOpRoutingResp, mux.handleServerRequest)
 		}
-		pipeline := newPipeline(trimmedHostPort, poolSize, mux.queueSize, getCurClientFn)
+		pipeline := newPipeline(trimmedEndpoint, poolSize, mux.queueSize, getCurClientFn, mux.telemetry)
 
 		pipelines[i] = pipeline
 	}

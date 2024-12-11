@@ -226,3 +226,32 @@ func (magic CmdMagic) String() string {
 	}
 	return fmt.Sprintf("CmdMagicUnk(%d)", magic)
 }
+
+// CmdCategory represents the category of the command.
+//
+// Internal: This should never be used and is not supported.
+type CmdCategory uint8
+
+const (
+	CmdCategoryUnknown CmdCategory = iota
+	CmdCategoryRetrieval
+	CmdCategoryMutation
+)
+
+// Category returns the category of the command.
+//
+// Internal: This should never be used and is not supported.
+func (command CmdCode) Category() CmdCategory {
+	switch command {
+	case CmdGet, CmdStat, CmdObserve, CmdObserveSeqNo, CmdGetLocked, CmdGetMeta, CmdGetRandom,
+		CmdCollectionsGetManifest, CmdCollectionsGetID, CmdSubDocGet, CmdSubDocExists, CmdSubDocMultiLookup,
+		CmdSubDocGetCount, CmdRangeScanCreate, CmdRangeScanContinue, CmdRangeScanCancel:
+		return CmdCategoryRetrieval
+	case CmdSet, CmdAdd, CmdReplace, CmdDelete, CmdIncrement, CmdDecrement, CmdAppend, CmdPrepend, CmdTouch, CmdGAT,
+		CmdUnlockKey, CmdSetMeta, CmdDelMeta, CmdSubDocDictAdd, CmdSubDocDictSet, CmdSubDocDelete, CmdSubDocReplace,
+		CmdSubDocArrayAddUnique, CmdSubDocArrayPushLast, CmdSubDocArrayPushFirst, CmdSubDocArrayInsert,
+		CmdSubDocMultiMutation, CmdSubDocCounter, CmdSubDocReplaceBodyWithXattr:
+		return CmdCategoryMutation
+	}
+	return CmdCategoryUnknown
+}

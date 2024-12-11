@@ -18,22 +18,23 @@ type routeEndpoint struct {
 }
 
 type routeConfig struct {
-	revID          int64
-	revEpoch       int64
-	uuid           string
-	name           string
-	bktType        bucketType
-	kvServerList   routeEndpoints
-	capiEpList     routeEndpoints
-	mgmtEpList     routeEndpoints
-	n1qlEpList     routeEndpoints
-	ftsEpList      routeEndpoints
-	cbasEpList     routeEndpoints
-	eventingEpList routeEndpoints
-	gsiEpList      routeEndpoints
-	backupEpList   routeEndpoints
-	vbMap          *vbucketMap
-	ketamaMap      *ketamaContinuum
+	revID              int64
+	revEpoch           int64
+	uuid               string
+	name               string
+	bktType            bucketType
+	kvServerList       routeEndpoints
+	capiEpList         routeEndpoints
+	mgmtEpList         routeEndpoints
+	n1qlEpList         routeEndpoints
+	ftsEpList          routeEndpoints
+	cbasEpList         routeEndpoints
+	eventingEpList     routeEndpoints
+	gsiEpList          routeEndpoints
+	backupEpList       routeEndpoints
+	appTelemetryEpList routeEndpoints
+	vbMap              *vbucketMap
+	ketamaMap          *ketamaContinuum
 
 	clusterCapabilitiesVer []int
 	clusterCapabilities    map[string][]string

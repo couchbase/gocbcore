@@ -301,13 +301,14 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 			var wg sync.WaitGroup
 			for _, ep := range epList {
 				wg.Add(1)
-				go func(ep string) {
+				go func(ep routeEndpoint) {
 					defer wg.Done()
 					req := &httpRequest{
 						Service:       service,
 						Method:        "GET",
 						Path:          path,
-						Endpoint:      ep,
+						Endpoint:      ep.Address,
+						NodeUUID:      ep.NodeUUID,
 						IsIdempotent:  true,
 						RetryStrategy: retryStrat,
 						Context:       ctx,
@@ -337,7 +338,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 					}
 					op.lock.Lock()
 					op.results[service] = append(op.results[service], EndpointPingResult{
-						Endpoint: ep,
+						Endpoint: ep.Address,
 						Error:    err,
 						Latency:  pingLatency,
 						Scope:    op.bucketName,
@@ -345,7 +346,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 						State:    state,
 					})
 					op.lock.Unlock()
-				}(ep.Address)
+				}(ep)
 			}
 
 			wg.Wait()
@@ -723,14 +724,15 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 				var wg sync.WaitGroup
 				for _, ep := range epList {
 					wg.Add(1)
-					go func(ep string) {
+					go func(ep routeEndpoint) {
 						defer wg.Done()
 						req := &httpRequest{
 							Service:       service,
 							Method:        "GET",
 							Path:          path,
 							RetryStrategy: retryStrat,
-							Endpoint:      ep,
+							Endpoint:      ep.Address,
+							NodeUUID:      ep.NodeUUID,
 							IsIdempotent:  true,
 							Context:       ctx,
 							UniqueID:      uuid.New().String(),
@@ -766,7 +768,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 							// Cancel this run entirely, we've successfully satisfied the requirements
 							cancel()
 						}
-					}(ep.Address)
+					}(ep)
 				}
 
 				wg.Wait()
