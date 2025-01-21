@@ -21,6 +21,8 @@ type OpenStreamOptions struct {
 	FilterOptions   *OpenStreamFilterOptions
 	StreamOptions   *OpenStreamStreamOptions
 	ManifestOptions *OpenStreamManifestOptions
+
+	RetryStrategy RetryStrategy
 }
 
 // GetVbucketSeqnoFilterOptions are the filter options available to the GetVbucketSeqno operation.
@@ -31,6 +33,8 @@ type GetVbucketSeqnoFilterOptions struct {
 // GetVbucketSeqnoOptions are the options available to the GetVbucketSeqno operation.
 type GetVbucketSeqnoOptions struct {
 	FilterOptions *GetVbucketSeqnoFilterOptions
+
+	RetryStrategy RetryStrategy
 }
 
 // CloseStreamStreamOptions are the stream options available to the CloseStream operation.
@@ -41,6 +45,8 @@ type CloseStreamStreamOptions struct {
 // CloseStreamOptions are the options available to the CloseStream operation.
 type CloseStreamOptions struct {
 	StreamOptions *CloseStreamStreamOptions
+
+	RetryStrategy RetryStrategy
 }
 
 // SnapshotState represents the state of a particular cluster snapshot.

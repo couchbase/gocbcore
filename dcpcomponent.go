@@ -11,13 +11,14 @@ import (
 )
 
 type dcpComponent struct {
-	kvMux           *kvMux
-	streamIDEnabled bool
+	dispatcher           dispatcher
+	streamIDEnabled      bool
+	defaultRetryStrategy RetryStrategy
 }
 
-func newDcpComponent(kvMux *kvMux, streamIDEnabled bool) *dcpComponent {
+func newDcpComponent(dispatcher dispatcher, streamIDEnabled bool) *dcpComponent {
 	return &dcpComponent{
-		kvMux:           kvMux,
+		dispatcher:      dispatcher,
 		streamIDEnabled: streamIDEnabled,
 	}
 }
@@ -314,6 +315,10 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 		}
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = dcp.defaultRetryStrategy
+	}
+
 	req = &memdQRequest{
 		Packet: memd.Packet{
 			Magic:    memd.CmdMagicReq,
@@ -325,11 +330,12 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 			Value:    val,
 			Vbucket:  vbID,
 		},
-		Callback:   handler,
-		ReplicaIdx: 0,
-		Persistent: true,
+		Callback:      handler,
+		ReplicaIdx:    0,
+		Persistent:    true,
+		RetryStrategy: opts.RetryStrategy,
 	}
-	return dcp.kvMux.DispatchDirect(req)
+	return dcp.dispatcher.DispatchDirect(req)
 }
 
 func (dcp *dcpComponent) CloseStream(vbID uint16, opts CloseStreamOptions, cb CloseStreamCallback) (PendingOp, error) {
@@ -348,6 +354,10 @@ func (dcp *dcpComponent) CloseStream(vbID uint16, opts CloseStreamOptions, cb Cl
 		}
 	}
 
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = dcp.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		Packet: memd.Packet{
 			Magic:         memd.CmdMagicReq,
@@ -363,10 +373,10 @@ func (dcp *dcpComponent) CloseStream(vbID uint16, opts CloseStreamOptions, cb Cl
 		Callback:      handler,
 		ReplicaIdx:    0,
 		Persistent:    false,
-		RetryStrategy: newFailFastRetryStrategy(),
+		RetryStrategy: opts.RetryStrategy,
 	}
 
-	return dcp.kvMux.DispatchDirect(req)
+	return dcp.dispatcher.DispatchDirect(req)
 }
 
 func (dcp *dcpComponent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) (PendingOp, error) {
@@ -403,7 +413,7 @@ func (dcp *dcpComponent) GetFailoverLog(vbID uint16, cb GetFailoverLogCallback) 
 		Persistent:    false,
 		RetryStrategy: newFailFastRetryStrategy(),
 	}
-	return dcp.kvMux.DispatchDirect(req)
+	return dcp.dispatcher.DispatchDirect(req)
 }
 
 func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState, opts GetVbucketSeqnoOptions, cb GetVBucketSeqnosCallback) (PendingOp, error) {
@@ -432,7 +442,7 @@ func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState
 		extraBuf = make([]byte, 4)
 		binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
 	} else {
-		if !dcp.kvMux.SupportsCollections() {
+		if !dcp.dispatcher.SupportsCollections() {
 			return nil, errCollectionsUnsupported
 		}
 
@@ -440,6 +450,11 @@ func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState
 		binary.BigEndian.PutUint32(extraBuf[0:], uint32(state))
 		binary.BigEndian.PutUint32(extraBuf[4:], opts.FilterOptions.CollectionID)
 	}
+
+	if opts.RetryStrategy == nil {
+		opts.RetryStrategy = dcp.defaultRetryStrategy
+	}
+
 	req := &memdQRequest{
 		Packet: memd.Packet{
 			Magic:    memd.CmdMagicReq,
@@ -454,8 +469,8 @@ func (dcp *dcpComponent) GetVbucketSeqnos(serverIdx int, state memd.VbucketState
 		Callback:      handler,
 		ReplicaIdx:    -serverIdx,
 		Persistent:    false,
-		RetryStrategy: newFailFastRetryStrategy(),
+		RetryStrategy: opts.RetryStrategy,
 	}
 
-	return dcp.kvMux.DispatchDirect(req)
+	return dcp.dispatcher.DispatchDirect(req)
 }

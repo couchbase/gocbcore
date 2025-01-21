@@ -11,8 +11,9 @@ import (
 
 // DCPAgent represents the base client handling DCP connections to a Couchbase Server.
 type DCPAgent struct {
-	clientID   string
-	bucketName string
+	clientID             string
+	bucketName           string
+	defaultRetryStrategy RetryStrategy
 
 	pollerController configPollerController
 	kvMux            *kvMux
@@ -140,14 +141,19 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	tracerCmpt := newTracerComponent(noopTracer{}, config.BucketName, false, nil, nil)
 
 	c := &DCPAgent{
-		clientID:   formatCbUID(randomCbUID()),
-		bucketName: config.BucketName,
-		tracer:     tracerCmpt,
+		clientID:             formatCbUID(randomCbUID()),
+		bucketName:           config.BucketName,
+		defaultRetryStrategy: config.DefaultRetryStrategy,
+		tracer:               tracerCmpt,
 
 		errMap: newErrMapManager(config.BucketName),
 		auth:   config.SecurityConfig.Auth,
 
 		shutdownSig: make(chan struct{}),
+	}
+
+	if c.defaultRetryStrategy == nil {
+		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)

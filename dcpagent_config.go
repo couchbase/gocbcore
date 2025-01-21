@@ -31,6 +31,8 @@ type DCPAgentConfig struct {
 	HTTPConfig HTTPConfig
 
 	DCPConfig DCPConfig
+
+	DefaultRetryStrategy RetryStrategy
 }
 
 // DCPConfig specifies DCP specific configuration options.

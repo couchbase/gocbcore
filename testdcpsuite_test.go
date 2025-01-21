@@ -876,3 +876,148 @@ func (suite *DCPTestSuite) makeCollections(n int, prefix string, scopes []Manife
 
 	return m.Scopes
 }
+
+func newKvMuxWithErrInjection(kvMux *kvMux, failureCount int, code memd.CmdCode, errToInject error) *kvMuxWithErrInjection {
+	return &kvMuxWithErrInjection{
+		kvMux:        kvMux,
+		failureCount: failureCount,
+		code:         code,
+		errToInject:  errToInject,
+		retryCounts:  make(map[string]int),
+	}
+}
+
+type kvMuxWithErrInjection struct {
+	failureCount int          // How many temporary failures will be injected for each request
+	code         memd.CmdCode // The command code for which to inject the temporary failures
+	errToInject  error        // The error to inject
+
+	retryCounts      map[string]int
+	retryCountsMutex sync.Mutex
+
+	*kvMux
+}
+
+func (mux *kvMuxWithErrInjection) DispatchDirect(req *memdQRequest) (PendingOp, error) {
+	if req.Command != mux.code {
+		return mux.kvMux.DispatchDirect(req)
+	}
+
+	mux.retryCountsMutex.Lock()
+	if _, exists := mux.retryCounts[req.Identifier()]; exists {
+		mux.retryCounts[req.Identifier()]++
+	} else {
+		mux.retryCounts[req.Identifier()] = 1
+	}
+
+	if count, _ := mux.retryCounts[req.Identifier()]; count > mux.failureCount {
+		// Exceeded specified number of retries
+		mux.retryCountsMutex.Unlock()
+		return mux.kvMux.DispatchDirect(req)
+	}
+	mux.retryCountsMutex.Unlock()
+
+	fmt.Printf("!!! Injecting error %s\n", mux.errToInject)
+
+	shortCircuit, routeErr := mux.handleOpRoutingResp(nil, req, mux.errToInject)
+	if shortCircuit {
+		return req, nil
+	}
+
+	return nil, routeErr
+}
+
+func (suite *DCPTestSuite) runOpenStreamRetryTest(retryLimit int, strategy RetryStrategy, errorToInject, expectedError error) {
+	flags := memd.DcpOpenFlagProducer
+
+	if suite.SupportsFeature(TestFeatureDCPDeleteTimes) {
+		flags |= memd.DcpOpenFlagIncludeDeleteTimes
+	}
+
+	dcpAgent, err := suite.initDCPAgent(
+		suite.makeDCPAgentConfig(suite.DCPTestConfig, suite.SupportsFeature(TestFeatureDCPExpiry), false),
+		"retry-test",
+		flags,
+	)
+	suite.Require().NoError(err)
+
+	dcpAgent.dcp.dispatcher = newKvMuxWithErrInjection(dcpAgent.dcp.dispatcher.(*kvMux), retryLimit, memd.CmdDcpStreamReq, errorToInject)
+
+	suite.so.newCounter()
+	entries, err := suite.getCurrentSeqNos(dcpAgent)
+	suite.Require().NoError(err)
+
+	entry := entries[0]
+
+	fo, err := suite.getFailoverLogs(len(entries), dcpAgent)
+	suite.Require().Nil(err, err)
+
+	ch := make(chan error, 1)
+	suite.so.lock.Lock()
+	snapshot := suite.so.snapshots[entry.VbID]
+	suite.so.lock.Unlock()
+
+	opts := OpenStreamOptions{
+		RetryStrategy: strategy,
+	}
+
+	suite.so.endWg.Add(1)
+
+	_, err = dcpAgent.OpenStream(entry.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(entry.VbID)].VbUUID, SeqNo(snapshot.EndSeqNo), entry.SeqNo,
+		SeqNo(snapshot.StartSeqNo), SeqNo(snapshot.EndSeqNo), suite.so, opts, func(entries []FailoverEntry, err error) {
+			ch <- err
+		},
+	)
+	if expectedError == nil {
+		suite.Require().NoError(err)
+	} else if errors.Is(err, expectedError) {
+		suite.so.endWg.Done()
+		return
+	}
+
+	err = <-ch
+	if expectedError == nil {
+		suite.Require().NoError(err)
+	} else if errors.Is(err, expectedError) {
+		suite.so.endWg.Done()
+		return
+	}
+
+	suite.T().Logf("Stream open, waiting for stream to complete")
+
+	waitCh := make(chan struct{})
+	go func() {
+		suite.so.endWg.Wait()
+		close(waitCh)
+	}()
+
+	select {
+	case <-time.After(60 * time.Second):
+		suite.T().Fatal("Timed out waiting for stream to complete")
+	case <-waitCh:
+	}
+
+	suite.T().Logf("All streams complete")
+}
+
+func (suite *DCPTestSuite) TestOpenStreamRetry() {
+	suite.Run("Default retry strategy", func() {
+		suite.runOpenStreamRetryTest(3, nil, ErrMemdTmpFail, ErrTemporaryFailure)
+	})
+
+	suite.Run("Best effort retry strategy", func() {
+		suite.runOpenStreamRetryTest(3, NewBestEffortRetryStrategy(nil), ErrMemdTmpFail, nil)
+	})
+
+	suite.Run("Best effort retry strategy timeout", func() {
+		suite.runOpenStreamRetryTest(1000, NewBestEffortRetryStrategy(nil), ErrMemdTmpFail, ErrUnambiguousTimeout)
+	})
+
+	suite.Run("Fast fail retry strategy", func() {
+		suite.runOpenStreamRetryTest(3, newFailFastRetryStrategy(), ErrMemdTmpFail, ErrTemporaryFailure)
+	})
+
+	suite.Run("Best effort retry strategy non-retriable error", func() {
+		suite.runOpenStreamRetryTest(3, NewBestEffortRetryStrategy(nil), ErrMemdDCPStreamIDInvalid, ErrDCPStreamIDInvalid)
+	})
+}
