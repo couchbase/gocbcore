@@ -17,6 +17,7 @@ const defaultReaderBufSize = 20 * 1024 * 1024
 type memdConn interface {
 	LocalAddr() string
 	RemoteAddr() string
+	NodeUUID() string
 	WritePacket(*memd.Packet) error
 	ReadPacket() (*memd.Packet, int, error)
 	Close() error
@@ -82,6 +83,7 @@ func releaseReadBuf(buf *bufio.Reader, bufSize int) {
 type memdConnWrap struct {
 	localAddr  string
 	remoteAddr string
+	nodeUUID   string
 	conn       *memd.Conn
 	baseConn   *wrappedReadWriteCloser
 	bufSize    int
@@ -93,6 +95,10 @@ func (s *memdConnWrap) LocalAddr() string {
 
 func (s *memdConnWrap) RemoteAddr() string {
 	return s.remoteAddr
+}
+
+func (s *memdConnWrap) NodeUUID() string {
+	return s.nodeUUID
 }
 
 func (s *memdConnWrap) WritePacket(pkt *memd.Packet) error {
@@ -125,21 +131,21 @@ func (s *memdConnWrap) Release() {
 	s.baseConn = nil
 }
 
-func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, deadline time.Time, bufSize uint) (memdConn, error) {
+func dialMemdConn(ctx context.Context, ep routeEndpoint, tlsConfig *tls.Config, deadline time.Time, bufSize uint) (memdConn, error) {
 	d := net.Dialer{
 		Deadline: deadline,
 	}
 
 	dialID := formatCbUID(randomCbUID())
-	logDebugf("Dialling new client connection for %s, dial id = %s", address, dialID)
+	logDebugf("Dialling new client connection for %s, dial id = %s", ep.Address, dialID)
 
-	baseConn, err := d.DialContext(ctx, "tcp", address)
+	baseConn, err := d.DialContext(ctx, "tcp", ep.Address)
 	if err != nil {
-		logDebugf("Failed to dial client connection for %s, dial id = %s", address, dialID)
+		logDebugf("Failed to dial client connection for %s, dial id = %s", ep.Address, dialID)
 		return nil, err
 	}
 
-	logDebugf("Dialled new client connection for %s, dial id = %s", address, dialID)
+	logDebugf("Dialled new client connection for %s, dial id = %s", ep.Address, dialID)
 
 	tcpConn, isTCPConn := baseConn.(*net.TCPConn)
 	if !isTCPConn || tcpConn == nil {
@@ -176,7 +182,8 @@ func dialMemdConn(ctx context.Context, address string, tlsConfig *tls.Config, de
 		conn:       memd.NewConn(c),
 		baseConn:   c,
 		localAddr:  baseConn.LocalAddr().String(),
-		remoteAddr: address,
+		remoteAddr: ep.Address,
+		nodeUUID:   ep.NodeUUID,
 		bufSize:    int(bufSize),
 	}, nil
 }

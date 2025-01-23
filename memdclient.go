@@ -160,6 +160,10 @@ func (client *memdClient) Address() string {
 	return client.conn.RemoteAddr()
 }
 
+func (client *memdClient) NodeUUID() string {
+	return client.conn.NodeUUID()
+}
+
 func (client *memdClient) ConnID() string {
 	return client.connID
 }

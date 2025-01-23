@@ -14,6 +14,7 @@ type routeEndpoint struct {
 	Address     string
 	IsSeedNode  bool
 	ServerGroup string
+	NodeUUID    string
 }
 
 type routeConfig struct {

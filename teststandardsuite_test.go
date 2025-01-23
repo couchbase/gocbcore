@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -318,20 +317,6 @@ func (suite *StandardTestSuite) EndTest(spec TestSpec) {
 		err = suite.mockInst.EndTest(suite.runID)
 		suite.Require().Nil(err, err)
 	}
-}
-
-func (suite *StandardTestSuite) LoadConfigFromFile(filename string) (cfg *cfgBucket) {
-	s, err := ioutil.ReadFile(filename)
-	if err != nil {
-		suite.T().Fatal(err.Error())
-	}
-	rawCfg, err := parseConfig(s, "localhost")
-	if err != nil {
-		suite.T().Fatal(err.Error())
-	}
-
-	cfg = rawCfg
-	return
 }
 
 func makeAgentConfig(testConfig *TestConfig) AgentConfig {

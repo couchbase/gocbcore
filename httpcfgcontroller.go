@@ -21,10 +21,10 @@ func newHTTPConfigController(bucketName string, props httpPollerProperties, muxe
 func (hcc *httpConfigController) GetEndpoint(iterNum uint64) string {
 	var pickedSrv string
 	for _, srv := range hcc.muxer.MgmtEps() {
-		if hcc.seenNodes[srv] >= iterNum {
+		if hcc.seenNodes[srv.Address] >= iterNum {
 			continue
 		}
-		pickedSrv = srv
+		pickedSrv = srv.Address
 		break
 	}
 

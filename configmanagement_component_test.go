@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"testing"
 )
 
@@ -161,20 +162,20 @@ func (suite *UnitTestSuite) TestConfigComponentRevEpoch() {
 	}
 }
 
-type testAlternateAddressesRouteConfigMgr struct {
+type testRouteConfigMgr struct {
 	cfg       *routeConfig
 	cfgCalled bool
 }
 
-func (taa *testAlternateAddressesRouteConfigMgr) OnNewRouteConfig(cfg *routeConfig) {
-	taa.cfgCalled = true
-	taa.cfg = cfg
+func (tcm *testRouteConfigMgr) OnNewRouteConfig(cfg *routeConfig) {
+	tcm.cfgCalled = true
+	tcm.cfg = cfg
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesEmptyStringConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
 		UseTLS:       false,
@@ -198,10 +199,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesEmptyStringConfig() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesAutoConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
@@ -225,10 +226,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoConfig() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesAutoInternalConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "auto",
 		SrcMemdAddrs: []routeEndpoint{{Address: "172.17.0.4:11210"}},
@@ -253,10 +254,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesAutoInternalConfig() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesDefaultConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "default",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
@@ -280,10 +281,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesDefaultConfig() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesExternalConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
@@ -307,10 +308,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfig() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses_without_ports.json")
+func (suite *UnitTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses_without_ports.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "external",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
@@ -334,10 +335,10 @@ func (suite *StandardTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 	}
 }
 
-func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
-	cfgBk := suite.LoadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
+func (suite *UnitTestSuite) TestAlternateAddressesInvalidConfig() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_external_addresses.json")
 
-	mgr := &testAlternateAddressesRouteConfigMgr{}
+	mgr := &testRouteConfigMgr{}
 	cfgManager := newConfigManager(configManagerProperties{
 		NetworkType:  "invalid",
 		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.132.234:32799"}},
@@ -354,5 +355,56 @@ func (suite *StandardTestSuite) TestAlternateAddressesInvalidConfig() {
 
 	if mgr.cfgCalled {
 		suite.T().Fatalf("Expected route config to not be propagated, was propagated")
+	}
+}
+
+func (suite *UnitTestSuite) TestConfigWithNodeUUIDs() {
+	cfgBk := suite.loadConfigFromFile("testdata/bucket_config_with_node_uuids.json")
+
+	mgr := &testRouteConfigMgr{}
+	cfgManager := newConfigManager(configManagerProperties{
+		NetworkType:  "default",
+		SrcMemdAddrs: []routeEndpoint{{Address: "192.168.106.129:11210"}},
+		UseTLS:       false,
+	})
+	cfgManager.AddConfigWatcher(mgr)
+	cfgManager.OnNewConfig(cfgBk)
+
+	expectedUUIDs := map[string]string{
+		"192.168.106.128": "2ef565f7abff0a3f827cb2ab31dfcdc4",
+		"192.168.106.129": "9a5e59ac41a1cc006c4850805e43cfe0",
+		"192.168.106.130": "badcf695fc523f63bf55cc56d3a1c787",
+	}
+
+	endpointLists := []routeEndpoints{
+		mgr.cfg.kvServerList,
+		mgr.cfg.capiEpList,
+		mgr.cfg.mgmtEpList,
+		mgr.cfg.n1qlEpList,
+		mgr.cfg.ftsEpList,
+		mgr.cfg.cbasEpList,
+		mgr.cfg.eventingEpList,
+		mgr.cfg.gsiEpList,
+		mgr.cfg.backupEpList,
+	}
+
+	for _, endpointList := range endpointLists {
+		for _, server := range endpointList.NonSSLEndpoints {
+			parsedURL, err := url.Parse(server.Address)
+			suite.Require().NoError(err)
+			host := parsedURL.Hostname()
+
+			suite.Assert().Equal(expectedUUIDs[host], server.NodeUUID)
+			suite.Assert().NotEmpty(server.NodeUUID)
+		}
+
+		for _, server := range endpointList.SSLEndpoints {
+			parsedURL, err := url.Parse(server.Address)
+			suite.Require().NoError(err)
+			host := parsedURL.Hostname()
+
+			suite.Assert().Equal(expectedUUIDs[host], server.NodeUUID)
+			suite.Assert().NotEmpty(server.NodeUUID)
+		}
 	}
 }

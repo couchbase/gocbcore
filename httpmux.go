@@ -122,75 +122,76 @@ func makeEpList(endpoints []routeEndpoint) []string {
 }
 
 // CapiEps returns the capi endpoints with the path escaped bucket name appended.
-func (mux *httpMux) CapiEps() []string {
+func (mux *httpMux) CapiEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	var epList []string
-	for _, ep := range clientMux.capiEpList {
-		epList = append(epList, ep.Address+"/"+url.PathEscape(clientMux.bucket))
+	epList := make([]routeEndpoint, len(clientMux.capiEpList))
+	copy(epList, clientMux.capiEpList)
+	for idx := range epList {
+		epList[idx].Address += "/" + url.PathEscape(clientMux.bucket)
 	}
 
 	return epList
 }
 
-func (mux *httpMux) MgmtEps() []string {
+func (mux *httpMux) MgmtEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return makeEpList(clientMux.mgmtEpList)
+	return clientMux.mgmtEpList
 }
 
-func (mux *httpMux) N1qlEps() []string {
+func (mux *httpMux) N1qlEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return makeEpList(clientMux.n1qlEpList)
+	return clientMux.n1qlEpList
 }
 
-func (mux *httpMux) CbasEps() []string {
+func (mux *httpMux) CbasEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return makeEpList(clientMux.cbasEpList)
+	return clientMux.cbasEpList
 }
 
-func (mux *httpMux) FtsEps() []string {
+func (mux *httpMux) FtsEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return makeEpList(clientMux.ftsEpList)
+	return clientMux.ftsEpList
 }
 
-func (mux *httpMux) EventingEps() []string {
+func (mux *httpMux) EventingEps() []routeEndpoint {
 	if cMux := mux.Get(); cMux != nil {
-		return makeEpList(cMux.eventingEpList)
+		return cMux.eventingEpList
 	}
 
 	return nil
 }
 
-func (mux *httpMux) GSIEps() []string {
+func (mux *httpMux) GSIEps() []routeEndpoint {
 	if cMux := mux.Get(); cMux != nil {
-		return makeEpList(cMux.gsiEpList)
+		return cMux.gsiEpList
 	}
 
 	return nil
 }
 
-func (mux *httpMux) BackupEps() []string {
+func (mux *httpMux) BackupEps() []routeEndpoint {
 	if cMux := mux.Get(); cMux != nil {
-		return makeEpList(cMux.backupEpList)
+		return cMux.backupEpList
 	}
 
 	return nil

@@ -182,15 +182,16 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 
 	var denylist []string
 	for {
-		endpoint := req.Endpoint
-		if endpoint == "" {
+		address := req.Endpoint
+		if address == "" {
 			var err error
-			endpoint, err = hc.randomEndpoint(req.Service, denylist)
+			endpoint, err := hc.randomEndpoint(req.Service, denylist)
 			if err != nil {
 				return nil, err
 			}
+			address = endpoint.Address
 		} else {
-			err := hc.checkEndpointExists(req.Service, endpoint)
+			err := hc.checkEndpointAddressExists(req.Service, address)
 			if err != nil {
 				return nil, err
 			}
@@ -206,19 +207,19 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			var err error
 			creds, err = auth.Credentials(AuthCredsRequest{
 				Service:  req.Service,
-				Endpoint: endpoint,
+				Endpoint: address,
 			})
 			if err != nil {
-				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, endpoint, true); err != nil {
+				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, address, true); err != nil {
 					return nil, err
 				}
-				denylist = append(denylist, endpoint)
+				denylist = append(denylist, address)
 
 				continue
 			}
 		}
 
-		hreq, err := generator.NewRequest(endpoint, creds)
+		hreq, err := generator.NewRequest(address, creds)
 		if err != nil {
 			return nil, err
 		}
@@ -258,7 +259,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			}
 
 			if retryReason != nil {
-				err := hc.maybeWait(req, retryReason, err, start, endpoint, false)
+				err := hc.maybeWait(req, retryReason, err, start, address, false)
 				if err != nil {
 					return nil, err
 				}
@@ -285,7 +286,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 						TimeObserved:     time.Since(start),
 						RetryReasons:     req.retryReasons,
 						RetryAttempts:    req.retryCount,
-						LastDispatchedTo: endpoint,
+						LastDispatchedTo: address,
 					}
 				} else {
 					err = errRequestCanceled
@@ -300,7 +301,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		hresp = wrapHttpResponse(hresp) // nolint: bodyclose
 
 		respOut := HTTPResponse{
-			Endpoint:      endpoint,
+			Endpoint:      address,
 			StatusCode:    hresp.StatusCode,
 			ContentLength: hresp.ContentLength,
 			Body:          hresp.Body,
@@ -345,8 +346,8 @@ func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, c
 	}
 }
 
-func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) (string, error) {
-	var endpoint string
+func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) (routeEndpoint, error) {
+	var endpoint routeEndpoint
 	var err error
 	switch service {
 	case MgmtService:
@@ -366,38 +367,30 @@ func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) 
 	case BackupService:
 		endpoint, err = hc.getBackupEp(denylist)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return endpoint, nil
+	return endpoint, err
 }
 
-func (hc *httpComponent) checkEndpointExists(service ServiceType, endpoint string) error {
+func (hc *httpComponent) checkEndpointAddressExists(service ServiceType, address string) error {
 	var err error
 	switch service {
 	case MgmtService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.MgmtEps())
 	case CapiService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.CapiEps())
 	case N1qlService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.N1qlEps())
 	case FtsService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.FtsEps())
 	case CbasService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.CbasEps())
 	case EventingService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.EventingEps())
 	case GSIService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.GSIEps())
 	case BackupService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.BackupEps())
 	}
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time, endpoint string, returnOriginalOnTimeout bool) error {
@@ -440,42 +433,42 @@ func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, er
 	return nil
 }
 
-func (hc *httpComponent) getMgmtEp(denylist []string) (string, error) {
+func (hc *httpComponent) getMgmtEp(denylist []string) (routeEndpoint, error) {
 	endpoints, err := randFromServiceEndpoints(hc.muxer.MgmtEps(), denylist)
 	return endpoints, err
 }
 
-func (hc *httpComponent) getCapiEp(denylist []string) (string, error) {
+func (hc *httpComponent) getCapiEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.CapiEps(), denylist)
 }
 
-func (hc *httpComponent) getN1qlEp(denylist []string) (string, error) {
+func (hc *httpComponent) getN1qlEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.N1qlEps(), denylist)
 }
 
-func (hc *httpComponent) getFtsEp(denylist []string) (string, error) {
+func (hc *httpComponent) getFtsEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.FtsEps(), denylist)
 }
 
-func (hc *httpComponent) getCbasEp(denylist []string) (string, error) {
+func (hc *httpComponent) getCbasEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.CbasEps(), denylist)
 }
 
-func (hc *httpComponent) getEventingEp(denylist []string) (string, error) {
+func (hc *httpComponent) getEventingEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.EventingEps(), denylist)
 }
 
-func (hc *httpComponent) getGSIEp(denylist []string) (string, error) {
+func (hc *httpComponent) getGSIEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.GSIEps(), denylist)
 }
 
-func (hc *httpComponent) getBackupEp(denylist []string) (string, error) {
+func (hc *httpComponent) getBackupEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.BackupEps(), denylist)
 }
 
-func (hc *httpComponent) validateEndpoint(endpoint string, endpoints []string) error {
+func (hc *httpComponent) validateEndpointAddress(endpointAddress string, endpoints []routeEndpoint) error {
 	for _, ep := range endpoints {
-		if ep == endpoint {
+		if ep.Address == endpointAddress {
 			return nil
 		}
 	}
@@ -571,8 +564,8 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, max
 }
 
 /* #nosec G404 */
-func randFromServiceEndpoints(endpoints []string, denylist []string) (string, error) {
-	var allowList []string
+func randFromServiceEndpoints(endpoints []routeEndpoint, denylist []string) (routeEndpoint, error) {
+	var allowList []routeEndpoint
 	for _, ep := range endpoints {
 		if inDenyList(ep, denylist) {
 			continue
@@ -580,15 +573,15 @@ func randFromServiceEndpoints(endpoints []string, denylist []string) (string, er
 		allowList = append(allowList, ep)
 	}
 	if len(allowList) == 0 {
-		return "", errServiceNotAvailable
+		return routeEndpoint{}, errServiceNotAvailable
 	}
 
 	return allowList[rand.Intn(len(allowList))], nil
 }
 
-func inDenyList(ep string, denylist []string) bool {
+func inDenyList(ep routeEndpoint, denylist []string) bool {
 	for _, b := range denylist {
-		if ep == b {
+		if ep.Address == b {
 			return true
 		}
 	}

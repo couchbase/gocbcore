@@ -58,6 +58,7 @@ type cfgNodeExt struct {
 	ThisNode     bool                         `json:"thisNode"`
 	AltAddresses map[string]cfgNodeAltAddress `json:"alternateAddresses"`
 	ServerGroup  string                       `json:"serverGroup"`
+	NodeUUID     string                       `json:"nodeUUID"`
 }
 
 // VBucketServerMap is the a mapping of vbuckets to nodes.
@@ -137,6 +138,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			hostname := node.Hostname
 			ports := node.Services
 			serverGroup := node.ServerGroup
+			nodeUUID := node.NodeUUID
 
 			if networkType != "default" {
 				if altAddr, ok := node.AltAddresses[networkType]; ok {
@@ -165,7 +167,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				}
 			}
 
-			endpoints := endpointsFromPorts(ports, hostname, isSeedNode, serverGroup)
+			endpoints := endpointsFromPorts(ports, hostname, isSeedNode, serverGroup, nodeUUID)
 			if endpoints.kvServer.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer.Address)
@@ -352,7 +354,7 @@ func getHostname(hostname, sourceHostname string) string {
 	return hostname
 }
 
-func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool, serverGroup string) *serverEps {
+func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool, serverGroup string, nodeUUID string) *serverEps {
 	lists := &serverEps{}
 
 	if ports.KvSsl > 0 {
@@ -360,6 +362,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.CapiSsl > 0 {
@@ -367,6 +370,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.MgmtSsl > 0 {
@@ -374,6 +378,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.N1qlSsl > 0 {
@@ -381,6 +386,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.FtsSsl > 0 {
@@ -388,6 +394,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.CbasSsl > 0 {
@@ -395,6 +402,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.EventingSsl > 0 {
@@ -402,6 +410,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.GSISsl > 0 {
@@ -409,6 +418,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.BackupSsl > 0 {
@@ -416,6 +426,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Kv > 0 {
@@ -423,6 +434,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Capi > 0 {
@@ -430,6 +442,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Mgmt > 0 {
@@ -437,6 +450,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.N1ql > 0 {
@@ -444,6 +458,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Fts > 0 {
@@ -451,6 +466,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Cbas > 0 {
@@ -458,6 +474,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Eventing > 0 {
@@ -465,6 +482,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.GSI > 0 {
@@ -472,6 +490,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	if ports.Backup > 0 {
@@ -479,6 +498,7 @@ func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool,
 			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
 			IsSeedNode:  isSeedNode,
 			ServerGroup: serverGroup,
+			NodeUUID:    nodeUUID,
 		}
 	}
 	return lists

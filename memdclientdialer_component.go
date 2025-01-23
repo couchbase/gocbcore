@@ -258,7 +258,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 		}
 	}()
 
-	conn, err := dialMemdConn(ctx, address.Address, tlsConfig, deadline, mcc.connBufSize)
+	conn, err := dialMemdConn(ctx, address, tlsConfig, deadline, mcc.connBufSize)
 	cancel()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

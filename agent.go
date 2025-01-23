@@ -466,49 +466,49 @@ func (agent *Agent) MemdEps() []string {
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
-	return agent.httpMux.CapiEps()
+	return makeEpList(agent.httpMux.CapiEps())
 }
 
 // MgmtEps returns all the available endpoints for performing
 // management queries.
 func (agent *Agent) MgmtEps() []string {
-	return agent.httpMux.MgmtEps()
+	return makeEpList(agent.httpMux.MgmtEps())
 }
 
 // N1qlEps returns all the available endpoints for performing
 // N1QL queries.
 func (agent *Agent) N1qlEps() []string {
-	return agent.httpMux.N1qlEps()
+	return makeEpList(agent.httpMux.N1qlEps())
 }
 
 // FtsEps returns all the available endpoints for performing
 // FTS queries.
 func (agent *Agent) FtsEps() []string {
-	return agent.httpMux.FtsEps()
+	return makeEpList(agent.httpMux.FtsEps())
 }
 
 // CbasEps returns all the available endpoints for performing
 // CBAS queries.
 func (agent *Agent) CbasEps() []string {
-	return agent.httpMux.CbasEps()
+	return makeEpList(agent.httpMux.CbasEps())
 }
 
 // EventingEps returns all the available endpoints for managing/interacting with the Eventing Service.
 func (agent *Agent) EventingEps() []string {
-	return agent.httpMux.EventingEps()
+	return makeEpList(agent.httpMux.EventingEps())
 }
 
 // GSIEps returns all the available endpoints for managing/interacting with the GSI Service.
 func (agent *Agent) GSIEps() []string {
-	return agent.httpMux.GSIEps()
+	return makeEpList(agent.httpMux.GSIEps())
 }
 
 // BackupEps returns all the available endpoints for managing/interacting with the Backup Service.
 func (agent *Agent) BackupEps() []string {
-	return agent.httpMux.BackupEps()
+	return makeEpList(agent.httpMux.BackupEps())
 }
 
-// HasCollectionsSupport verifies whether or not collections are available on the agent.
+// HasCollectionsSupport verifies whether collections are available on the agent.
 func (agent *Agent) HasCollectionsSupport() bool {
 	return agent.kvMux.SupportsCollections()
 }
@@ -518,12 +518,12 @@ func (agent *Agent) IsSecure() bool {
 	return agent.kvMux.IsSecure()
 }
 
-// UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
+// UsingGCCCP returns whether the Agent is currently using GCCCP polling.
 func (agent *Agent) UsingGCCCP() bool {
 	return agent.kvMux.SupportsGCCCP()
 }
 
-// HasSeenConfig returns whether or not the Agent has seen a valid cluster config. This does not mean that the agent
+// HasSeenConfig returns whether the Agent has seen a valid cluster config. This does not mean that the agent
 // currently has active connections.
 // Volatile: This API is subject to change at any time.
 func (agent *Agent) HasSeenConfig() (bool, error) {
