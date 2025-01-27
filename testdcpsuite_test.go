@@ -940,6 +940,7 @@ func (suite *DCPTestSuite) runOpenStreamRetryTest(retryLimit int, strategy Retry
 		flags,
 	)
 	suite.Require().NoError(err)
+	defer dcpAgent.Close()
 
 	dcpAgent.dcp.dispatcher = newKvMuxWithErrInjection(dcpAgent.dcp.dispatcher.(*kvMux), retryLimit, memd.CmdDcpStreamReq, errorToInject)
 
