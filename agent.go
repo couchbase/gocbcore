@@ -631,7 +631,7 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
 	}
 
 	agent.auth = auth
@@ -711,11 +711,15 @@ func onCCCPNoConfigFromAnyNode(agent srvAgent, err error) {
 		return
 	}
 
+	attemptSRVRefresh(agent, srvDetails)
+}
+
+func attemptSRVRefresh(agent srvAgent, srvDetails *srvDetails) {
 	logInfof("Refreshing SRV record: %s", srvDetails.Record)
 
 	var addrs []*net.SRV
 	for {
-		_, addrs, err = net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
+		_, addrs, err := net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
 		if err != nil {
 			if isLogRedactionLevelFull() {
 				logInfof("Failed to lookup SRV record: %s", redactSystemData(err))
@@ -837,7 +841,7 @@ func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error
 				return pool
 			}
 		}
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(config.Auth, nil, config.TLSRootCAProvider)
 	} else {
 		var endsInCloud bool
 		for _, host := range addrs {

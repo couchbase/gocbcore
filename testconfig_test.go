@@ -49,3 +49,13 @@ type DCPTestConfig struct {
 	NumScopes      int
 	NumCollections int
 }
+
+var globalColumnarConfig *ColumnarTestConfig
+
+type ColumnarTestConfig struct {
+	ConnStr        string
+	Authenticator  AuthProvider
+	CAProvider     func() *x509.CertPool
+	ClusterVersion *NodeVersion
+	FeatureFlags   []TestFeatureFlag
+}

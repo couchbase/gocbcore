@@ -95,7 +95,7 @@ func TestMain(m *testing.M) {
 	initialGoroutineCount := runtime.NumGoroutine()
 
 	testSuite := envFlagInt("GCBCTESTSUITE", "test-suite", 1,
-		"The test suite to run, 1=standard,2=dcp")
+		"The test suite to run, 1=standard,2=dcp,3=columnar")
 	connStr := envFlagString("GCBCONNSTR", "connstr", "",
 		"Connection string to run tests with")
 	bucketName := envFlagString("GCBBUCKET", "bucket", "default",
@@ -196,6 +196,14 @@ func TestMain(m *testing.M) {
 			NumExpirations: *numExpirations,
 			NumScopes:      *numScopes,
 			NumCollections: *numCollections,
+		}
+	} else if *testSuite == 3 {
+		globalColumnarConfig = &ColumnarTestConfig{
+			ConnStr:        *connStr,
+			Authenticator:  authenticator,
+			CAProvider:     caProvider,
+			ClusterVersion: clusterVersion,
+			FeatureFlags:   featureFlags,
 		}
 	} else {
 		panic("Unrecognized test suite requested")

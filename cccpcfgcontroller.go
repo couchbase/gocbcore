@@ -126,7 +126,7 @@ func (ccc *cccpConfigController) doLoop() error {
 
 			cccpBytes, err := ccc.getClusterConfig(pipeline)
 			if err != nil {
-				if ccc.isFallbackErrorFn(err) {
+				if ccc.isFallbackErrorFn != nil && ccc.isFallbackErrorFn(err) {
 					fallbackErr = err
 					return false
 				}
@@ -191,7 +191,7 @@ func (ccc *cccpConfigController) doLoop() error {
 				logDebugf("CCCPPOLL: CCCP request was cancelled.")
 			} else {
 				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
-				ccc.noConfigFoundFn(err)
+				ccc.noConfigFoundFn(ccc.Error())
 			}
 			continue
 		}

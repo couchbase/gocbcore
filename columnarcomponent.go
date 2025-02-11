@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io/ioutil"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -78,13 +80,19 @@ func (q *ColumnarRowReader) Close() error {
 }
 
 type columnarComponent struct {
-	cli       *http.Client
-	muxer     *columnarMux
-	userAgent string
+	cli             *http.Client
+	muxer           *columnarMux
+	userAgent       string
+	dispatchTimeout time.Duration
+
+	// We can't use an atomic here because error can be different types.
+	bootstrapErrLock sync.Mutex
+	bootstrapErr     error
 }
 
 type columnarComponentProps struct {
-	UserAgent string
+	UserAgent       string
+	DispatchTimeout time.Duration
 }
 
 type columnarHTTPClientProps struct {
@@ -92,18 +100,29 @@ type columnarHTTPClientProps struct {
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
 	IdleTimeout         time.Duration
+	MaxConnsPerHost     int
 }
 
 func newColumnarComponent(props columnarComponentProps, clientProps columnarHTTPClientProps, muxer *columnarMux) *columnarComponent {
 	cc := &columnarComponent{
-		muxer:     muxer,
-		userAgent: props.UserAgent,
+		muxer:           muxer,
+		userAgent:       props.UserAgent,
+		dispatchTimeout: props.DispatchTimeout,
 	}
 
-	cc.cli = cc.createHTTPClient(clientProps.MaxIdleConns, clientProps.MaxIdleConnsPerHost, clientProps.IdleTimeout,
-		clientProps.ConnectTimeout)
+	cc.cli = cc.createHTTPClient(clientProps.MaxIdleConns, clientProps.MaxIdleConnsPerHost, clientProps.MaxConnsPerHost,
+		clientProps.IdleTimeout, clientProps.ConnectTimeout)
 
 	return cc
+}
+func (hc *columnarComponent) SetBootstrapError(err error) {
+	if errors.Is(err, ErrTimeout) {
+		return
+	}
+
+	hc.bootstrapErrLock.Lock()
+	hc.bootstrapErr = err
+	hc.bootstrapErrLock.Unlock()
 }
 
 func (hc *columnarComponent) Close() {
@@ -115,6 +134,10 @@ func (hc *columnarComponent) Close() {
 }
 
 func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOptions) (*ColumnarRowReader, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	statement := getMapValueString(opts.Payload, "statement", "")
 
 	body, err := json.Marshal(opts.Payload)
@@ -141,6 +164,19 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse server timeout: %v", err)
 		}
+	}
+
+	err = cc.waitForConfig(ctx)
+	if err != nil {
+		return nil, newColumnarError(err, statement, "", 0).withWasNotDispatched()
+	}
+
+	var uniqueID string
+	clientContextID, ok := opts.Payload["client_context_id"]
+	if ok {
+		uniqueID = clientContextID.(string)
+	} else {
+		uniqueID = uuid.NewString()
 	}
 
 	var lastCode uint32
@@ -172,7 +208,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 			continue
 		}
 
-		reqURI := fmt.Sprintf("%s/query/service", endpoint)
+		reqURI := fmt.Sprintf("%s/api/v1/request", endpoint)
 		req, err := http.NewRequestWithContext(ctx, "POST", reqURI, ioutil.NopCloser(bytes.NewReader(body)))
 		if err != nil {
 			return nil, err
@@ -182,24 +218,17 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		req.SetBasicAuth(creds[0].Username, creds[0].Password)
 
 		// we can't close the body of this response as it's long-lived beyond the function
+		logSchedf("Writing HTTP request to %s ID=%s", req.URL, uniqueID)
 		resp, err := cc.cli.Do(req) // nolint: bodyclose
 		if err != nil {
+			logDebugf("Received HTTP Response for ID=%s, errored: %v", uniqueID, err)
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
+				return nil, newColumnarError(err, statement, endpoint, 0)
 			}
 
 			newBody, err := handleMaybeRetryColumnar(ctxDeadline, serverTimeout, backoff, retries, opts.Payload)
 			if err != nil {
-				return nil, ColumnarError{
-					InnerError:       err,
-					Statement:        statement,
-					Errors:           nil,
-					LastErrorCode:    lastCode,
-					LastErrorMsg:     lastMessage,
-					Endpoint:         endpoint,
-					ErrorText:        "",
-					HTTPResponseCode: resp.StatusCode,
-				}
+				return nil, newColumnarError(err, statement, endpoint, 0).withLastDetail(lastCode, lastMessage)
 			}
 
 			body = newBody
@@ -207,6 +236,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 
 			continue
 		}
+		logDebugf("Received HTTP Response for ID=%s, status code: %v", uniqueID, resp.StatusCode)
 
 		resp = wrapHttpResponse(resp) // nolint: bodyclose
 
@@ -343,6 +373,10 @@ func parseColumnarErrorResponse(respBody []byte, statement, endpoint string, sta
 			withErrorText(string(respBody))
 	}
 
+	if len(rawRespParse.Errors) == 0 {
+		return nil
+	}
+
 	var respParse []jsonAnalyticsError
 	parseErr = json.Unmarshal(rawRespParse.Errors, &respParse)
 	if parseErr != nil {
@@ -376,6 +410,7 @@ func isColumnarErrorRetriable(cErr *ColumnarError) (*ColumnarErrorDesc, bool) {
 	for _, err := range cErr.Errors {
 		if !err.Retry {
 			allRetriable = false
+
 			if first == nil {
 				first = &ColumnarErrorDesc{
 					Code:    err.Code,
@@ -396,7 +431,7 @@ func isColumnarErrorRetriable(cErr *ColumnarError) (*ColumnarErrorDesc, bool) {
 	return first, true
 }
 
-// Note in he interest of keeping this signature sane, we return a raw base error here.
+// Note in the interest of keeping this signature sane, we return a raw base error here.
 func handleMaybeRetryColumnar(ctxDeadline time.Time, serverTimeout time.Duration, calc BackoffCalculator,
 	retries uint32, payload map[string]interface{}) ([]byte, error) {
 	b := calc(retries)
@@ -425,7 +460,7 @@ func handleMaybeRetryColumnar(ctxDeadline time.Time, serverTimeout time.Duration
 	return body, nil
 }
 
-func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost int, idleTimeout time.Duration, connectTimeout time.Duration) *http.Client {
+func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost int, idleTimeout time.Duration, connectTimeout time.Duration) *http.Client {
 	httpDialer := &net.Dialer{
 		Timeout:   connectTimeout,
 		KeepAlive: 30 * time.Second,
@@ -462,6 +497,7 @@ func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost 
 		MaxIdleConns:        maxIdleConns,
 		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 		IdleConnTimeout:     idleTimeout,
+		MaxConnsPerHost:     maxConnsPerHost,
 	}
 
 	httpCli := &http.Client{
@@ -485,6 +521,38 @@ func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost 
 	}
 
 	return httpCli
+}
+
+func (cc *columnarComponent) waitForConfig(ctx context.Context) error {
+	dispatchCtx, dispatchCancel := context.WithTimeout(context.Background(), cc.dispatchTimeout)
+	defer dispatchCancel()
+
+	for {
+		revID, err := cc.muxer.ConfigRev()
+		if err != nil {
+			return err
+		}
+
+		if revID > -1 {
+			return nil
+		}
+
+		cc.bootstrapErrLock.Lock()
+		err = cc.bootstrapErr
+		cc.bootstrapErrLock.Unlock()
+		if err != nil {
+			return err
+		}
+
+		// We've not successfully been setup with a cluster map yet
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-dispatchCtx.Done():
+			return errTimeout
+		case <-time.After(500 * time.Microsecond):
+		}
+	}
 }
 
 func columnarExponentialBackoffWithJitter(min, max time.Duration, backoffFactor float64) BackoffCalculator {

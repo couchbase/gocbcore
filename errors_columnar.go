@@ -30,6 +30,7 @@ type ColumnarError struct {
 	Endpoint         string
 	ErrorText        string
 	HTTPResponseCode int
+	WasNotDispatched bool
 }
 
 func newColumnarError(innerError error, statement string, endpoint string, responseCode int) *ColumnarError {
@@ -54,6 +55,11 @@ func (e ColumnarError) withLastDetail(code uint32, msg string) *ColumnarError {
 
 func (e ColumnarError) withErrors(errors []ColumnarErrorDesc) *ColumnarError {
 	e.Errors = errors
+	return &e
+}
+
+func (e ColumnarError) withWasNotDispatched() *ColumnarError {
+	e.WasNotDispatched = true
 	return &e
 }
 

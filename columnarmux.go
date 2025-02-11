@@ -12,7 +12,7 @@ type columnarMux struct {
 	cfgMgr configManager
 }
 
-func newColumnarMux(cfgMgr configManager, muxState *httpClientMux, noSeedNodeTLS bool) *columnarMux {
+func newColumnarMux(cfgMgr configManager, muxState *columnarClientMux) *columnarMux {
 	mux := &columnarMux{
 		cfgMgr: cfgMgr,
 		muxPtr: unsafe.Pointer(muxState),
@@ -91,6 +91,15 @@ func (mux *columnarMux) ColumnarEps() []routeEndpoint {
 	}
 
 	return clientMux.epList
+}
+
+func (mux *columnarMux) ConfigRev() (int64, error) {
+	clientMux := mux.Get()
+	if clientMux == nil {
+		return 0, errShutdown
+	}
+
+	return clientMux.revID, nil
 }
 
 func (mux *columnarMux) Close() error {

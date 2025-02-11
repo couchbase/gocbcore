@@ -493,7 +493,30 @@ func (hc *httpComponent) validateEndpointAddress(endpointAddress string, endpoin
 	return errInvalidServer
 }
 
-func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {
+func createTLSConfig(auth AuthProvider, cipherSuite []*tls.CipherSuite, caProvider func() *x509.CertPool) *dynTLSConfig {
+	suites := make([]uint16, len(cipherSuite))
+	for i, suite := range cipherSuite {
+		var s uint16
+		for _, suiteID := range tls.CipherSuites() {
+			if suite.Name == suiteID.Name {
+				s = suiteID.ID
+				break
+			}
+		}
+		for _, suiteID := range tls.InsecureCipherSuites() {
+			if suite.Name == suiteID.Name {
+				s = suiteID.ID
+				break
+			}
+		}
+
+		if s > 0 {
+			suites[i] = s
+		} else {
+			logWarnf("Unknown cipher suite %s, ignoring", suite.Name)
+		}
+	}
+
 	return &dynTLSConfig{
 		BaseConfig: &tls.Config{
 			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
@@ -508,7 +531,8 @@ func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTL
 
 				return cert, nil
 			},
-			MinVersion: tls.VersionTLS12,
+			MinVersion:   tls.VersionTLS12,
+			CipherSuites: suites,
 		},
 		Provider: caProvider,
 	}

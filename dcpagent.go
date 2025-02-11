@@ -516,7 +516,7 @@ func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) erro
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
 	}
 
 	agent.auth = auth
