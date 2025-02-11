@@ -106,6 +106,9 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 					logDebugf("Got additional error for stats: %s: %v", serverAddress, err)
 				}
 
+				// If we don't reassign this then we lose the error
+				stats[serverAddress] = curStats
+
 				opHandledLocked()
 
 				return
@@ -170,9 +173,9 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 			req.SetTimer(time.AfterFunc(opts.Deadline.Sub(start), func() {
 				connInfo := req.ConnectionInfo()
 				count, reasons := req.Retries()
-				req.cancelWithCallbackAndFinishTracer(&TimeoutError{
+				req.cancelWithCallback(&TimeoutError{
 					InnerError:         errAmbiguousTimeout,
-					OperationID:        "Unlock",
+					OperationID:        "Stats",
 					Opaque:             req.Identifier(),
 					TimeObserved:       time.Since(start),
 					RetryReasons:       reasons,
@@ -180,7 +183,7 @@ func (sc *statsComponent) Stats(opts StatsOptions, cb StatsCallback) (PendingOp,
 					LastDispatchedTo:   connInfo.lastDispatchedTo,
 					LastDispatchedFrom: connInfo.lastDispatchedFrom,
 					LastConnectionID:   connInfo.lastConnectionID,
-				}, tracer)
+				})
 			}))
 		}
 

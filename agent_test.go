@@ -1734,6 +1734,42 @@ func (suite *StandardTestSuite) TestStats() {
 	}
 }
 
+func (suite *StandardTestSuite) TestStatsTimeout() {
+	agent, s := suite.GetAgentAndHarness()
+
+	snapshot, err := agent.ConfigSnapshot()
+	suite.Require().NoError(err, "Failed to get config snapshot")
+
+	numServers, err := snapshot.NumServers()
+	suite.Require().NoError(err, "Failed to get num servers")
+
+	s.PushOp(agent.Stats(StatsOptions{
+		Key:      "",
+		Deadline: time.Now().Add(1 * time.Nanosecond),
+	}, func(res *StatsResult, err error) {
+		s.Wrap(func() {
+			suite.Assert().NoError(err)
+			suite.Assert().Len(res.Servers, numServers)
+			for _, curStats := range res.Servers {
+				if suite.IsMockServer() {
+					// Sometimes we don't time out because of time precision issues on CI when using a mock server.
+					// If a timeout hasn't happened expect non-empty stats.
+					if errors.Is(curStats.Error, ErrTimeout) {
+						suite.Assert().Empty(curStats.Stats)
+					} else {
+						suite.Assert().NoError(curStats.Error)
+						suite.Assert().NotEmpty(curStats.Stats)
+					}
+				} else {
+					suite.Assert().ErrorIs(curStats.Error, ErrTimeout)
+					suite.Assert().Empty(curStats.Stats)
+				}
+			}
+		})
+	}))
+	s.Wait(0)
+}
+
 func (suite *StandardTestSuite) TestGetHttpEps() {
 	agent, _ := suite.GetAgentAndHarness()
 
