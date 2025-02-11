@@ -819,4 +819,7 @@ var (
 	errConnectionIDInvalid = ncError{ErrConnectionIDInvalid}
 
 	errCircuitBreakerOpen = ncError{ErrCircuitBreakerOpen}
+
+	errColumnar                = ncError{ErrColumnar}
+	errDeadlineWouldBeExceeded = ncError{ErrDeadlineWouldBeExceeded}
 )

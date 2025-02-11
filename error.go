@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"context"
 	"errors"
 	"io"
 )
@@ -90,6 +91,17 @@ var (
 	// vbucket id.
 	// Uncommitted: This API may change in the future.
 	ErrServerGroupMismatch = errors.New("vbucket id does not have any replica in requested server group")
+
+	// ErrColumnar occurs from a client-server interaction with the Columnar service.
+	ErrColumnar = errors.New("columnar error")
+
+	// ErrDeadlineWouldBeExceeded is returned when a Deadline set on an operation
+	// would be exceeded if the operation were sent to the server. It wraps
+	// context.DeadlineExceeded.
+	ErrDeadlineWouldBeExceeded = wrapError(
+		context.DeadlineExceeded,
+		"operation not sent to server, as Timeout would be exceeded",
+	)
 )
 
 // Shared Error Definitions RFC#58@15

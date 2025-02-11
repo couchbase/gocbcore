@@ -2,7 +2,6 @@ package gocbcore
 
 import (
 	"errors"
-
 	"github.com/couchbase/gocbcore/v10/memd"
 )
 
