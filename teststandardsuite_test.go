@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,8 @@ func (suite *StandardTestSuite) SetupSuite() {
 		}),
 	)
 	s.Wait(0)
+
+	suite.setClusterName()
 }
 
 func (suite *StandardTestSuite) TearDownSuite() {
@@ -584,6 +587,50 @@ func (suite *StandardTestSuite) VerifyMetrics(meter *testMeter, key string, num 
 			if !zeroLenAllowed {
 				suite.Assert().NotZero(val)
 			}
+		}
+	}
+}
+
+func (suite *StandardTestSuite) setClusterName() {
+	if !suite.SupportsFeature(TestFeatureClusterLabels) {
+		return
+	}
+
+	newClusterName := "test-cluster"
+	s := suite.GetHarness()
+
+	req := &HTTPRequest{
+		UniqueID:    "setClusterName",
+		Method:      "POST",
+		Path:        "/pools/default",
+		Service:     MgmtService,
+		ContentType: "application/x-www-form-urlencoded",
+		Body:        []byte(url.Values{"clusterName": []string{newClusterName}}.Encode()),
+		Deadline:    time.Now().Add(10 * time.Second),
+	}
+
+	s.PushOp(suite.DefaultAgent().DoHTTPRequest(req, func(resp *HTTPResponse, err error) {
+		s.Wrap(func() {
+			suite.Require().NoError(err)
+			suite.Require().Equal(200, resp.StatusCode)
+			suite.Require().NoError(resp.Body.Close())
+		})
+	}))
+	s.Wait(0)
+
+	timeout := 10 * time.Second
+	deadlineCh := time.After(timeout)
+	for {
+		if suite.DefaultAgent().tracer.ClusterLabels().ClusterName == newClusterName {
+			break
+		}
+
+		select {
+		case <-deadlineCh:
+			suite.T().Fatalf("Did not see expected cluster name in tracer component within %s", timeout)
+			return
+		case <-time.After(100 * time.Millisecond):
+			continue
 		}
 	}
 }

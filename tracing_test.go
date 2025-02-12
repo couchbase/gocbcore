@@ -55,6 +55,7 @@ func (tt *testTracer) RequestSpan(parentContext RequestSpanContext, operationNam
 	}
 
 	span := newTestSpan(operationName, parentContext)
+
 	if parentContext == nil {
 		tt.Spans[parentContext] = append(tt.Spans[parentContext], span)
 	} else {
@@ -89,7 +90,7 @@ func (suite *StandardTestSuite) AssertTopLevelSpan(span *testSpan, expectedName,
 	numTags := 1
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTags += 2
 	}
@@ -123,7 +124,7 @@ func (suite *StandardTestSuite) AssertCmdSpan(span *testSpan, expectedName strin
 	numTags := 2
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTags += 2
 	}
@@ -151,7 +152,7 @@ func (suite *StandardTestSuite) AssertNetSpan(span *testSpan) {
 	suite.Assert().True(span.Finished)
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTags += 2
 	}
@@ -170,7 +171,7 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
 	numTags := 1
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTags += 2
 	}
@@ -185,7 +186,7 @@ func (suite *StandardTestSuite) AssertHTTPSpan(span *testSpan, expectedName stri
 	suite.Assert().True(dispatchSpan.Finished)
 	suite.Assert().Equal("couchbase", dispatchSpan.Tags["db.system"])
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTagsDispatchSpan += 2
 	}
@@ -202,7 +203,7 @@ func (suite *StandardTestSuite) AssertHTTPSpanNoDispatch(span *testSpan, expecte
 	suite.Assert().Equal("couchbase", span.Tags["db.system"])
 	numTags := 1
 	if suite.SupportsFeature(TestFeatureClusterLabels) {
-		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_name"])
+		suite.Assert().Equal("test-cluster", span.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotEmpty(span.Tags["db.couchbase.cluster_uuid"])
 		numTags += 2
 	}
