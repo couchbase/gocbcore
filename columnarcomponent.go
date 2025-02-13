@@ -468,11 +468,11 @@ func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost,
 	httpTransport := &http.Transport{
 		ForceAttemptHTTP2: true,
 
-		Dial: func(network, addr string) (net.Conn, error) {
-			return httpDialer.Dial(network, addr)
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return httpDialer.DialContext(ctx, network, addr)
 		},
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			tcpConn, err := httpDialer.Dial(network, addr)
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.DialContext(ctx, network, addr)
 			if err != nil {
 				return nil, err
 			}
