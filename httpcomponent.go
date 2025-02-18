@@ -358,8 +358,17 @@ func (hc *httpComponent) recordTelemetry(state *httpRequestState, req *httpReque
 		return
 	}
 
+	var node, altNode string
+	if state.endpoint.CanonicalAddress != "" && state.endpoint.CanonicalAddress != state.endpoint.Address {
+		node = trimSchemePrefix(state.endpoint.CanonicalAddress)
+		altNode = trimSchemePrefix(state.endpoint.Address)
+	} else {
+		node = trimSchemePrefix(state.endpoint.Address)
+	}
+
 	hc.telemetry.RecordOp(telemetryOperationAttributes{
-		node:     trimSchemePrefix(state.endpoint.Address),
+		node:     node,
+		altNode:  altNode,
 		nodeUUID: state.endpoint.NodeUUID,
 		duration: time.Since(state.lastAttemptStart),
 		outcome:  outcome,

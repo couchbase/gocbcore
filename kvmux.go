@@ -903,10 +903,11 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	pipelines := make([]*memdPipeline, len(kvServerList))
 	for i, endpoint := range kvServerList {
 		trimmedEndpoint := routeEndpoint{
-			Address:     trimSchemePrefix(endpoint.Address),
-			IsSeedNode:  endpoint.IsSeedNode,
-			ServerGroup: endpoint.ServerGroup,
-			NodeUUID:    endpoint.NodeUUID,
+			Address:          trimSchemePrefix(endpoint.Address),
+			IsSeedNode:       endpoint.IsSeedNode,
+			ServerGroup:      endpoint.ServerGroup,
+			NodeUUID:         endpoint.NodeUUID,
+			CanonicalAddress: endpoint.CanonicalAddress,
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {

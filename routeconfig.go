@@ -14,7 +14,13 @@ type routeEndpoint struct {
 	Address     string
 	IsSeedNode  bool
 	ServerGroup string
-	NodeUUID    string
+
+	// NodeUUID is a unique identifier for the node that is given by ns-server. Only used as an attribute for app telemetry metrics.
+	NodeUUID string
+
+	// CanonicalAddress is the address for the node as given in cfgBucket.NodesExt[<index>].Hostname.
+	// This is not affected by whether alternate addresses are used. Only used as an attribute for app telemetry metrics.
+	CanonicalAddress string
 }
 
 type routeConfig struct {

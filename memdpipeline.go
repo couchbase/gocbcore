@@ -16,30 +16,32 @@ var (
 type memdGetClientFn func(cancelSig <-chan struct{}) (*memdClient, error)
 
 type memdPipeline struct {
-	address     string
-	getClientFn memdGetClientFn
-	maxItems    int
-	queue       *memdOpQueue
-	maxClients  int
-	clients     []*memdPipelineClient
-	clientsLock sync.Mutex
-	isSeedNode  bool
-	serverGroup string
-	nodeUUID    string
-	telemetry   *telemetryComponent
+	address          string
+	getClientFn      memdGetClientFn
+	maxItems         int
+	queue            *memdOpQueue
+	maxClients       int
+	clients          []*memdPipelineClient
+	clientsLock      sync.Mutex
+	isSeedNode       bool
+	serverGroup      string
+	nodeUUID         string
+	canonicalAddress string
+	telemetry        *telemetryComponent
 }
 
 func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn, telemetry *telemetryComponent) *memdPipeline {
 	return &memdPipeline{
-		address:     endpoint.Address,
-		getClientFn: getClientFn,
-		maxClients:  maxClients,
-		maxItems:    maxItems,
-		queue:       newMemdOpQueue(),
-		isSeedNode:  endpoint.IsSeedNode,
-		serverGroup: endpoint.ServerGroup,
-		nodeUUID:    endpoint.NodeUUID,
-		telemetry:   telemetry,
+		address:          endpoint.Address,
+		getClientFn:      getClientFn,
+		maxClients:       maxClients,
+		maxItems:         maxItems,
+		queue:            newMemdOpQueue(),
+		isSeedNode:       endpoint.IsSeedNode,
+		serverGroup:      endpoint.ServerGroup,
+		nodeUUID:         endpoint.NodeUUID,
+		canonicalAddress: endpoint.CanonicalAddress,
+		telemetry:        telemetry,
 	}
 }
 
@@ -117,9 +119,18 @@ func (pipeline *memdPipeline) sendRequest(req *memdQRequest, maxItems int) error
 		cmdCategory := req.Command.Category()
 
 		if cmdCategory != memd.CmdCategoryUnknown {
+			var node, altNode string
+			if pipeline.canonicalAddress != "" && pipeline.canonicalAddress != pipeline.address {
+				node = trimSchemePrefix(pipeline.canonicalAddress)
+				altNode = trimSchemePrefix(pipeline.address)
+			} else {
+				node = trimSchemePrefix(pipeline.address)
+			}
+
 			req.processingLock.Lock()
 			req.telemetryRecorder = pipeline.telemetry.GetRecorder(telemetryOperationAttributes{
-				node:     pipeline.address,
+				node:     node,
+				altNode:  altNode,
 				nodeUUID: pipeline.nodeUUID,
 				service:  MemdService,
 				mutation: cmdCategory == memd.CmdCategoryMutation,

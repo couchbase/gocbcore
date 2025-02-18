@@ -137,10 +137,13 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 	if cfg.NodesExt != nil {
 		lenNodes := len(cfg.Nodes)
 		for i, node := range cfg.NodesExt {
-			hostname := node.Hostname
-			ports := node.Services
+			canonicalHostname := node.Hostname
+			canonicalPorts := node.Services
 			serverGroup := node.ServerGroup
 			nodeUUID := node.NodeUUID
+
+			hostname := canonicalHostname
+			ports := canonicalPorts
 
 			if networkType != "default" {
 				if altAddr, ok := node.AltAddresses[networkType]; ok {
@@ -159,17 +162,20 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 			var isSeedNode bool
 			if loopbackAddr == nil {
 				hostname = getHostname(hostname, cfg.SourceHostname)
+				canonicalHostname = getHostname(canonicalHostname, cfg.SourceHostname)
 			} else {
 				isSeedNode = fmt.Sprintf("%s:%d", node.Hostname, node.Services.Mgmt) == loopbackAddr.Identifier
 				if isSeedNode {
 					logDebugf("Seed node detected and set to overwrite, setting hostname to %s", loopbackAddr.LoopbackAddr)
 					hostname = loopbackAddr.LoopbackAddr
+					canonicalHostname = hostname
 				} else {
 					hostname = getHostname(hostname, cfg.SourceHostname)
+					canonicalHostname = getHostname(canonicalHostname, cfg.SourceHostname)
 				}
 			}
 
-			endpoints := endpointsFromPorts(ports, hostname, isSeedNode, serverGroup, nodeUUID)
+			endpoints := endpointsFromPorts(ports, hostname, canonicalPorts, canonicalHostname, isSeedNode, serverGroup, nodeUUID)
 			if endpoints.kvServer.Address != "" {
 				if bktType > bktTypeInvalid && i >= lenNodes {
 					logDebugf("KV node present in nodesext but not in nodes for %s", endpoints.kvServer.Address)
@@ -185,6 +191,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				if node.AppTelemetryPath != "" {
 					ep := endpoints.mgmtEp
 					ep.Address = strings.Replace(ep.Address, "http://", "ws://", 1) + node.AppTelemetryPath
+					ep.CanonicalAddress = strings.Replace(ep.CanonicalAddress, "http://", "ws://", 1) + node.AppTelemetryPath
 					appTelemetryEpList.NonSSLEndpoints = append(appTelemetryEpList.NonSSLEndpoints, ep)
 				}
 			}
@@ -222,6 +229,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 				if node.AppTelemetryPath != "" {
 					ep := endpoints.mgmtEpSSL
 					ep.Address = strings.Replace(ep.Address, "https://", "wss://", 1) + node.AppTelemetryPath
+					ep.CanonicalAddress = strings.Replace(ep.CanonicalAddress, "https://", "wss://", 1) + node.AppTelemetryPath
 					appTelemetryEpList.SSLEndpoints = append(appTelemetryEpList.SSLEndpoints, ep)
 				}
 			}
@@ -367,151 +375,170 @@ func getHostname(hostname, sourceHostname string) string {
 	return hostname
 }
 
-func endpointsFromPorts(ports cfgNodeServices, hostname string, isSeedNode bool, serverGroup string, nodeUUID string) *serverEps {
+func endpointsFromPorts(ports cfgNodeServices, hostname string, canonicalPorts cfgNodeServices, canonicalHostname string,
+	isSeedNode bool, serverGroup string, nodeUUID string) *serverEps {
 	lists := &serverEps{}
 
 	if ports.KvSsl > 0 {
 		lists.kvServerSSL = routeEndpoint{
-			Address:     fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("couchbases://%s:%d", hostname, ports.KvSsl),
+			CanonicalAddress: fmt.Sprintf("couchbases://%s:%d", canonicalHostname, canonicalPorts.KvSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.CapiSsl > 0 {
 		lists.capiEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.CapiSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.CapiSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.MgmtSsl > 0 {
 		lists.mgmtEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.MgmtSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.MgmtSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.N1qlSsl > 0 {
 		lists.n1qlEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.N1qlSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.N1qlSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.FtsSsl > 0 {
 		lists.ftsEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.FtsSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.FtsSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.CbasSsl > 0 {
 		lists.cbasEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.CbasSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.CbasSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.EventingSsl > 0 {
 		lists.eventingEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.EventingSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.EventingSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.GSISsl > 0 {
 		lists.gsiEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.GSISsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.GSISsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.BackupSsl > 0 {
 		lists.backupEpSSL = routeEndpoint{
-			Address:     fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("https://%s:%d", hostname, ports.BackupSsl),
+			CanonicalAddress: fmt.Sprintf("https://%s:%d", canonicalHostname, canonicalPorts.BackupSsl),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Kv > 0 {
 		lists.kvServer = routeEndpoint{
-			Address:     fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("couchbase://%s:%d", hostname, ports.Kv),
+			CanonicalAddress: fmt.Sprintf("couchbase://%s:%d", canonicalHostname, canonicalPorts.Kv),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Capi > 0 {
 		lists.capiEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Capi),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Capi),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Mgmt > 0 {
 		lists.mgmtEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Mgmt),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Mgmt),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.N1ql > 0 {
 		lists.n1qlEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.N1ql),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.N1ql),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Fts > 0 {
 		lists.ftsEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Fts),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Fts),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Cbas > 0 {
 		lists.cbasEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Cbas),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Cbas),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Eventing > 0 {
 		lists.eventingEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Eventing),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Eventing),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.GSI > 0 {
 		lists.gsiEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.GSI),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.GSI),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	if ports.Backup > 0 {
 		lists.backupEp = routeEndpoint{
-			Address:     fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
-			IsSeedNode:  isSeedNode,
-			ServerGroup: serverGroup,
-			NodeUUID:    nodeUUID,
+			Address:          fmt.Sprintf("http://%s:%d", hostname, ports.Backup),
+			CanonicalAddress: fmt.Sprintf("http://%s:%d", canonicalHostname, canonicalPorts.Backup),
+			IsSeedNode:       isSeedNode,
+			ServerGroup:      serverGroup,
+			NodeUUID:         nodeUUID,
 		}
 	}
 	return lists

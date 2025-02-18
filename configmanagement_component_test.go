@@ -196,6 +196,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesEmptyStringConfig() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().NotEqual(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -223,6 +228,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesAutoConfig() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().NotEqual(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -251,6 +261,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesAutoInternalConfig() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().Equal(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -278,6 +293,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesDefaultConfig() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().Equal(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -305,6 +325,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesExternalConfig() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().NotEqual(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -332,6 +357,11 @@ func (suite *UnitTestSuite) TestAlternateAddressesExternalConfigNoPorts() {
 		if server.Address != cfgBkServer {
 			suite.T().Fatalf("Expected kv server to be %s but was %s", cfgBkServer, server.Address)
 		}
+		canonicalCfgBkServer := fmt.Sprintf("couchbase://%s:%d", cfgBkNode.Hostname, cfgBkNode.Services.Kv)
+		if server.CanonicalAddress != canonicalCfgBkServer {
+			suite.T().Fatalf("Expected canonical kv server to be %s but was %s", canonicalCfgBkServer, server.CanonicalAddress)
+		}
+		suite.Require().NotEqual(server.Address, server.CanonicalAddress)
 	}
 }
 
@@ -423,36 +453,42 @@ func (suite *UnitTestSuite) TestConfigWithAppTelemetry() {
 
 	expectedNonSSLEndpoints := []routeEndpoint{
 		{
-			Address:     "ws://192.168.106.128:8091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "2ef565f7abff0a3f827cb2ab31dfcdc4",
+			Address:          "ws://192.168.106.128:8091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "2ef565f7abff0a3f827cb2ab31dfcdc4",
+			CanonicalAddress: "ws://192.168.106.128:8091/_appTelemetry",
 		},
 		{
-			Address:     "ws://192.168.106.129:8091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "9a5e59ac41a1cc006c4850805e43cfe0",
+			Address:          "ws://192.168.106.129:8091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "9a5e59ac41a1cc006c4850805e43cfe0",
+			CanonicalAddress: "ws://192.168.106.129:8091/_appTelemetry",
 		},
 		{
-			Address:     "ws://192.168.106.130:8091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "badcf695fc523f63bf55cc56d3a1c787",
+			Address:          "ws://192.168.106.130:8091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "badcf695fc523f63bf55cc56d3a1c787",
+			CanonicalAddress: "ws://192.168.106.130:8091/_appTelemetry",
 		},
 	}
 	expectedSSLEndpoints := []routeEndpoint{
 		{
-			Address:     "wss://192.168.106.128:18091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "2ef565f7abff0a3f827cb2ab31dfcdc4",
+			Address:          "wss://192.168.106.128:18091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "2ef565f7abff0a3f827cb2ab31dfcdc4",
+			CanonicalAddress: "wss://192.168.106.128:18091/_appTelemetry",
 		},
 		{
-			Address:     "wss://192.168.106.129:18091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "9a5e59ac41a1cc006c4850805e43cfe0",
+			Address:          "wss://192.168.106.129:18091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "9a5e59ac41a1cc006c4850805e43cfe0",
+			CanonicalAddress: "wss://192.168.106.129:18091/_appTelemetry",
 		},
 		{
-			Address:     "wss://192.168.106.130:18091/_appTelemetry",
-			ServerGroup: "Group 1",
-			NodeUUID:    "badcf695fc523f63bf55cc56d3a1c787",
+			Address:          "wss://192.168.106.130:18091/_appTelemetry",
+			ServerGroup:      "Group 1",
+			NodeUUID:         "badcf695fc523f63bf55cc56d3a1c787",
+			CanonicalAddress: "wss://192.168.106.130:18091/_appTelemetry",
 		},
 	}
 

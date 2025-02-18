@@ -138,6 +138,7 @@ func (c *telemetryCounters) recordOp(attributes telemetryOperationAttributes) {
 		service:  attributes.service,
 		nodeUUID: attributes.nodeUUID,
 		node:     attributes.node,
+		altNode:  attributes.altNode,
 		bucket:   attributes.bucket,
 	}
 
@@ -205,6 +206,7 @@ func (h *telemetryHistograms) recordOp(attributes telemetryOperationAttributes) 
 	key := telemetryHistogramKey{
 		agent:    attributes.agent,
 		node:     attributes.node,
+		altNode:  attributes.altNode,
 		nodeUUID: attributes.nodeUUID,
 		bucket:   attributes.bucket,
 	}
@@ -235,6 +237,7 @@ type telemetryCounterKey struct {
 	agent    string
 	service  ServiceType
 	node     string
+	altNode  string
 	nodeUUID string
 
 	// KV-only
@@ -262,6 +265,7 @@ func (k *telemetryCounterKey) serviceAsString() string {
 type telemetryHistogramKey struct {
 	agent    string
 	node     string
+	altNode  string
 	nodeUUID string
 
 	// KV-only
@@ -305,6 +309,9 @@ func (m *telemetryHistogramMap) serialize() []string {
 		if k.bucket != "" {
 			commonTags += fmt.Sprintf(",bucket=\"%s\"", k.bucket)
 		}
+		if k.altNode != "" {
+			commonTags += fmt.Sprintf(",alt_node=\"%s\"", k.altNode)
+		}
 		entries = append(entries, h.serialize(m.name, commonTags)...)
 	}
 
@@ -337,6 +344,9 @@ func (m *telemetryCounterMap) serialize(counterName string) []string {
 		tags := fmt.Sprintf("agent=\"%s\",node=\"%s\",node_uuid=\"%s\"", k.agent, k.node, k.nodeUUID)
 		if k.service == MemdService {
 			tags += fmt.Sprintf(",bucket=\"%s\"", k.bucket)
+		}
+		if k.altNode != "" {
+			tags += fmt.Sprintf(",alt_node=\"%s\"", k.altNode)
 		}
 		entries = append(entries, fmt.Sprintf("sdk_%s_r_%s{%s} %d", k.serviceAsString(), counterName, tags, *v))
 	}
@@ -399,8 +409,9 @@ type telemetryOperationAttributes struct {
 	duration time.Duration
 	outcome  telemetryOutcome
 
-	node     string
 	nodeUUID string
+	node     string
+	altNode  string
 
 	agent   string
 	service ServiceType
