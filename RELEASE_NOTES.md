@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 10.5.4 (20 February 2025)
+### New Features and Behavioral Changes
+
+* [GOCBC-1686](https://jira.issues.couchbase.com/browse/GOCBC-1686): Add a retry strategy to options for DCP OpenStream, GetVbucketSeqnos, and CloseStream.
+
+### Fixed Issues
+
+* [GOCBC-1694](https://jira.issues.couchbase.com/browse/GOCBC-1694): Fixed issue where a timeout during the Stats operation would not be reported.
+
 ## Version 10.5.3 (25 November 2024)
 
 ### New Features and Behavioral Changes
