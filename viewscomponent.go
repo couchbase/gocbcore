@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -78,7 +78,7 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 	var err error
 	var errorDescs []ViewQueryErrorDesc
 
-	respBody, readErr := ioutil.ReadAll(resp.Body)
+	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr == nil {
 		var errsMap map[string]string
 		var errsArr []string
@@ -197,7 +197,7 @@ func (vqc *viewQueryComponent) viewQuery(ireq *httpRequest, ddoc, view string) (
 
 	streamer, err := newQueryStreamer(resp.Body, "rows")
 	if err != nil {
-		respBody, readErr := ioutil.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
 			logDebugf("Failed to read response body: %v", readErr)
 		}

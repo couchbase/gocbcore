@@ -1,6 +1,6 @@
 devsetup:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.55.2
-	go install github.com/vektra/mockery/v2@v2.38.0
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+	go install github.com/vektra/mockery/v2@v2.52.2
 
 test:
 	go test ./...

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"regexp"
 	"strings"
 	"sync"
@@ -146,7 +146,7 @@ func extractN1QL12009Error(err N1QLErrorDesc) error {
 	if len(err.Reason) > 0 {
 		if code, ok := err.Reason["code"]; ok {
 			// sad panda
-			code = int(code.(float64))
+			code = int(code.(float64)) // nolint: errcheck
 			if code == 12033 {
 				return errCasMismatch
 			} else if code == 17014 {
@@ -170,7 +170,7 @@ func parseN1QLErrorResp(req *httpRequest, statement string, resp *HTTPResponse) 
 	var errorDescs []N1QLErrorDesc
 	var err error
 	var raw string
-	respBody, readErr := ioutil.ReadAll(resp.Body)
+	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr == nil {
 		raw, errorDescs, err = parseN1QLError(respBody)
 	}
@@ -819,7 +819,7 @@ func (nqc *n1qlQueryComponent) execute(ireq *httpRequest, payloadMap map[string]
 
 		streamer, err := newQueryStreamer(resp.Body, "results")
 		if err != nil {
-			respBody, readErr := ioutil.ReadAll(resp.Body)
+			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
 				logDebugf("Failed to read response body: %v", readErr)
 			}

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"time"
 )
 
@@ -116,7 +116,7 @@ func parseAnalyticsErrorResp(req *httpRequest, statement string, resp *HTTPRespo
 	var errorDescs []AnalyticsErrorDesc
 	var err error
 	var raw string
-	respBody, readErr := ioutil.ReadAll(resp.Body)
+	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr == nil {
 		raw, errorDescs, err = parseAnalyticsError(respBody)
 	}
@@ -348,7 +348,7 @@ func (aqc *analyticsQueryComponent) analyticsQuery(ireq *httpRequest, payloadMap
 
 		streamer, err := newQueryStreamer(resp.Body, "results")
 		if err != nil {
-			respBody, readErr := ioutil.ReadAll(resp.Body)
+			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
 				logDebugf("Failed to read response body: %v", readErr)
 			}

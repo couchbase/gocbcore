@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -699,7 +698,7 @@ func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPai
 		}
 	}
 
-	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
+	hreq.Body = io.NopCloser(bytes.NewReader(body))
 
 	return hreq, nil
 }

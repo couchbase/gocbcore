@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -327,7 +327,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 						defer resp.Body.Close()
 						if resp.StatusCode > 200 {
 							state = PingStateError
-							b, pErr := ioutil.ReadAll(resp.Body)
+							b, pErr := io.ReadAll(resp.Body)
 							if pErr != nil {
 								logDebugf("Failed to read response body for ping: %v", pErr)
 							}

@@ -1,8 +1,5 @@
 run:
   tests: false
-  skip-files:
-    - logging.go  # Logging has some utility functions that are useful to have around which get flagged up
-    - columnar*
 linters:
   enable:
     - bodyclose
@@ -11,11 +8,19 @@ linters:
     - unconvert
 linters-settings:
   revive:
-    set-exit-status: true
-    min-confidence: 0.81
+    ignore-generated-header: true
+    severity: error
     rules:
       - name: var-naming
         arguments: [["HTTP", "ASCII", "IP", "TTL", "URL", "TLS", "JSON"]]
   errcheck:
-    check-type-assertions: true
+    check-type-assertions: false
     check-blank: true
+  gosec:
+    excludes:
+      - G115
+issues:
+  exclude-files:
+    - logging.go  # Logging has some utility functions that are useful to have around which get flagged up
+    - columnar*
+

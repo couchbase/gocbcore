@@ -4,7 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"time"
 
@@ -125,7 +125,7 @@ func (config SecurityConfig) fromSpec(spec connstr.ResolvedConnSpec) (SecurityCo
 			roots := x509.NewCertPool()
 
 			for _, path := range cacertpaths {
-				cacert, err := ioutil.ReadFile(path)
+				cacert, err := os.ReadFile(path)
 				if err != nil {
 					return SecurityConfig{}, err
 				}

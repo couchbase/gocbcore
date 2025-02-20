@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 	"sync"
@@ -82,7 +82,7 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 	var err error
 	var errMsg string
 
-	respBody, readErr := ioutil.ReadAll(resp.Body)
+	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr == nil {
 		var respParse jsonSearchErrorResponse
 		parseErr := json.Unmarshal(respBody, &respParse)
@@ -336,7 +336,7 @@ func (sqc *searchQueryComponent) searchQuery(ireq *httpRequest, indexName string
 
 		streamer, err := newQueryStreamer(resp.Body, "hits")
 		if err != nil {
-			respBody, readErr := ioutil.ReadAll(resp.Body)
+			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
 				logDebugf("Failed to read response body: %v", readErr)
 			}
