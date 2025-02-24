@@ -1735,6 +1735,12 @@ func (suite *StandardTestSuite) TestStats() {
 }
 
 func (suite *StandardTestSuite) TestStatsTimeout() {
+	if suite.IsMockServer() {
+		// We skip this test when using a mock server, as sometimes the entire request/response cycle
+		// can happen quicker than scheduling and triggering the timeout timer.
+		suite.T().Skip("Test skipped due to unreliable timings")
+	}
+
 	agent, s := suite.GetAgentAndHarness()
 
 	snapshot, err := agent.ConfigSnapshot()
@@ -1751,19 +1757,8 @@ func (suite *StandardTestSuite) TestStatsTimeout() {
 			suite.Assert().NoError(err)
 			suite.Assert().Len(res.Servers, numServers)
 			for _, curStats := range res.Servers {
-				if suite.IsMockServer() {
-					// Sometimes we don't time out because of time precision issues on CI when using a mock server.
-					// If a timeout hasn't happened expect non-empty stats.
-					if errors.Is(curStats.Error, ErrTimeout) {
-						suite.Assert().Empty(curStats.Stats)
-					} else {
-						suite.Assert().NoError(curStats.Error)
-						suite.Assert().NotEmpty(curStats.Stats)
-					}
-				} else {
-					suite.Assert().ErrorIs(curStats.Error, ErrTimeout)
-					suite.Assert().Empty(curStats.Stats)
-				}
+				suite.Assert().ErrorIs(curStats.Error, ErrTimeout)
+				suite.Assert().Empty(curStats.Stats)
 			}
 		})
 	}))
