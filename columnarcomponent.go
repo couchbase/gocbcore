@@ -149,10 +149,12 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 	backoff := columnarExponentialBackoffWithJitter(100*time.Millisecond, 1*time.Minute, 2)
 	var denylist []string
 	for {
-		endpoint, err := cc.getColumnarEp(denylist)
+		routeEp, err := cc.getColumnarEp(denylist)
 		if err != nil {
 			return nil, err
 		}
+
+		endpoint := routeEp.Address
 
 		auth := cc.muxer.Auth()
 		if auth == nil {
@@ -328,7 +330,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 	}
 }
 
-func (cc *columnarComponent) getColumnarEp(denylist []string) (string, error) {
+func (cc *columnarComponent) getColumnarEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(cc.muxer.ColumnarEps(), denylist)
 }
 

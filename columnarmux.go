@@ -84,13 +84,13 @@ func (mux *columnarMux) OnNewRouteConfig(cfg *routeConfig) {
 	}
 }
 
-func (mux *columnarMux) ColumnarEps() []string {
+func (mux *columnarMux) ColumnarEps() []routeEndpoint {
 	clientMux := mux.Get()
 	if clientMux == nil {
 		return nil
 	}
 
-	return makeEpList(clientMux.epList)
+	return clientMux.epList
 }
 
 func (mux *columnarMux) Close() error {
