@@ -68,11 +68,6 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		connectTimeout = config.ConnectTimeout
 	}
 
-	dispatchTimeout := 30 * time.Second
-	if config.DispatchTimeout > 0 {
-		dispatchTimeout = config.DispatchTimeout
-	}
-
 	confCccpMaxWait := 3 * time.Second
 	if config.ConfigPollerConfig.CccpMaxWait > 0 {
 		confCccpMaxWait = config.ConfigPollerConfig.CccpMaxWait
@@ -179,8 +174,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 	})
 
 	c.columnar = newColumnarComponent(columnarComponentProps{
-		UserAgent:       userAgent,
-		DispatchTimeout: dispatchTimeout,
+		UserAgent: userAgent,
 	}, columnarHTTPClientProps{
 		MaxIdleConns:        config.HTTPConfig.MaxIdleConns,
 		MaxIdleConnsPerHost: config.HTTPConfig.MaxIdleConnsPerHost,

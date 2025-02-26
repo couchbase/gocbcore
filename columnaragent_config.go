@@ -12,8 +12,6 @@ type ColumnarAgentConfig struct {
 
 	ConnectTimeout time.Duration
 
-	DispatchTimeout time.Duration
-
 	SeedConfig ColumnarSeedConfig
 
 	SecurityConfig ColumnarSecurityConfig

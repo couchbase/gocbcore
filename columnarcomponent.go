@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"io/ioutil"
+	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -80,10 +80,9 @@ func (q *ColumnarRowReader) Close() error {
 }
 
 type columnarComponent struct {
-	cli             *http.Client
-	muxer           *columnarMux
-	userAgent       string
-	dispatchTimeout time.Duration
+	cli       *http.Client
+	muxer     *columnarMux
+	userAgent string
 
 	// We can't use an atomic here because error can be different types.
 	bootstrapErrLock sync.Mutex
@@ -91,8 +90,7 @@ type columnarComponent struct {
 }
 
 type columnarComponentProps struct {
-	UserAgent       string
-	DispatchTimeout time.Duration
+	UserAgent string
 }
 
 type columnarHTTPClientProps struct {
@@ -105,9 +103,8 @@ type columnarHTTPClientProps struct {
 
 func newColumnarComponent(props columnarComponentProps, clientProps columnarHTTPClientProps, muxer *columnarMux) *columnarComponent {
 	cc := &columnarComponent{
-		muxer:           muxer,
-		userAgent:       props.UserAgent,
-		dispatchTimeout: props.DispatchTimeout,
+		muxer:     muxer,
+		userAgent: props.UserAgent,
 	}
 
 	cc.cli = cc.createHTTPClient(clientProps.MaxIdleConns, clientProps.MaxIdleConnsPerHost, clientProps.MaxConnsPerHost,
@@ -115,18 +112,18 @@ func newColumnarComponent(props columnarComponentProps, clientProps columnarHTTP
 
 	return cc
 }
-func (hc *columnarComponent) SetBootstrapError(err error) {
+func (cc *columnarComponent) SetBootstrapError(err error) {
 	if errors.Is(err, ErrTimeout) {
 		return
 	}
 
-	hc.bootstrapErrLock.Lock()
-	hc.bootstrapErr = err
-	hc.bootstrapErrLock.Unlock()
+	cc.bootstrapErrLock.Lock()
+	cc.bootstrapErr = err
+	cc.bootstrapErrLock.Unlock()
 }
 
-func (hc *columnarComponent) Close() {
-	if tsport, ok := hc.cli.Transport.(*http.Transport); ok {
+func (cc *columnarComponent) Close() {
+	if tsport, ok := cc.cli.Transport.(*http.Transport); ok {
 		tsport.CloseIdleConnections()
 	} else {
 		logDebugf("Could not close idle connections for transport")
@@ -166,7 +163,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		}
 	}
 
-	err = cc.waitForConfig(ctx)
+	err = cc.waitForConfig(ctx, serverTimeout)
 	if err != nil {
 		return nil, newColumnarError(err, statement, "", 0).withWasNotDispatched()
 	}
@@ -209,7 +206,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		}
 
 		reqURI := fmt.Sprintf("%s/api/v1/request", endpoint)
-		req, err := http.NewRequestWithContext(ctx, "POST", reqURI, ioutil.NopCloser(bytes.NewReader(body)))
+		req, err := http.NewRequestWithContext(ctx, "POST", reqURI, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
 			return nil, err
 		}
@@ -241,7 +238,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		resp = wrapHttpResponse(resp) // nolint: bodyclose
 
 		if resp.StatusCode != 200 {
-			respBody, readErr := ioutil.ReadAll(resp.Body)
+			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
 				return nil, newColumnarError(fmt.Errorf("failed to read response body: %s", readErr), statement, endpoint, resp.StatusCode)
 			}
@@ -283,7 +280,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 
 		streamer, err := newQueryStreamer(resp.Body, "results")
 		if err != nil {
-			respBody, readErr := ioutil.ReadAll(resp.Body)
+			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
 				logDebugf("Failed to read response body: %v", readErr)
 			}
@@ -523,9 +520,11 @@ func (cc *columnarComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost,
 	return httpCli
 }
 
-func (cc *columnarComponent) waitForConfig(ctx context.Context) error {
-	dispatchCtx, dispatchCancel := context.WithTimeout(context.Background(), cc.dispatchTimeout)
-	defer dispatchCancel()
+func (cc *columnarComponent) waitForConfig(ctx context.Context, queryTimeout time.Duration) error {
+	var timeoutCh <-chan time.Time
+	if queryTimeout > 0 {
+		timeoutCh = time.After(queryTimeout)
+	}
 
 	for {
 		revID, err := cc.muxer.ConfigRev()
@@ -544,11 +543,11 @@ func (cc *columnarComponent) waitForConfig(ctx context.Context) error {
 			return err
 		}
 
-		// We've not successfully been setup with a cluster map yet
+		// We've not successfully been set up with a cluster map yet.
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-dispatchCtx.Done():
+		case <-timeoutCh:
 			return errTimeout
 		case <-time.After(500 * time.Microsecond):
 		}

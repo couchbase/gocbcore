@@ -39,7 +39,6 @@ func (suite *ColumnarTestSuite) TestDispatchTimeout() {
 	defer globalTestLogger.SuppressWarnings(false)
 
 	cfg := suite.makeAgentConfig(suite.ColumnarTestConfig)
-	cfg.DispatchTimeout = 1 * time.Second
 	cfg.SeedConfig.SRVRecord = nil
 	cfg.SeedConfig.MemdAddrs = []string{"couchbases://utternonsense"}
 
@@ -51,9 +50,40 @@ func (suite *ColumnarTestSuite) TestDispatchTimeout() {
 	_, err = agent.Query(context.Background(), ColumnarQueryOptions{
 		Payload: map[string]interface{}{
 			"statement": "FROM RANGE(0, 99) AS i SELECT *",
+			"timeout":   "1s",
 		},
 	})
 	suite.Require().ErrorIs(err, ErrTimeout)
+
+	var columnarError *ColumnarError
+	suite.Require().ErrorAs(err, &columnarError)
+
+	suite.Assert().NotEmpty(columnarError.Statement)
+}
+
+func (suite *ColumnarTestSuite) TestDispatchContextTimeout() {
+	// This test purposefully triggers error cases.
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	cfg := suite.makeAgentConfig(suite.ColumnarTestConfig)
+	cfg.SeedConfig.SRVRecord = nil
+	cfg.SeedConfig.MemdAddrs = []string{"couchbases://utternonsense"}
+
+	agent, err := CreateColumnarAgent(&cfg)
+	suite.Require().NoError(err)
+
+	defer agent.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	_, err = agent.Query(ctx, ColumnarQueryOptions{
+		Payload: map[string]interface{}{
+			"statement": "FROM RANGE(0, 99) AS i SELECT *",
+		},
+	})
+	suite.Require().ErrorIs(err, context.DeadlineExceeded)
 
 	var columnarError *ColumnarError
 	suite.Require().ErrorAs(err, &columnarError)
