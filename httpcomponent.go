@@ -494,26 +494,29 @@ func (hc *httpComponent) validateEndpointAddress(endpointAddress string, endpoin
 }
 
 func createTLSConfig(auth AuthProvider, cipherSuite []*tls.CipherSuite, caProvider func() *x509.CertPool) *dynTLSConfig {
-	suites := make([]uint16, len(cipherSuite))
-	for i, suite := range cipherSuite {
-		var s uint16
-		for _, suiteID := range tls.CipherSuites() {
-			if suite.Name == suiteID.Name {
-				s = suiteID.ID
-				break
+	var suites []uint16
+	if cipherSuite != nil {
+		suites = make([]uint16, len(cipherSuite))
+		for i, suite := range cipherSuite {
+			var s uint16
+			for _, suiteID := range tls.CipherSuites() {
+				if suite.Name == suiteID.Name {
+					s = suiteID.ID
+					break
+				}
 			}
-		}
-		for _, suiteID := range tls.InsecureCipherSuites() {
-			if suite.Name == suiteID.Name {
-				s = suiteID.ID
-				break
+			for _, suiteID := range tls.InsecureCipherSuites() {
+				if suite.Name == suiteID.Name {
+					s = suiteID.ID
+					break
+				}
 			}
-		}
 
-		if s > 0 {
-			suites[i] = s
-		} else {
-			logWarnf("Unknown cipher suite %s, ignoring", suite.Name)
+			if s > 0 {
+				suites[i] = s
+			} else {
+				logWarnf("Unknown cipher suite %s, ignoring", suite.Name)
+			}
 		}
 	}
 
