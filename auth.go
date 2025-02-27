@@ -1,6 +1,9 @@
 package gocbcore
 
-import "crypto/tls"
+import (
+	"crypto/tls"
+	"fmt"
+)
 
 // UserPassPair represents a username and password pair.
 type UserPassPair struct {
@@ -77,4 +80,8 @@ func (auth PasswordAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPa
 		Username: auth.Username,
 		Password: auth.Password,
 	}}, nil
+}
+
+func (auth PasswordAuthProvider) String() string {
+	return fmt.Sprintf("%p", &auth)
 }
