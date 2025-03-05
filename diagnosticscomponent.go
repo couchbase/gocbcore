@@ -252,6 +252,8 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 		path = "/api/ping"
 	case CapiService:
 		path = "/"
+	case MgmtService:
+		path = "/whoami"
 	}
 
 	for {
@@ -670,7 +672,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 	case CapiService:
 		path = "/"
 	case MgmtService:
-		path = ""
+		path = "/whoami"
 	}
 
 	for {
