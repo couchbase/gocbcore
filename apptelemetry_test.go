@@ -8,6 +8,31 @@ import (
 	"time"
 )
 
+// noopTelemetryClient doesn't do anything, except declare that it initiated a connection, so it can be used when tests
+// need the telemetryComponent to not skip telemetry reporting.
+type noopTelemetryClient struct {
+}
+
+func (c *noopTelemetryClient) connectIfNotStarted() {
+	return
+}
+
+func (c *noopTelemetryClient) connectionInitiated() bool {
+	return true
+}
+
+func (c *noopTelemetryClient) Close() {
+	return
+}
+
+func (c *noopTelemetryClient) usesExternalEndpoint() bool {
+	return true
+}
+
+func (c *noopTelemetryClient) updateEndpoints(telemetryEndpoints) {
+	return
+}
+
 func createAgentWithTelemetryReporter(reporter *TelemetryReporter) (*Agent, error) {
 	cfg := makeAgentConfig(globalTestConfig)
 	cfg.BucketName = globalTestConfig.BucketName
@@ -52,7 +77,7 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 			}
 		}).Return()
 
-	agent, err := createAgentWithTelemetryReporter(&TelemetryReporter{metrics: mockStore})
+	agent, err := createAgentWithTelemetryReporter(&TelemetryReporter{metrics: mockStore, client: &noopTelemetryClient{}})
 	suite.Require().NoError(err)
 	defer agent.Close()
 
@@ -121,6 +146,68 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 	suite.Assert().Equal(expectedNonDurableMutationCount, *counts["mutation_non_durable"])
 }
 
+func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
+	var count atomic.Uint32
+
+	mockStore := new(mockTelemetryStore)
+	mockStore.On("recordOp", mock.AnythingOfType("gocbcore.telemetryOperationAttributes")).
+		Run(func(args mock.Arguments) {
+			count.Add(1)
+		}).Return()
+
+	agent, err := createAgentWithTelemetryReporter(&TelemetryReporter{metrics: mockStore})
+	suite.Require().NoError(err)
+	defer agent.Close()
+
+	s := suite.GetHarness()
+
+	suite.VerifyConnectedToBucket(agent, s, "TestTelemetryWithKvOpsClientHasNoConnection", suite.CollectionName, suite.ScopeName)
+
+	// Do some operations
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("test"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			suite.Require().NoError(err)
+			suite.Require().NotZero(res.Cas)
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Set(SetOptions{
+		Key:                    []byte("test"),
+		Value:                  []byte("{}"),
+		CollectionName:         suite.CollectionName,
+		ScopeName:              suite.ScopeName,
+		DurabilityLevel:        memd.DurabilityLevelMajority,
+		DurabilityLevelTimeout: 10 * time.Second,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			suite.Require().NoError(err)
+			suite.Require().NotZero(res.Cas)
+		})
+	}))
+	s.Wait(0)
+
+	s.PushOp(agent.Get(GetOptions{
+		Key:            []byte("test"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *GetResult, err error) {
+		s.Wrap(func() {
+			suite.Require().NoError(err)
+			suite.Require().NotZero(res.Cas)
+		})
+	}))
+	s.Wait(0)
+
+	// No operations should have reached the telemetry store.
+	suite.Assert().Zero(count.Load())
+}
+
 func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
 	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
@@ -144,7 +231,7 @@ func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
 			atomic.AddUint32(&queryCount, 1)
 		}).Return()
 
-	ag, err := createAgentGroupWithTelemetryReporter(&TelemetryReporter{metrics: mockStore})
+	ag, err := createAgentGroupWithTelemetryReporter(&TelemetryReporter{metrics: mockStore, client: &noopTelemetryClient{}})
 	suite.Require().NoError(err)
 	defer ag.Close()
 	s := suite.GetHarness()
@@ -167,4 +254,40 @@ func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
 	}
 
 	suite.Assert().Equal(expectedQueryCount, queryCount)
+}
+
+func (suite *StandardTestSuite) TestTelemetryWithQueryOpsNoTelemetryClient() {
+	suite.EnsureSupportsFeature(TestFeatureN1ql)
+
+	var count atomic.Uint32
+
+	mockStore := new(mockTelemetryStore)
+	mockStore.On("recordOp", mock.AnythingOfType("gocbcore.telemetryOperationAttributes")).
+		Run(func(args mock.Arguments) {
+			count.Add(1)
+		}).Return()
+
+	ag, err := createAgentGroupWithTelemetryReporter(&TelemetryReporter{metrics: mockStore})
+	suite.Require().NoError(err)
+	defer ag.Close()
+	s := suite.GetHarness()
+
+	for i := uint32(0); i < 2; i++ {
+		s.PushOp(ag.N1QLQuery(N1QLQueryOptions{
+			Payload: []byte(`{"statement": "SELECT 1=1"}`),
+		}, func(res *N1QLRowReader, err error) {
+			s.Wrap(func() {
+				suite.Require().NoError(err)
+				suite.Require().NotNil(res)
+
+				// One row expected
+				suite.Require().NotNil(res.NextRow())
+				suite.Require().Nil(res.NextRow())
+				suite.Require().NoError(res.Err())
+			})
+		}))
+		s.Wait(0)
+	}
+
+	suite.Assert().Zero(count.Load())
 }

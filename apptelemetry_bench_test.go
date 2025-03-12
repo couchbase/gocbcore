@@ -7,29 +7,6 @@ import (
 	"testing"
 )
 
-type noopTelemetryClient struct {
-}
-
-func (c *noopTelemetryClient) connectIfNotStarted() {
-	return
-}
-
-func (c *noopTelemetryClient) connectionInitiated() bool {
-	return true
-}
-
-func (c *noopTelemetryClient) Close() {
-	return
-}
-
-func (c *noopTelemetryClient) usesExternalEndpoint() bool {
-	return true
-}
-
-func (c *noopTelemetryClient) updateEndpoints(telemetryEndpoints) {
-	return
-}
-
 func BenchmarkAppTelemetrySet(b *testing.B) {
 	b.ReportAllocs()
 

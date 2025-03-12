@@ -294,7 +294,7 @@ func (req *memdQRequest) internalCancel(err error) bool {
 			}
 		}
 
-		req.telemetryRecorder.FinishAndRecord(outcome)
+		req.telemetryRecorder.FinishAndRecordLocked(outcome)
 	}
 
 	cancelReqTraceLocked(req, localAddr, remoteAddr)

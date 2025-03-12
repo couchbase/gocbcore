@@ -171,6 +171,10 @@ func (tc *telemetryComponent) RecordOp(attributes telemetryOperationAttributes) 
 }
 
 func (tc *telemetryComponent) GetRecorder(attributes telemetryOperationAttributes) *telemetryOpRecorder {
+	if tc.reporter == nil || !tc.reporter.started() {
+		return nil
+	}
+
 	attributes.bucket = tc.bucketName
 	attributes.agent = tc.agent
 
@@ -186,11 +190,15 @@ type telemetryOpRecorder struct {
 	startTime  time.Time
 }
 
-func (tr *telemetryOpRecorder) Start() {
+func (tr *telemetryOpRecorder) StartLocked() {
+	if tr.reporter == nil {
+		return
+	}
+
 	tr.startTime = time.Now()
 }
 
-func (tr *telemetryOpRecorder) FinishAndRecord(outcome telemetryOutcome) {
+func (tr *telemetryOpRecorder) FinishAndRecordLocked(outcome telemetryOutcome) {
 	if tr.reporter == nil {
 		return
 	}
