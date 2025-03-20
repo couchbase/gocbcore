@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"io"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -114,8 +113,7 @@ type telemetryWebsocketClient struct {
 	lastEndpointAddress string
 	connInitiated       atomic.Bool
 
-	shutdownSig   chan struct{}
-	parentContext context.Context
+	shutdownSig chan struct{}
 }
 
 func newTelemetryWebsocketClient(backoff, pingInterval, pingTimeout time.Duration, getMetricsFn func() string) *telemetryWebsocketClient {
@@ -136,14 +134,6 @@ func newTelemetryWebsocketClient(backoff, pingInterval, pingTimeout time.Duratio
 		getMetricsFn: getMetricsFn,
 		shutdownSig:  make(chan struct{}),
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-w.shutdownSig
-		cancel()
-	}()
-
-	w.parentContext = ctx
 
 	return w
 }
@@ -206,29 +196,64 @@ func (w *telemetryWebsocketClient) connectIfNotStarted() {
 }
 
 func (w *telemetryWebsocketClient) connect(address string, header http.Header, dialer *websocket.Dialer) {
-	conn, err := w.dialConn(address, header, dialer)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			// The client has been closed, don't attempt to reconnect.
-			w.connInitiated.Store(false)
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		stopCh := make(chan struct{})
+		go func() {
+			select {
+			case <-w.shutdownSig:
+				cancel()
+			case <-stopCh:
+			}
+		}()
+
+		conn, err := w.dialConn(ctx, address, header, dialer)
+		if err != nil {
+			close(stopCh)
+			if errors.Is(err, context.Canceled) {
+				// The client has been closed, don't attempt to reconnect.
+				w.connInitiated.Store(false)
+				return
+			}
+			logWarnf("Failed to establish websocket connection for telemetry reporting, retrying in %s: %v", w.backoff, err)
+
+			w.reconnect()
 			return
 		}
-		logWarnf("Failed to establish websocket connection for telemetry reporting, retrying in %s: %v", w.backoff, err)
-
-		w.reconnect()
-		return
+		close(stopCh)
+		w.conn = conn
 	}
-	w.conn = conn
 
-	go func() {
-		err := w.readWritePump()
-		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
-			logDebugf("Error from readWritePump: %s. Attempting to reconnect to app telemetry websocket in %s.", err, w.backoff)
-			w.conn = nil
-			w.connInitiated.Store(false)
-			w.reconnect()
-		}
-	}()
+	{
+		var clientClosedConnection atomic.Bool
+		stopCh := make(chan struct{})
+		go func() {
+			select {
+			case <-w.shutdownSig:
+				clientClosedConnection.Store(true)
+				w.conn.Close()
+			case <-stopCh:
+			}
+		}()
+
+		go func() {
+			err := w.readWritePump()
+			if err != nil {
+				if clientClosedConnection.Load() {
+					w.conn = nil
+					w.connInitiated.Store(false)
+					logInfof("App telemetry websocket connection closed")
+					return
+				}
+				close(stopCh)
+				w.conn.Close()
+				w.conn = nil
+				w.connInitiated.Store(false)
+				logDebugf("Error from readWritePump: %s. Attempting to reconnect to app telemetry websocket in %s.", err, w.backoff)
+				w.reconnect()
+			}
+		}()
+	}
 }
 
 func (w *telemetryWebsocketClient) reconnect() {
@@ -270,9 +295,9 @@ func (w *telemetryWebsocketClient) reconnect() {
 	w.connect(address, header, dialer)
 }
 
-func (w *telemetryWebsocketClient) dialConn(address string, header http.Header, dialer *websocket.Dialer) (*websocket.Conn, error) {
+func (w *telemetryWebsocketClient) dialConn(ctx context.Context, address string, header http.Header, dialer *websocket.Dialer) (*websocket.Conn, error) {
 	logDebugf("Connecting to app telemetry endpoint: dialing %s", address)
-	conn, _, err := dialer.DialContext(w.parentContext, address, header) // nolint: bodyclose
+	conn, _, err := dialer.DialContext(ctx, address, header) // nolint: bodyclose
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +308,6 @@ func (w *telemetryWebsocketClient) dialConn(address string, header http.Header, 
 func (w *telemetryWebsocketClient) readWritePump() error {
 	pingStopCh := make(chan struct{})
 	defer close(pingStopCh)
-	defer w.conn.Close()
 
 	err := w.startPingTicker(pingStopCh)
 	if err != nil {
@@ -293,11 +317,7 @@ func (w *telemetryWebsocketClient) readWritePump() error {
 	for {
 		_, message, err := w.conn.ReadMessage()
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return err
-			}
-			logInfof("Error reading from telemetry reporter websocket: %v", err)
-			return err
+			return wrapError(err, "Error reading from app telemetry websocket")
 		}
 		cmd := telemetryCommand(message[0])
 
@@ -315,11 +335,7 @@ func (w *telemetryWebsocketClient) readWritePump() error {
 		logSchedf("Sending telemetry response to server telemetry collector. Size=%d bytes", len(resp.data))
 		err = w.conn.WriteMessage(websocket.BinaryMessage, resp.encode())
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return err
-			}
-			logInfof("Error writing to telemetry reporter websocket: %v", err)
-			return err
+			return wrapError(err, "Error writing to app telemetry websocket")
 		}
 	}
 }
@@ -352,9 +368,6 @@ func (w *telemetryWebsocketClient) startPingTicker(stopCh chan struct{}) error {
 				atomic.StoreInt64(&lastPingTimestamp, time.Now().UnixMilli())
 				err := w.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(w.pingTimeout))
 				if err != nil {
-					if errors.Is(err, context.Canceled) {
-						return
-					}
 					logInfof("Error writing PING message telemetry reporter websocket: %v", err)
 					// No need to take any action on this error - reads will time out if we are unable to send pings, as
 					// the read deadline will not be increased.
@@ -368,5 +381,6 @@ func (w *telemetryWebsocketClient) startPingTicker(stopCh chan struct{}) error {
 }
 
 func (w *telemetryWebsocketClient) Close() {
+	logInfof("Closing app telemetry websocket client")
 	close(w.shutdownSig)
 }
