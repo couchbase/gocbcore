@@ -47,6 +47,7 @@ func createAgentGroupWithTelemetryReporter(reporter *TelemetryReporter) (*AgentG
 }
 
 func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
 	var counts map[string]*uint32
 
 	mockStore := new(mockTelemetryStore)
@@ -103,8 +104,13 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 			ScopeName:      suite.ScopeName,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
-				suite.Require().NoError(err)
-				suite.Require().NotZero(res.Cas)
+				if err != nil {
+					s.Fatalf("Failed to set key: %v", err)
+					return
+				}
+				if res.Cas == 0 {
+					s.Fatalf("CAS was zero")
+				}
 			})
 		}))
 		s.Wait(0)
@@ -120,8 +126,13 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 			DurabilityLevelTimeout: 10 * time.Second,
 		}, func(res *StoreResult, err error) {
 			s.Wrap(func() {
-				suite.Require().NoError(err)
-				suite.Require().NotZero(res.Cas)
+				if err != nil {
+					s.Fatalf("Failed to set key: %v", err)
+					return
+				}
+				if res.Cas == 0 {
+					s.Fatalf("CAS was zero")
+				}
 			})
 		}))
 		s.Wait(0)
@@ -147,6 +158,7 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 }
 
 func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
+	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
 	var count atomic.Uint32
 
 	mockStore := new(mockTelemetryStore)
@@ -171,8 +183,13 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
 		ScopeName:      suite.ScopeName,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
-			suite.Require().NoError(err)
-			suite.Require().NotZero(res.Cas)
+			if err != nil {
+				s.Fatalf("Failed to set key: %v", err)
+				return
+			}
+			if res.Cas == 0 {
+				s.Fatalf("CAS was zero")
+			}
 		})
 	}))
 	s.Wait(0)
@@ -186,8 +203,13 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
 		DurabilityLevelTimeout: 10 * time.Second,
 	}, func(res *StoreResult, err error) {
 		s.Wrap(func() {
-			suite.Require().NoError(err)
-			suite.Require().NotZero(res.Cas)
+			if err != nil {
+				s.Fatalf("Failed to set key: %v", err)
+				return
+			}
+			if res.Cas == 0 {
+				s.Fatalf("CAS was zero")
+			}
 		})
 	}))
 	s.Wait(0)
@@ -198,8 +220,13 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
 		ScopeName:      suite.ScopeName,
 	}, func(res *GetResult, err error) {
 		s.Wrap(func() {
-			suite.Require().NoError(err)
-			suite.Require().NotZero(res.Cas)
+			if err != nil {
+				s.Fatalf("Failed to set key: %v", err)
+				return
+			}
+			if res.Cas == 0 {
+				s.Fatalf("CAS was zero")
+			}
 		})
 	}))
 	s.Wait(0)
@@ -209,6 +236,7 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOpsNoTelemetryClient() {
 }
 
 func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
+	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
 	var queryCount uint32
@@ -237,26 +265,35 @@ func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
 	s := suite.GetHarness()
 
 	for i := uint32(0); i < expectedQueryCount; i++ {
+		resCh := make(chan *N1QLRowReader, 1)
 		s.PushOp(ag.N1QLQuery(N1QLQueryOptions{
 			Payload: []byte(`{"statement": "SELECT 1=1"}`),
 		}, func(res *N1QLRowReader, err error) {
 			s.Wrap(func() {
-				suite.Require().NoError(err)
-				suite.Require().NotNil(res)
+				if err != nil {
+					s.Fatalf("Failed to execute query: %v", err)
+					return
+				}
 
-				// One row expected
-				suite.Require().NotNil(res.NextRow())
-				suite.Require().Nil(res.NextRow())
-				suite.Require().NoError(res.Err())
+				resCh <- res
 			})
 		}))
 		s.Wait(0)
+
+		res := <-resCh
+		suite.Require().NotNil(res)
+
+		// One row expected
+		suite.Require().NotNil(res.NextRow())
+		suite.Require().Nil(res.NextRow())
+		suite.Require().NoError(res.Err())
 	}
 
 	suite.Assert().Equal(expectedQueryCount, queryCount)
 }
 
 func (suite *StandardTestSuite) TestTelemetryWithQueryOpsNoTelemetryClient() {
+	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 	suite.EnsureSupportsFeature(TestFeatureN1ql)
 
 	var count atomic.Uint32
@@ -273,20 +310,28 @@ func (suite *StandardTestSuite) TestTelemetryWithQueryOpsNoTelemetryClient() {
 	s := suite.GetHarness()
 
 	for i := uint32(0); i < 2; i++ {
+		resCh := make(chan *N1QLRowReader, 1)
 		s.PushOp(ag.N1QLQuery(N1QLQueryOptions{
 			Payload: []byte(`{"statement": "SELECT 1=1"}`),
 		}, func(res *N1QLRowReader, err error) {
 			s.Wrap(func() {
-				suite.Require().NoError(err)
-				suite.Require().NotNil(res)
+				if err != nil {
+					s.Fatalf("Failed to execute query: %v", err)
+					return
+				}
 
-				// One row expected
-				suite.Require().NotNil(res.NextRow())
-				suite.Require().Nil(res.NextRow())
-				suite.Require().NoError(res.Err())
+				resCh <- res
 			})
 		}))
 		s.Wait(0)
+
+		res := <-resCh
+		suite.Require().NotNil(res)
+
+		// One row expected
+		suite.Require().NotNil(res.NextRow())
+		suite.Require().Nil(res.NextRow())
+		suite.Require().NoError(res.Err())
 	}
 
 	suite.Assert().Zero(count.Load())
