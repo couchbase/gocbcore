@@ -159,17 +159,33 @@ func (w *telemetryWebsocketClient) updateEndpoints(endpoints telemetryEndpoints)
 }
 
 func (w *telemetryWebsocketClient) connectIfNotStarted() {
+	props, ok := w.createConnectionAttemptProps()
+	if !ok {
+		return
+	}
+
+	go w.connect(props)
+}
+
+type telemetryWebsocketClientConnectionProps struct {
+	address string
+	dialer  *websocket.Dialer
+	header  http.Header
+}
+
+func (w *telemetryWebsocketClient) createConnectionAttemptProps() (telemetryWebsocketClientConnectionProps, bool) {
 	w.endpointLookupMutex.Lock()
 	defer w.endpointLookupMutex.Unlock()
 
 	address, ok := w.endpoints.selectEndpoint(w.lastEndpointAddress)
 	if !ok {
-		return
+		logDebugf("No app telemetry endpoints available")
+		return telemetryWebsocketClientConnectionProps{}, false
 	}
 
 	shouldConnect := w.connInitiated.CompareAndSwap(false, true)
 	if !shouldConnect {
-		return
+		return telemetryWebsocketClientConnectionProps{}, false
 	}
 
 	var header http.Header
@@ -179,7 +195,7 @@ func (w *telemetryWebsocketClient) connectIfNotStarted() {
 		if err != nil {
 			w.connInitiated.Store(false)
 			logWarnf("Failed to create auth header for telemetry reporting: %v", err)
-			return
+			return telemetryWebsocketClientConnectionProps{}, false
 		}
 	}
 
@@ -187,15 +203,21 @@ func (w *telemetryWebsocketClient) connectIfNotStarted() {
 	if err != nil {
 		w.connInitiated.Store(false)
 		logWarnf("Failed to create websocket dialer for telemetry reporting: %v", err)
-		return
+		return telemetryWebsocketClientConnectionProps{}, false
 	}
 
 	w.lastEndpointAddress = address
 
-	go w.connect(address, header, dialer)
+	return telemetryWebsocketClientConnectionProps{
+		address: address,
+		dialer:  dialer,
+		header:  header,
+	}, true
 }
 
-func (w *telemetryWebsocketClient) connect(address string, header http.Header, dialer *websocket.Dialer) {
+func (w *telemetryWebsocketClient) connectionAttempt(props telemetryWebsocketClientConnectionProps) (retry bool) {
+	defer w.connInitiated.Store(false)
+
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		stopCh := make(chan struct{})
@@ -207,92 +229,64 @@ func (w *telemetryWebsocketClient) connect(address string, header http.Header, d
 			}
 		}()
 
-		conn, err := w.dialConn(ctx, address, header, dialer)
+		conn, err := w.dialConn(ctx, props.address, props.header, props.dialer)
 		if err != nil {
-			close(stopCh)
 			if errors.Is(err, context.Canceled) {
 				// The client has been closed, don't attempt to reconnect.
-				w.connInitiated.Store(false)
 				return
 			}
 			logWarnf("Failed to establish websocket connection for telemetry reporting, retrying in %s: %v", w.backoff, err)
-
-			w.reconnect()
-			return
+			close(stopCh)
+			return true
 		}
 		close(stopCh)
 		w.conn = conn
 	}
 
-	{
-		var clientClosedConnection atomic.Bool
-		stopCh := make(chan struct{})
-		go func() {
-			select {
-			case <-w.shutdownSig:
-				clientClosedConnection.Store(true)
-				w.conn.Close()
-			case <-stopCh:
-			}
-		}()
+	var clientClosedConnection atomic.Bool
+	stopCh := make(chan struct{})
+	go func() {
+		select {
+		case <-w.shutdownSig:
+			clientClosedConnection.Store(true)
+			w.conn.Close()
+		case <-stopCh:
+		}
+	}()
 
-		go func() {
-			err := w.readWritePump()
-			if err != nil {
-				if clientClosedConnection.Load() {
-					w.conn = nil
-					w.connInitiated.Store(false)
-					logInfof("App telemetry websocket connection closed")
-					return
-				}
-				close(stopCh)
-				w.conn.Close()
-				w.conn = nil
-				w.connInitiated.Store(false)
-				logDebugf("Error from readWritePump: %s. Attempting to reconnect to app telemetry websocket in %s.", err, w.backoff)
-				w.reconnect()
-			}
-		}()
+	err := w.readWritePump() // This will always return an error – even if err could be nil the behaviour is the same.
+	if clientClosedConnection.Load() {
+		w.conn = nil
+		logInfof("App telemetry websocket connection closed")
+		return false
 	}
+	close(stopCh)
+	w.conn.Close()
+	w.conn = nil
+	logDebugf("Error from readWritePump: %s. Attempting to reconnect to app telemetry websocket in %s.", err, w.backoff)
+	return true
 }
 
-func (w *telemetryWebsocketClient) reconnect() {
-	select {
-	case <-w.shutdownSig:
-		logDebugf("Telemetry reporter shutting down, canceling connection attempt")
-		return
-	case <-time.After(w.backoff):
-	}
+func (w *telemetryWebsocketClient) connect(props telemetryWebsocketClientConnectionProps) {
+	for {
+		retry := w.connectionAttempt(props)
+		if !retry {
+			return
+		}
 
-	w.endpointLookupMutex.Lock()
+		select {
+		case <-w.shutdownSig:
+			logDebugf("Telemetry reporter shutting down, canceling connection attempt")
+			return
+		case <-time.After(w.backoff):
+		}
 
-	address, ok := w.endpoints.selectEndpoint(w.lastEndpointAddress)
-	if !ok {
-		w.connInitiated.Store(false)
-		return
-	}
-
-	var header http.Header
-	var err error
-	if !w.fixedEndpoints {
-		header, err = w.endpoints.getAuthHeader(address)
-		if err != nil {
-			w.connInitiated.Store(false)
-			logWarnf("Failed to create auth header for telemetry reporting: %v", err)
+		var ok bool
+		props, ok = w.createConnectionAttemptProps()
+		if !ok {
 			return
 		}
 	}
-
-	dialer, err := w.endpoints.createDialer(address)
-	if err != nil {
-		w.connInitiated.Store(false)
-		logWarnf("Failed to create websocket dialer for telemetry reporting: %v", err)
-		return
-	}
-
-	w.lastEndpointAddress = address
-	w.endpointLookupMutex.Unlock()
-	w.connect(address, header, dialer)
 }
 
 func (w *telemetryWebsocketClient) dialConn(ctx context.Context, address string, header http.Header, dialer *websocket.Dialer) (*websocket.Conn, error) {
