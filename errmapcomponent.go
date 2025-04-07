@@ -141,7 +141,8 @@ func translateMemdError(err error, req *memdQRequest) error {
 		return errTemporaryFailure
 	case ErrMemdKeyExists:
 		if req.Command == memd.CmdReplace || (req.Command == memd.CmdDelete && req.Cas != 0) ||
-			(req.Command == memd.CmdSubDocMultiMutation && req.Cas != 0) {
+			(req.Command == memd.CmdSubDocMultiMutation && req.Cas != 0) ||
+			req.Command == memd.CmdAppend || req.Command == memd.CmdPrepend {
 			return errCasMismatch
 		}
 		return errDocumentExists
