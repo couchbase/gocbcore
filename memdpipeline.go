@@ -121,10 +121,10 @@ func (pipeline *memdPipeline) sendRequest(req *memdQRequest, maxItems int) error
 		if cmdCategory != memd.CmdCategoryUnknown {
 			var node, altNode string
 			if pipeline.canonicalAddress != "" && pipeline.canonicalAddress != pipeline.address {
-				node = trimSchemePrefix(pipeline.canonicalAddress)
-				altNode = trimSchemePrefix(pipeline.address)
+				node = hostnameFromURI(pipeline.canonicalAddress)
+				altNode = hostnameFromURI(pipeline.address)
 			} else {
-				node = trimSchemePrefix(pipeline.address)
+				node = hostnameFromURI(pipeline.address)
 			}
 
 			req.processingLock.Lock()

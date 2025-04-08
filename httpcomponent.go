@@ -360,10 +360,10 @@ func (hc *httpComponent) recordTelemetry(state *httpRequestState, req *httpReque
 
 	var node, altNode string
 	if state.endpoint.CanonicalAddress != "" && state.endpoint.CanonicalAddress != state.endpoint.Address {
-		node = trimSchemePrefix(state.endpoint.CanonicalAddress)
-		altNode = trimSchemePrefix(state.endpoint.Address)
+		node = hostnameFromURI(state.endpoint.CanonicalAddress)
+		altNode = hostnameFromURI(state.endpoint.Address)
 	} else {
-		node = trimSchemePrefix(state.endpoint.Address)
+		node = hostnameFromURI(state.endpoint.Address)
 	}
 
 	hc.telemetry.RecordOp(telemetryOperationAttributes{
