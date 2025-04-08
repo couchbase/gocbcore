@@ -69,10 +69,10 @@ var (
 	ErrForwardCompatibilityFailure = errors.New("forward compatibility error")
 
 	// ErrCommitNotPermitted indicates that a commit is not allowed in the current transaction state.
-	ErrCommitNotPermitted = errors.New("commit is not allowed in the current transaction state")
+	ErrCommitNotPermitted = dwError{InnerError: ErrPreviousOperationFailed, Message: "commit is not allowed in the current transaction state"}
 
 	// ErrRollbackNotPermitted indicates that a rollback is not allowed in the current transaction state.
-	ErrRollbackNotPermitted = errors.New("rollback is not allowed in the current transaction state")
+	ErrRollbackNotPermitted = dwError{InnerError: ErrPreviousOperationFailed, Message: "rollback is not allowed in the current transaction state"}
 
 	// ErrConcurrentOperationsDetectedOnSameDocument indicates that concurrent Key-Value operations on the same document have been detected.
 	ErrConcurrentOperationsDetectedOnSameDocument = errors.New("concurrent Key-Value operations on the same document have been detected, which is an application error")
