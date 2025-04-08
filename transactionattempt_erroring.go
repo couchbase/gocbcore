@@ -82,20 +82,16 @@ func (t *transactionAttempt) applyStateBits(stateBits uint32, errorBits uint32) 
 	}
 }
 
-func (t *transactionAttempt) newOperationFailedError(def operationFailedDef) *TransactionOperationFailedError {
-	return &TransactionOperationFailedError{
+func (t *transactionAttempt) operationFailed(def operationFailedDef) *TransactionOperationFailedError {
+	t.logger.logInfof(t.id, "Operation failed: can still commit: %t, should not rollback: %t, should not retry: %t, "+
+		"reason: %s", def.CanStillCommit, def.ShouldNotRollback, def.ShouldNotRetry, def.Reason)
+	err := &TransactionOperationFailedError{
 		shouldNotRetry:    def.ShouldNotRetry,
 		shouldNotRollback: def.ShouldNotRollback,
 		errorCause:        def.Cerr.Source,
 		errorClass:        def.Cerr.Class,
 		shouldRaise:       def.Reason,
 	}
-}
-
-func (t *transactionAttempt) operationFailed(def operationFailedDef) *TransactionOperationFailedError {
-	t.logger.logInfof(t.id, "Operation failed: can still commit: %t, should not rollback: %t, should not retry: %t, "+
-		"reason: %s", def.CanStillCommit, def.ShouldNotRollback, def.ShouldNotRetry, def.Reason)
-	err := t.newOperationFailedError(def)
 
 	stateBits := uint32(0)
 	if !def.CanStillCommit {

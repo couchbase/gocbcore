@@ -764,7 +764,7 @@ func (t *transactionAttempt) setATRAbortedLocked(
 		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(
 					wrapError(ErrAttemptExpired, "atr abort failed during overtime")),
 				ShouldNotRetry:    true,
@@ -780,25 +780,25 @@ func (t *transactionAttempt) setATRAbortedLocked(
 				t.setATRAbortedLocked(cb)
 			})
 		case TransactionErrorClassFailDocNotFound:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr.Wrap(ErrAtrNotFound),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
 			}))
 		case TransactionErrorClassFailPathNotFound:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr.Wrap(ErrAtrEntryNotFound),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
 			}))
 		case TransactionErrorClassFailOutOfSpace:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr.Wrap(ErrAtrFull),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
 			}))
 		case TransactionErrorClassFailHard:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
@@ -935,7 +935,7 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 		t.ReportResourceUnitsError(cerr.Source)
 
 		if t.isExpiryOvertimeAtomic() {
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(
 					wrapError(ErrAttemptExpired, "rolled back atr removal failed during overtime")),
 				ShouldNotRetry:    true,
@@ -951,14 +951,14 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 			cb(nil)
 			return
 		case TransactionErrorClassFailExpiry:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr: classifyError(
 					wrapError(ErrAttemptExpired, "rolled back atr removal operation expired")),
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
 			}))
 		case TransactionErrorClassFailHard:
-			cb(t.newOperationFailedError(operationFailedDef{
+			cb(t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
 				ShouldNotRetry:    true,
 				ShouldNotRollback: true,
