@@ -78,7 +78,7 @@ func (t *transactionAttempt) get(
 			}
 
 			t.mavRead(opts.Agent, opts.OboUser, opts.ScopeName, opts.CollectionName, opts.Key, opts.NoRYOW,
-				"", forceNonFatal, opts.ServerGroup, func(result *TransactionGetResult, err error) {
+				"", forceNonFatal, opts.ServerGroup, func(doc *transactionGetDoc, err error) {
 					if err != nil {
 						endAndCb(nil, err)
 						return
@@ -96,7 +96,32 @@ func (t *transactionAttempt) get(
 							return
 						}
 
-						endAndCb(result, nil)
+						var docMeta *TransactionMutableItemMeta
+						if doc.TxnMeta != nil {
+							docMeta = &TransactionMutableItemMeta{
+								TransactionID: doc.TxnMeta.ID.Transaction,
+								AttemptID:     doc.TxnMeta.ID.Attempt,
+								OperationID:   doc.TxnMeta.ID.Operation,
+								ATR: TransactionMutableItemMetaATR{
+									BucketName:     doc.TxnMeta.ATR.BucketName,
+									ScopeName:      doc.TxnMeta.ATR.ScopeName,
+									CollectionName: doc.TxnMeta.ATR.CollectionName,
+									DocID:          doc.TxnMeta.ATR.DocID,
+								},
+								ForwardCompat: jsonForwardCompatToForwardCompat(doc.TxnMeta.ForwardCompat),
+							}
+						}
+
+						endAndCb(&TransactionGetResult{
+							agent:          opts.Agent,
+							oboUser:        opts.OboUser,
+							scopeName:      opts.ScopeName,
+							collectionName: opts.CollectionName,
+							key:            opts.Key,
+							Value:          doc.Body,
+							Cas:            doc.Cas,
+							Meta:           docMeta,
+						}, nil)
 					})
 				})
 		})
@@ -115,7 +140,7 @@ func (t *transactionAttempt) mavRead(
 	resolvingATREntry string,
 	forceNonFatal bool,
 	serverGroup string,
-	cb func(*TransactionGetResult, error),
+	cb func(*transactionGetDoc, error),
 ) {
 	t.fetchDocWithMeta(
 		agent,
@@ -124,225 +149,200 @@ func (t *transactionAttempt) mavRead(
 		collectionName,
 		key,
 		forceNonFatal,
-		serverGroup,
+		transactionFetchReplicaOptions{
+			serverGroup:  serverGroup,
+			withFallback: false, // We do not fall back to non-preferred server group reads for individual gets.
+		},
+		time.Time{},
 		func(doc *transactionGetDoc, err error) {
 			if err != nil {
 				cb(nil, err)
 				return
 			}
 
-			if disableRYOW {
-				if doc.TxnMeta != nil && doc.TxnMeta.ID.Attempt == t.id {
-					t.logger.logInfof(t.id, "Disable RYOW set and tnx meta is not nil, resetting meta to nil")
-					// This is going to be a RYOW, we can just clear the TxnMeta which
-					// will cause us to fall into the block below.
-					doc.TxnMeta = nil
-				}
-			}
+			t.performMavLogic(agent, oboUser, scopeName, collectionName, key, disableRYOW, resolvingATREntry, forceNonFatal, serverGroup, doc, cb)
+		})
+}
 
-			// Doc not involved in another transaction.
-			if doc.TxnMeta == nil {
-				if doc.Deleted {
-					cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
-					return
-				}
+func (t *transactionAttempt) performMavLogic(
+	agent *Agent,
+	oboUser string,
+	scopeName string,
+	collectionName string,
+	key []byte,
+	disableRYOW bool,
+	resolvingATREntry string,
+	forceNonFatal bool,
+	serverGroup string,
+	doc *transactionGetDoc,
+	cb func(*transactionGetDoc, error),
+) {
+	if disableRYOW {
+		if doc.TxnMeta != nil && doc.TxnMeta.ID.Attempt == t.id {
+			t.logger.logInfof(t.id, "Disable RYOW set and tnx meta is not nil, resetting meta to nil")
+			// This is going to be a RYOW, we can just clear the TxnMeta which
+			// will cause us to fall into the block below.
+			doc.TxnMeta = nil
+		}
+	}
 
-				t.logger.logInfof(t.id, "Txn meta is nil, returning result")
-				cb(&TransactionGetResult{
-					agent:          agent,
-					oboUser:        oboUser,
-					scopeName:      scopeName,
-					collectionName: collectionName,
-					key:            key,
-					Value:          doc.Body,
-					Cas:            doc.Cas,
-					Meta:           nil,
-				}, nil)
+	// Doc not involved in another transaction.
+	if doc.TxnMeta == nil {
+		if doc.Deleted {
+			cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
+			return
+		}
+
+		t.logger.logInfof(t.id, "Txn meta is nil, returning result")
+		cb(doc, nil)
+		return
+	}
+
+	if doc.TxnMeta.ID.Attempt == t.id {
+		switch doc.TxnMeta.Operation.Type {
+		case jsonMutationInsert:
+			t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
+			cb(&transactionGetDoc{
+				Body: doc.TxnMeta.Operation.Staged,
+				Cas:  doc.Cas,
+			}, nil)
+		case jsonMutationReplace:
+			t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
+			cb(&transactionGetDoc{
+				Body: doc.TxnMeta.Operation.Staged,
+				Cas:  doc.Cas,
+			}, nil)
+		case jsonMutationRemove:
+			cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
+		default:
+			cb(nil, t.operationFailed(operationFailedDef{
+				Cerr: classifyError(
+					wrapError(ErrIllegalState, "unexpected staged mutation type")),
+				CanStillCommit:    forceNonFatal,
+				ShouldNotRetry:    false,
+				ShouldNotRollback: false,
+				Reason:            TransactionErrorReasonTransactionFailed,
+			}))
+		}
+		return
+	}
+
+	if doc.TxnMeta.ID.Attempt == resolvingATREntry {
+		if doc.Deleted {
+			cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged tombstone during resolution"))
+			return
+		}
+
+		t.logger.logInfof(t.id, "Completed ATR resolution")
+		cb(&transactionGetDoc{
+			Body: doc.Body,
+			Cas:  doc.Cas,
+		}, nil)
+		return
+	}
+
+	docFc := jsonForwardCompatToForwardCompat(doc.TxnMeta.ForwardCompat)
+
+	t.checkForwardCompatability(
+		key,
+		agent.BucketName(),
+		scopeName,
+		collectionName,
+		forwardCompatStageGets,
+		docFc,
+		forceNonFatal,
+		func(err *TransactionOperationFailedError) {
+			if err != nil {
+				cb(nil, err)
 				return
 			}
 
-			if doc.TxnMeta.ID.Attempt == t.id {
-				switch doc.TxnMeta.Operation.Type {
-				case jsonMutationInsert:
-					t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
-					cb(&TransactionGetResult{
-						agent:          agent,
-						oboUser:        oboUser,
-						scopeName:      scopeName,
-						collectionName: collectionName,
-						key:            key,
-						Value:          doc.TxnMeta.Operation.Staged,
-						Cas:            doc.Cas,
-					}, nil)
-				case jsonMutationReplace:
-					t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
-					cb(&TransactionGetResult{
-						agent:          agent,
-						oboUser:        oboUser,
-						scopeName:      scopeName,
-						collectionName: collectionName,
-						key:            key,
-						Value:          doc.TxnMeta.Operation.Staged,
-						Cas:            doc.Cas,
-					}, nil)
-				case jsonMutationRemove:
-					cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
-				default:
-					cb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrIllegalState, "unexpected staged mutation type")),
-						CanStillCommit:    forceNonFatal,
-						ShouldNotRetry:    false,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
-				}
-				return
-			}
-
-			if doc.TxnMeta.ID.Attempt == resolvingATREntry {
-				if doc.Deleted {
-					cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged tombstone during resolution"))
-					return
-				}
-
-				t.logger.logInfof(t.id, "Completed ATR resolution")
-				cb(&TransactionGetResult{
-					agent:          agent,
-					oboUser:        oboUser,
-					scopeName:      scopeName,
-					collectionName: collectionName,
-					key:            key,
-					Value:          doc.Body,
-					Cas:            doc.Cas,
-				}, nil)
-				return
-			}
-
-			docFc := jsonForwardCompatToForwardCompat(doc.TxnMeta.ForwardCompat)
-			docMeta := &TransactionMutableItemMeta{
-				TransactionID: doc.TxnMeta.ID.Transaction,
-				AttemptID:     doc.TxnMeta.ID.Attempt,
-				OperationID:   doc.TxnMeta.ID.Operation,
-				ATR: TransactionMutableItemMetaATR{
-					BucketName:     doc.TxnMeta.ATR.BucketName,
-					ScopeName:      doc.TxnMeta.ATR.ScopeName,
-					CollectionName: doc.TxnMeta.ATR.CollectionName,
-					DocID:          doc.TxnMeta.ATR.DocID,
-				},
-				ForwardCompat: docFc,
-			}
-
-			t.checkForwardCompatability(
-				key,
-				agent.BucketName(),
-				scopeName,
-				collectionName,
-				forwardCompatStageGets,
-				docFc,
-				forceNonFatal,
-				func(err *TransactionOperationFailedError) {
+			t.getTxnState(
+				doc.TxnMeta.ATR.BucketName,
+				doc.TxnMeta.ATR.ScopeName,
+				doc.TxnMeta.ATR.CollectionName,
+				doc.TxnMeta.ATR.DocID,
+				doc.TxnMeta.ID.Attempt,
+				func(attempt *jsonAtrAttempt, expiry time.Time, err *classifiedError) {
 					if err != nil {
-						cb(nil, err)
+						cb(nil, t.operationFailed(operationFailedDef{
+							Cerr:              err,
+							CanStillCommit:    forceNonFatal,
+							ShouldNotRetry:    false,
+							ShouldNotRollback: false,
+							Reason:            TransactionErrorReasonTransactionFailed,
+						}))
 						return
 					}
 
-					t.getTxnState(
+					if attempt == nil {
+						t.logger.logInfof(t.id, "ATR entry missing, rerunning mav read")
+						// The ATR entry is missing, it's likely that we just raced the other transaction
+						// cleaning up it's documents and then cleaning itself up.  Lets run ATR resolution.
+						t.mavRead(agent, oboUser, scopeName, collectionName, key, disableRYOW, doc.TxnMeta.ID.Attempt, forceNonFatal, serverGroup, cb)
+						return
+					}
+
+					atmptFc := jsonForwardCompatToForwardCompat(attempt.ForwardCompat)
+					t.checkForwardCompatability(
+						key,
 						agent.BucketName(),
 						scopeName,
 						collectionName,
-						key,
-						doc.TxnMeta.ATR.BucketName,
-						doc.TxnMeta.ATR.ScopeName,
-						doc.TxnMeta.ATR.CollectionName,
-						doc.TxnMeta.ATR.DocID,
-						doc.TxnMeta.ID.Attempt,
-						forceNonFatal,
-						func(attempt *jsonAtrAttempt, expiry time.Time, err *TransactionOperationFailedError) {
+						forwardCompatStageGetsReadingATR, atmptFc, forceNonFatal, func(err *TransactionOperationFailedError) {
 							if err != nil {
 								cb(nil, err)
 								return
 							}
 
-							if attempt == nil {
-								t.logger.logInfof(t.id, "ATR entry missing, rerunning mav read")
-								// The ATR entry is missing, it's likely that we just raced the other transaction
-								// cleaning up it's documents and then cleaning itself up.  Lets run ATR resolution.
-								t.mavRead(agent, oboUser, scopeName, collectionName, key, disableRYOW, doc.TxnMeta.ID.Attempt, forceNonFatal, serverGroup, cb)
+							state := jsonAtrState(attempt.State)
+							if state == jsonAtrStateCommitted || state == jsonAtrStateCompleted {
+								switch doc.TxnMeta.Operation.Type {
+								case jsonMutationInsert:
+									t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
+									cb(&transactionGetDoc{
+										Body:    doc.TxnMeta.Operation.Staged,
+										Cas:     doc.Cas,
+										TxnMeta: doc.TxnMeta,
+									}, nil)
+								case jsonMutationReplace:
+									t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
+									cb(&transactionGetDoc{
+										Body:    doc.TxnMeta.Operation.Staged,
+										Cas:     doc.Cas,
+										TxnMeta: doc.TxnMeta,
+									}, nil)
+								case jsonMutationRemove:
+									cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
+								default:
+									cb(nil, t.operationFailed(operationFailedDef{
+										Cerr: classifyError(
+											wrapError(ErrIllegalState, "unexpected staged mutation type")),
+										ShouldNotRetry:    false,
+										ShouldNotRollback: false,
+									}))
+								}
 								return
 							}
 
-							atmptFc := jsonForwardCompatToForwardCompat(attempt.ForwardCompat)
-							t.checkForwardCompatability(
-								key,
-								agent.BucketName(),
-								scopeName,
-								collectionName,
-								forwardCompatStageGetsReadingATR, atmptFc, forceNonFatal, func(err *TransactionOperationFailedError) {
-									if err != nil {
-										cb(nil, err)
-										return
-									}
+							if doc.Deleted {
+								cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
+								return
+							}
 
-									state := jsonAtrState(attempt.State)
-									if state == jsonAtrStateCommitted || state == jsonAtrStateCompleted {
-										switch doc.TxnMeta.Operation.Type {
-										case jsonMutationInsert:
-											t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
-											cb(&TransactionGetResult{
-												agent:          agent,
-												oboUser:        oboUser,
-												scopeName:      scopeName,
-												collectionName: collectionName,
-												key:            key,
-												Value:          doc.TxnMeta.Operation.Staged,
-												Cas:            doc.Cas,
-												Meta:           docMeta,
-											}, nil)
-										case jsonMutationReplace:
-											t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
-											cb(&TransactionGetResult{
-												agent:          agent,
-												oboUser:        oboUser,
-												scopeName:      scopeName,
-												collectionName: collectionName,
-												key:            key,
-												Value:          doc.TxnMeta.Operation.Staged,
-												Cas:            doc.Cas,
-												Meta:           docMeta,
-											}, nil)
-										case jsonMutationRemove:
-											cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
-										default:
-											cb(nil, t.operationFailed(operationFailedDef{
-												Cerr: classifyError(
-													wrapError(ErrIllegalState, "unexpected staged mutation type")),
-												ShouldNotRetry:    false,
-												ShouldNotRollback: false,
-											}))
-										}
-										return
-									}
-
-									if doc.Deleted {
-										cb(nil, wrapError(ErrDocumentNotFound, "doc was a tombstone"))
-										return
-									}
-
-									cb(&TransactionGetResult{
-										agent:          agent,
-										oboUser:        oboUser,
-										scopeName:      scopeName,
-										collectionName: collectionName,
-										key:            key,
-										Value:          doc.Body,
-										Cas:            doc.Cas,
-										Meta:           docMeta,
-									}, nil)
-								})
+							cb(&transactionGetDoc{
+								Body:    doc.Body,
+								Cas:     doc.Cas,
+								TxnMeta: doc.TxnMeta,
+							}, nil)
 						})
 				})
 		})
+}
+
+type transactionFetchReplicaOptions struct {
+	serverGroup  string
+	withFallback bool
 }
 
 func (t *transactionAttempt) fetchDocWithMeta(
@@ -352,7 +352,8 @@ func (t *transactionAttempt) fetchDocWithMeta(
 	collectionName string,
 	key []byte,
 	forceNonFatal bool,
-	serverGroup string,
+	replicaOpts transactionFetchReplicaOptions,
+	deadline time.Time,
 	cb func(*transactionGetDoc, error),
 ) {
 	ecCb := func(doc *transactionGetDoc, cerr *classifiedError) {
@@ -405,8 +406,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 			return
 		}
 
-		var deadline time.Time
-		if t.keyValueTimeout > 0 {
+		if deadline.IsZero() && t.keyValueTimeout > 0 {
 			deadline = time.Now().Add(t.keyValueTimeout)
 		}
 
@@ -455,7 +455,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 			}, nil)
 		}
 
-		if serverGroup == "" {
+		if replicaOpts.serverGroup == "" {
 			_, err = agent.LookupIn(LookupInOptions{
 				ScopeName:      scopeName,
 				CollectionName: collectionName,
@@ -485,7 +485,7 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				ecCb(nil, classifyError(err))
 			}
 		} else {
-			_, err = agent.crud.LookupInServerGroup(serverGroup, LookupInOptions{
+			_, err = agent.crud.LookupInServerGroup(replicaOpts.serverGroup, replicaOpts.withFallback, LookupInOptions{
 				ScopeName:      scopeName,
 				CollectionName: collectionName,
 				Key:            key,

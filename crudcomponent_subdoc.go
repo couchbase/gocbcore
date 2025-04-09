@@ -180,7 +180,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	return op, nil
 }
 
-func (crud *crudComponent) LookupInServerGroup(serverGroup string, opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
+func (crud *crudComponent) LookupInServerGroup(serverGroup string, withFallback bool, opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
 	parentOp := &multiPendingOp{
 		isIdempotent: true,
 	}
@@ -206,9 +206,26 @@ func (crud *crudComponent) LookupInServerGroup(serverGroup string, opts LookupIn
 			return
 		}
 
-		for group, srvIdx := range serverGroups {
+		for group, srvIndexes := range serverGroups {
 			if group == serverGroup {
-				servers = append(servers, srvIdx...)
+				servers = append(servers, srvIndexes...)
+			}
+		}
+
+		if withFallback && len(servers) == 0 {
+			// There are no replicas for this document in the selected server group & we have been asked to fall back to
+			// a standard replica LookupIn.
+
+			serverGroup = "" // We are no longer doing a server group LookupIn
+
+			numReplicas, err := snapshot.NumReplicas()
+			if err != nil {
+				parentOp.IncrementCompletedOps()
+				cb(nil, err)
+			}
+
+			for srvIdx := 0; srvIdx <= numReplicas; srvIdx++ { // There are numReplicas+1 servers
+				servers = append(servers, srvIdx)
 			}
 		}
 

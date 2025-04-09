@@ -258,7 +258,7 @@ type TransactionMutableItemMeta struct {
 	ForwardCompat map[string][]TransactionForwardCompatibilityEntry `json:"fc,omitempty"`
 }
 
-// TransactionGetResult represents the result of a Get or GetOptional operation.
+// TransactionGetResult represents the result of a Get operation.
 type TransactionGetResult struct {
 	agent          *Agent
 	oboUser        string
@@ -271,7 +271,7 @@ type TransactionGetResult struct {
 	Cas   Cas
 }
 
-// TransactionGetCallback describes a callback for a completed Get or GetOptional operation.
+// TransactionGetCallback describes a callback for a completed Get operation.
 type TransactionGetCallback func(*TransactionGetResult, error)
 
 // Get will attempt to fetch a document, and fail the transaction if it does not exist.
@@ -281,6 +281,70 @@ func (t *Transaction) Get(opts TransactionGetOptions, cb TransactionGetCallback)
 	}
 
 	return t.attempt.Get(opts, cb)
+}
+
+// TransactionGetMultiSpec represents a request to fetch an individual document, as part of a GetMulti operation.
+type TransactionGetMultiSpec struct {
+	Agent          *Agent
+	ScopeName      string
+	CollectionName string
+	Key            []byte
+
+	originalIdx int
+}
+
+// TransactionGetMultiMode specifies the level of effort to spend on minimizing read skew for a GetMulti operation.
+type TransactionGetMultiMode uint8
+
+const (
+	// TransactionGetMultiModeUnset specifies that the default mode should be used.
+	TransactionGetMultiModeUnset TransactionGetMultiMode = iota
+
+	// TransactionGetMultiModePrioritiseLatency specifies that some time-bounded effort will be made to detect and avoid
+	// read skew.
+	TransactionGetMultiModePrioritiseLatency
+
+	// TransactionGetMultiModeDisableReadSkewDetection specifies that no read skew detection should be attempted. Once
+	// the documents are fetched, they will be returned immediately.
+	TransactionGetMultiModeDisableReadSkewDetection
+
+	// TransactionGetMultiModePrioritiseReadSkewDetection specifies that great effort will be made to detect and avoid
+	// read skew.
+	TransactionGetMultiModePrioritiseReadSkewDetection
+)
+
+// TransactionGetMultiOptions provides options for a GetMulti operation.
+type TransactionGetMultiOptions struct {
+	OboUser string
+
+	// Specs specifies which documents to fetch
+	Specs []TransactionGetMultiSpec
+
+	// ServerGroup specifies to attempt to fetch the key from all nodes within
+	// the specified group, returning the first successful result.
+	ServerGroup string
+
+	// Mode
+	Mode TransactionGetMultiMode
+}
+
+// TransactionGetMultiResult represents the result of a GetMulti operation.
+type TransactionGetMultiResult struct {
+	// Values is a map with the contents of the documents that were found. The keys of the map are the indexes of the
+	// corresponding specs as they were given in TransactionGetMultiOptions.Specs.
+	Values map[int][]byte
+}
+
+// TransactionGetMultiCallback describes a callback for a completed Get operation.
+type TransactionGetMultiCallback func(*TransactionGetMultiResult, error)
+
+// GetMulti fetches multiple documents at once, spending a tunable level of effort to minimize read skew.
+func (t *Transaction) GetMulti(opts TransactionGetMultiOptions, cb TransactionGetMultiCallback) error {
+	if t.attempt == nil {
+		return ErrNoAttempt
+	}
+
+	return t.attempt.GetMulti(opts, cb)
 }
 
 // TransactionInsertOptions provides options for a Insert operation.

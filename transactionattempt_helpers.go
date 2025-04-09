@@ -403,17 +403,12 @@ func (t *transactionAttempt) checkForwardCompatability(
 }
 
 func (t *transactionAttempt) getTxnState(
-	srcBucketName string,
-	srcScopeName string,
-	srcCollectionName string,
-	srcDocID []byte,
 	atrBucketName string,
 	atrScopeName string,
 	atrCollectionName string,
 	atrDocID string,
 	attemptID string,
-	forceNonFatal bool,
-	cb func(*jsonAtrAttempt, time.Time, *TransactionOperationFailedError),
+	cb func(*jsonAtrAttempt, time.Time, *classifiedError),
 ) {
 	ecCb := func(res *jsonAtrAttempt, txnExp time.Time, cerr *classifiedError) {
 		if cerr == nil {
@@ -435,19 +430,7 @@ func (t *transactionAttempt) getTxnState(
 			// entry data available for that atr entry.
 			cb(nil, time.Time{}, nil)
 		default:
-			cb(nil, time.Time{}, t.operationFailed(operationFailedDef{
-				Cerr: classifyError(&writeWriteConflictError{
-					Source:         cerr.Source,
-					BucketName:     srcBucketName,
-					ScopeName:      srcScopeName,
-					CollectionName: srcCollectionName,
-					DocumentKey:    srcDocID,
-				}),
-				CanStillCommit:    forceNonFatal,
-				ShouldNotRetry:    false,
-				ShouldNotRollback: false,
-				Reason:            TransactionErrorReasonTransactionFailed,
-			}))
+			cb(nil, time.Time{}, cerr)
 		}
 	}
 
@@ -650,19 +633,26 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 					}
 
 					t.getTxnState(
-						agent.BucketName(),
-						scopeName,
-						collectionName,
-						key,
 						meta.ATR.BucketName,
 						meta.ATR.ScopeName,
 						meta.ATR.CollectionName,
 						meta.ATR.DocID,
 						meta.AttemptID,
-						false,
-						func(attempt *jsonAtrAttempt, expiry time.Time, err *TransactionOperationFailedError) {
+						func(attempt *jsonAtrAttempt, expiry time.Time, err *classifiedError) {
 							if err != nil {
-								cb(err)
+								cb(t.operationFailed(operationFailedDef{
+									Cerr: classifyError(&writeWriteConflictError{
+										Source:         cerr.Source,
+										BucketName:     agent.BucketName(),
+										ScopeName:      scopeName,
+										CollectionName: collectionName,
+										DocumentKey:    key,
+									}),
+									CanStillCommit:    false,
+									ShouldNotRetry:    false,
+									ShouldNotRollback: false,
+									Reason:            TransactionErrorReasonTransactionFailed,
+								}))
 								return
 							}
 
