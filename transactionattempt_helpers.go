@@ -638,8 +638,8 @@ func (t *transactionAttempt) writeWriteConflictPoll(
 						meta.ATR.CollectionName,
 						meta.ATR.DocID,
 						meta.AttemptID,
-						func(attempt *jsonAtrAttempt, expiry time.Time, err *classifiedError) {
-							if err != nil {
+						func(attempt *jsonAtrAttempt, expiry time.Time, cerr *classifiedError) {
+							if cerr != nil {
 								cb(t.operationFailed(operationFailedDef{
 									Cerr: classifyError(&writeWriteConflictError{
 										Source:         cerr.Source,
