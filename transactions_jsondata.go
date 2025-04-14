@@ -79,8 +79,13 @@ type jsonTxnXattrATR struct {
 
 type jsonTxnXattrOp struct {
 	Type   jsonMutationType `json:"type,omitempty"`
+	Bin    json.RawMessage  `json:"bin,omitempty"`
 	Staged json.RawMessage  `json:"stgd,omitempty"`
 	CRC32  string           `json:"crc32,omitempty"`
+}
+
+type jsonTxnXattrAux struct {
+	UserFlags uint32 `json:"uf,omitempty"`
 }
 
 type jsonTxnXattrRestore struct {
@@ -93,6 +98,7 @@ type jsonTxnXattr struct {
 	ID            jsonTxnXattrID                             `json:"id,omitempty"`
 	ATR           jsonTxnXattrATR                            `json:"atr,omitempty"`
 	Operation     jsonTxnXattrOp                             `json:"op,omitempty"`
+	Aux           jsonTxnXattrAux                            `json:"aux,omitempty"`
 	Restore       *jsonTxnXattrRestore                       `json:"restore,omitempty"`
 	ForwardCompat map[string][]jsonForwardCompatibilityEntry `json:"fc,omitempty"`
 }
@@ -102,6 +108,7 @@ type transactionDocMeta struct {
 	RevID      string `json:"revid"`
 	Expiration uint   `json:"exptime"`
 	CRC32      string `json:"value_crc32c,omitempty"`
+	Flags      uint32 `json:"flags,omitempty"`
 }
 
 type transactionGetDoc struct {
@@ -110,6 +117,7 @@ type transactionGetDoc struct {
 	DocMeta *transactionDocMeta
 	Cas     Cas
 	Deleted bool
+	Flags   uint32
 }
 
 type jsonForwardCompatibilityEntry struct {

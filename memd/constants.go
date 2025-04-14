@@ -392,6 +392,10 @@ const (
 	// SubdocFlagExpandMacros indicates that the value portion of any sub-document mutations
 	// should be expanded if they contain macros such as ${Mutation.CAS}.
 	SubdocFlagExpandMacros = SubdocFlag(0x10)
+
+	// SubdocFlagBinaryXattr indicates that the path is binary data.
+	// Internal: This should never be used and is not supported.
+	SubdocFlagBinaryXattr = SubdocFlag(0x20)
 )
 
 // SubdocDocFlag specifies document-level flags for a sub-document operation.

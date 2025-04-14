@@ -64,24 +64,26 @@ func transactionStagedMutationTypeFromString(mtype string) (TransactionStagedMut
 // as part of the transaction and which should later be unstaged when the transaction
 // has been committed.
 type TransactionStagedMutation struct {
-	OpType         TransactionStagedMutationType
-	BucketName     string
-	ScopeName      string
-	CollectionName string
-	Key            []byte
-	Cas            Cas
-	Staged         json.RawMessage
-	OperationID    string
+	OpType          TransactionStagedMutationType
+	BucketName      string
+	ScopeName       string
+	CollectionName  string
+	Key             []byte
+	Cas             Cas
+	Staged          json.RawMessage
+	OperationID     string
+	StagedUserFlags uint32
 }
 
 type transactionStagedMutation struct {
-	OpType         TransactionStagedMutationType
-	Agent          *Agent
-	OboUser        string
-	ScopeName      string
-	CollectionName string
-	Key            []byte
-	Cas            Cas
-	Staged         json.RawMessage
-	OperationID    string
+	OpType          TransactionStagedMutationType
+	Agent           *Agent
+	OboUser         string
+	ScopeName       string
+	CollectionName  string
+	Key             []byte
+	Cas             Cas
+	Staged          json.RawMessage
+	OperationID     string
+	StagedUserFlags uint32
 }

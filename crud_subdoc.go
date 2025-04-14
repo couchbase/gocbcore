@@ -47,6 +47,8 @@ type MutateInOptions struct {
 	User string
 
 	TraceContext RequestSpanContext
+
+	userFlags uint32
 }
 
 // SubDocResult encapsulates the results from a single sub-document operation.

@@ -447,6 +447,17 @@ func (c *stdTransactionsCleaner) cleanupATR(agent *Agent, oboUser string, req *T
 		}
 		deadline, duraTimeout := transactionsMutationTimeouts(c.keyValueTimeout, req.DurabilityLevel)
 
+		binaryXattrSupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityBinaryXattr, "createClientRecord", deadline)
+		if err != nil {
+			cb(err)
+			return
+		}
+
+		var userFlags uint32
+		if binaryXattrSupported {
+			userFlags = EncodeCommonFlags(BinaryType, NoCompression)
+		}
+
 		_, err = agent.MutateIn(MutateInOptions{
 			Key:                    req.AtrID,
 			ScopeName:              req.AtrScopeName,
@@ -456,6 +467,7 @@ func (c *stdTransactionsCleaner) cleanupATR(agent *Agent, oboUser string, req *T
 			DurabilityLevel:        transactionsDurabilityLevelToMemd(req.DurabilityLevel),
 			DurabilityLevelTimeout: duraTimeout,
 			User:                   oboUser,
+			userFlags:              userFlags,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
 				c.updateResourceUnitsError(err)
@@ -851,6 +863,20 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 					return
 				}
 
+				binaryXattrSupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityBinaryXattr, "createClientRecord", deadline)
+				if err != nil {
+					waitCh <- err
+					return
+				}
+
+				var userFlags uint32
+				if binaryXattrSupported {
+					userFlags = getRes.TxnMeta.Aux.UserFlags
+					if userFlags == 0 {
+						userFlags = EncodeCommonFlags(JSONType, NoCompression)
+					}
+				}
+
 				if getRes.Deleted {
 					_, err := agent.Set(SetOptions{
 						Value:                  getRes.Body,
@@ -861,6 +887,7 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						DurabilityLevel:        durability,
 						DurabilityLevelTimeout: duraTimeout,
 						User:                   oboUser,
+						Flags:                  userFlags,
 					}, func(result *StoreResult, err error) {
 						if err != nil {
 							c.updateResourceUnitsError(err)
@@ -899,6 +926,7 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						DurabilityLevel:        durability,
 						DurabilityLevelTimeout: duraTimeout,
 						User:                   oboUser,
+						userFlags:              userFlags,
 					}, func(result *MutateInResult, err error) {
 						if err != nil {
 							c.updateResourceUnitsError(err)
@@ -941,11 +969,15 @@ func (c *stdTransactionsCleaner) perDoc(crc32MatchStaging bool, attemptID string
 			deadline = time.Now().Add(c.keyValueTimeout)
 		}
 
-		_, err = agent.LookupIn(LookupInOptions{
-			ScopeName:      dr.ScopeName,
-			CollectionName: dr.CollectionName,
-			Key:            dr.ID,
-			Ops: []SubDocOp{
+		_, err = agent.kvMux.BlockUntilFirstConfig(deadline, "commitInsRepDocs", func(clientMux *kvMuxState, err error) {
+			if err != nil {
+				cb(nil, err)
+				return
+			}
+
+			supportsBinaryXattr := clientMux.HasBucketCapabilityStatus(BucketCapabilityBinaryXattr, CapabilityStatusSupported)
+
+			ops := []SubDocOp{
 				{
 					Op:    memd.SubDocOpGet,
 					Path:  "$document",
@@ -956,74 +988,131 @@ func (c *stdTransactionsCleaner) perDoc(crc32MatchStaging bool, attemptID string
 					Path:  "txn",
 					Flags: memd.SubdocFlagXattrPath,
 				},
-			},
-			Deadline: deadline,
-			Flags:    memd.SubdocDocFlagAccessDeleted,
-			User:     oboUser,
-		}, func(result *LookupInResult, err error) {
+			}
+
+			if supportsBinaryXattr {
+				ops = append(ops, SubDocOp{
+					Op:    memd.SubDocOpGet,
+					Path:  "txn.op.bin",
+					Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagBinaryXattr,
+				})
+			}
+
+			_, err = agent.LookupIn(LookupInOptions{
+				ScopeName:      dr.ScopeName,
+				CollectionName: dr.CollectionName,
+				Key:            dr.ID,
+				Ops:            ops,
+				Deadline:       deadline,
+				Flags:          memd.SubdocDocFlagAccessDeleted,
+				User:           oboUser,
+			}, func(result *LookupInResult, err error) {
+				if err != nil {
+					c.updateResourceUnitsError(err)
+					if errors.Is(err, ErrDocumentNotFound) {
+						// We can consider this success.
+						cb(nil, nil)
+						return
+					}
+
+					logDebugf("Failed to lookup doc for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
+						dr.BucketName, dr.CollectionName, dr.ScopeName, dr.ID, err)
+					cb(nil, err)
+					return
+				}
+
+				c.updateResourceUnits(result.Internal.ResourceUnits)
+
+				if result.Ops[0].Err != nil {
+					// This is not so good.
+					cb(nil, result.Ops[0].Err)
+					return
+				}
+
+				if result.Ops[1].Err != nil {
+					// Txn probably committed so this is success.
+					cb(nil, nil)
+					return
+				}
+
+				var txnMetaVal *jsonTxnXattr
+				if err := json.Unmarshal(result.Ops[1].Value, &txnMetaVal); err != nil {
+					cb(nil, err)
+					return
+				}
+
+				if attemptID != txnMetaVal.ID.Attempt {
+					// Document involved in another txn, was probably committed, this is success.
+					cb(nil, nil)
+					return
+				}
+
+				var meta *transactionDocMeta
+				if err := json.Unmarshal(result.Ops[0].Value, &meta); err != nil {
+					cb(nil, err)
+					return
+				}
+				if crc32MatchStaging {
+					if meta.CRC32 != txnMetaVal.Operation.CRC32 {
+						// This document is a part of this txn but its body has changed, we'll continue as success.
+						cb(nil, nil)
+						return
+					}
+				}
+
+				body := txnMetaVal.Operation.Staged
+				if len(result.Ops) > 2 && result.Ops[2].Err == nil {
+					body = result.Ops[2].Value
+				}
+
+				cb(&transactionGetDoc{
+					Body:    body,
+					DocMeta: meta,
+					Cas:     result.Cas,
+					Deleted: result.Internal.IsDeleted,
+					TxnMeta: txnMetaVal,
+				}, nil)
+			})
 			if err != nil {
-				c.updateResourceUnitsError(err)
-				if errors.Is(err, ErrDocumentNotFound) {
-					// We can consider this success.
-					cb(nil, nil)
-					return
-				}
-
-				logDebugf("Failed to lookup doc for bucket: %s, collection: %s, scope: %s, id: %s, err: %v",
-					dr.BucketName, dr.CollectionName, dr.ScopeName, dr.ID, err)
 				cb(nil, err)
-				return
 			}
-
-			c.updateResourceUnits(result.Internal.ResourceUnits)
-
-			if result.Ops[0].Err != nil {
-				// This is not so good.
-				cb(nil, result.Ops[0].Err)
-				return
-			}
-
-			if result.Ops[1].Err != nil {
-				// Txn probably committed so this is success.
-				cb(nil, nil)
-				return
-			}
-
-			var txnMetaVal *jsonTxnXattr
-			if err := json.Unmarshal(result.Ops[1].Value, &txnMetaVal); err != nil {
-				cb(nil, err)
-				return
-			}
-
-			if attemptID != txnMetaVal.ID.Attempt {
-				// Document involved in another txn, was probably committed, this is success.
-				cb(nil, nil)
-				return
-			}
-
-			var meta *transactionDocMeta
-			if err := json.Unmarshal(result.Ops[0].Value, &meta); err != nil {
-				cb(nil, err)
-				return
-			}
-			if crc32MatchStaging {
-				if meta.CRC32 != txnMetaVal.Operation.CRC32 {
-					// This document is a part of this txn but its body has changed, we'll continue as success.
-					cb(nil, nil)
-					return
-				}
-			}
-
-			cb(&transactionGetDoc{
-				Body:    txnMetaVal.Operation.Staged,
-				DocMeta: meta,
-				Cas:     result.Cas,
-				Deleted: result.Internal.IsDeleted,
-				TxnMeta: txnMetaVal,
-			}, nil)
 		})
 		if err != nil {
 			cb(nil, err)
+			return
 		}
 	})
+}
+
+func agentSupportsBucketCapBlocking(agent *Agent, bucketCap BucketCapability, operationID string, deadline time.Time) (bool, error) {
+	waitCh := make(chan struct {
+		isSupported bool
+		err         error
+	}, 1)
+
+	_, err := agent.kvMux.BlockUntilFirstConfig(deadline, operationID, func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			waitCh <- struct {
+				isSupported bool
+				err         error
+			}{isSupported: false, err: err}
+			return
+		}
+
+		isSupported := clientMux.HasBucketCapabilityStatus(bucketCap, CapabilityStatusSupported)
+		waitCh <- struct {
+			isSupported bool
+			err         error
+		}{isSupported: isSupported, err: nil}
+	})
+	if err != nil {
+		return false, err
+	}
+
+	waited := <-waitCh
+	if waited.err != nil {
+		return false, waited.err
+	}
+
+	return waited.isSupported, nil
 }

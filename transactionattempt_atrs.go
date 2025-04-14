@@ -150,8 +150,6 @@ func (t *transactionAttempt) setATRPendingLocked(
 				return
 			}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
-
 			var marshalErr error
 			atrFieldOp := func(fieldName string, data interface{}, flags memd.SubdocFlag) SubDocOp {
 				b, err := json.Marshal(data)
@@ -192,19 +190,9 @@ func (t *transactionAttempt) setATRPendingLocked(
 				t.atrKey,
 			))
 
-			_, err = t.atrAgent.MutateIn(MutateInOptions{
-				ScopeName:              t.atrScopeName,
-				CollectionName:         t.atrCollectionName,
-				Key:                    t.atrKey,
-				Ops:                    atrOps,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Deadline:               deadline,
-				Flags:                  memd.SubdocDocFlagMkDoc,
-				User:                   t.atrOboUser,
-			}, func(result *MutateInResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
+			cerr := t.atrMutateInWrapper("setATRPendingLocked", atrOps, memd.SubdocDocFlagMkDoc, func(result *MutateInResult, cerr *classifiedError) {
+				if cerr != nil {
+					ecCb(cerr)
 					return
 				}
 
@@ -228,8 +216,8 @@ func (t *transactionAttempt) setATRPendingLocked(
 					ecCb(nil)
 				})
 			})
-			if err != nil {
-				ecCb(classifyError(err))
+			if cerr != nil {
+				ecCb(cerr)
 				return
 			}
 		})
@@ -510,12 +498,6 @@ func (t *transactionAttempt) setATRCommittedLocked(
 		}
 	}
 
-	atrAgent := t.atrAgent
-	atrOboUser := t.atrOboUser
-	atrScopeName := t.atrScopeName
-	atrKey := t.atrKey
-	atrCollectionName := t.atrCollectionName
-
 	insMutations := []jsonAtrMutation{}
 	repMutations := []jsonAtrMutation{}
 	remMutations := []jsonAtrMutation{}
@@ -552,8 +534,6 @@ func (t *transactionAttempt) setATRCommittedLocked(
 				return
 			}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
-
 			var marshalErr error
 			atrFieldOp := func(fieldName string, data interface{}, flags memd.SubdocFlag, op memd.SubDocOpType) SubDocOp {
 				bytes, err := json.Marshal(data)
@@ -582,19 +562,9 @@ func (t *transactionAttempt) setATRCommittedLocked(
 				return
 			}
 
-			_, err = atrAgent.MutateIn(MutateInOptions{
-				ScopeName:              atrScopeName,
-				CollectionName:         atrCollectionName,
-				Key:                    atrKey,
-				Ops:                    atrOps,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Flags:                  memd.SubdocDocFlagNone,
-				Deadline:               deadline,
-				User:                   atrOboUser,
-			}, func(result *MutateInResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
+			cerr := t.atrMutateInWrapper("setATRCommittedLocked", atrOps, memd.SubdocDocFlagNone, func(result *MutateInResult, cerr *classifiedError) {
+				if cerr != nil {
+					ecCb(cerr)
 					return
 				}
 
@@ -616,8 +586,8 @@ func (t *transactionAttempt) setATRCommittedLocked(
 					ecCb(nil)
 				})
 			})
-			if err != nil {
-				ecCb(classifyError(err))
+			if cerr != nil {
+				ecCb(cerr)
 				return
 			}
 		})
@@ -682,12 +652,6 @@ func (t *transactionAttempt) setATRCompletedLocked(
 		}
 	}
 
-	atrAgent := t.atrAgent
-	atrOboUser := t.atrOboUser
-	atrScopeName := t.atrScopeName
-	atrKey := t.atrKey
-	atrCollectionName := t.atrCollectionName
-
 	t.checkExpiredAtomic(hookATRComplete, []byte{}, true, func(cerr *classifiedError) {
 		if cerr != nil {
 			ecCb(cerr)
@@ -700,8 +664,6 @@ func (t *transactionAttempt) setATRCompletedLocked(
 				return
 			}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
-
 			atrOps := []SubDocOp{
 				{
 					Op:    memd.SubDocOpDelete,
@@ -710,19 +672,9 @@ func (t *transactionAttempt) setATRCompletedLocked(
 				},
 			}
 
-			_, err = atrAgent.MutateIn(MutateInOptions{
-				ScopeName:              atrScopeName,
-				CollectionName:         atrCollectionName,
-				Key:                    atrKey,
-				Ops:                    atrOps,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Deadline:               deadline,
-				Flags:                  memd.SubdocDocFlagNone,
-				User:                   atrOboUser,
-			}, func(result *MutateInResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
+			cerr := t.atrMutateInWrapper("setATRCompletedLocked", atrOps, memd.SubdocDocFlagNone, func(result *MutateInResult, cerr *classifiedError) {
+				if cerr != nil {
+					ecCb(cerr)
 					return
 				}
 
@@ -744,8 +696,8 @@ func (t *transactionAttempt) setATRCompletedLocked(
 					ecCb(nil)
 				})
 			})
-			if err != nil {
-				ecCb(classifyError(err))
+			if cerr != nil {
+				ecCb(cerr)
 				return
 			}
 		})
@@ -810,12 +762,6 @@ func (t *transactionAttempt) setATRAbortedLocked(
 		}
 	}
 
-	atrAgent := t.atrAgent
-	atrOboUser := t.atrOboUser
-	atrScopeName := t.atrScopeName
-	atrKey := t.atrKey
-	atrCollectionName := t.atrCollectionName
-
 	insMutations := []jsonAtrMutation{}
 	repMutations := []jsonAtrMutation{}
 	remMutations := []jsonAtrMutation{}
@@ -852,8 +798,6 @@ func (t *transactionAttempt) setATRAbortedLocked(
 				return
 			}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
-
 			var marshalErr error
 			atrFieldOp := func(fieldName string, data interface{}, flags memd.SubdocFlag) SubDocOp {
 				bytes, err := json.Marshal(data)
@@ -881,19 +825,9 @@ func (t *transactionAttempt) setATRAbortedLocked(
 				return
 			}
 
-			_, err = atrAgent.MutateIn(MutateInOptions{
-				ScopeName:              atrScopeName,
-				CollectionName:         atrCollectionName,
-				Key:                    atrKey,
-				Ops:                    atrOps,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Flags:                  memd.SubdocDocFlagNone,
-				Deadline:               deadline,
-				User:                   atrOboUser,
-			}, func(result *MutateInResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
+			cerr := t.atrMutateInWrapper("setatraborted", atrOps, memd.SubdocDocFlagNone, func(result *MutateInResult, cerr *classifiedError) {
+				if cerr != nil {
+					ecCb(cerr)
 					return
 				}
 
@@ -915,8 +849,8 @@ func (t *transactionAttempt) setATRAbortedLocked(
 					ecCb(nil)
 				})
 			})
-			if err != nil {
-				ecCb(classifyError(err))
+			if cerr != nil {
+				ecCb(cerr)
 				return
 			}
 		})
@@ -970,12 +904,6 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 		}
 	}
 
-	atrAgent := t.atrAgent
-	atrOboUser := t.atrOboUser
-	atrScopeName := t.atrScopeName
-	atrKey := t.atrKey
-	atrCollectionName := t.atrCollectionName
-
 	t.checkExpiredAtomic(hookATRRollback, []byte{}, true, func(cerr *classifiedError) {
 		if cerr != nil {
 			ecCb(cerr)
@@ -988,8 +916,6 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 				return
 			}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
-
 			atrOps := []SubDocOp{
 				{
 					Op:    memd.SubDocOpDelete,
@@ -998,23 +924,11 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 				},
 			}
 
-			_, err = atrAgent.MutateIn(MutateInOptions{
-				ScopeName:              atrScopeName,
-				CollectionName:         atrCollectionName,
-				Key:                    atrKey,
-				Ops:                    atrOps,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Deadline:               deadline,
-				Flags:                  memd.SubdocDocFlagNone,
-				User:                   atrOboUser,
-			}, func(result *MutateInResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
+			cerr := t.atrMutateInWrapper("setatrrollback", atrOps, memd.SubdocDocFlagNone, func(result *MutateInResult, cerr *classifiedError) {
+				if cerr != nil {
+					ecCb(cerr)
 					return
 				}
-
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
 
 				for _, op := range result.Ops {
 					if op.Err != nil {
@@ -1032,10 +946,63 @@ func (t *transactionAttempt) setATRRolledBackLocked(
 					ecCb(nil)
 				})
 			})
-			if err != nil {
-				ecCb(classifyError(err))
+			if cerr != nil {
+				ecCb(cerr)
 				return
 			}
 		})
 	})
+}
+
+func (t *transactionAttempt) atrMutateInWrapper(operationID string, ops []SubDocOp, docFlags memd.SubdocDocFlag, cb func(*MutateInResult, *classifiedError)) *classifiedError {
+	atrAgent := t.atrAgent
+	atrOboUser := t.atrOboUser
+	atrScopeName := t.atrScopeName
+	atrKey := t.atrKey
+	atrCollectionName := t.atrCollectionName
+
+	deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
+
+	err := t.supportsBinaryXattr(t.atrAgent, operationID, func(supportsBinaryXattr bool, err error) {
+		if err != nil {
+			cb(nil, classifyError(err))
+			return
+		}
+
+		var userFlags uint32
+		if supportsBinaryXattr {
+			userFlags = EncodeCommonFlags(BinaryType, NoCompression)
+		}
+
+		_, err = atrAgent.MutateIn(MutateInOptions{
+			ScopeName:              atrScopeName,
+			CollectionName:         atrCollectionName,
+			Key:                    atrKey,
+			Ops:                    ops,
+			DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+			DurabilityLevelTimeout: duraTimeout,
+			Deadline:               deadline,
+			Flags:                  docFlags,
+			User:                   atrOboUser,
+			userFlags:              userFlags,
+		}, func(result *MutateInResult, err error) {
+			if err != nil {
+				cb(nil, classifyError(err))
+				return
+			}
+
+			t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+			cb(result, nil)
+		})
+		if err != nil {
+			cb(nil, classifyError(err))
+			return
+		}
+	})
+	if err != nil {
+		return classifyError(err)
+	}
+
+	return nil
 }

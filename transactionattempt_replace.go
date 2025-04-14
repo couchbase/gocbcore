@@ -94,7 +94,7 @@ func (t *transactionAttempt) replace(
 					t.logger.logInfof(t.id, "Staged insert exists on doc, performing insert")
 					t.stageInsert(
 						agent, oboUser, scopeName, collectionName, key,
-						value, cas, operationID,
+						value, cas, operationID, opts.Flags,
 						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
@@ -144,7 +144,7 @@ func (t *transactionAttempt) replace(
 
 						t.stageReplace(
 							agent, oboUser, scopeName, collectionName, key,
-							value, cas, operationID,
+							value, cas, operationID, opts.Flags, opts.Document.Flags,
 							func(result *TransactionGetResult, err error) {
 								endAndCb(result, err)
 							})
@@ -165,6 +165,8 @@ func (t *transactionAttempt) stageReplace(
 	value json.RawMessage,
 	cas Cas,
 	operationID string,
+	userFlags uint32,
+	originalUserFlags uint32,
 	cb func(*TransactionGetResult, error),
 ) {
 	ecCb := func(result *TransactionGetResult, cerr *classifiedError) {
@@ -245,46 +247,54 @@ func (t *transactionAttempt) stageReplace(
 				return
 			}
 
-			stagedInfo := &transactionStagedMutation{
-				OpType:         TransactionStagedMutationReplace,
-				Agent:          agent,
-				OboUser:        oboUser,
-				ScopeName:      scopeName,
-				CollectionName: collectionName,
-				Key:            key,
-				Staged:         value,
-				OperationID:    operationID,
-			}
+			stageReplace := func(isBinaryFlags, isBinarySupported bool) {
+				var stagedUserFlags uint32
+				if isBinarySupported {
+					stagedUserFlags = userFlags
+				}
+				stagedInfo := &transactionStagedMutation{
+					OpType:          TransactionStagedMutationReplace,
+					Agent:           agent,
+					OboUser:         oboUser,
+					ScopeName:       scopeName,
+					CollectionName:  collectionName,
+					Key:             key,
+					Staged:          value,
+					OperationID:     operationID,
+					StagedUserFlags: stagedUserFlags,
+				}
 
-			var txnMeta jsonTxnXattr
-			txnMeta.ID.Transaction = t.transactionID
-			txnMeta.ID.Attempt = t.id
-			txnMeta.ATR.CollectionName = t.atrCollectionName
-			txnMeta.ATR.ScopeName = t.atrScopeName
-			txnMeta.ATR.BucketName = t.atrAgent.BucketName()
-			txnMeta.ATR.DocID = string(t.atrKey)
-			txnMeta.Operation.Type = jsonMutationReplace
-			txnMeta.Operation.Staged = stagedInfo.Staged
-			txnMeta.Restore = &jsonTxnXattrRestore{
-				OriginalCAS: "",
-				ExpiryTime:  0,
-				RevID:       "",
-			}
+				var txnMeta jsonTxnXattr
+				txnMeta.ID.Transaction = t.transactionID
+				txnMeta.ID.Attempt = t.id
+				txnMeta.ID.Operation = operationID
+				txnMeta.ATR.CollectionName = t.atrCollectionName
+				txnMeta.ATR.ScopeName = t.atrScopeName
+				txnMeta.ATR.BucketName = t.atrAgent.BucketName()
+				txnMeta.ATR.DocID = string(t.atrKey)
+				txnMeta.Operation.Type = jsonMutationReplace
+				txnMeta.Operation.Staged = stagedInfo.Staged
+				txnMeta.Restore = &jsonTxnXattrRestore{
+					OriginalCAS: "",
+					ExpiryTime:  0,
+					RevID:       "",
+				}
+				txnMeta.Aux.UserFlags = stagedInfo.StagedUserFlags
 
-			txnMetaBytes, err := json.Marshal(txnMeta)
-			if err != nil {
-				ecCb(nil, classifyError(err))
-				return
-			}
+				if isBinarySupported && isBinaryFlags {
+					txnMeta.Operation.Staged = nil
+					t.addBinarySupportForwardCompat(&txnMeta)
+				}
 
-			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
+				txnMetaBytes, err := json.Marshal(txnMeta)
+				if err != nil {
+					ecCb(nil, classifyError(err))
+					return
+				}
 
-			_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
-				ScopeName:      stagedInfo.ScopeName,
-				CollectionName: stagedInfo.CollectionName,
-				Key:            stagedInfo.Key,
-				Cas:            cas,
-				Ops: []SubDocOp{
+				deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
+
+				ops := []SubDocOp{
 					{
 						Op:    memd.SubDocOpDictSet,
 						Path:  "txn",
@@ -315,46 +325,91 @@ func (t *transactionAttempt) stageReplace(
 						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
 						Value: revidMacro,
 					},
-				},
-				Flags:                  memd.SubdocDocFlagAccessDeleted,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Deadline:               deadline,
-				User:                   stagedInfo.OboUser,
-			}, func(result *MutateInResult, err error) {
+				}
+
+				var userFlags uint32
+				if isBinaryFlags {
+					ops = append(ops, SubDocOp{
+						Op:    memd.SubDocOpDictSet,
+						Path:  "txn.op.bin",
+						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagBinaryXattr,
+						Value: value,
+					})
+
+					userFlags = originalUserFlags
+				}
+
+				_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
+					ScopeName:              stagedInfo.ScopeName,
+					CollectionName:         stagedInfo.CollectionName,
+					Key:                    stagedInfo.Key,
+					Cas:                    cas,
+					Ops:                    ops,
+					Flags:                  memd.SubdocDocFlagAccessDeleted,
+					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+					DurabilityLevelTimeout: duraTimeout,
+					Deadline:               deadline,
+					User:                   stagedInfo.OboUser,
+					userFlags:              userFlags,
+				}, func(result *MutateInResult, err error) {
+					if err != nil {
+						ecCb(nil, classifyError(err))
+						return
+					}
+
+					t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+					stagedInfo.Cas = result.Cas
+
+					t.hooks.AfterStagedReplaceComplete(key, func(err error) {
+						if err != nil {
+							ecCb(nil, classifyHookError(err))
+							return
+						}
+
+						t.recordStagedMutation(stagedInfo, func() {
+
+							ecCb(&TransactionGetResult{
+								agent:          stagedInfo.Agent,
+								oboUser:        stagedInfo.OboUser,
+								scopeName:      stagedInfo.ScopeName,
+								collectionName: stagedInfo.CollectionName,
+								key:            stagedInfo.Key,
+								Value:          stagedInfo.Staged,
+								Cas:            stagedInfo.Cas,
+								Meta:           nil,
+								Flags:          stagedInfo.StagedUserFlags,
+							}, nil)
+						})
+					})
+				})
+				if err != nil {
+					ecCb(nil, classifyError(err))
+					return
+				}
+			}
+
+			userFlagsAreBinary, err := t.isBinary(userFlags)
+			if err != nil {
+				ecCb(nil, classifyError(err))
+				return
+			}
+
+			err = t.supportsBinaryXattr(agent, "insert", func(supported bool, failedError error) {
 				if err != nil {
 					ecCb(nil, classifyError(err))
 					return
 				}
 
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
+				if userFlagsAreBinary && !supported {
+					ecCb(nil, classifyError(wrapError(errFeatureNotAvailable, "binary documents in transactions are only supported in Go from server v8.0.0 onward")))
+					return
+				}
 
-				stagedInfo.Cas = result.Cas
-
-				t.hooks.AfterStagedReplaceComplete(key, func(err error) {
-					if err != nil {
-						ecCb(nil, classifyHookError(err))
-						return
-					}
-
-					t.recordStagedMutation(stagedInfo, func() {
-
-						ecCb(&TransactionGetResult{
-							agent:          stagedInfo.Agent,
-							oboUser:        stagedInfo.OboUser,
-							scopeName:      stagedInfo.ScopeName,
-							collectionName: stagedInfo.CollectionName,
-							key:            stagedInfo.Key,
-							Value:          stagedInfo.Staged,
-							Cas:            stagedInfo.Cas,
-							Meta:           nil,
-						}, nil)
-					})
-				})
+				stageReplace(userFlagsAreBinary, supported)
 			})
 			if err != nil {
 				ecCb(nil, classifyError(err))
-				return
 			}
 		})
 	})

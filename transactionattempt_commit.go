@@ -440,85 +440,109 @@ func (t *transactionAttempt) commitStagedReplace(
 				cas = 0
 			}
 
-			var specs []SubDocOp
-			if supportsReplaceBody {
-				specs = make([]SubDocOp, 2)
-				specs[0] = SubDocOp{
-					Op:    memd.SubDocOpReplaceBodyWithXattr,
-					Flags: memd.SubdocFlagXattrPath,
-					Path:  "txn.op.stgd",
-				}
-				specs[1] = SubDocOp{
-					Op:    memd.SubDocOpDelete,
-					Path:  "txn",
-					Flags: memd.SubdocFlagXattrPath,
-				}
-			} else {
-				if mutation.Staged == nil {
-					ecCb(classifyError(
-						wrapError(ErrIllegalState, "staged content is missing")))
-					return
-				}
-
-				specs = make([]SubDocOp, 3)
-				specs[0] = SubDocOp{
-					Op:    memd.SubDocOpDictSet,
-					Path:  "txn",
-					Flags: memd.SubdocFlagXattrPath,
-					Value: []byte{110, 117, 108, 108}, // null
-				}
-				specs[1] = SubDocOp{
-					Op:    memd.SubDocOpDelete,
-					Path:  "txn",
-					Flags: memd.SubdocFlagXattrPath,
-				}
-				specs[2] = SubDocOp{
-					Op:    memd.SubDocOpSetDoc,
-					Path:  "",
-					Value: mutation.Staged,
-				}
-			}
-
-			_, err = mutation.Agent.MutateIn(MutateInOptions{
-				ScopeName:              mutation.ScopeName,
-				CollectionName:         mutation.CollectionName,
-				Key:                    mutation.Key,
-				Cas:                    cas,
-				Ops:                    specs,
-				Deadline:               deadline,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				User:                   mutation.OboUser,
-			}, func(result *MutateInResult, err error) {
+			err = t.supportsBinaryXattr(mutation.Agent, "commit", func(supported bool, err error) {
 				if err != nil {
 					ecCb(classifyError(err))
 					return
 				}
 
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
-
-				for _, op := range result.Ops {
-					if op.Err != nil {
-						ecCb(classifyError(op.Err))
-						return
+				var userFlags uint32
+				bodyOpFlags := memd.SubdocFlagXattrPath
+				bodyPath := "txn.op.stgd"
+				if supported {
+					userFlags = mutation.StagedUserFlags
+					datatype, _ := DecodeCommonFlags(userFlags)
+					if datatype == BinaryType {
+						bodyOpFlags |= memd.SubdocFlagBinaryXattr
+						bodyPath = "txn.op.bin"
 					}
 				}
 
-				t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
-					if err != nil {
-						ecCb(classifyHookError(err))
+				var specs []SubDocOp
+				if supportsReplaceBody {
+					specs = make([]SubDocOp, 2)
+					specs[0] = SubDocOp{
+						Op:    memd.SubDocOpReplaceBodyWithXattr,
+						Flags: bodyOpFlags,
+						Path:  bodyPath,
+					}
+					specs[1] = SubDocOp{
+						Op:    memd.SubDocOpDelete,
+						Path:  "txn",
+						Flags: memd.SubdocFlagXattrPath,
+					}
+				} else {
+					if mutation.Staged == nil {
+						ecCb(classifyError(
+							wrapError(ErrIllegalState, "staged content is missing")))
 						return
 					}
 
-					t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+					specs = make([]SubDocOp, 3)
+					specs[0] = SubDocOp{
+						Op:    memd.SubDocOpDictSet,
+						Path:  "txn",
+						Flags: memd.SubdocFlagXattrPath,
+						Value: []byte{110, 117, 108, 108}, // null
+					}
+					specs[1] = SubDocOp{
+						Op:    memd.SubDocOpDelete,
+						Path:  "txn",
+						Flags: memd.SubdocFlagXattrPath,
+					}
+					specs[2] = SubDocOp{
+						Op:    memd.SubDocOpSetDoc,
+						Path:  "",
+						Value: mutation.Staged,
+					}
+				}
+
+				_, err = mutation.Agent.MutateIn(MutateInOptions{
+					ScopeName:              mutation.ScopeName,
+					CollectionName:         mutation.CollectionName,
+					Key:                    mutation.Key,
+					Cas:                    cas,
+					Ops:                    specs,
+					Deadline:               deadline,
+					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+					DurabilityLevelTimeout: duraTimeout,
+					User:                   mutation.OboUser,
+					userFlags:              userFlags,
+				}, func(result *MutateInResult, err error) {
+					if err != nil {
+						ecCb(classifyError(err))
+						return
+					}
+
+					t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+					for _, op := range result.Ops {
+						if op.Err != nil {
+							ecCb(classifyError(op.Err))
+							return
+						}
+					}
+
+					t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
 						if err != nil {
 							ecCb(classifyHookError(err))
 							return
 						}
 
-						ecCb(nil)
+						t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+							if err != nil {
+								ecCb(classifyHookError(err))
+								return
+							}
+
+							ecCb(nil)
+						})
 					})
 				})
+				if err != nil {
+					ecCb(classifyError(err))
+					return
+				}
 			})
 			if err != nil {
 				ecCb(classifyError(err))
@@ -611,30 +635,91 @@ func (t *transactionAttempt) commitStagedInsert(
 
 			deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
 
-			if supportsReplaceBody {
-				_, err := mutation.Agent.MutateIn(MutateInOptions{
+			err = t.supportsBinaryXattr(mutation.Agent, "commit", func(supported bool, err error) {
+				if err != nil {
+					ecCb(classifyError(err))
+					return
+				}
+
+				var userFlags uint32
+				bodyOpFlags := memd.SubdocFlagXattrPath
+				bodyPath := "txn.op.stgd"
+				if supported {
+					userFlags = mutation.StagedUserFlags
+					datatype, _ := DecodeCommonFlags(userFlags)
+					if datatype == BinaryType {
+						bodyOpFlags |= memd.SubdocFlagBinaryXattr
+						bodyPath = "txn.op.bin"
+					}
+				}
+
+				if supportsReplaceBody {
+					_, err := mutation.Agent.MutateIn(MutateInOptions{
+						ScopeName:              mutation.ScopeName,
+						CollectionName:         mutation.CollectionName,
+						Key:                    mutation.Key,
+						Deadline:               deadline,
+						DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+						DurabilityLevelTimeout: duraTimeout,
+						User:                   mutation.OboUser,
+						Cas:                    mutation.Cas,
+						Flags:                  memd.SubdocDocFlagReviveDocument | memd.SubdocDocFlagAccessDeleted,
+						userFlags:              userFlags,
+						Ops: []SubDocOp{
+							{
+								Op:    memd.SubDocOpReplaceBodyWithXattr,
+								Flags: bodyOpFlags,
+								Path:  bodyPath,
+							},
+							{
+								Op:    memd.SubDocOpDelete,
+								Path:  "txn",
+								Flags: memd.SubdocFlagXattrPath,
+							},
+						},
+					}, func(result *MutateInResult, err error) {
+						if err != nil {
+							ecCb(classifyError(err))
+							return
+						}
+
+						t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+						t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
+							if err != nil {
+								ecCb(classifyHookError(err))
+								return
+							}
+
+							t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+								if err != nil {
+									ecCb(classifyHookError(err))
+									return
+								}
+
+								ecCb(nil)
+							})
+						})
+					})
+					if err != nil {
+						ecCb(classifyError(err))
+						return
+					}
+
+					return
+				}
+
+				_, err = mutation.Agent.Add(AddOptions{
 					ScopeName:              mutation.ScopeName,
 					CollectionName:         mutation.CollectionName,
 					Key:                    mutation.Key,
+					Value:                  mutation.Staged,
 					Deadline:               deadline,
 					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
 					DurabilityLevelTimeout: duraTimeout,
 					User:                   mutation.OboUser,
-					Cas:                    mutation.Cas,
-					Flags:                  memd.SubdocDocFlagReviveDocument | memd.SubdocDocFlagAccessDeleted,
-					Ops: []SubDocOp{
-						{
-							Op:    memd.SubDocOpReplaceBodyWithXattr,
-							Flags: memd.SubdocFlagXattrPath,
-							Path:  "txn.op.stgd",
-						},
-						{
-							Op:    memd.SubDocOpDelete,
-							Path:  "txn",
-							Flags: memd.SubdocFlagXattrPath,
-						},
-					},
-				}, func(result *MutateInResult, err error) {
+					Flags:                  userFlags,
+				}, func(result *StoreResult, err error) {
 					if err != nil {
 						ecCb(classifyError(err))
 						return
@@ -662,42 +747,6 @@ func (t *transactionAttempt) commitStagedInsert(
 					ecCb(classifyError(err))
 					return
 				}
-
-				return
-			}
-
-			_, err = mutation.Agent.Add(AddOptions{
-				ScopeName:              mutation.ScopeName,
-				CollectionName:         mutation.CollectionName,
-				Key:                    mutation.Key,
-				Value:                  mutation.Staged,
-				Deadline:               deadline,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				User:                   mutation.OboUser,
-			}, func(result *StoreResult, err error) {
-				if err != nil {
-					ecCb(classifyError(err))
-					return
-				}
-
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
-
-				t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
-					if err != nil {
-						ecCb(classifyHookError(err))
-						return
-					}
-
-					t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
-						if err != nil {
-							ecCb(classifyHookError(err))
-							return
-						}
-
-						ecCb(nil)
-					})
-				})
 			})
 			if err != nil {
 				ecCb(classifyError(err))

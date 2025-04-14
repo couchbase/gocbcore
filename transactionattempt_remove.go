@@ -344,6 +344,7 @@ func (t *transactionAttempt) stageRemove(
 							Value:          stagedInfo.Staged,
 							Cas:            stagedInfo.Cas,
 							Meta:           nil,
+							Flags:          stagedInfo.StagedUserFlags,
 						}, nil)
 					})
 				})

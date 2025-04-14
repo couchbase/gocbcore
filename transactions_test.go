@@ -427,7 +427,7 @@ func (suite *StandardTestSuite) TestTransactionsReplaceTxn1ReplaceTxn2() {
 		Document: replaceToReplaceGet2Res,
 		Value:    testDummy3,
 	})
-	suite.Require().Nil(err, "replaceToReplaceDoc replace failed")
+	suite.Require().Nil(err, "replaceToReplaceDoc replace failed", err)
 	log.Printf("replaceToReplaceDoc replace result: %+v", replaceToReplaceReplace2Res)
 
 	txn2, err := txns.BeginTransaction(nil)

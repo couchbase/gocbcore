@@ -37,6 +37,7 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			BucketCapabilityReplicaRead:          CapabilityStatusUnknown,
 			BucketCapabilityNonDedupedHistory:    CapabilityStatusUnknown,
 			BucketCapabilityReviveDocument:       CapabilityStatusUnknown,
+			BucketCapabilityBinaryXattr:          CapabilityStatusUnknown,
 		},
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
@@ -90,6 +91,12 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			mux.bucketCapabilities[BucketCapabilityReviveDocument] = CapabilityStatusSupported
 		} else {
 			mux.bucketCapabilities[BucketCapabilityReviveDocument] = CapabilityStatusUnsupported
+		}
+
+		if cfg.ContainsBucketCapability("subdoc.BinaryXattr") {
+			mux.bucketCapabilities[BucketCapabilityBinaryXattr] = CapabilityStatusSupported
+		} else {
+			mux.bucketCapabilities[BucketCapabilityBinaryXattr] = CapabilityStatusUnsupported
 		}
 	}
 

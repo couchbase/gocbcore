@@ -197,14 +197,15 @@ func (t *transactionAttempt) GetMutations() []TransactionStagedMutation {
 
 	for mutationIdx, mutation := range t.stagedMutations {
 		mutations[mutationIdx] = TransactionStagedMutation{
-			OpType:         mutation.OpType,
-			BucketName:     mutation.Agent.BucketName(),
-			ScopeName:      mutation.ScopeName,
-			CollectionName: mutation.CollectionName,
-			Key:            mutation.Key,
-			Cas:            mutation.Cas,
-			Staged:         mutation.Staged,
-			OperationID:    mutation.OperationID,
+			OpType:          mutation.OpType,
+			BucketName:      mutation.Agent.BucketName(),
+			ScopeName:       mutation.ScopeName,
+			CollectionName:  mutation.CollectionName,
+			Key:             mutation.Key,
+			Cas:             mutation.Cas,
+			Staged:          mutation.Staged,
+			OperationID:     mutation.OperationID,
+			StagedUserFlags: mutation.StagedUserFlags,
 		}
 	}
 

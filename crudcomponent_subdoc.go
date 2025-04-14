@@ -464,6 +464,14 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 			}
 		}
 
+		if op.Flags&memd.SubdocFlagBinaryXattr != 0 {
+			// We can get here before support status is actually known, we'll send the request unless we know for a fact
+			// that this is unsupported.
+			if crud.featureVerifier.HasBucketCapabilityStatus(BucketCapabilityBinaryXattr, CapabilityStatusUnsupported) {
+				return nil, wrapError(errFeatureNotAvailable, "binary xattrs are not supported in this server version")
+			}
+		}
+
 		pathBytes := pathBytesList[i]
 		pathBytesLen := len(pathBytes)
 		valueBytesLen := len(op.Value)
@@ -478,9 +486,10 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	}
 
 	var extraBuf []byte
-	if opts.Expiry != 0 {
-		tmpBuf := make([]byte, 4)
+	if opts.Expiry != 0 || opts.userFlags > 0 {
+		tmpBuf := make([]byte, 8)
 		binary.BigEndian.PutUint32(tmpBuf[0:], opts.Expiry)
+		binary.BigEndian.PutUint32(tmpBuf[4:], opts.userFlags)
 		extraBuf = append(extraBuf, tmpBuf...)
 	}
 	if opts.Flags != 0 {

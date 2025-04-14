@@ -269,6 +269,7 @@ type TransactionGetResult struct {
 	Meta  *TransactionMutableItemMeta
 	Value []byte
 	Cas   Cas
+	Flags uint32
 }
 
 // TransactionGetCallback describes a callback for a completed Get operation.
@@ -355,6 +356,7 @@ type TransactionInsertOptions struct {
 	CollectionName string
 	Key            []byte
 	Value          json.RawMessage
+	Flags          uint32
 }
 
 // TransactionStoreCallback describes a callback for a completed Replace operation.
@@ -373,6 +375,7 @@ func (t *Transaction) Insert(opts TransactionInsertOptions, cb TransactionStoreC
 type TransactionReplaceOptions struct {
 	Document *TransactionGetResult
 	Value    json.RawMessage
+	Flags    uint32
 }
 
 // Replace will attempt to replace an existing document.

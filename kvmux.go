@@ -567,7 +567,7 @@ func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	}, nil
 }
 
-func (mux *kvMux) blockUntilFirstConfig(deadline time.Time, operationID string, cb func(*kvMuxState, error)) (PendingOp, error) {
+func (mux *kvMux) BlockUntilFirstConfig(deadline time.Time, operationID string, cb func(*kvMuxState, error)) (PendingOp, error) {
 	// No point in doing anything if we're shutdown.
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -626,7 +626,7 @@ func (w *basicCancellableOp) Cancel() {
 }
 
 func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnapshotCallback) (PendingOp, error) {
-	return mux.blockUntilFirstConfig(deadline, "WaitForConfigSnapshot", func(clientMux *kvMuxState, err error) {
+	return mux.BlockUntilFirstConfig(deadline, "WaitForConfigSnapshot", func(clientMux *kvMuxState, err error) {
 		if err != nil {
 			cb(nil, err)
 			return

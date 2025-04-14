@@ -68,8 +68,8 @@ const (
 	BucketCapabilityRangeScan            BucketCapability = 0x03
 	BucketCapabilityReplicaRead          BucketCapability = 0x04
 	BucketCapabilityNonDedupedHistory    BucketCapability = 0x05
-	// Uncommitted: This API may change in the future.
-	BucketCapabilityReviveDocument BucketCapability = 0x06
+	BucketCapabilityReviveDocument       BucketCapability = 0x06
+	BucketCapabilityBinaryXattr          BucketCapability = 0x07
 )
 
 type CapabilityStatus uint32

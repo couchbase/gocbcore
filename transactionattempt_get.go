@@ -121,6 +121,7 @@ func (t *transactionAttempt) get(
 							Value:          doc.Body,
 							Cas:            doc.Cas,
 							Meta:           docMeta,
+							Flags:          doc.Flags,
 						}, nil)
 					})
 				})
@@ -201,16 +202,22 @@ func (t *transactionAttempt) performMavLogic(
 	if doc.TxnMeta.ID.Attempt == t.id {
 		switch doc.TxnMeta.Operation.Type {
 		case jsonMutationInsert:
+			value, flags := t.jsonTxnXattrValue(doc.TxnMeta)
+			doc.TxnMeta.Aux.UserFlags = flags
 			t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
 			cb(&transactionGetDoc{
-				Body: doc.TxnMeta.Operation.Staged,
-				Cas:  doc.Cas,
+				Body:  value,
+				Cas:   doc.Cas,
+				Flags: flags,
 			}, nil)
 		case jsonMutationReplace:
+			value, flags := t.jsonTxnXattrValue(doc.TxnMeta)
+			doc.TxnMeta.Aux.UserFlags = flags
 			t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
 			cb(&transactionGetDoc{
-				Body: doc.TxnMeta.Operation.Staged,
-				Cas:  doc.Cas,
+				Body:  value,
+				Cas:   doc.Cas,
+				Flags: flags,
 			}, nil)
 		case jsonMutationRemove:
 			cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
@@ -235,8 +242,9 @@ func (t *transactionAttempt) performMavLogic(
 
 		t.logger.logInfof(t.id, "Completed ATR resolution")
 		cb(&transactionGetDoc{
-			Body: doc.Body,
-			Cas:  doc.Cas,
+			Body:  doc.Body,
+			Cas:   doc.Cas,
+			Flags: doc.Flags,
 		}, nil)
 		return
 	}
@@ -299,18 +307,22 @@ func (t *transactionAttempt) performMavLogic(
 							if state == jsonAtrStateCommitted || state == jsonAtrStateCompleted {
 								switch doc.TxnMeta.Operation.Type {
 								case jsonMutationInsert:
+									value, flags := t.jsonTxnXattrValue(doc.TxnMeta)
 									t.logger.logInfof(t.id, "Doc already in txn as insert, using staged value")
 									cb(&transactionGetDoc{
-										Body:    doc.TxnMeta.Operation.Staged,
+										Body:    value,
 										Cas:     doc.Cas,
 										TxnMeta: doc.TxnMeta,
+										Flags:   flags,
 									}, nil)
 								case jsonMutationReplace:
+									value, flags := t.jsonTxnXattrValue(doc.TxnMeta)
 									t.logger.logInfof(t.id, "Doc already in txn as replace, using staged value")
 									cb(&transactionGetDoc{
-										Body:    doc.TxnMeta.Operation.Staged,
+										Body:    value,
 										Cas:     doc.Cas,
 										TxnMeta: doc.TxnMeta,
+										Flags:   flags,
 									}, nil)
 								case jsonMutationRemove:
 									cb(nil, wrapError(ErrDocumentNotFound, "doc was a staged remove"))
@@ -334,6 +346,7 @@ func (t *transactionAttempt) performMavLogic(
 								Body:    doc.Body,
 								Cas:     doc.Cas,
 								TxnMeta: doc.TxnMeta,
+								Flags:   doc.Flags,
 							}, nil)
 						})
 				})
@@ -441,9 +454,25 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				txnMeta = &txnMetaVal
 			}
 
+			var flags uint32
+			if txnMeta != nil {
+				flags = txnMeta.Aux.UserFlags
+			} else {
+				flags = meta.Flags
+			}
+
 			var docBody []byte
 			if result.Ops[2].Err == nil {
 				docBody = result.Ops[2].Value
+			}
+
+			// If we have binary data then we need to assign it into the txnMeta.
+			// Whilst we will load the `bin` field as a part of the `txn` field it will be in an internal server format.
+			if len(result.Ops) > 3 && result.Ops[3].Err == nil {
+				if txnMeta != nil {
+					txnMeta.Operation.Bin = result.Ops[3].Value
+				}
+				docBody = result.Ops[3].Value
 			}
 
 			ecCb(&transactionGetDoc{
@@ -452,67 +481,74 @@ func (t *transactionAttempt) fetchDocWithMeta(
 				DocMeta: meta,
 				Cas:     result.Cas,
 				Deleted: result.Internal.IsDeleted,
+				Flags:   flags,
 			}, nil)
 		}
 
-		if replicaOpts.serverGroup == "" {
-			_, err = agent.LookupIn(LookupInOptions{
-				ScopeName:      scopeName,
-				CollectionName: collectionName,
-				Key:            key,
-				Ops: []SubDocOp{
-					{
-						Op:    memd.SubDocOpGet,
-						Path:  "$document",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-					{
-						Op:    memd.SubDocOpGet,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-					{
-						Op:    memd.SubDocOpGetDoc,
-						Path:  "",
-						Flags: 0,
-					},
-				},
-				Deadline: deadline,
-				Flags:    memd.SubdocDocFlagAccessDeleted,
-				User:     oboUser,
-			}, handler)
+		err = t.supportsBinaryXattr(agent, "get", func(supportsBinaryXattr bool, err error) {
 			if err != nil {
 				ecCb(nil, classifyError(err))
+				return
 			}
-		} else {
-			_, err = agent.crud.LookupInServerGroup(replicaOpts.serverGroup, replicaOpts.withFallback, LookupInOptions{
-				ScopeName:      scopeName,
-				CollectionName: collectionName,
-				Key:            key,
-				Ops: []SubDocOp{
-					{
-						Op:    memd.SubDocOpGet,
-						Path:  "$document",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-					{
-						Op:    memd.SubDocOpGet,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-					{
-						Op:    memd.SubDocOpGetDoc,
-						Path:  "",
-						Flags: 0,
-					},
+
+			ops := []SubDocOp{
+				{
+					Op:    memd.SubDocOpGet,
+					Path:  "$document",
+					Flags: memd.SubdocFlagXattrPath,
 				},
-				Deadline: deadline,
-				// Flags:    memd.SubdocDocFlagAccessDeleted, See: MB-63241
-				User: oboUser,
-			}, handler)
-			if err != nil {
-				ecCb(nil, classifyError(err))
+				{
+					Op:    memd.SubDocOpGet,
+					Path:  "txn",
+					Flags: memd.SubdocFlagXattrPath,
+				},
+				{
+					Op:    memd.SubDocOpGetDoc,
+					Path:  "",
+					Flags: 0,
+				},
 			}
+
+			if supportsBinaryXattr {
+				ops = append(ops, SubDocOp{
+					Op:    memd.SubDocOpGet,
+					Path:  "txn.op.bin",
+					Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagBinaryXattr,
+				})
+			}
+
+			serverGroup := replicaOpts.serverGroup
+
+			if serverGroup == "" {
+				_, err := agent.LookupIn(LookupInOptions{
+					ScopeName:      scopeName,
+					CollectionName: collectionName,
+					Key:            key,
+					Ops:            ops,
+					Deadline:       deadline,
+					Flags:          memd.SubdocDocFlagAccessDeleted,
+					User:           oboUser,
+				}, handler)
+				if err != nil {
+					ecCb(nil, classifyError(err))
+				}
+			} else {
+				_, err := agent.crud.LookupInServerGroup(serverGroup, replicaOpts.withFallback, LookupInOptions{
+					ScopeName:      scopeName,
+					CollectionName: collectionName,
+					Key:            key,
+					Ops:            ops,
+					Deadline:       deadline,
+					// Flags:    memd.SubdocDocFlagAccessDeleted, See: MB-63241
+					User: oboUser,
+				}, handler)
+				if err != nil {
+					ecCb(nil, classifyError(err))
+				}
+			}
+		})
+		if err != nil {
+			ecCb(nil, classifyError(err))
 		}
 	})
 }

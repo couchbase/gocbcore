@@ -370,6 +370,26 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 			opDeadline = time.Now().Add(ltc.keyValueTimeout)
 		}
 
+		binaryXattrSupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityBinaryXattr, "unregisterClientRecord", deadline)
+		if err != nil {
+			logDebugf("Failed to schedule remove client %s for %s, location = %s: %v", uuid, ltc.uuid, location, err)
+			select {
+			case <-time.After(time.Until(deadline)):
+				logDebugf("Timed out scheduling client removal %s from client record for %s, location = %s", uuid,
+					ltc.uuid, location)
+				cb(ErrTimeout)
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+			ltc.unregisterClientRecord(location, uuid, deadline, cb)
+			return
+		}
+
+		var userFlags uint32
+		if binaryXattrSupported {
+			userFlags = EncodeCommonFlags(BinaryType, NoCompression)
+		}
+
 		_, err = agent.MutateIn(MutateInOptions{
 			Key: clientRecordKey,
 			Ops: []SubDocOp{
@@ -383,6 +403,7 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 			CollectionName: location.CollectionName,
 			ScopeName:      location.ScopeName,
 			User:           oboUser,
+			userFlags:      userFlags,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
 				ltc.updateResourceUnitsError(err)
@@ -994,6 +1015,17 @@ func (ltc *stdLostTransactionCleaner) processClientRecord(agent *Agent, oboUser 
 			deadline = time.Now().Add(ltc.keyValueTimeout)
 		}
 
+		binaryXattrSupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityBinaryXattr, "processClientRecord", deadline)
+		if err != nil {
+			cb(err)
+			return
+		}
+
+		var userFlags uint32
+		if binaryXattrSupported {
+			userFlags = EncodeCommonFlags(BinaryType, NoCompression)
+		}
+
 		_, err = agent.MutateIn(MutateInOptions{
 			Key:            clientRecordKey,
 			Ops:            ops,
@@ -1001,6 +1033,7 @@ func (ltc *stdLostTransactionCleaner) processClientRecord(agent *Agent, oboUser 
 			ScopeName:      scope,
 			Deadline:       deadline,
 			User:           oboUser,
+			userFlags:      userFlags,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
 				ltc.updateResourceUnitsError(err)
@@ -1038,6 +1071,17 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 			deadline = time.Now().Add(ltc.keyValueTimeout)
 		}
 
+		binaryXattrSupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityBinaryXattr, "createClientRecord", deadline)
+		if err != nil {
+			cb(err)
+			return
+		}
+
+		var userFlags uint32
+		if binaryXattrSupported {
+			userFlags = EncodeCommonFlags(BinaryType, NoCompression)
+		}
+
 		_, err = agent.MutateIn(MutateInOptions{
 			Key: clientRecordKey,
 			Ops: []SubDocOp{
@@ -1059,6 +1103,7 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 			CollectionName: collection,
 			ScopeName:      scope,
 			User:           oboUser,
+			userFlags:      userFlags,
 		}, func(result *MutateInResult, err error) {
 			if err != nil {
 				ltc.updateResourceUnitsError(err)

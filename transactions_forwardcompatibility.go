@@ -53,6 +53,7 @@ func TransactionsProtocolExtensions() []string {
 		"EXT_REPLACE_BODY_WITH_XATTR",
 		"EXT_THREAD_SAFE",
 		"EXT_GET_MULTI",
+		"EXT_BINARY_SUPPORT",
 	}
 }
 
@@ -93,6 +94,7 @@ const (
 	forwardCompatExtensionReplaceBodyWithXattr      forwardCompatExtension = "RX"
 	forwardCompatExtensionThreadSafety              forwardCompatExtension = "TS"
 	forwardCompatExtensionGetMulti                  forwardCompatExtension = "GM"
+	forwardCompatExtensionBinarySupport             forwardCompatExtension = "BS"
 )
 
 type forwardCompatStage string
@@ -148,6 +150,7 @@ var supportedforwardCompatExtensions = []forwardCompatExtension{
 	forwardCompatExtensionReplaceBodyWithXattr,
 	forwardCompatExtensionThreadSafety,
 	forwardCompatExtensionGetMulti,
+	forwardCompatExtensionBinarySupport,
 }
 
 func jsonForwardCompatToForwardCompat(fc map[string][]jsonForwardCompatibilityEntry) map[string][]TransactionForwardCompatibilityEntry {

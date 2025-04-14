@@ -760,7 +760,7 @@ func (t *transactionAttempt) ensureCleanUpRequest() {
 }
 
 func (t *transactionAttempt) supportsReplaceBodyWithXattr(agent *Agent, operationID string, cb func(bool, *TransactionOperationFailedError)) *TransactionOperationFailedError {
-	_, err := agent.kvMux.blockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
+	err := t.supportsBucketCap(agent, BucketCapabilityReviveDocument, operationID, func(supported bool, err error) {
 		if err != nil {
 			cb(false, t.operationFailed(operationFailedDef{
 				Cerr:              classifyError(err),
@@ -771,8 +771,7 @@ func (t *transactionAttempt) supportsReplaceBodyWithXattr(agent *Agent, operatio
 			return
 		}
 
-		isSupported := clientMux.HasBucketCapabilityStatus(BucketCapabilityReviveDocument, CapabilityStatusSupported)
-		cb(isSupported, nil)
+		cb(supported, nil)
 	})
 	if err != nil {
 		return t.operationFailed(operationFailedDef{
@@ -783,4 +782,75 @@ func (t *transactionAttempt) supportsReplaceBodyWithXattr(agent *Agent, operatio
 		})
 	}
 	return nil
+}
+
+func (t *transactionAttempt) supportsBinaryXattr(agent *Agent, operationID string, cb func(bool, error)) error {
+	return t.supportsBucketCap(agent, BucketCapabilityBinaryXattr, operationID, cb)
+}
+
+func (t *transactionAttempt) supportsBucketCap(agent *Agent, bucketCap BucketCapability, operationID string, cb func(bool, error)) error {
+	_, err := agent.kvMux.BlockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			cb(false, err)
+			return
+		}
+
+		isSupported := clientMux.HasBucketCapabilityStatus(bucketCap, CapabilityStatusSupported)
+		cb(isSupported, nil)
+	})
+
+	return err
+}
+
+func (t *transactionAttempt) jsonTxnXattrValue(meta *jsonTxnXattr) (json.RawMessage, uint32) {
+	if meta.Operation.Bin != nil {
+		return meta.Operation.Bin, meta.Aux.UserFlags
+	}
+
+	return meta.Operation.Staged, 2 << 24
+}
+
+func (t *transactionAttempt) isBinary(flags uint32) (bool, error) {
+	if flags == 0 {
+		return false, nil
+	}
+
+	datatype, _ := DecodeCommonFlags(flags)
+	switch datatype {
+	case JSONType:
+		return false, nil
+	case BinaryType:
+		return true, nil
+	}
+
+	return false, errEncodingFailure
+}
+
+func (t *transactionAttempt) addBinarySupportForwardCompat(txnMeta *jsonTxnXattr) {
+	txnMeta.ForwardCompat = map[string][]jsonForwardCompatibilityEntry{
+		string(forwardCompatStageGetsCleanupEntry): {
+			{
+				Behaviour:         string(forwardCompatBehaviourFail),
+				ProtocolExtension: string(forwardCompatExtensionBinarySupport),
+			},
+		},
+		string(forwardCompatStageGets): {
+			{
+				Behaviour:         string(forwardCompatBehaviourFail),
+				ProtocolExtension: string(forwardCompatExtensionBinarySupport),
+			},
+		},
+		string(forwardCompatStageWWCInserting): {
+			{
+				Behaviour:         string(forwardCompatBehaviourFail),
+				ProtocolExtension: string(forwardCompatExtensionBinarySupport),
+			},
+		},
+		string(forwardCompatStageWWCInsertingGet): {
+			{
+				Behaviour:         string(forwardCompatBehaviourFail),
+				ProtocolExtension: string(forwardCompatExtensionBinarySupport),
+			},
+		},
+	}
 }
