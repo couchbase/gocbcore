@@ -707,7 +707,8 @@ func isErrorStatus(err error, code memd.StatusCode) bool {
 }
 
 var (
-	errNoCCCPHosts = errors.New("no cccp hosts available")
+	errNoCCCPHosts             = errors.New("no cccp hosts available")
+	errNoReplicasInServerGroup = errors.New("no replicas in server group")
 )
 
 // This list contains protected versions of all the errors we throw

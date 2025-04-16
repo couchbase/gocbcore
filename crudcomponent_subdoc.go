@@ -180,7 +180,7 @@ func (crud *crudComponent) LookupIn(opts LookupInOptions, cb LookupInCallback) (
 	return op, nil
 }
 
-func (crud *crudComponent) LookupInServerGroup(serverGroup string, withFallback bool, opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
+func (crud *crudComponent) LookupInAnyReplica(serverGroup *string, opts LookupInOptions, cb LookupInCallback) (PendingOp, error) {
 	parentOp := &multiPendingOp{
 		isIdempotent: true,
 	}
@@ -199,33 +199,42 @@ func (crud *crudComponent) LookupInServerGroup(serverGroup string, withFallback 
 		snapshot := result.Snapshot
 
 		var servers []int
-		serverGroups, err := snapshot.KeyToServersByServerGroup(opts.Key)
-		if err != nil {
-			parentOp.IncrementCompletedOps()
-			cb(nil, err)
-			return
-		}
-
-		for group, srvIndexes := range serverGroups {
-			if group == serverGroup {
-				servers = append(servers, srvIndexes...)
-			}
-		}
-
-		if withFallback && len(servers) == 0 {
-			// There are no replicas for this document in the selected server group & we have been asked to fall back to
-			// a standard replica LookupIn.
-
-			serverGroup = "" // We are no longer doing a server group LookupIn
+		if serverGroup == nil {
+			// This is a standard LookupInAnyReplica
 
 			numReplicas, err := snapshot.NumReplicas()
 			if err != nil {
 				parentOp.IncrementCompletedOps()
 				cb(nil, err)
+				return
 			}
 
 			for srvIdx := 0; srvIdx <= numReplicas; srvIdx++ { // There are numReplicas+1 servers
 				servers = append(servers, srvIdx)
+			}
+		} else {
+			// This is a zone-aware LookupInAnyReplica
+
+			serverGroups, err := snapshot.KeyToServersByServerGroup(opts.Key)
+			if err != nil {
+				parentOp.IncrementCompletedOps()
+				cb(nil, err)
+				return
+			}
+
+			for group, srvIndexes := range serverGroups {
+				if group == *serverGroup {
+					servers = append(servers, srvIndexes...)
+				}
+			}
+
+			if len(servers) == 0 {
+				parentOp.IncrementCompletedOps()
+
+				// We return the internal errNoReplicasInServerGroup. This allows callers to fall back to a
+				// non-zone-aware LookupInAnyReplica.
+				cb(nil, errNoReplicasInServerGroup)
+				return
 			}
 		}
 
@@ -258,6 +267,10 @@ func (crud *crudComponent) LookupInServerGroup(serverGroup string, withFallback 
 			if replicaIdx > 0 {
 				flags = flags | memd.SubdocDocFlagReplicaRead
 			}
+			var serverGroupOption string
+			if serverGroup != nil {
+				serverGroupOption = *serverGroup
+			}
 			curOp, err := crud.LookupIn(LookupInOptions{
 				Key:            opts.Key,
 				Flags:          flags,
@@ -268,7 +281,7 @@ func (crud *crudComponent) LookupInServerGroup(serverGroup string, withFallback 
 				RetryStrategy:  opts.RetryStrategy,
 				Deadline:       opts.Deadline,
 				ReplicaIdx:     replicaIdx,
-				ServerGroup:    serverGroup,
+				ServerGroup:    serverGroupOption,
 				User:           opts.User,
 				TraceContext:   opts.TraceContext,
 			}, func(result *LookupInResult, err error) {
