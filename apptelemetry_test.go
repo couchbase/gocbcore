@@ -48,6 +48,14 @@ func createAgentGroupWithTelemetryReporter(reporter *TelemetryReporter) (*AgentG
 
 func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)
+
+	var kvNodes []string
+	var kvNodeUuids []string
+	for _, s := range suite.DefaultAgent().kvMux.getState().kvServerList {
+		kvNodes = append(kvNodes, hostnameFromURI(s.Address))
+		kvNodeUuids = append(kvNodeUuids, s.NodeUUID)
+	}
+
 	var counts map[string]*uint32
 
 	mockStore := new(mockTelemetryStore)
@@ -62,6 +70,14 @@ func (suite *StandardTestSuite) TestTelemetryWithKvOps() {
 				suite.Assert().Positive(attrs.duration)
 			}
 			suite.Assert().NotEmpty(attrs.node)
+			suite.Assert().Contains(kvNodes, attrs.node)
+			if suite.SupportsFeature(TestFeatureNodeUuid) {
+				suite.Assert().NotEmpty(attrs.nodeUUID)
+				suite.Assert().Contains(kvNodeUuids, attrs.nodeUUID)
+			} else {
+				suite.Assert().Empty(attrs.nodeUUID)
+			}
+			suite.Assert().Empty(attrs.altNode)
 			suite.Assert().Equal(attrs.service, MemdService)
 			suite.Assert().Equal(attrs.bucket, suite.BucketName)
 			if counts != nil {
@@ -242,12 +258,27 @@ func (suite *StandardTestSuite) TestTelemetryWithQueryOps() {
 	var queryCount uint32
 	expectedQueryCount := uint32(4)
 
+	var queryNodes []string
+	var queryNodeUuids []string
+	for _, s := range suite.DefaultAgent().httpMux.N1qlEps() {
+		queryNodes = append(queryNodes, hostnameFromURI(s.Address))
+		queryNodeUuids = append(queryNodeUuids, s.NodeUUID)
+	}
+
 	mockStore := new(mockTelemetryStore)
 	mockStore.On("recordOp", mock.AnythingOfType("gocbcore.telemetryOperationAttributes")).
 		Run(func(args mock.Arguments) {
 			attrs := args.Get(0).(telemetryOperationAttributes)
 			suite.Assert().Positive(attrs.duration)
 			suite.Assert().NotEmpty(attrs.node)
+			suite.Assert().Contains(queryNodes, attrs.node)
+			if suite.SupportsFeature(TestFeatureNodeUuid) {
+				suite.Assert().NotEmpty(attrs.nodeUUID)
+				suite.Assert().Contains(queryNodeUuids, attrs.nodeUUID)
+			} else {
+				suite.Assert().Empty(attrs.nodeUUID)
+			}
+			suite.Assert().Empty(attrs.altNode)
 			suite.Assert().Equal(attrs.service, N1qlService)
 			suite.Assert().Empty(attrs.bucket)
 			suite.Assert().Equal(telemetryOutcomeSuccess, attrs.outcome)

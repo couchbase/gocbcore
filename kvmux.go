@@ -907,7 +907,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 			IsSeedNode:       endpoint.IsSeedNode,
 			ServerGroup:      endpoint.ServerGroup,
 			NodeUUID:         endpoint.NodeUUID,
-			CanonicalAddress: endpoint.CanonicalAddress,
+			CanonicalAddress: trimSchemePrefix(endpoint.CanonicalAddress),
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {

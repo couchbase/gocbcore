@@ -27,6 +27,7 @@ var (
 	srvVer750   = NodeVersion{7, 5, 0, 0, 0, ""}
 	srvVer760   = NodeVersion{7, 6, 0, 0, 0, ""}
 	srvVer764   = NodeVersion{7, 6, 4, 0, 0, ""}
+	srvVer800   = NodeVersion{8, 0, 0, 0, 0, ""}
 	mockVer156  = NodeVersion{1, 5, 6, 0, 0, ""}
 )
 
@@ -61,6 +62,7 @@ var (
 	TestFeatureDocNotLocked         = TestFeatureCode("notlocked")
 	TestFeatureCavesUnreliable      = TestFeatureCode("cavesunreliable")
 	TestFeatureClusterLabels        = TestFeatureCode("clusterlabels")
+	TestFeatureNodeUuid             = TestFeatureCode("nodeuuid")
 )
 
 type TestFeatureFlag struct {
