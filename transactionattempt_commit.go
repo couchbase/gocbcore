@@ -529,6 +529,8 @@ func (t *transactionAttempt) commitStagedReplace(
 							return
 						}
 
+						mutation.Cas = result.Cas
+
 						t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
 							if err != nil {
 								ecCb(classifyHookError(err))
@@ -691,6 +693,8 @@ func (t *transactionAttempt) commitStagedInsert(
 								return
 							}
 
+							mutation.Cas = result.Cas
+
 							t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
 								if err != nil {
 									ecCb(classifyHookError(err))
@@ -732,6 +736,8 @@ func (t *transactionAttempt) commitStagedInsert(
 							ecCb(classifyHookError(err))
 							return
 						}
+
+						mutation.Cas = result.Cas
 
 						t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
 							if err != nil {
