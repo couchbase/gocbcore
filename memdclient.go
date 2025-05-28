@@ -44,6 +44,7 @@ type memdClient struct {
 	closed                bool
 	conn                  memdConn
 	opList                *memdOpMap
+	opTombstones          *memdOpTombstoneStore
 	features              []memd.HelloFeature
 	lock                  sync.Mutex
 	streamEndNotSupported bool
@@ -104,6 +105,10 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		compressionMinRatio:  props.CompressionMinRatio,
 		compressionMinSize:   props.CompressionMinSize,
 		disableDecompression: props.DisableDecompression,
+	}
+
+	if client.zombieLogger != nil {
+		client.opTombstones = newMemdOpTombstoneStore()
 	}
 
 	if breakerCfg.Enabled {
@@ -221,6 +226,17 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 		atomic.CompareAndSwapPointer(&req.waitingIn, unsafe.Pointer(client), nil)
 	}
 
+	if client.opTombstones != nil {
+		tombstoneEvicted := client.opTombstones.Add(req.Opaque, &memdOpTombstone{
+			totalServerDuration: req.totalServerDuration,
+			dispatchTime:        req.dispatchTime,
+		})
+
+		if tombstoneEvicted && client.zombieLogger != nil {
+			client.zombieLogger.RecordTombstoneEviction()
+		}
+	}
+
 	if client.breaker.CompletionCallback(err) {
 		client.breaker.MarkSuccessful()
 	} else {
@@ -332,9 +348,20 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	if req == nil {
 		// There is no known request that goes with this response.  Ignore it.
-		logDebugf("%s memdclient received response with no corresponding request.", client.loggerID())
+		logDebugf("%s memdclient received response with no corresponding request. OP=0x%x. Opaque=%d. Status:%d", client.loggerID(), resp.Command, resp.Opaque, resp.Status)
+		if client.opTombstones == nil {
+			return
+		}
+		client.lock.Lock()
+		tombstone := client.opTombstones.FindAndMaybeRemove(resp.Opaque)
+		if tombstone == nil {
+			client.lock.Unlock()
+			logDebugf("%s memdclient received unexpected orphaned response with no corresponding cancellation metadata. OP=0x%x. Opaque=%d. Status:%d", client.loggerID(), resp.Command, resp.Opaque, resp.Status)
+			return
+		}
+		client.lock.Unlock()
 		if client.zombieLogger != nil {
-			client.zombieLogger.RecordZombieResponse(resp, client.connID, client.LocalAddress(), client.Address())
+			client.zombieLogger.RecordZombieResponse(tombstone, resp, client.connID, client.LocalAddress(), client.Address())
 		}
 		return
 	}
@@ -349,6 +376,10 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 
 	if !req.Persistent {
 		stopNetTraceLocked(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
+
+		if resp.ServerDurationFrame != nil {
+			req.recordServerDurationLocked(resp.ServerDurationFrame.ServerDuration)
+		}
 
 		if req.telemetryRecorder != nil {
 			req.telemetryRecorder.FinishAndRecordLocked(telemetryOutcomeSuccess)

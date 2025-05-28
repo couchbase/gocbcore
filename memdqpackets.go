@@ -96,6 +96,8 @@ type memdQRequest struct {
 	resourceUnits     *ResourceUnitResult
 
 	telemetryRecorder *telemetryOpRecorder
+
+	totalServerDuration time.Duration
 }
 
 type memdQRequestConnInfo struct {
@@ -326,4 +328,9 @@ func (req *memdQRequest) Cancel() {
 	// callback immediately on the users behalf.
 	err := errRequestCanceled
 	req.cancelWithCallback(err)
+}
+
+func (req *memdQRequest) recordServerDurationLocked(duration time.Duration) {
+	// processingLock must be already held here
+	req.totalServerDuration += duration
 }

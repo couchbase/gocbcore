@@ -5,25 +5,30 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type zombieLogEntry struct {
-	connectionID  string
-	operationID   string
-	remoteSocket  string
-	localSocket   string
-	duration      time.Duration
-	operationName string
+	connectionID        string
+	operationID         string
+	remoteSocket        string
+	localSocket         string
+	serverDuration      time.Duration
+	totalServerDuration time.Duration
+	totalDuration       time.Duration
+	operationName       string
 }
 
 type zombieLogItem struct {
-	ConnectionID     string `json:"last_local_id"`
-	OperationID      string `json:"operation_id"`
-	RemoteSocket     string `json:"last_remote_socket,omitempty"`
-	LocalSocket      string `json:"last_local_socket,omitempty"`
-	ServerDurationUs uint64 `json:"last_server_duration_us,omitempty"`
-	OperationName    string `json:"operation_name"`
+	ConnectionID          string `json:"last_local_id"`
+	OperationID           string `json:"operation_id"`
+	RemoteSocket          string `json:"last_remote_socket,omitempty"`
+	LocalSocket           string `json:"last_local_socket,omitempty"`
+	ServerDurationUs      uint64 `json:"last_server_duration_us,omitempty"`
+	TotalServerDurationUs uint64 `json:"total_server_duration_us,omitempty"`
+	TotalDurationUs       uint64 `json:"total_duration_us,omitempty"`
+	OperationName         string `json:"operation_name"`
 }
 
 type zombieLogJsonEntry struct {
@@ -39,6 +44,8 @@ type zombieLoggerComponent struct {
 	interval   time.Duration
 	sampleSize int
 	stopSig    chan struct{}
+
+	tombstonesEvictedCount atomic.Uint32
 }
 
 func newZombieLoggerComponent(interval time.Duration, sampleSize int) *zombieLoggerComponent {
@@ -71,6 +78,11 @@ func (zlc *zombieLoggerComponent) Start() {
 		}
 
 		logWarnf("Orphaned responses observed:\n %s", jsonBytes)
+
+		evictedCount := zlc.tombstonesEvictedCount.Swap(0)
+		if evictedCount > 0 {
+			logWarnf("%d request tombstones have been evicted from the cache. It is possible some orphaned responses are missing from the output.", evictedCount)
+		}
 	}
 }
 
@@ -102,12 +114,14 @@ func (zlc *zombieLoggerComponent) createOutput() []byte {
 		op := oldOps[i]
 
 		entries.Top[len(oldOps)-i-1] = zombieLogItem{
-			OperationID:      op.operationID,
-			ConnectionID:     op.connectionID,
-			RemoteSocket:     op.remoteSocket,
-			LocalSocket:      op.localSocket,
-			ServerDurationUs: uint64(op.duration.Microseconds()),
-			OperationName:    op.operationName,
+			OperationID:           op.operationID,
+			ConnectionID:          op.connectionID,
+			RemoteSocket:          op.remoteSocket,
+			LocalSocket:           op.localSocket,
+			ServerDurationUs:      uint64(op.serverDuration.Microseconds()),
+			TotalServerDurationUs: uint64(op.totalServerDuration.Microseconds()),
+			TotalDurationUs:       uint64(op.totalDuration.Microseconds()),
+			OperationName:         op.operationName,
 		}
 	}
 
@@ -127,24 +141,27 @@ func (zlc *zombieLoggerComponent) Stop() {
 	close(zlc.stopSig)
 }
 
-func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, connID, localAddr, remoteAddr string) {
+func (zlc *zombieLoggerComponent) recordZombieResponseInternal(totalDuration, totalServerDuration time.Duration, resp *memdQResponse, connID, localAddr, remoteAddr string) {
 	entry := &zombieLogEntry{
-		connectionID:  connID,
-		operationID:   fmt.Sprintf("0x%x", resp.Opaque),
-		remoteSocket:  remoteAddr,
-		duration:      0,
-		operationName: resp.Command.Name(),
-		localSocket:   localAddr,
+		connectionID:        connID,
+		operationID:         fmt.Sprintf("0x%x", resp.Opaque),
+		remoteSocket:        remoteAddr,
+		serverDuration:      0,
+		totalServerDuration: totalServerDuration,
+		totalDuration:       totalDuration,
+		operationName:       resp.Command.Name(),
+		localSocket:         localAddr,
 	}
 
 	if resp.Packet.ServerDurationFrame != nil {
-		entry.duration = resp.Packet.ServerDurationFrame.ServerDuration
+		entry.serverDuration = resp.Packet.ServerDurationFrame.ServerDuration
+		entry.totalServerDuration += resp.Packet.ServerDurationFrame.ServerDuration
 	}
 
 	zlc.zombieLock.RLock()
 
 	if cap(zlc.zombieOps) == 0 || (len(zlc.zombieOps) == cap(zlc.zombieOps) &&
-		entry.duration < zlc.zombieOps[0].duration) {
+		entry.totalDuration < zlc.zombieOps[0].totalDuration) {
 		// we are at capacity and we are faster than the fastest slow op or somehow in a state where capacity is 0.
 		zlc.zombieLock.RUnlock()
 		return
@@ -153,14 +170,14 @@ func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, conn
 
 	zlc.zombieLock.Lock()
 	if cap(zlc.zombieOps) == 0 || (len(zlc.zombieOps) == cap(zlc.zombieOps) &&
-		entry.duration < zlc.zombieOps[0].duration) {
+		entry.totalDuration < zlc.zombieOps[0].totalDuration) {
 		// we are at capacity and we are faster than the fastest slow op or somehow in a state where capacity is 0.
 		zlc.zombieLock.Unlock()
 		return
 	}
 
 	l := len(zlc.zombieOps)
-	i := sort.Search(l, func(i int) bool { return entry.duration < zlc.zombieOps[i].duration })
+	i := sort.Search(l, func(i int) bool { return entry.totalDuration < zlc.zombieOps[i].totalDuration })
 
 	// i represents the slot where it should be inserted
 
@@ -182,4 +199,12 @@ func (zlc *zombieLoggerComponent) RecordZombieResponse(resp *memdQResponse, conn
 	}
 
 	zlc.zombieLock.Unlock()
+}
+
+func (zlc *zombieLoggerComponent) RecordZombieResponse(cancelledMetadata *memdOpTombstone, resp *memdQResponse, connID, localAddr, remoteAddr string) {
+	zlc.recordZombieResponseInternal(time.Since(cancelledMetadata.dispatchTime), cancelledMetadata.totalServerDuration, resp, connID, localAddr, remoteAddr)
+}
+
+func (zlc *zombieLoggerComponent) RecordTombstoneEviction() {
+	zlc.tombstonesEvictedCount.Add(1)
 }
