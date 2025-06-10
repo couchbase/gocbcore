@@ -499,10 +499,17 @@ func (crud *crudComponent) MutateIn(opts MutateInOptions, cb MutateInCallback) (
 	}
 
 	var extraBuf []byte
-	if opts.Expiry != 0 || opts.userFlags > 0 {
-		tmpBuf := make([]byte, 8)
-		binary.BigEndian.PutUint32(tmpBuf[0:], opts.Expiry)
-		binary.BigEndian.PutUint32(tmpBuf[4:], opts.userFlags)
+	if opts.Expiry != 0 || opts.userFlags != 0 {
+		var tmpBuf []byte
+		if opts.userFlags != 0 {
+			tmpBuf = make([]byte, 8)
+			binary.BigEndian.PutUint32(tmpBuf[0:], opts.Expiry)
+			binary.BigEndian.PutUint32(tmpBuf[4:], opts.userFlags)
+		} else {
+			tmpBuf = make([]byte, 4)
+			binary.BigEndian.PutUint32(tmpBuf[0:], opts.Expiry)
+		}
+
 		extraBuf = append(extraBuf, tmpBuf...)
 	}
 	if opts.Flags != 0 {
