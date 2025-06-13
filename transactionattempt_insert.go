@@ -100,22 +100,10 @@ func (t *transactionAttempt) insert(
 						})
 					return
 				case TransactionStagedMutationInsert:
-					endAndCb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentExists, "attempted to insert a document previously inserted in this transaction")),
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
+					endAndCb(nil, wrapError(ErrDocumentExists, "attempted to insert a document previously inserted in this transaction"))
 					return
 				case TransactionStagedMutationReplace:
-					endAndCb(nil, t.operationFailed(operationFailedDef{
-						Cerr: classifyError(
-							wrapError(ErrDocumentExists, "attempted to insert a document previously replaced in this transaction")),
-						ShouldNotRetry:    true,
-						ShouldNotRollback: false,
-						Reason:            TransactionErrorReasonTransactionFailed,
-					}))
+					endAndCb(nil, wrapError(ErrDocumentExists, "attempted to insert a document previously replaced in this transaction"))
 					return
 				default:
 					endAndCb(nil, t.operationFailed(operationFailedDef{
@@ -210,13 +198,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 					}
 
 					if txnMeta.Operation.Type != jsonMutationInsert {
-						cb(nil, t.operationFailed(operationFailedDef{
-							Cerr: classifyError(
-								wrapError(ErrDocumentExists, "found staged non-insert mutation")),
-							ShouldNotRetry:    true,
-							ShouldNotRollback: false,
-							Reason:            TransactionErrorReasonTransactionFailed,
-						}))
+						cb(nil, wrapError(ErrDocumentExists, "found staged non-insert mutation"))
 						return
 					}
 
