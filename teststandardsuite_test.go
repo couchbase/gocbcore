@@ -123,7 +123,7 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeatureReplicas:
 		return true
 	case TestFeatureMemd:
-		return true
+		return suite.IsMockServer() || !suite.ClusterVersion.Lower(srvVer800)
 	case TestFeatureN1ql:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Equal(srvVer650DP)
 	case TestFeatureCbas:
