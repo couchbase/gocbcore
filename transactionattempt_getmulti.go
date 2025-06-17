@@ -504,7 +504,7 @@ func (mgr *transactionGetMultiManager) readSkewResolution(cb func(transactionGet
 	var otherTxnAttemptID string
 	var atr jsonTxnXattrATR
 	for _, doc := range mgr.alreadyFetched {
-		if !doc.docExists() {
+		if !doc.docExists() || doc.Internal.TxnMeta == nil {
 			continue
 		}
 		if attemptID := doc.Internal.TxnMeta.ID.Attempt; attemptID != "" && attemptID != mgr.txnAttempt.id {
@@ -632,7 +632,7 @@ func (mgr *transactionGetMultiManager) partitionAlreadyFetched(attemptID string)
 		if !doc.docExists() {
 			continue
 		}
-		if doc.Internal.TxnMeta.ID.Attempt == attemptID {
+		if doc.Internal.TxnMeta != nil && doc.Internal.TxnMeta.ID.Attempt == attemptID {
 			fetchedInT1 = append(fetchedInT1, doc)
 		} else {
 			fetchedNotInT1 = append(fetchedNotInT1, doc)
