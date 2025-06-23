@@ -169,10 +169,12 @@ func (mgr *transactionGetMultiManager) reset() {
 func (mgr *transactionGetMultiManager) createResult() *TransactionGetMultiResult {
 	res := &TransactionGetMultiResult{
 		Values: make(map[int][]byte),
+		Flags:  make(map[int]uint32),
 	}
 	for _, specRes := range mgr.alreadyFetched {
 		if specRes.docExists() {
 			res.Values[specRes.Spec.originalIdx] = specRes.Internal.Body
+			res.Flags[specRes.Spec.originalIdx] = specRes.Internal.Flags
 		}
 	}
 	return res

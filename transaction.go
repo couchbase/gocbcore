@@ -334,6 +334,10 @@ type TransactionGetMultiResult struct {
 	// Values is a map with the contents of the documents that were found. The keys of the map are the indexes of the
 	// corresponding specs as they were given in TransactionGetMultiOptions.Specs.
 	Values map[int][]byte
+
+	// Flags is a map with the flags specifying the format of the content for each document that was found. The keys of
+	// the map are the indexes of the corresponding specs as they were given in TransactionGetMultiOptions.Specs.
+	Flags map[int]uint32
 }
 
 // TransactionGetMultiCallback describes a callback for a completed Get operation.
