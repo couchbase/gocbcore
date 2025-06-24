@@ -788,6 +788,10 @@ func (t *transactionAttempt) supportsBinaryXattr(agent *Agent, operationID strin
 	return t.supportsBucketCap(agent, BucketCapabilityBinaryXattr, operationID, cb)
 }
 
+func (t *transactionAttempt) supportsSubdocAccessDeleted(agent *Agent, operationID string, cb func(bool, error)) error {
+	return t.supportsBucketCap(agent, BucketCapabilitySubdocAccessDeleted, operationID, cb)
+}
+
 func (t *transactionAttempt) supportsBucketCap(agent *Agent, bucketCap BucketCapability, operationID string, cb func(bool, error)) error {
 	_, err := agent.kvMux.BlockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
 		if err != nil {

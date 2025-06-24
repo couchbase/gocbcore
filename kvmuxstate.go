@@ -38,6 +38,7 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			BucketCapabilityNonDedupedHistory:    CapabilityStatusUnknown,
 			BucketCapabilityReviveDocument:       CapabilityStatusUnknown,
 			BucketCapabilityBinaryXattr:          CapabilityStatusUnknown,
+			BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnknown,
 		},
 
 		collectionsSupported: cfg.ContainsBucketCapability("collections"),
@@ -97,6 +98,12 @@ func newKVMuxState(cfg *routeConfig, kvServerList []routeEndpoint, tlsConfig *dy
 			mux.bucketCapabilities[BucketCapabilityBinaryXattr] = CapabilityStatusSupported
 		} else {
 			mux.bucketCapabilities[BucketCapabilityBinaryXattr] = CapabilityStatusUnsupported
+		}
+
+		if cfg.ContainsBucketCapability("subdoc.AccessDeleted") {
+			mux.bucketCapabilities[BucketCapabilitySubdocAccessDeleted] = CapabilityStatusSupported
+		} else {
+			mux.bucketCapabilities[BucketCapabilitySubdocAccessDeleted] = CapabilityStatusUnsupported
 		}
 	}
 

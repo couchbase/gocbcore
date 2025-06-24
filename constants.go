@@ -70,6 +70,7 @@ const (
 	BucketCapabilityNonDedupedHistory    BucketCapability = 0x05
 	BucketCapabilityReviveDocument       BucketCapability = 0x06
 	BucketCapabilityBinaryXattr          BucketCapability = 0x07
+	BucketCapabilitySubdocAccessDeleted  BucketCapability = 0x08
 )
 
 type CapabilityStatus uint32

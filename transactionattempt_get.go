@@ -533,39 +533,55 @@ func (t *transactionAttempt) fetchDocWithMeta(
 					ecCb(nil, classifyError(err))
 				}
 			} else {
-				_, err := agent.crud.LookupInAnyReplica(&serverGroup, LookupInOptions{
-					ScopeName:      scopeName,
-					CollectionName: collectionName,
-					Key:            key,
-					Ops:            ops,
-					Deadline:       deadline,
-					// Flags:          memd.SubdocDocFlagAccessDeleted, See: MB-63241
-					User: oboUser,
-				}, func(result *LookupInResult, err error) {
-					if err != nil && errors.Is(err, errNoReplicasInServerGroup) {
-						if replicaOpts.withFallback {
-							_, err = agent.crud.LookupInAnyReplica(nil, LookupInOptions{
-								ScopeName:      scopeName,
-								CollectionName: collectionName,
-								Key:            key,
-								Ops:            ops,
-								Deadline:       deadline,
-								// Flags:          memd.SubdocDocFlagAccessDeleted, See: MB-63241
-								User: oboUser,
-							}, handler)
-							if err != nil {
-								ecCb(nil, classifyError(err))
-								return
-							}
-							return
-						}
-						handler(nil, errDocumentUnretrievable)
+				err = t.supportsSubdocAccessDeleted(agent, "get", func(supportsAccessDeleted bool, err error) {
+					if err != nil {
+						ecCb(nil, classifyError(err))
 						return
 					}
-					handler(result, err)
+
+					var flags memd.SubdocDocFlag
+					if supportsAccessDeleted {
+						flags = memd.SubdocDocFlagAccessDeleted
+					}
+
+					_, err = agent.crud.LookupInAnyReplica(&serverGroup, LookupInOptions{
+						ScopeName:      scopeName,
+						CollectionName: collectionName,
+						Key:            key,
+						Ops:            ops,
+						Deadline:       deadline,
+						Flags:          flags,
+						User:           oboUser,
+					}, func(result *LookupInResult, err error) {
+						if err != nil && errors.Is(err, errNoReplicasInServerGroup) {
+							if replicaOpts.withFallback {
+								_, err = agent.crud.LookupInAnyReplica(nil, LookupInOptions{
+									ScopeName:      scopeName,
+									CollectionName: collectionName,
+									Key:            key,
+									Ops:            ops,
+									Deadline:       deadline,
+									Flags:          flags,
+									User:           oboUser,
+								}, handler)
+								if err != nil {
+									ecCb(nil, classifyError(err))
+									return
+								}
+								return
+							}
+							handler(nil, errDocumentUnretrievable)
+							return
+						}
+						handler(result, err)
+					})
+					if err != nil {
+						ecCb(nil, classifyError(err))
+					}
 				})
 				if err != nil {
 					ecCb(nil, classifyError(err))
+					return
 				}
 			}
 		})
