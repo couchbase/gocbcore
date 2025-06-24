@@ -548,6 +548,7 @@ func (config SeedConfig) redacted() SeedConfig {
 // Internal: This should never be used and is not supported.
 type InternalConfig struct {
 	EnableResourceUnitsTrackingHello bool
+	AllowEnterpriseAnalytics         bool
 }
 
 func (config InternalConfig) fromSpec(spec connstr.ResolvedConnSpec) (InternalConfig, error) {
@@ -557,6 +558,14 @@ func (config InternalConfig) fromSpec(spec connstr.ResolvedConnSpec) (InternalCo
 			return InternalConfig{}, fmt.Errorf("enable_resource_units option must be a boolean")
 		}
 		config.EnableResourceUnitsTrackingHello = val
+	}
+
+	if valStr, ok := fetchOption(spec, "allow_enterprise_analytics"); ok {
+		val, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return InternalConfig{}, fmt.Errorf("allow_enterprise_analytics option must be a boolean")
+		}
+		config.AllowEnterpriseAnalytics = val
 	}
 
 	return config, nil

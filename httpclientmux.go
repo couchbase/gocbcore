@@ -21,7 +21,8 @@ type httpClientMux struct {
 	gsiEpList      []routeEndpoint
 	backupEpList   []routeEndpoint
 
-	bucket string
+	bucket   string
+	prodName string
 
 	uuid       string
 	revID      int64
@@ -45,7 +46,8 @@ func newHTTPClientMux(cfg *routeConfig, endpoints httpClientMuxEndpoints, tlsCon
 		gsiEpList:      endpoints.gsiEpList,
 		backupEpList:   endpoints.backupEpList,
 
-		bucket: cfg.name,
+		bucket:   cfg.name,
+		prodName: cfg.prodName,
 
 		uuid:       cfg.uuid,
 		revID:      cfg.revID,

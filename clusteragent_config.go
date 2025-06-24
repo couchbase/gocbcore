@@ -17,6 +17,8 @@ type clusterAgentConfig struct {
 
 	DefaultRetryStrategy RetryStrategy
 	CircuitBreakerConfig CircuitBreakerConfig
+
+	InternalConfig InternalConfig
 }
 
 func (config *clusterAgentConfig) redacted() interface{} {

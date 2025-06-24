@@ -91,8 +91,9 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 	)
 	c.http = newHTTPComponent(
 		httpComponentProps{
-			UserAgent:            userAgent,
-			DefaultRetryStrategy: c.defaultRetryStrategy,
+			UserAgent:                userAgent,
+			DefaultRetryStrategy:     c.defaultRetryStrategy,
+			AllowEnterpriseAnalytics: config.InternalConfig.AllowEnterpriseAnalytics,
 		},
 		httpClientProps{
 			maxIdleConns:        config.HTTPConfig.MaxIdleConns,

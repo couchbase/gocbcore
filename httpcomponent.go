@@ -7,11 +7,13 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -23,19 +25,21 @@ type httpComponentInterface interface {
 }
 
 type httpComponent struct {
-	cli                  *http.Client
-	muxer                *httpMux
-	userAgent            string
-	tracer               *tracerComponent
-	telemetry            *telemetryComponent
-	defaultRetryStrategy RetryStrategy
+	cli                      *http.Client
+	muxer                    *httpMux
+	userAgent                string
+	tracer                   *tracerComponent
+	telemetry                *telemetryComponent
+	defaultRetryStrategy     RetryStrategy
+	allowEnterpriseAnalytics bool
 
 	shutdownSig chan struct{}
 }
 
 type httpComponentProps struct {
-	UserAgent            string
-	DefaultRetryStrategy RetryStrategy
+	UserAgent                string
+	DefaultRetryStrategy     RetryStrategy
+	AllowEnterpriseAnalytics bool
 }
 
 type httpClientProps struct {
@@ -48,12 +52,13 @@ type httpClientProps struct {
 
 func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent, telemetry *telemetryComponent) *httpComponent {
 	hc := &httpComponent{
-		muxer:                muxer,
-		userAgent:            props.UserAgent,
-		defaultRetryStrategy: props.DefaultRetryStrategy,
-		tracer:               tracer,
-		telemetry:            telemetry,
-		shutdownSig:          make(chan struct{}),
+		muxer:                    muxer,
+		userAgent:                props.UserAgent,
+		defaultRetryStrategy:     props.DefaultRetryStrategy,
+		tracer:                   tracer,
+		telemetry:                telemetry,
+		shutdownSig:              make(chan struct{}),
+		allowEnterpriseAnalytics: props.AllowEnterpriseAnalytics,
 	}
 
 	hc.cli = hc.createHTTPClient(clientProps.maxIdleConns, clientProps.maxIdleConnsPerHost, clientProps.maxConnsPerHost, clientProps.idleTimeout,
@@ -183,6 +188,17 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	if !skipConfigCheck {
 		if err := hc.waitForConfig(ctx, req.IsIdempotent, &state.cancellationIsTimeout); err != nil {
 			ctxCancel()
+			return nil, err
+		}
+	}
+
+	if !hc.allowEnterpriseAnalytics && req.Service == CbasService {
+		state := hc.muxer.Get()
+		if state == nil {
+			return nil, errShutdown
+		}
+
+		if err := canSendAnalyticsRequest(state.prodName); err != nil {
 			return nil, err
 		}
 	}
@@ -774,4 +790,22 @@ func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPai
 	hreq.Body = io.NopCloser(bytes.NewReader(body))
 
 	return hreq, nil
+}
+
+func canSendAnalyticsRequest(prodName string) error {
+	if prodName == "" {
+		return nil
+	}
+
+	lowerProdName := strings.ToLower(prodName)
+	if strings.HasPrefix(lowerProdName, "couchbase server") {
+		return nil
+	}
+
+	errTxt := fmt.Sprintf("this '%s' cluster cannot be used with this SDK, which is intended for use with operational clusters", prodName)
+	if lowerProdName == "enterprise analytics" {
+		errTxt = fmt.Sprintf("%s - for this cluster, an Enterprise Analytics SDK should be used", errTxt)
+	}
+
+	return errors.New(errTxt)
 }
