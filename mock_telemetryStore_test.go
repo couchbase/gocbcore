@@ -9,8 +9,13 @@ type mockTelemetryStore struct {
 	mock.Mock
 }
 
-// recordOp provides a mock function with given fields: _a0
-func (_m *mockTelemetryStore) recordOp(_a0 telemetryOperationAttributes) {
+// recordOperationCompletion provides a mock function with given fields: _a0, _a1
+func (_m *mockTelemetryStore) recordOperationCompletion(_a0 telemetryOutcome, _a1 telemetryOperationAttributes) {
+	_m.Called(_a0, _a1)
+}
+
+// recordOrphanedResponse provides a mock function with given fields: _a0
+func (_m *mockTelemetryStore) recordOrphanedResponse(_a0 telemetryOperationAttributes) {
 	_m.Called(_a0)
 }
 

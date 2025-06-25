@@ -264,9 +264,14 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 	}
 
 	if client.opTombstones != nil {
+		connInfo := req.ConnectionInfo()
+
 		tombstoneEvicted := client.opTombstones.Add(req.Opaque, &memdOpTombstone{
 			totalServerDuration: req.totalServerDuration,
 			dispatchTime:        req.dispatchTime,
+			lastAttemptTime:     connInfo.lastDispatchedAt,
+			isDurable:           req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != memd.DurabilityLevel(0),
+			command:             req.Command,
 		})
 
 		if tombstoneEvicted && client.zombieLogger != nil {
@@ -397,6 +402,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 		if client.zombieLogger != nil {
 			client.zombieLogger.RecordZombieResponse(tombstone, resp, client.connID, client.LocalAddress(), client.Address())
 		}
+		client.recordTelemetryForOrphan(tombstone)
 		return
 	}
 
@@ -778,14 +784,36 @@ func (client *memdClient) recordTelemetry(req *memdQRequest, err error) {
 	clientAttrs := client.telemetryAttrs.Load()
 	connInfo := req.ConnectionInfo()
 
-	client.telemetry.RecordOp(telemetryOperationAttributes{
+	client.telemetry.RecordOp(outcome, telemetryOperationAttributes{
 		duration: time.Since(connInfo.lastDispatchedAt),
-		outcome:  outcome,
 		nodeUUID: clientAttrs.nodeUUID,
 		node:     clientAttrs.node,
 		altNode:  clientAttrs.altNode,
 		service:  MemdService,
 		durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != memd.DurabilityLevel(0),
+		mutation: category == memd.CmdCategoryMutation,
+	})
+}
+
+func (client *memdClient) recordTelemetryForOrphan(tombstone *memdOpTombstone) {
+	if !client.telemetry.TelemetryEnabled() {
+		return
+	}
+
+	category := tombstone.command.Category()
+	if category == memd.CmdCategoryUnknown {
+		return
+	}
+
+	clientAttrs := client.telemetryAttrs.Load()
+
+	client.telemetry.RecordOrphanedResponse(telemetryOperationAttributes{
+		duration: time.Since(tombstone.lastAttemptTime),
+		nodeUUID: clientAttrs.nodeUUID,
+		node:     clientAttrs.node,
+		altNode:  clientAttrs.altNode,
+		service:  MemdService,
+		durable:  tombstone.isDurable,
 		mutation: category == memd.CmdCategoryMutation,
 	})
 }

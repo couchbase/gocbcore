@@ -71,45 +71,39 @@ func (suite *UnitTestSuite) TestTelemetryCounterSerialization() {
 	counters := newTelemetryCounters()
 
 	agent := "sdk/1.2.3"
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeCanceled,
+	counters.recordOp(telemetryOutcomeCanceled, telemetryOperationAttributes{
 		node:     "node1",
 		nodeUUID: "node1-uuid",
 		service:  N1qlService,
 		agent:    agent,
 	})
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeCanceled,
+	counters.recordOp(telemetryOutcomeCanceled, telemetryOperationAttributes{
 		node:     "node1",
 		nodeUUID: "node1-uuid",
 		service:  N1qlService,
 		agent:    agent,
 	})
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeCanceled,
+	counters.recordOp(telemetryOutcomeCanceled, telemetryOperationAttributes{
 		node:     "node2",
 		nodeUUID: "node2-uuid",
 		service:  N1qlService,
 		agent:    agent,
 	})
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeCanceled,
+	counters.recordOp(telemetryOutcomeCanceled, telemetryOperationAttributes{
 		node:     "node1",
 		nodeUUID: "node1-uuid",
 		service:  MemdService,
 		bucket:   "default",
 		agent:    agent,
 	})
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeTimedout,
+	counters.recordOp(telemetryOutcomeTimedout, telemetryOperationAttributes{
 		node:     "node1",
 		nodeUUID: "node1-uuid",
 		service:  MemdService,
 		bucket:   "default",
 		agent:    agent,
 	})
-	counters.recordOp(telemetryOperationAttributes{
-		outcome:  telemetryOutcomeSuccess,
+	counters.recordOp(telemetryOutcomeSuccess, telemetryOperationAttributes{
 		node:     "node2",
 		nodeUUID: "node2-uuid",
 		service:  MemdService,

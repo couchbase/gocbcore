@@ -25,7 +25,8 @@ var (
 
 type telemetryStore interface {
 	serialize() string
-	recordOp(telemetryOperationAttributes)
+	recordOperationCompletion(telemetryOutcome, telemetryOperationAttributes)
+	recordOrphanedResponse(telemetryOperationAttributes)
 }
 
 type telemetryHistogramBin struct {
@@ -132,7 +133,7 @@ func newTelemetryCounters() *telemetryCounters {
 	}
 }
 
-func (c *telemetryCounters) recordOp(attributes telemetryOperationAttributes) {
+func (c *telemetryCounters) recordOp(outcome telemetryOutcome, attributes telemetryOperationAttributes) {
 	key := telemetryCounterKey{
 		agent:    attributes.agent,
 		service:  attributes.service,
@@ -142,7 +143,7 @@ func (c *telemetryCounters) recordOp(attributes telemetryOperationAttributes) {
 		bucket:   attributes.bucket,
 	}
 
-	switch attributes.outcome {
+	switch outcome {
 	case telemetryOutcomeTimedout:
 		c.timeout.Increment(key)
 	case telemetryOutcomeCanceled:
@@ -385,15 +386,25 @@ func (tm *telemetryMetrics) serialize() string {
 	return strings.Join(entries, "\n")
 }
 
-func (tm *telemetryMetrics) recordOp(attributes telemetryOperationAttributes) {
+func (tm *telemetryMetrics) recordOperationCompletion(outcome telemetryOutcome, attributes telemetryOperationAttributes) {
 	if !attributes.IsValid() {
 		return
 	}
 
-	tm.counters.Load().recordOp(attributes)
-	if attributes.outcome == telemetryOutcomeSuccess {
+	tm.counters.Load().recordOp(outcome, attributes)
+	if outcome == telemetryOutcomeSuccess {
 		tm.histograms.Load().recordOp(attributes)
 	}
+}
+
+func (tm *telemetryMetrics) recordOrphanedResponse(attributes telemetryOperationAttributes) {
+	if !attributes.IsValid() {
+		return
+	}
+
+	// Counters have already been updated for this operation. When receiving an orphaned response, we only need to
+	// record the latency.
+	tm.histograms.Load().recordOp(attributes)
 }
 
 type telemetryOutcome uint8
@@ -407,7 +418,6 @@ const (
 
 type telemetryOperationAttributes struct {
 	duration time.Duration
-	outcome  telemetryOutcome
 
 	nodeUUID string
 	node     string

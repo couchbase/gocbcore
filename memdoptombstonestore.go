@@ -3,6 +3,8 @@ package gocbcore
 import (
 	"container/list"
 	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // memdOpTombstone is used to report additional information once an orphaned (i.e. zombie) response is
@@ -10,6 +12,9 @@ import (
 type memdOpTombstone struct {
 	totalServerDuration time.Duration
 	dispatchTime        time.Time
+	lastAttemptTime     time.Time
+	isDurable           bool
+	command             memd.CmdCode
 }
 
 type memdOpTombstoneStoreItem struct {

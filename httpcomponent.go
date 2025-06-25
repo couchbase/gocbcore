@@ -382,12 +382,11 @@ func (hc *httpComponent) recordTelemetry(state *httpRequestState, req *httpReque
 		node = hostnameFromURI(state.endpoint.Address)
 	}
 
-	hc.telemetry.RecordOp(telemetryOperationAttributes{
+	hc.telemetry.RecordOp(outcome, telemetryOperationAttributes{
 		node:     node,
 		altNode:  altNode,
 		nodeUUID: state.endpoint.NodeUUID,
 		duration: time.Since(state.lastAttemptStart),
-		outcome:  outcome,
 		service:  req.Service,
 	})
 }

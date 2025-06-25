@@ -1,25 +1,47 @@
 package gocbcore
 
-import "time"
+import (
+	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
+)
 
 func (suite *UnitTestSuite) TestTombstoneStore() {
 	st := newMemdOpTombstoneStore()
 	st.capacity = 2
 
-	evicted := st.Add(1, &memdOpTombstone{totalServerDuration: 100 * time.Microsecond, dispatchTime: time.Now()})
+	evicted := st.Add(1, &memdOpTombstone{
+		totalServerDuration: 100 * time.Microsecond,
+		dispatchTime:        time.Now(),
+		lastAttemptTime:     time.Now(),
+		isDurable:           false,
+		command:             memd.CmdGet,
+	})
 	suite.Require().False(evicted)
 	suite.Require().Equal(1, st.opaqueList.Len())
 	suite.Require().Len(st.tombstones, 1)
 	suite.Require().Contains(st.tombstones, uint32(1))
 
-	evicted = st.Add(2, &memdOpTombstone{totalServerDuration: 200 * time.Microsecond, dispatchTime: time.Now()})
+	evicted = st.Add(2, &memdOpTombstone{
+		totalServerDuration: 200 * time.Microsecond,
+		dispatchTime:        time.Now(),
+		lastAttemptTime:     time.Now(),
+		isDurable:           false,
+		command:             memd.CmdGet,
+	})
 	suite.Require().False(evicted)
 	suite.Require().Equal(2, st.opaqueList.Len())
 	suite.Require().Len(st.tombstones, 2)
 	suite.Require().Contains(st.tombstones, uint32(1))
 	suite.Require().Contains(st.tombstones, uint32(2))
 
-	evicted = st.Add(3, &memdOpTombstone{totalServerDuration: 300 * time.Microsecond, dispatchTime: time.Now()})
+	evicted = st.Add(3, &memdOpTombstone{
+		totalServerDuration: 300 * time.Microsecond,
+		dispatchTime:        time.Now(),
+		lastAttemptTime:     time.Now(),
+		isDurable:           false,
+		command:             memd.CmdGet,
+	})
 	suite.Require().True(evicted)
 	suite.Require().Equal(2, st.opaqueList.Len())
 	suite.Require().Len(st.tombstones, 2)

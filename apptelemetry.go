@@ -63,8 +63,16 @@ func (t *TelemetryReporter) updateEndpoints(endpoints telemetryEndpoints) {
 	}
 }
 
-func (t *TelemetryReporter) recordOp(attributes telemetryOperationAttributes) {
-	t.metrics.recordOp(attributes)
+// recordOperationCompletion records the completion of an operation from the user's perspective either successfully
+// or with a cancellation/timeout.
+func (t *TelemetryReporter) recordOperationCompletion(outcome telemetryOutcome, attributes telemetryOperationAttributes) {
+	t.metrics.recordOperationCompletion(outcome, attributes)
+}
+
+// recordOrphanedResponse records the latency of a request for an operation that was cancelled or timed out, after
+// we have received the (now orphaned) response from the server.
+func (t *TelemetryReporter) recordOrphanedResponse(attributes telemetryOperationAttributes) {
+	t.metrics.recordOrphanedResponse(attributes)
 }
 
 // exportMetrics returns the serialized metrics and resets all metrics histograms and counters.
@@ -154,7 +162,7 @@ func (tc *telemetryComponent) OnNewRouteConfig(cfg *routeConfig) {
 	}
 }
 
-func (tc *telemetryComponent) RecordOp(attributes telemetryOperationAttributes) {
+func (tc *telemetryComponent) RecordOp(outcome telemetryOutcome, attributes telemetryOperationAttributes) {
 	if tc.reporter == nil {
 		return
 	}
@@ -167,5 +175,21 @@ func (tc *telemetryComponent) RecordOp(attributes telemetryOperationAttributes) 
 		attributes.bucket = tc.bucketName
 	}
 
-	tc.reporter.recordOp(attributes)
+	tc.reporter.recordOperationCompletion(outcome, attributes)
+}
+
+func (tc *telemetryComponent) RecordOrphanedResponse(attributes telemetryOperationAttributes) {
+	if tc.reporter == nil {
+		return
+	}
+	if !tc.reporter.started() {
+		return
+	}
+
+	attributes.agent = tc.agent
+	if attributes.service == MemdService {
+		attributes.bucket = tc.bucketName
+	}
+
+	tc.reporter.recordOrphanedResponse(attributes)
 }
