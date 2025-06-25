@@ -733,14 +733,18 @@ func attemptSRVRefresh(agent srvAgent, srvDetails *srvDetails) {
 
 	var addrs []*net.SRV
 	for {
-		_, addrs, err := net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
+		_, lookupAddrs, err := net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
 		if err != nil {
 			if isLogRedactionLevelFull() {
 				logInfof("Failed to lookup SRV record: %s", redactSystemData(err))
 			} else {
 				logInfof("Failed to lookup SRV record: %s", err)
 			}
+
+			return
 		}
+
+		addrs = lookupAddrs
 
 		if len(addrs) > 0 {
 			break
