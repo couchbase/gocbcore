@@ -65,6 +65,9 @@ type kvMux struct {
 	noTLSSeedNode bool
 
 	hasSeenConfigCh chan struct{}
+
+	onAllPipelinesDisconnected func()
+	pipelinesConnected         atomic.Uint32
 }
 
 type kvMuxProps struct {
@@ -75,7 +78,7 @@ type kvMuxProps struct {
 }
 
 func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *errMapComponent, tracer *tracerComponent,
-	telemetry *telemetryComponent, dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
+	telemetry *telemetryComponent, dialer *memdClientDialerComponent, muxState *kvMuxState, onAllPipelinesDisconnected func()) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,
 		poolSize:           props.PoolSize,
@@ -90,6 +93,8 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		muxPtr:             unsafe.Pointer(muxState),
 		hasSeenConfigCh:    make(chan struct{}),
 		bucketName:         muxState.expectedBucketName,
+
+		onAllPipelinesDisconnected: onAllPipelinesDisconnected,
 	}
 
 	cfgMgr.AddConfigWatcher(mux)
@@ -914,7 +919,15 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedEndpoint, tlsConfig, auth, authMechanisms,
 				mux.handleOpRoutingResp, mux.handleServerRequest)
 		}
-		pipeline := newPipeline(trimmedEndpoint, poolSize, mux.queueSize, getCurClientFn, mux.telemetry)
+		pipeline := newPipeline(&newMemdPipelineOptions{
+			endpoint:               trimmedEndpoint,
+			maxClients:             poolSize,
+			maxItems:               mux.queueSize,
+			getClientFn:            getCurClientFn,
+			telemetry:              mux.telemetry,
+			onPipelineConnected:    mux.pipelineConnected,
+			onPipelineDisconnected: mux.pipelineDisconnected,
+		})
 
 		pipelines[i] = pipeline
 	}
@@ -1088,4 +1101,15 @@ func (mux *kvMux) handleServerRequest(pak *memd.Packet) {
 	}
 
 	logWarnf("Received an unknown command type for a server request: OP=0x%x", pak.Command)
+}
+
+func (mux *kvMux) pipelineConnected() {
+	mux.pipelinesConnected.Add(1)
+}
+
+func (mux *kvMux) pipelineDisconnected() {
+	pipelinesConnected := mux.pipelinesConnected.Add(^uint32(0))
+	if pipelinesConnected == 0 {
+		mux.onAllPipelinesDisconnected()
+	}
 }

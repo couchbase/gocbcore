@@ -21,11 +21,10 @@ type cccpConfigController struct {
 	errLock  sync.Mutex
 
 	isFallbackErrorFn func(error) bool
-	noConfigFoundFn   func(error)
 }
 
 func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMgr *configManagementComponent,
-	isFallbackErrorFn func(error) bool, noConfigFoundFn func(error)) *cccpConfigController {
+	isFallbackErrorFn func(error) bool) *cccpConfigController {
 	return &cccpConfigController{
 		muxer:              muxer,
 		cfgMgr:             cfgMgr,
@@ -35,7 +34,6 @@ func newCCCPConfigController(props cccpPollerProperties, muxer dispatcher, cfgMg
 		looperStopSig: make(chan struct{}),
 
 		isFallbackErrorFn: isFallbackErrorFn,
-		noConfigFoundFn:   noConfigFoundFn,
 	}
 }
 
@@ -191,7 +189,6 @@ func (ccc *cccpConfigController) doLoop() error {
 				logDebugf("CCCPPOLL: CCCP request was cancelled.")
 			} else {
 				logWarnf("CCCPPOLL: Failed to retrieve config from any node.")
-				ccc.noConfigFoundFn(ccc.Error())
 			}
 			continue
 		}

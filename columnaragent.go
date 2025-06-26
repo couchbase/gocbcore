@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,7 @@ type ColumnarAgent struct {
 
 	srvDetails  *srvDetails
 	shutdownSig chan struct{}
+	isShutdown  atomic.Bool
 }
 
 func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
@@ -167,6 +169,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 			auth:               config.SecurityConfig.Auth,
 			expectedBucketName: "",
 		},
+		c.maybeRefreshSRVRecord,
 	)
 
 	c.httpMux = newColumnarMux(c.cfgManager, &columnarClientMux{
@@ -193,7 +196,6 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		c.kvMux,
 		c.cfgManager,
 		nil,
-		c.onCCCPNoConfigFromAnyNode,
 	)
 
 	c.cfgManager.SetConfigFetcher(cccpFetcher)
@@ -254,6 +256,7 @@ func (agent *ColumnarAgent) Query(ctx context.Context, opts ColumnarQueryOptions
 // any outstanding operations with ErrShutdown.
 func (agent *ColumnarAgent) Close() error {
 	logInfof("Columnar agent closing")
+	agent.isShutdown.Store(true)
 	poller := agent.poller
 	if poller != nil {
 		poller.Stop()
@@ -270,19 +273,39 @@ func (agent *ColumnarAgent) Close() error {
 	return routeCloseErr
 }
 
-// Bits to support onCCCPNoConfigFromAnyNode.
+// Bits to support maybeRefreshSRVRecord.
 
 // IsSecure returns whether this client is connected via SSL.
 func (agent *ColumnarAgent) IsSecure() bool {
 	return true
 }
 
-func (agent *ColumnarAgent) onCCCPNoConfigFromAnyNode(err error) {
-	agent.columnar.SetBootstrapError(err)
-	onCCCPNoConfigFromAnyNode(agent, err)
+func (agent *ColumnarAgent) maybeRefreshSRVRecord() {
+	pipelines, err := agent.kvMux.PipelineSnapshot()
+	if err == nil {
+		pipelines.Iterate(0, func(pipeline *memdPipeline) bool {
+			clients := pipeline.Clients()
+			for _, cli := range clients {
+				err := cli.Error()
+				if err != nil {
+					logDebugf("Found error in pipeline client %p/%s: %v", cli, cli.address, err)
+					agent.columnar.SetBootstrapError(err)
+					return true
+				}
+			}
+
+			return false
+		})
+	}
+
+	maybeRefreshSRVRecord(agent)
 }
 
 func (agent *ColumnarAgent) attemptSRVRefresh() {
+	if agent.isShutdown.Load() {
+		return
+	}
+
 	srvDetails := agent.srv()
 	if srvDetails == nil {
 		logInfof("no srv record in use, aborting srv refresh")

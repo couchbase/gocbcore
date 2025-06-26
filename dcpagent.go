@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -36,6 +37,7 @@ type DCPAgent struct {
 	srvDetails *srvDetails
 
 	shutdownSig chan struct{}
+	isShutdown  atomic.Bool
 }
 
 // CreateDcpAgent creates an agent for performing DCP operations.
@@ -303,6 +305,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			auth:               config.SecurityConfig.Auth,
 			expectedBucketName: c.bucketName,
 		},
+		c.maybeRefreshSRVRecord,
 	)
 	c.httpMux = newHTTPMux(
 		circuitBreakerConfig,
@@ -361,7 +364,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				c.kvMux,
 				c.cfgManager,
 				c.isPollingFallbackError,
-				c.onCCCPNoConfigFromAnyNode,
 			)
 			c.cfgManager.SetConfigFetcher(cccpFetcher)
 		}
@@ -406,6 +408,7 @@ func (agent *DCPAgent) IsSecure() bool {
 // any outstanding operations with ErrShutdown.
 func (agent *DCPAgent) Close() error {
 	logInfof("DCP agent closing")
+	agent.isShutdown.Store(true)
 
 	agent.pollerController.Stop()
 	routeCloseErr := agent.kvMux.Close()
@@ -564,8 +567,12 @@ func (agent *DCPAgent) resetConfig() {
 	agent.dialer.ResetConfig()
 }
 
-func (agent *DCPAgent) onCCCPNoConfigFromAnyNode(err error) {
-	onCCCPNoConfigFromAnyNode(agent, err)
+func (agent *DCPAgent) maybeRefreshSRVRecord() {
+	if agent.isShutdown.Load() {
+		return
+	}
+
+	maybeRefreshSRVRecord(agent)
 }
 
 func (agent *DCPAgent) stopped() <-chan struct{} {
