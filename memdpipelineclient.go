@@ -14,6 +14,11 @@ type clientWait struct {
 	err    error
 }
 
+type newMemdPipelineClientOptions struct {
+	onConnected    func()
+	onDisconnected func()
+}
+
 type memdPipelineClient struct {
 	parent         *memdPipeline
 	address        string
@@ -26,9 +31,12 @@ type memdPipelineClient struct {
 	state          uint32
 
 	connectError error
+
+	onConnected    func()
+	onDisconnected func()
 }
 
-func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
+func newMemdPipelineClient(parent *memdPipeline, opts *newMemdPipelineClientOptions) *memdPipelineClient {
 	return &memdPipelineClient{
 		parent:         parent,
 		address:        parent.address,
@@ -36,6 +44,9 @@ func newMemdPipelineClient(parent *memdPipeline) *memdPipelineClient {
 		clientTakenSig: make(chan struct{}),
 		cancelDialSig:  make(chan struct{}),
 		state:          uint32(EndpointStateDisconnected),
+
+		onConnected:    opts.onConnected,
+		onDisconnected: opts.onDisconnected,
 	}
 }
 
@@ -245,7 +256,12 @@ func (pipecli *memdPipelineClient) Run() {
 
 		// Runs until the connection has died (for whatever reason)
 		logDebugf("Pipeline Client `%s/%p` starting new client loop for %p", pipecli.address, pipecli, cli.client)
+
+		pipecli.onConnected()
+
 		pipecli.ioLoop(cli.client)
+
+		pipecli.onDisconnected()
 	}
 
 	// Lets notify anyone who is watching that we are now shut down

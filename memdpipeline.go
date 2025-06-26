@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/couchbase/gocbcore/v10/memd"
 )
@@ -15,14 +16,30 @@ var (
 
 type memdGetClientFn func(cancelSig <-chan struct{}) (*memdClient, error)
 
+type newMemdPipelineOptions struct {
+	endpoint               routeEndpoint
+	maxClients             int
+	maxItems               int
+	getClientFn            memdGetClientFn
+	telemetry              *telemetryComponent
+	onPipelineConnected    func()
+	onPipelineDisconnected func()
+}
+
 type memdPipeline struct {
-	address          string
-	getClientFn      memdGetClientFn
-	maxItems         int
-	queue            *memdOpQueue
-	maxClients       int
+	address     string
+	getClientFn memdGetClientFn
+	maxItems    int
+	queue       *memdOpQueue
+	maxClients  int
+
 	clients          []*memdPipelineClient
 	clientsLock      sync.Mutex
+	clientsConnected atomic.Uint32
+
+	onPipelineConnected    func()
+	onPipelineDisconnected func()
+
 	isSeedNode       bool
 	serverGroup      string
 	nodeUUID         string
@@ -30,23 +47,34 @@ type memdPipeline struct {
 	telemetry        *telemetryComponent
 }
 
-func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn, telemetry *telemetryComponent) *memdPipeline {
+func newPipeline(opts *newMemdPipelineOptions) *memdPipeline {
 	return &memdPipeline{
-		address:          endpoint.Address,
-		getClientFn:      getClientFn,
-		maxClients:       maxClients,
-		maxItems:         maxItems,
+		address:          opts.endpoint.Address,
+		getClientFn:      opts.getClientFn,
+		maxClients:       opts.maxClients,
+		maxItems:         opts.maxItems,
 		queue:            newMemdOpQueue(),
-		isSeedNode:       endpoint.IsSeedNode,
-		serverGroup:      endpoint.ServerGroup,
-		nodeUUID:         endpoint.NodeUUID,
-		canonicalAddress: endpoint.CanonicalAddress,
-		telemetry:        telemetry,
+		isSeedNode:       opts.endpoint.IsSeedNode,
+		serverGroup:      opts.endpoint.ServerGroup,
+		nodeUUID:         opts.endpoint.NodeUUID,
+		canonicalAddress: opts.endpoint.CanonicalAddress,
+		telemetry:        opts.telemetry,
+
+		onPipelineConnected:    opts.onPipelineConnected,
+		onPipelineDisconnected: opts.onPipelineDisconnected,
 	}
 }
 
 func newDeadPipeline(maxItems int) *memdPipeline {
-	return newPipeline(routeEndpoint{}, 0, maxItems, nil, nil)
+	return newPipeline(&newMemdPipelineOptions{
+		endpoint:               routeEndpoint{},
+		maxClients:             0,
+		maxItems:               maxItems,
+		getClientFn:            nil,
+		telemetry:              nil,
+		onPipelineConnected:    nil,
+		onPipelineDisconnected: nil,
+	})
 }
 
 // nolint: unused
@@ -107,10 +135,27 @@ func (pipeline *memdPipeline) StartClients() {
 	defer pipeline.clientsLock.Unlock()
 
 	for len(pipeline.clients) < pipeline.maxClients {
-		client := newMemdPipelineClient(pipeline)
+		client := newMemdPipelineClient(pipeline, &newMemdPipelineClientOptions{
+			onConnected:    pipeline.onClientConnected,
+			onDisconnected: pipeline.onClientDisconnected,
+		})
 		pipeline.clients = append(pipeline.clients, client)
 
 		go client.Run()
+	}
+}
+
+func (pipeline *memdPipeline) onClientConnected() {
+	clientsConnected := pipeline.clientsConnected.Add(1)
+	if clientsConnected == 1 {
+		pipeline.onPipelineConnected()
+	}
+}
+
+func (pipeline *memdPipeline) onClientDisconnected() {
+	clientsConnected := pipeline.clientsConnected.Add(^uint32(0))
+	if clientsConnected == 0 {
+		pipeline.onPipelineDisconnected()
 	}
 }
 

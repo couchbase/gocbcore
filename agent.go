@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -50,6 +51,7 @@ type Agent struct {
 
 	srvDetails  *srvDetails
 	shutdownSig chan struct{}
+	isShutdown  atomic.Bool
 }
 
 // HTTPClient returns a pre-configured HTTP Client for communicating with
@@ -325,6 +327,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 			auth:               config.SecurityConfig.Auth,
 			expectedBucketName: c.bucketName,
 		},
+		c.maybeRefreshSRVRecord,
 	)
 	c.collections = newCollectionIDManager(
 		collectionIDProps{
@@ -398,7 +401,6 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 					c.kvMux,
 					c.cfgManager,
 					c.isPollingFallbackError,
-					c.onCCCPNoConfigFromAnyNode,
 				),
 				httpPoller,
 				c.cfgManager,
@@ -442,6 +444,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 // any outstanding operations with ErrShutdown.
 func (agent *Agent) Close() error {
 	logInfof("Agent closing")
+	agent.isShutdown.Store(true)
 	poller := agent.pollerController
 	if poller != nil {
 		poller.Stop()
@@ -701,27 +704,21 @@ func (agent *Agent) resetConfig() {
 	agent.dialer.ResetConfig()
 }
 
-func (agent *Agent) onCCCPNoConfigFromAnyNode(err error) {
-	onCCCPNoConfigFromAnyNode(agent, err)
+func (agent *Agent) maybeRefreshSRVRecord() {
+	if agent.isShutdown.Load() {
+		return
+	}
+
+	maybeRefreshSRVRecord(agent)
 }
 
 func (agent *Agent) stopped() <-chan struct{} {
 	return agent.shutdownSig
 }
 
-// The CCCP poller suddenly becoming unable to fetch a config from any node in the cluster is the trigger
-// for checking if we need to try refresh the DNS SRV record that we used to initially connect.
-// Note that we don't need locking around of this because there is only one poller active at any given time
-// and we're blocking it here.
-func onCCCPNoConfigFromAnyNode(agent srvAgent, err error) {
+func maybeRefreshSRVRecord(agent srvAgent) {
 	srvDetails := agent.srv()
 	if srvDetails == nil {
-		return
-	}
-
-	// We only want to refresh the SRV record under certain circumstances, namely that we can't connect to the cluster.
-	var opErr *net.OpError
-	if !errors.As(err, &opErr) {
 		return
 	}
 
