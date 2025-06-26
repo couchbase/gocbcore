@@ -3,7 +3,6 @@ package gocbcore
 type columnarClientMux struct {
 	epList []routeEndpoint
 
-	uuid  string
 	revID int64
 
 	srcConfig routeConfig
@@ -16,7 +15,6 @@ func newColumnarClientMux(cfg *routeConfig, endpoints []routeEndpoint, tlsConfig
 	return &columnarClientMux{
 		epList: endpoints,
 
-		uuid:  cfg.uuid,
 		revID: cfg.revID,
 
 		srcConfig: *cfg,

@@ -19,8 +19,9 @@ type clusterAgent struct {
 	search      *searchQueryComponent
 	views       *viewQueryComponent
 
-	revLock sync.Mutex
-	revID   int64
+	revLock  sync.Mutex
+	revID    int64
+	revEpoch int64
 
 	configWatchLock sync.Mutex
 	configWatchers  []routeConfigWatcher
@@ -160,14 +161,16 @@ func (agent *clusterAgent) RemoveConfigWatcher(watcher routeConfigWatcher) {
 func (agent *clusterAgent) OnNewRouteConfig(cfg *routeConfig) {
 	agent.revLock.Lock()
 	// This could be coming from multiple agents so we need to make sure that it's up to date with what we've seen.
-	if cfg.revID > -1 && cfg.revID <= agent.revID {
+	// We allow a config rev of -1 to be applied to halt sending http requests.
+	if cfg.revID > -1 && !revIsNewer(cfg.revID, cfg.revEpoch, agent.revID, agent.revEpoch) {
 		agent.revLock.Unlock()
 		return
 	}
 
-	logDebugf("Cluster agent applying config rev id: %d\n", cfg.revID)
+	logDebugf("Cluster agent applying config rev id: %d, rev epoch: %d\n", cfg.revID, cfg.revEpoch)
 
 	agent.revID = cfg.revID
+	agent.revEpoch = cfg.revEpoch
 	agent.revLock.Unlock()
 
 	agent.configWatchLock.Lock()

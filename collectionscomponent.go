@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -27,9 +26,9 @@ type collectionsComponent struct {
 	cfgMgr               configManager
 
 	// pendingOpQueue is used when collections are enabled but we've not yet seen a cluster config to confirm
-	// whether or not collections are supported.
+	// whether collections are supported.
 	pendingOpQueue *memdOpQueue
-	configSeen     uint32
+	pendingOpLock  sync.Mutex
 }
 
 type collectionIDProps struct {
@@ -56,22 +55,28 @@ func newCollectionIDManager(props collectionIDProps, dispatcher dispatcher, trac
 }
 
 func (cidMgr *collectionsComponent) OnNewRouteConfig(cfg *routeConfig) {
-	if !atomic.CompareAndSwapUint32(&cidMgr.configSeen, 0, 1) {
+	cidMgr.cfgMgr.RemoveConfigWatcher(cidMgr)
+
+	cidMgr.pendingOpLock.Lock()
+	if cidMgr.pendingOpQueue != nil {
+		pendingOpQueue := cidMgr.pendingOpQueue
+		cidMgr.pendingOpQueue = nil
+		cidMgr.pendingOpLock.Unlock()
+
+		colsSupported := cfg.ContainsBucketCapability("collections")
+		pendingOpQueue.Close()
+		pendingOpQueue.Drain(func(request *memdQRequest) {
+			// Anything in this queue is here because collections were present, so if we definitely don't support collections
+			// then fail them.
+			if !colsSupported {
+				request.tryCallback(nil, errCollectionsUnsupported)
+				return
+			}
+			cidMgr.requeue(request)
+		})
 		return
 	}
-
-	colsSupported := cfg.ContainsBucketCapability("collections")
-	cidMgr.cfgMgr.RemoveConfigWatcher(cidMgr)
-	cidMgr.pendingOpQueue.Close()
-	cidMgr.pendingOpQueue.Drain(func(request *memdQRequest) {
-		// Anything in this queue is here because collections were present so if we definitely don't support collections
-		// then fail them.
-		if !colsSupported {
-			request.tryCallback(nil, errCollectionsUnsupported)
-			return
-		}
-		cidMgr.requeue(request)
-	})
+	cidMgr.pendingOpLock.Unlock()
 }
 
 func (cidMgr *collectionsComponent) handleCollectionUnknown(req *memdQRequest) bool {
@@ -388,7 +393,7 @@ func (cidMgr *collectionsComponent) upsert(scopeName, collectionName string, val
 		cidMgr.idMap[key] = id
 	}
 	id.lock.Lock()
-	id.setID(value)
+	id.setIDLocked(value)
 	id.lock.Unlock()
 	cidMgr.mapLock.Unlock()
 
@@ -401,7 +406,7 @@ func (cidMgr *collectionsComponent) getAndMaybeInsert(scopeName, collectionName 
 	if !ok {
 		id = cidMgr.newCollectionIDCache(scopeName, collectionName)
 		id.lock.Lock()
-		id.setID(value)
+		id.setIDLocked(value)
 		id.lock.Unlock()
 
 		key := cidMgr.createKey(scopeName, collectionName)
@@ -440,10 +445,7 @@ type collectionIDCache struct {
 	maxQueueSize   int
 }
 
-func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
-	cid.lock.Lock()
-	id := cid.id
-	cid.lock.Unlock()
+func (cid *collectionIDCache) sendWithCid(id uint32, req *memdQRequest) error {
 	if err := setRequestCid(req, id); err != nil {
 		logDebugf("Failed to set collection ID on request: %v", err)
 		return err
@@ -457,18 +459,22 @@ func (cid *collectionIDCache) sendWithCid(req *memdQRequest) error {
 	return nil
 }
 
-func (cid *collectionIDCache) queueRequest(req *memdQRequest) error {
-	cid.lock.Lock()
-	defer cid.lock.Unlock()
+func (cid *collectionIDCache) queueRequestLocked(req *memdQRequest) error {
 	return cid.opQueue.Push(req, cid.maxQueueSize)
 }
 
-func (cid *collectionIDCache) setID(id uint32) {
-	logDebugf("Setting cache ID to %d for %s.%s", id, cid.scopeName, cid.collectionName)
+func (cid *collectionIDCache) setIDLocked(id uint32) {
+	if id == unknownCid {
+		logDebugf("Setting cache ID to unknown for %s.%s", cid.scopeName, cid.collectionName)
+	} else if id == pendingCid {
+		logDebugf("Setting cache ID to pending for %s.%s", cid.scopeName, cid.collectionName)
+	} else {
+		logDebugf("Setting cache ID to %d for %s.%s", id, cid.scopeName, cid.collectionName)
+	}
 	cid.id = id
 }
 
-func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
+func (cid *collectionIDCache) refreshCidLocked(req *memdQRequest) error {
 	err := cid.opQueue.Push(req, cid.maxQueueSize)
 	if err != nil {
 		return err
@@ -485,25 +491,30 @@ func (cid *collectionIDCache) refreshCid(req *memdQRequest) error {
 					// Either the collection will eventually come online or this request will timeout.
 					logDebugf("Collection %s.%s not found, attempting retry", req.ScopeName, req.CollectionName)
 					cid.lock.Lock()
-					cid.setID(unknownCid)
+					cid.setIDLocked(unknownCid)
 					cid.lock.Unlock()
 					if cid.opQueue.Remove(req) {
 						if cid.parent.handleCollectionUnknown(req) {
 							return
 						}
 					} else {
-						logDebugf("Request no longer existed in op queue, possibly cancelled?",
-							req.Opaque, req.CollectionName)
+						logDebugf("Request no longer existed in op queue, possibly cancelled? %d, %s.%s",
+							req.Opaque, req.ScopeName, req.CollectionName)
 					}
 				} else {
 					logDebugf("Collection ID refresh failed: %v", err)
 				}
 
 				// There was an error getting this collection ID so lets remove the cache from the manager and try to
-				// callback on all of the queued requests.
+				// callback on all the queued requests.
+				cid.lock.Lock()
+				opQueue := cid.opQueue
+				cid.opQueue = newMemdOpQueue()
+				cid.lock.Unlock()
+
 				cid.parent.remove(req.ScopeName, req.CollectionName)
-				cid.opQueue.Close()
-				cid.opQueue.Drain(func(request *memdQRequest) {
+				opQueue.Close()
+				opQueue.Drain(func(request *memdQRequest) {
 					request.tryCallback(nil, err)
 				})
 				return
@@ -542,7 +553,7 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 	switch cid.id {
 	case unknownCid:
 		logDebugf("Collection %s.%s unknown, refreshing id", req.ScopeName, req.CollectionName)
-		cid.setID(pendingCid)
+		cid.setIDLocked(pendingCid)
 		newOpQueue := newMemdOpQueue()
 		if cid.opQueue != nil {
 			// Drain the old queue into the new one so that we move over outstanding requests.
@@ -556,15 +567,15 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 		}
 		cid.opQueue = newOpQueue
 
-		// We attempt to send the refresh inside of the lock, that way we haven't released the lock and allowed an op
+		// We attempt to send the refresh inside the lock, that way we haven't released the lock and allowed an op
 		// to get queued if we need to move the status back to unknown. Without doing this it's possible for one or
 		// more op(s) to sneak into the queue and then no more requests come in and those sit in the queue until they
 		// timeout because nothing is triggering the cid refresh.
-		err := cid.refreshCid(req)
+		err := cid.refreshCidLocked(req)
 		if err != nil {
 			// We've failed to send the cid refresh so we need to set it back to unknown otherwise it'll never
 			// get updated.
-			cid.setID(unknownCid)
+			cid.setIDLocked(unknownCid)
 			cid.lock.Unlock()
 			return err
 		}
@@ -572,11 +583,15 @@ func (cid *collectionIDCache) dispatch(req *memdQRequest) error {
 		return nil
 	case pendingCid:
 		logDebugf("Collection %s.%s pending, queueing request OP=0x%x", req.ScopeName, req.CollectionName, req.Command)
+		err := cid.queueRequestLocked(req)
 		cid.lock.Unlock()
-		return cid.queueRequest(req)
+
+		return err
 	default:
+		id := cid.id
 		cid.lock.Unlock()
-		return cid.sendWithCid(req)
+
+		return cid.sendWithCid(id, req)
 	}
 }
 
@@ -601,15 +616,18 @@ func (cidMgr *collectionsComponent) Dispatch(req *memdQRequest) (PendingOp, erro
 		return cidMgr.dispatcher.DispatchDirect(req)
 	}
 
-	if atomic.LoadUint32(&cidMgr.configSeen) == 0 {
+	cidMgr.pendingOpLock.Lock()
+	if cidMgr.pendingOpQueue != nil {
 		logDebugf("Collections are enabled but we've not yet seen a config so queueing request")
 		err := cidMgr.pendingOpQueue.Push(req, cidMgr.maxQueueSize)
+		cidMgr.pendingOpLock.Unlock()
 		if err != nil {
 			return nil, err
 		}
 
 		return req, nil
 	}
+	cidMgr.pendingOpLock.Unlock()
 
 	if !cidMgr.dispatcher.SupportsCollections() {
 		return nil, errCollectionsUnsupported
@@ -628,7 +646,7 @@ func (cidMgr *collectionsComponent) requeue(req *memdQRequest) {
 	cidCache := cidMgr.getAndMaybeInsert(req.ScopeName, req.CollectionName, unknownCid)
 	cidCache.lock.Lock()
 	if cidCache.id != unknownCid && cidCache.id != pendingCid {
-		cidCache.setID(unknownCid)
+		cidCache.setIDLocked(unknownCid)
 	}
 	cidCache.lock.Unlock()
 

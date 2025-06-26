@@ -507,6 +507,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsUnsupported() {
 
 	cfgMgr := new(mockConfigManager)
 	cfgMgr.On("AddConfigWatcher", mock.Anything).Return()
+	cfgMgr.On("RemoveConfigWatcher", mock.AnythingOfType("*gocbcore.collectionsComponent")).Return()
 
 	dispatcher := new(mockDispatcher)
 	dispatcher.On("SetPostCompleteErrorHandler", mock.AnythingOfType("gocbcore.postCompleteErrorHandler")).Return()
@@ -520,7 +521,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsUnsupported() {
 		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
-	cidMgr.configSeen = 1
+	cidMgr.pendingOpQueue = nil
 
 	var called bool
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -616,7 +617,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
-	cidMgr.configSeen = 1
+	cidMgr.pendingOpQueue = nil
 
 	waitCh := make(chan error, 1)
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -729,7 +730,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
-	cidMgr.configSeen = 1
+	cidMgr.pendingOpQueue = nil
 
 	waitCh := make(chan error, 1)
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -844,7 +845,7 @@ func (suite *UnitTestSuite) TestCollectionsComponentCollectionsSupportedCollecti
 		newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr),
 		cfgMgr,
 	)
-	cidMgr.configSeen = 1
+	cidMgr.pendingOpQueue = nil
 
 	// This request should get queued as the manager hasn't seen a config.
 	op, err := cidMgr.Dispatch(&memdQRequest{

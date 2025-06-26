@@ -49,33 +49,35 @@ func newPollerController(cccpPoller *cccpConfigController, httpPoller *httpConfi
 
 // OnNewRouteConfig listens out for every config that comes in so that we (re)start the cccp if applicable.
 func (pc *pollerController) OnNewRouteConfig(cfg *routeConfig) {
-	if cfg.bktType != bktTypeCouchbase && cfg.bktType != bktTypeMemcached {
-		return
-	}
-	atomic.SwapUint32(&pc.bucketConfigSeen, 1)
-
-	if cfg.bktType == bktTypeMemcached || pc.cccpPoller == nil {
-		return
-	}
-
-	go func() {
-		pc.controllerLock.Lock()
-		if pc.stopped {
-			pc.controllerLock.Unlock()
+	if cfg.revID > -1 {
+		if cfg.bktType != bktTypeCouchbase && cfg.bktType != bktTypeMemcached {
 			return
 		}
-		if pc.activeController == pc.httpPoller {
-			logInfof("Found couchbase bucket and HTTP poller in use. Restarting poller run loop to start cccp.")
-			pc.activeController = nil
+		atomic.SwapUint32(&pc.bucketConfigSeen, 1)
 
-			// Stopping the poller will trigger the run loop to loop again.
-			pc.httpPoller.Stop()
-			pc.controllerLock.Unlock()
-
+		if cfg.bktType == bktTypeMemcached || pc.cccpPoller == nil {
 			return
 		}
-		pc.controllerLock.Unlock()
-	}()
+
+		go func() {
+			pc.controllerLock.Lock()
+			if pc.stopped {
+				pc.controllerLock.Unlock()
+				return
+			}
+			if pc.activeController == pc.httpPoller {
+				logInfof("Found couchbase bucket and HTTP poller in use. Restarting poller run loop to start cccp.")
+				pc.activeController = nil
+
+				// Stopping the poller will trigger the run loop to loop again.
+				pc.httpPoller.Stop()
+				pc.controllerLock.Unlock()
+
+				return
+			}
+			pc.controllerLock.Unlock()
+		}()
+	}
 }
 
 func (pc *pollerController) runSinglePoller(doLoop func()) {

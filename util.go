@@ -75,3 +75,19 @@ func trimSchemePrefix(address string) string {
 
 	return address[idx+len("://"):]
 }
+
+func revIsNewer(newRev, newEpoch, oldRev, oldEpoch int64) bool {
+	if newEpoch > oldEpoch {
+		return true
+	}
+
+	if newEpoch < oldEpoch {
+		return false
+	}
+
+	if newRev > oldRev {
+		return true
+	}
+
+	return false
+}
