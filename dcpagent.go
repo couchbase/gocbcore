@@ -376,8 +376,8 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	}
 	c.pollerController = poller
 
-	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, newFailFastRetryStrategy(), c.pollerController)
-	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID)
+	c.diagnostics = newDiagnosticsComponent(c.kvMux, nil, nil, c.bucketName, c.defaultRetryStrategy, c.pollerController)
+	c.dcp = newDcpComponent(c.kvMux, config.DCPConfig.UseStreamID, c.defaultRetryStrategy)
 
 	c.dialer.AddBootstrapFailHandler(c.diagnostics)
 	c.dialer.AddCCCPUnsupportedHandler(c)

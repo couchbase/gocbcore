@@ -16,10 +16,11 @@ type dcpComponent struct {
 	defaultRetryStrategy RetryStrategy
 }
 
-func newDcpComponent(dispatcher dispatcher, streamIDEnabled bool) *dcpComponent {
+func newDcpComponent(dispatcher dispatcher, streamIDEnabled bool, defaultRetryStrategy RetryStrategy) *dcpComponent {
 	return &dcpComponent{
-		dispatcher:      dispatcher,
-		streamIDEnabled: streamIDEnabled,
+		dispatcher:           dispatcher,
+		streamIDEnabled:      streamIDEnabled,
+		defaultRetryStrategy: defaultRetryStrategy,
 	}
 }
 
