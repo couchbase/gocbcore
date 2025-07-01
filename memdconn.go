@@ -17,7 +17,6 @@ const defaultReaderBufSize = 20 * 1024 * 1024
 type memdConn interface {
 	LocalAddr() string
 	RemoteAddr() string
-	NodeUUID() string
 	WritePacket(*memd.Packet) error
 	ReadPacket() (*memd.Packet, int, error)
 	Close() error
@@ -83,7 +82,6 @@ func releaseReadBuf(buf *bufio.Reader, bufSize int) {
 type memdConnWrap struct {
 	localAddr  string
 	remoteAddr string
-	nodeUUID   string
 	conn       *memd.Conn
 	baseConn   *wrappedReadWriteCloser
 	bufSize    int
@@ -95,10 +93,6 @@ func (s *memdConnWrap) LocalAddr() string {
 
 func (s *memdConnWrap) RemoteAddr() string {
 	return s.remoteAddr
-}
-
-func (s *memdConnWrap) NodeUUID() string {
-	return s.nodeUUID
 }
 
 func (s *memdConnWrap) WritePacket(pkt *memd.Packet) error {
@@ -183,7 +177,6 @@ func dialMemdConn(ctx context.Context, ep routeEndpoint, tlsConfig *tls.Config, 
 		baseConn:   c,
 		localAddr:  baseConn.LocalAddr().String(),
 		remoteAddr: ep.Address,
-		nodeUUID:   ep.NodeUUID,
 		bufSize:    int(bufSize),
 	}, nil
 }

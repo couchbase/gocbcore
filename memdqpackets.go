@@ -1,7 +1,6 @@
 package gocbcore
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -95,8 +94,6 @@ type memdQRequest struct {
 	resourceUnitsLock sync.Mutex
 	resourceUnits     *ResourceUnitResult
 
-	telemetryRecorder *telemetryOpRecorder
-
 	totalServerDuration time.Duration
 }
 
@@ -104,6 +101,7 @@ type memdQRequestConnInfo struct {
 	lastDispatchedTo   string
 	lastDispatchedFrom string
 	lastConnectionID   string
+	lastDispatchedAt   time.Time
 }
 
 func (req *memdQRequest) AddResourceUnits(readUnitsFrame *memd.ReadUnitsFrame, writeUnitsFrame *memd.WriteUnitsFrame) {
@@ -282,21 +280,6 @@ func (req *memdQRequest) internalCancel(err error) bool {
 		waitingIn.CancelRequest(req, err)
 		localAddr = waitingIn.LocalAddress()
 		remoteAddr = waitingIn.Address()
-	}
-
-	if req.telemetryRecorder != nil {
-		outcome := telemetryOutcomeSuccess
-		if err != nil {
-			if errors.Is(err, ErrRequestCanceled) {
-				outcome = telemetryOutcomeCanceled
-			} else if errors.Is(err, ErrTimeout) {
-				outcome = telemetryOutcomeTimedout
-			} else {
-				outcome = telemetryOutcomeError
-			}
-		}
-
-		req.telemetryRecorder.FinishAndRecordLocked(outcome)
 	}
 
 	cancelReqTraceLocked(req, localAddr, remoteAddr)

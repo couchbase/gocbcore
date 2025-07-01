@@ -65,6 +65,9 @@ func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
 	pipecli.parent = parent
 	oldConsumer := pipecli.consumer
 	pipecli.consumer = nil
+	if pipecli.client != nil {
+		pipecli.client.UpdateTelemetryAttributes(parent.nodeUUID, parent.canonicalAddress)
+	}
 	pipecli.lock.Unlock()
 
 	if oldConsumer != nil {

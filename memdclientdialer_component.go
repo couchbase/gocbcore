@@ -48,6 +48,7 @@ type memdClientDialerComponent struct {
 
 	tracer       *tracerComponent
 	zombieLogger *zombieLoggerComponent
+	telemetry    *telemetryComponent
 
 	bootstrapProps bootstrapProps
 
@@ -103,7 +104,7 @@ type memdBoostrapCCCPUnsupportedHandler interface {
 }
 
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent,
+	zLogger *zombieLoggerComponent, tracer *tracerComponent, telemetry *telemetryComponent,
 	cfgManager *configManagementComponent) *memdClientDialerComponent {
 	dialer := &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
@@ -112,6 +113,7 @@ func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstr
 		breakerCfg:        breakerCfg,
 		zombieLogger:      zLogger,
 		tracer:            tracer,
+		telemetry:         telemetry,
 		serverFailures:    make(map[string]time.Time),
 
 		bootstrapProps: bSettings,
@@ -275,6 +277,8 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	client := newMemdClient(
 		memdClientProps{
 			ClientID:             mcc.clientID,
+			CanonicalAddress:     address.CanonicalAddress,
+			NodeUUID:             address.NodeUUID,
 			DCPQueueSize:         mcc.dcpQueueSize,
 			DisableDecompression: mcc.disableDecompression,
 			CompressionMinRatio:  mcc.compressionMinRatio,
@@ -285,6 +289,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 		postCompleteHandler,
 		mcc.tracer,
 		mcc.zombieLogger,
+		mcc.telemetry,
 		serverRequestHandler,
 	)
 

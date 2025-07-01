@@ -285,6 +285,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		circuitBreakerConfig,
 		nil,
 		c.tracer,
+		nil,
 		c.cfgManager,
 	)
 	c.kvMux = newKVMux(
@@ -297,7 +298,6 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
-		nil,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,

@@ -21,7 +21,6 @@ type newMemdPipelineOptions struct {
 	maxClients             int
 	maxItems               int
 	getClientFn            memdGetClientFn
-	telemetry              *telemetryComponent
 	onPipelineConnected    func()
 	onPipelineDisconnected func()
 }
@@ -42,9 +41,8 @@ type memdPipeline struct {
 
 	isSeedNode       bool
 	serverGroup      string
-	nodeUUID         string
 	canonicalAddress string
-	telemetry        *telemetryComponent
+	nodeUUID         string
 }
 
 func newPipeline(opts *newMemdPipelineOptions) *memdPipeline {
@@ -58,7 +56,6 @@ func newPipeline(opts *newMemdPipelineOptions) *memdPipeline {
 		serverGroup:      opts.endpoint.ServerGroup,
 		nodeUUID:         opts.endpoint.NodeUUID,
 		canonicalAddress: opts.endpoint.CanonicalAddress,
-		telemetry:        opts.telemetry,
 
 		onPipelineConnected:    opts.onPipelineConnected,
 		onPipelineDisconnected: opts.onPipelineDisconnected,
@@ -71,7 +68,6 @@ func newDeadPipeline(maxItems int) *memdPipeline {
 		maxClients:             0,
 		maxItems:               maxItems,
 		getClientFn:            nil,
-		telemetry:              nil,
 		onPipelineConnected:    nil,
 		onPipelineDisconnected: nil,
 	})
@@ -160,42 +156,6 @@ func (pipeline *memdPipeline) onClientDisconnected() {
 }
 
 func (pipeline *memdPipeline) sendRequest(req *memdQRequest, maxItems int) error {
-	if pipeline.telemetry.TelemetryEnabled() {
-		cmdCategory := req.Command.Category()
-
-		if cmdCategory != memd.CmdCategoryUnknown {
-			var node, altNode string
-			if pipeline.canonicalAddress != "" && pipeline.canonicalAddress != pipeline.address {
-				var err error
-				node, err = hostFromHostPort(pipeline.canonicalAddress)
-				if err != nil {
-					node = pipeline.canonicalAddress
-				}
-				altNode, err = hostFromHostPort(pipeline.address)
-				if err != nil {
-					altNode = pipeline.address
-				}
-			} else {
-				var err error
-				node, err = hostFromHostPort(pipeline.address)
-				if err != nil {
-					node = pipeline.address
-				}
-			}
-
-			req.processingLock.Lock()
-			req.telemetryRecorder = pipeline.telemetry.GetRecorder(telemetryOperationAttributes{
-				node:     node,
-				altNode:  altNode,
-				nodeUUID: pipeline.nodeUUID,
-				service:  MemdService,
-				mutation: cmdCategory == memd.CmdCategoryMutation,
-				durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != 0,
-			})
-			req.processingLock.Unlock()
-		}
-	}
-
 	err := pipeline.queue.Push(req, maxItems)
 	if err == errOpQueueClosed {
 		return errPipelineClosed

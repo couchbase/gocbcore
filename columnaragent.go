@@ -148,6 +148,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		CircuitBreakerConfig{Enabled: false},
 		nil,
 		c.tracer,
+		nil,
 		c.cfgManager,
 	)
 
@@ -161,7 +162,6 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
-		nil,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,

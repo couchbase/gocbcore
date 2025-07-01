@@ -2,6 +2,7 @@ package gocbcore
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -53,6 +54,7 @@ type memdClient struct {
 	serverRequestHandler  serverRequestHandler
 	tracer                *tracerComponent
 	zombieLogger          *zombieLoggerComponent
+	telemetry             *telemetryComponent
 
 	dcpQueueSize int
 
@@ -69,7 +71,15 @@ type memdClient struct {
 	compressionMinRatio  float64
 	disableDecompression bool
 
+	telemetryAttrs atomic.Pointer[memdClientTelemetryAttrs]
+
 	gracefulCloseTriggered uint32
+}
+
+type memdClientTelemetryAttrs struct {
+	nodeUUID string
+	node     string
+	altNode  string
 }
 
 type dcpBuffer struct {
@@ -79,7 +89,9 @@ type dcpBuffer struct {
 }
 
 type memdClientProps struct {
-	ClientID string
+	ClientID         string
+	CanonicalAddress string
+	NodeUUID         string
 
 	DCPQueueSize         int
 	CompressionMinSize   int
@@ -88,7 +100,7 @@ type memdClientProps struct {
 }
 
 func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreakerConfig, postErrHandler postCompleteErrorHandler,
-	tracer *tracerComponent, zombieLogger *zombieLoggerComponent, serverRequestHandler serverRequestHandler) *memdClient {
+	tracer *tracerComponent, zombieLogger *zombieLoggerComponent, telemetry *telemetryComponent, serverRequestHandler serverRequestHandler) *memdClient {
 	client := memdClient{
 		closeNotify:          make(chan bool),
 		connReleaseNotify:    make(chan struct{}),
@@ -98,6 +110,7 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		serverRequestHandler: serverRequestHandler,
 		tracer:               tracer,
 		zombieLogger:         zombieLogger,
+		telemetry:            telemetry,
 		conn:                 conn,
 		opList:               newMemdOpMap(),
 
@@ -106,6 +119,8 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		compressionMinSize:   props.CompressionMinSize,
 		disableDecompression: props.DisableDecompression,
 	}
+
+	client.UpdateTelemetryAttributes(props.NodeUUID, props.CanonicalAddress)
 
 	if client.zombieLogger != nil {
 		client.opTombstones = newMemdOpTombstoneStore()
@@ -165,16 +180,38 @@ func (client *memdClient) Address() string {
 	return client.conn.RemoteAddr()
 }
 
-func (client *memdClient) NodeUUID() string {
-	return client.conn.NodeUUID()
-}
-
 func (client *memdClient) ConnID() string {
 	return client.connID
 }
 
 func (client *memdClient) CloseNotify() chan bool {
 	return client.closeNotify
+}
+
+func (client *memdClient) UpdateTelemetryAttributes(nodeUUID, canonicalAddress string) {
+	var node, altNode string
+	if canonicalAddress != "" && canonicalAddress != client.Address() {
+		var err error
+		node, err = hostFromHostPort(canonicalAddress)
+		if err != nil {
+			node = canonicalAddress
+		}
+		altNode, err = hostFromHostPort(client.Address())
+		if err != nil {
+			altNode = client.Address()
+		}
+	} else {
+		var err error
+		node, err = hostFromHostPort(client.Address())
+		if err != nil {
+			node = client.Address()
+		}
+	}
+	client.telemetryAttrs.Store(&memdClientTelemetryAttrs{
+		nodeUUID: nodeUUID,
+		node:     node,
+		altNode:  altNode,
+	})
 }
 
 func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
@@ -201,12 +238,12 @@ func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
 		return errRequestCanceled
 	}
 
-	connInfo := memdQRequestConnInfo{
+	req.SetConnectionInfo(memdQRequestConnInfo{
 		lastDispatchedTo:   client.Address(),
 		lastDispatchedFrom: client.conn.LocalAddr(),
 		lastConnectionID:   client.connID,
-	}
-	req.SetConnectionInfo(connInfo)
+		lastDispatchedAt:   time.Now(),
+	})
 
 	client.opList.Add(req)
 	return nil
@@ -236,6 +273,8 @@ func (client *memdClient) CancelRequest(req *memdQRequest, err error) bool {
 			client.zombieLogger.RecordTombstoneEviction()
 		}
 	}
+
+	client.recordTelemetry(req, err)
 
 	if client.breaker.CompletionCallback(err) {
 		client.breaker.MarkSuccessful()
@@ -280,11 +319,6 @@ func (client *memdClient) internalSendRequest(req *memdQRequest) error {
 
 	logSchedf("Writing request. %s to %s OP=0x%x. Opaque=%d. Vbid=%d", client.conn.LocalAddr(), client.loggerID(), req.Command, req.Opaque, req.Vbucket)
 
-	if req.telemetryRecorder != nil {
-		req.processingLock.Lock()
-		req.telemetryRecorder.StartLocked()
-		req.processingLock.Unlock()
-	}
 	client.tracer.StartNetTrace(req)
 
 	err := client.conn.WritePacket(packet)
@@ -381,9 +415,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 			req.recordServerDurationLocked(resp.ServerDurationFrame.ServerDuration)
 		}
 
-		if req.telemetryRecorder != nil {
-			req.telemetryRecorder.FinishAndRecordLocked(telemetryOutcomeSuccess)
-		}
+		client.recordTelemetry(req, nil)
 	}
 
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
@@ -721,6 +753,41 @@ func (client *memdClient) sendCanary() {
 			client.breaker.MarkFailure()
 		}
 	}
+}
+
+func (client *memdClient) recordTelemetry(req *memdQRequest, err error) {
+	if !client.telemetry.TelemetryEnabled() {
+		return
+	}
+
+	category := req.Command.Category()
+	if category == memd.CmdCategoryUnknown {
+		return
+	}
+	outcome := telemetryOutcomeSuccess
+	if err != nil {
+		if errors.Is(err, ErrRequestCanceled) {
+			outcome = telemetryOutcomeCanceled
+		} else if errors.Is(err, ErrTimeout) {
+			outcome = telemetryOutcomeTimedout
+		} else {
+			outcome = telemetryOutcomeError
+		}
+	}
+
+	clientAttrs := client.telemetryAttrs.Load()
+	connInfo := req.ConnectionInfo()
+
+	client.telemetry.RecordOp(telemetryOperationAttributes{
+		duration: time.Since(connInfo.lastDispatchedAt),
+		outcome:  outcome,
+		nodeUUID: clientAttrs.nodeUUID,
+		node:     clientAttrs.node,
+		altNode:  clientAttrs.altNode,
+		service:  MemdService,
+		durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != memd.DurabilityLevel(0),
+		mutation: category == memd.CmdCategoryMutation,
+	})
 }
 
 func (client *memdClient) loggerID() string {
