@@ -402,13 +402,13 @@ func newN1QLQueryComponent(httpComponent httpComponentInterface, cfgMgr configMa
 }
 
 func (nqc *n1qlQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
-	if atomic.LoadUint32(&nqc.enhancedPreparedSupported) == 0 &&
-		cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") {
+	if cfg.ContainsClusterCapability(1, "n1ql", "enhancedPreparedStatements") &&
+		atomic.CompareAndSwapUint32(&nqc.enhancedPreparedSupported, 0, 1) {
 		logDebugf("Enabling enhanced prepared statement support")
 		// Once supported this can't be unsupported
 		nqc.queryCache.Invalidate()
-		atomic.StoreUint32(&nqc.enhancedPreparedSupported, 1)
 	}
+
 	if cfg.ContainsClusterCapability(1, "n1ql", "readFromReplica") {
 		atomic.StoreUint32(&nqc.useReplicaSupported, useReplicaSupportLevelSupported)
 	} else {
