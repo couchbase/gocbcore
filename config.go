@@ -95,7 +95,7 @@ type cfgBucket struct {
 	ClusterCapabilities    map[string][]string `json:"clusterCapabilities,omitempty"`
 	ClusterUUID            string              `json:"clusterUUID,omitempty"`
 	ClusterName            string              `json:"clusterName,omitempty"`
-	ProdName               string              `json:"prodName,omitempty"`
+	Prod                   string              `json:"prod,omitempty"`
 }
 
 type localLoopbackAddress struct {
@@ -320,7 +320,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		bucketCapabilitiesVer:  cfg.CapabilitiesVersion,
 		clusterUUID:            cfg.ClusterUUID,
 		clusterName:            cfg.ClusterName,
-		prodName:               cfg.ProdName,
+		prod:                   cfg.Prod,
 	}
 
 	if bktType == bktTypeCouchbase {

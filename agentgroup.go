@@ -47,6 +47,7 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 		DefaultRetryStrategy: config.DefaultRetryStrategy,
 		CircuitBreakerConfig: config.CircuitBreakerConfig,
 		TelemetryConfig:      config.TelemetryConfig,
+		InternalConfig:       config.InternalConfig,
 	})
 	if err != nil {
 		return nil, err

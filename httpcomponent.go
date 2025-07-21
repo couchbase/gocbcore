@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -198,7 +197,7 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 			return nil, errShutdown
 		}
 
-		if err := canSendAnalyticsRequest(state.prodName); err != nil {
+		if err := canSendAnalyticsRequest(state.prod); err != nil {
 			return nil, err
 		}
 	}
@@ -797,14 +796,10 @@ func canSendAnalyticsRequest(prodName string) error {
 	}
 
 	lowerProdName := strings.ToLower(prodName)
-	if strings.HasPrefix(lowerProdName, "couchbase server") {
+	if lowerProdName != "analytics" {
 		return nil
 	}
 
-	errTxt := fmt.Sprintf("this '%s' cluster cannot be used with this SDK, which is intended for use with operational clusters", prodName)
-	if lowerProdName == "enterprise analytics" {
-		errTxt = fmt.Sprintf("%s - for this cluster, an Enterprise Analytics SDK should be used", errTxt)
-	}
-
-	return errors.New(errTxt)
+	return errors.New("this 'analytics' cluster cannot be used with this SDK, which is intended for use with " +
+		"operational clusters, for this cluster, an Enterprise Analytics SDK should be use")
 }

@@ -51,7 +51,7 @@ type routeConfig struct {
 	clusterUUID string
 	clusterName string
 
-	prodName string
+	prod string
 }
 
 func (config *routeConfig) DebugString() string {
@@ -98,9 +98,9 @@ func (config *routeConfig) DebugString() string {
 		fmt.Fprintln(&buffer, "KetamaMap: not-used")
 	}
 
-	if config.prodName != "" {
-		fmt.Fprintln(&buffer, "ProdName:")
-		fmt.Fprintln(&buffer, config.prodName)
+	if config.prod != "" {
+		fmt.Fprintln(&buffer, "Prod:")
+		fmt.Fprintln(&buffer, config.prod)
 	}
 
 	return buffer.String()
