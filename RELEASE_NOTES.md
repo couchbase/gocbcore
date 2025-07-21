@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 10.7.1 (21 July 2025)
+
+### Fixed Issues
+
+* [GOCBC-1730] (https://jira.issues.couchbase.com/browse/GOCBC-1730):
+  * Fixed issue where `alt_node` was always reported for KV app telemetry.
+* [GOCBC-1743] (https://jira.issues.couchbase.com/browse/GOCBC-1743):
+  * Fixed issue where `GetMulti` read skew resolution could nil pointer.
+* [GOCBC-1745] (https://jira.issues.couchbase.com/browse/GOCBC-1745):
+  * Fixed issue where SRV record refresh would never match existing addresses being used.
+* [GOCBC-1747] (https://jira.issues.couchbase.com/browse/GOCBC-1747):
+  * Fixed issue where SRV record refresh would happy when cluster config pushes were active.
+
 ## Version 10.7.0 (17 April 2025)
 
 ### New Features and Behavioral Changes
