@@ -1,5 +1,37 @@
 # Release Notes
 
+## Version 10.8.0 (21 August 2025)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1633](https://jira.issues.couchbase.com/browse/GOCBC-1633):
+  * Added support for binary objects in transactions.
+* [GOCBC-1692](https://jira.issues.couchbase.com/browse/GOCBC-1692):
+  * Updated orphan response reporting to report more fields.
+* [GOCBC-1693](https://jira.issues.couchbase.com/browse/GOCBC-1693):
+  * Updated app telemetry to report latency for orphaned responses.
+* [GOCBC-1703](https://jira.issues.couchbase.com/browse/GOCBC-1703):
+  * Added support for access_deleted for replica reads.
+* [GOCBC-1738](https://jira.issues.couchbase.com/browse/GOCBC-1738):
+  * Added support for applying `DCPAgent`'s `DefaultRetryStrategy` to `WaitUntilReady`.
+* [GOCBC-1739](https://jira.issues.couchbase.com/browse/GOCBC-1739):
+  * Added support for including document flags to `TransactionGetMultiResult`.
+
+### Fixed Issues
+
+* [GOCBC-1730](https://jira.issues.couchbase.com/browse/GOCBC-1730):
+  * Fixed issue where alt_node was always reported for KV app telemetry.
+* [GOCBC-1742](https://jira.issues.couchbase.com/browse/GOCBC-1742):
+  * Fixed issue where `ErrDocumentExists` was wrapped in a `TransactionOperationFailedError` when it should not have been.
+* [GOCBC-1743](https://jira.issues.couchbase.com/browse/GOCBC-1743):
+  * Fixed issue where transactions `GetMulti` could encounter a nil pointer dereference during read skew resolution.
+* [GOCBC-1745](https://jira.issues.couchbase.com/browse/GOCBC-1745):
+  * Fixed issue where DNS SRV re-resolution would never match existing addresses so always trigger an agent "reset".
+* [GOCBC-1746](https://jira.issues.couchbase.com/browse/GOCBC-1746):
+  * Fixed issue where "resetting" the agent after DNS SRV re-resolution would not correctly work.
+* [GOCBC-1747](https://jira.issues.couchbase.com/browse/GOCBC-1747):
+  * Fixed issue where DNS SRV re-resolution would not be triggered if all nodes were using cluster map notifications.
+
 ## Version 10.7.0 (17 April 2025)
 
 ### New Features and Behavioral Changes
