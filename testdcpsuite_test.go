@@ -702,8 +702,8 @@ func (suite *DCPTestSuite) TestMutationsCollection() {
 
 	suite.runDCPStream(suite.dcpAgent)
 
-	// Compaction can run and cause expirations to be hidden from us
-	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations))
+	// Compaction can run and cause expirations+deletions to be hidden from us
+	suite.Assert().InDelta(suite.NumMutations, len(suite.so.counter.mutations), float64(suite.NumExpirations+suite.NumDeletions))
 	suite.Assert().Equal(suite.NumDeletions, len(suite.so.counter.deletions))
 	suite.Assert().InDelta(suite.NumExpirations, len(suite.so.counter.expirations), float64(suite.NumExpirations))
 
