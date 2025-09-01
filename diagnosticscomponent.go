@@ -540,8 +540,12 @@ func (dc *diagnosticsComponent) checkKVReady(desiredState ClusterState, op *wait
 			// We've not seen a config so let's see if we've been informed about any errors.
 			dc.preConfigBootstrapErrorLock.Lock()
 			connectErr = dc.preConfigBootstrapError
-			logDebugf("Bootstrap error found before config seen: %v", connectErr)
 			dc.preConfigBootstrapErrorLock.Unlock()
+			if connectErr == nil {
+				logDebugf("No bootstrap error found before config seen.")
+			} else {
+				logDebugf("Bootstrap error found before config seen: %v", connectErr)
+			}
 
 			// If there's no error appearing from the pipeline client then let's check the poller
 			if connectErr == nil && dc.pollerErrorProvider != nil {
@@ -686,8 +690,12 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 			// We've not seen a config so let's see if we've been informed about any errors.
 			dc.preConfigBootstrapErrorLock.Lock()
 			connectErr = dc.preConfigBootstrapError
-			logDebugf("Bootstrap error found before config seen: %v", connectErr)
 			dc.preConfigBootstrapErrorLock.Unlock()
+			if connectErr == nil {
+				logDebugf("No bootstrap error found before config seen.")
+			} else {
+				logDebugf("Bootstrap error found before config seen: %v", connectErr)
+			}
 
 			// If there's no error appearing from the pipeline client then let's check the poller
 			if connectErr == nil && dc.pollerErrorProvider != nil {
