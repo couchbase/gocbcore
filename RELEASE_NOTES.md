@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.8.1 (18 September 2025)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1762](https://jira.issues.couchbase.com/browse/GOCBC-1762):
+  * Improved logged message when no error before bootstrapping has occurred with WaitUntilReady.
+
 ## Version 10.8.0 (21 August 2025)
 
 ### New Features and Behavioral Changes
