@@ -35,14 +35,21 @@ type DCPAgentConfig struct {
 	DefaultRetryStrategy RetryStrategy
 }
 
+type MaxSnapshotMarkerVersion uint8
+
+const (
+	MaxSnapshotMarkerVersionV2_2 = iota + 1
+)
+
 // DCPConfig specifies DCP specific configuration options.
 type DCPConfig struct {
-	AgentPriority    DcpAgentPriority
-	UseChangeStreams bool
-	UseExpiryOpcode  bool
-	UseStreamID      bool
-	UseOSOBackfill   bool
-	BackfillOrder    DCPBackfillOrder
+	AgentPriority            DcpAgentPriority
+	UseChangeStreams         bool
+	UseExpiryOpcode          bool
+	UseStreamID              bool
+	UseOSOBackfill           bool
+	BackfillOrder            DCPBackfillOrder
+	MaxSnapshotMarkerVersion MaxSnapshotMarkerVersion
 
 	BufferSize                   int
 	DisableBufferAcknowledgement bool
@@ -92,6 +99,18 @@ func (config DCPConfig) fromSpec(spec connstr.ResolvedConnSpec) (DCPConfig, erro
 			return DCPConfig{}, fmt.Errorf("enable_dcp_expiry option must be a boolean")
 		}
 		config.UseExpiryOpcode = val
+	}
+
+	// This option is experimental
+	if valStr, ok := fetchOption(spec, "max_dcp_snapshot_marker_version"); ok {
+		var maxSnapshotMarkerVersion MaxSnapshotMarkerVersion
+		switch valStr {
+		case "v2.2":
+			maxSnapshotMarkerVersion = MaxSnapshotMarkerVersionV2_2
+		default:
+			return DCPConfig{}, fmt.Errorf("max_dcp_snapshot_marker_version can only take value 'v2.2'")
+		}
+		config.MaxSnapshotMarkerVersion = maxSnapshotMarkerVersion
 	}
 
 	return config, nil

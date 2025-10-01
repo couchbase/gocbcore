@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -88,29 +89,34 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 		// This is one of the stream events
 		switch resp.Command {
 		case memd.CmdDcpSnapshotMarker:
-			snapShotmarker := DcpSnapshotMarker{VbID: resp.Vbucket}
+			snapshotMarker := DcpSnapshotMarker{VbID: resp.Vbucket}
 			if resp.StreamIDFrame != nil {
-				snapShotmarker.StreamID = resp.StreamIDFrame.StreamID
+				snapshotMarker.StreamID = resp.StreamIDFrame.StreamID
 			}
 			if len(resp.Extras) == 20 {
 				// Length of 20 indicates a v1 packet
-				snapShotmarker.StartSeqNo = binary.BigEndian.Uint64(resp.Extras[0:])
-				snapShotmarker.EndSeqNo = binary.BigEndian.Uint64(resp.Extras[8:])
-				snapShotmarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Extras[16:]))
+				snapshotMarker.StartSeqNo = binary.BigEndian.Uint64(resp.Extras[0:])
+				snapshotMarker.EndSeqNo = binary.BigEndian.Uint64(resp.Extras[8:])
+				snapshotMarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Extras[16:]))
 			} else if len(resp.Extras) == 1 {
 				// Length of 1 indicates a v2 packet
-				snapShotmarker.StartSeqNo = binary.BigEndian.Uint64(resp.Value[0:])
-				snapShotmarker.EndSeqNo = binary.BigEndian.Uint64(resp.Value[8:])
-				snapShotmarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Value[16:]))
-				snapShotmarker.MaxVisibleSeqNo = binary.BigEndian.Uint64(resp.Value[20:])
-				snapShotmarker.HighCompletedSeqNo = binary.BigEndian.Uint64(resp.Value[28:])
+				snapshotMarker.StartSeqNo = binary.BigEndian.Uint64(resp.Value[0:])
+				snapshotMarker.EndSeqNo = binary.BigEndian.Uint64(resp.Value[8:])
+				snapshotMarker.SnapshotType = SnapshotState(binary.BigEndian.Uint32(resp.Value[16:]))
+				snapshotMarker.MaxVisibleSeqNo = binary.BigEndian.Uint64(resp.Value[20:])
+				snapshotMarker.HighCompletedSeqNo = binary.BigEndian.Uint64(resp.Value[28:])
 				version := int(resp.Extras[0])
 				if version == 1 {
 					// v2.1 includes the snapshot TimeStamp
-					snapShotmarker.SnapshotTimeStamp = binary.BigEndian.Uint64(resp.Value[36:])
+					snapshotMarker.SnapshotTimeStamp = binary.BigEndian.Uint64(resp.Value[36:])
+				}
+				if version == 2 {
+					// v2.2 includes purge seq number, high prepared seq number but not the snapshot timestamp.
+					snapshotMarker.PurgeSeqNo = binary.BigEndian.Uint64(resp.Value[36:])
+					snapshotMarker.HighPreparedSeqNo = binary.BigEndian.Uint64(resp.Value[44:])
 				}
 			}
-			evtHandler.SnapshotMarker(snapShotmarker)
+			evtHandler.SnapshotMarker(snapshotMarker)
 		case memd.CmdDcpMutation:
 			mutation := DcpMutation{
 				SeqNo:        binary.BigEndian.Uint64(resp.Extras[0:]),
@@ -288,29 +294,32 @@ func (dcp *dcpComponent) OpenStream(vbID uint16, flags memd.DcpStreamAddFlag, vb
 	var val []byte
 	val = nil
 	if opts.StreamOptions != nil || opts.FilterOptions != nil || opts.ManifestOptions != nil {
-		convertedFilter := streamFilter{}
+		streamReqValue := streamRequestValue{}
 
 		if opts.FilterOptions != nil {
 			// If there are collection IDs then we can assume that scope ID of 0 actually means no scope ID
 			if len(opts.FilterOptions.CollectionIDs) > 0 {
 				for _, cid := range opts.FilterOptions.CollectionIDs {
-					convertedFilter.Collections = append(convertedFilter.Collections, fmt.Sprintf("%x", cid))
+					streamReqValue.Collections = append(streamReqValue.Collections, fmt.Sprintf("%x", cid))
 				}
 			} else {
 				// No collection IDs but the filter was set so even if scope ID is 0 then we use it
-				convertedFilter.Scope = fmt.Sprintf("%x", opts.FilterOptions.ScopeID)
+				streamReqValue.Scope = fmt.Sprintf("%x", opts.FilterOptions.ScopeID)
 			}
 
 		}
 		if opts.ManifestOptions != nil {
-			convertedFilter.ManifestUID = fmt.Sprintf("%x", opts.ManifestOptions.ManifestUID)
+			streamReqValue.ManifestUID = fmt.Sprintf("%x", opts.ManifestOptions.ManifestUID)
 		}
 		if opts.StreamOptions != nil {
-			convertedFilter.StreamID = opts.StreamOptions.StreamID
+			streamReqValue.StreamID = opts.StreamOptions.StreamID
+			if opts.StreamOptions.PurgeSeqNo != 0 {
+				streamReqValue.PurgeSeqNo = strconv.FormatUint(opts.StreamOptions.PurgeSeqNo, 10)
+			}
 		}
 
 		var err error
-		val, err = json.Marshal(convertedFilter)
+		val, err = json.Marshal(streamReqValue)
 		if err != nil {
 			return nil, err
 		}

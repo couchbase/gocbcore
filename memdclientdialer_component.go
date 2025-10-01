@@ -79,6 +79,7 @@ type memdBootstrapDCPProps struct {
 	streamName                   string
 	openFlags                    memd.DcpOpenFlag
 	bufferSize                   int
+	maxMarkerVersion             MaxSnapshotMarkerVersion
 }
 
 type memdClientDialerProps struct {
@@ -348,6 +349,12 @@ func (mcc *memdClientDialerComponent) dcpBootstrap(client *dcpBootstrapClient, d
 
 	if !mcc.dcpBootstrapProps.disableBufferAcknowledgement {
 		if err := client.ExecEnableDcpBufferAck(mcc.dcpBootstrapProps.bufferSize, deadline); err != nil {
+			return err
+		}
+	}
+
+	if mcc.dcpBootstrapProps.maxMarkerVersion == MaxSnapshotMarkerVersionV2_2 {
+		if err := client.ExecSetMaxMarkerVersion(2, 2, deadline); err != nil {
 			return err
 		}
 	}

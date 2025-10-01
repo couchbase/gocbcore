@@ -266,6 +266,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 				backfillOrderStr:             dcpBackfillOrderStr,
 				priorityStr:                  dcpPriorityStr,
 				bufferSize:                   dcpBufferSize,
+				maxMarkerVersion:             config.DCPConfig.MaxSnapshotMarkerVersion,
 			},
 		},
 		bootstrapProps{

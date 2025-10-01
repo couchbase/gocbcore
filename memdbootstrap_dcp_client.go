@@ -84,6 +84,16 @@ func (client *dcpBootstrapClient) ExecEnableDcpBufferAck(bufferSize int, deadlin
 	return nil
 }
 
+func (client *dcpBootstrapClient) ExecSetMaxMarkerVersion(major, minor int, deadline time.Time) error {
+	versionStr := fmt.Sprintf("%d.%d", major, minor)
+	err := client.ExecDcpControl("max_marker_version", versionStr, deadline)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (bc *memdBootstrapClient) sendRequest(cmd memd.CmdCode, k, v, e []byte, deadline time.Time) (valOut []byte, errOut error) {
 	signal := make(chan struct{}, 1)
 	err := bc.doBootstrapRequest(&memdQRequest{

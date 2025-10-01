@@ -53,6 +53,8 @@ func (suite *DCPTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 		return !suite.ClusterVersion.Lower(srvVer650)
 	case TestFeatureCollections:
 		return !suite.ClusterVersion.Lower(srvVer700)
+	case TestFeatureDCPSnapshotMarkerV2_2:
+		return !suite.ClusterVersion.Lower(srvVer800)
 	}
 
 	panic("found unsupported feature code")
@@ -179,6 +181,10 @@ func (suite *DCPTestSuite) makeDCPAgentConfig(testConfig *DCPTestConfig, expiryE
 		} else {
 			config.SecurityConfig.TLSRootCAProvider = testConfig.CAProvider
 		}
+	}
+
+	if suite.SupportsFeature(TestFeatureDCPSnapshotMarkerV2_2) {
+		config.DCPConfig.MaxSnapshotMarkerVersion = MaxSnapshotMarkerVersionV2_2
 	}
 
 	return config

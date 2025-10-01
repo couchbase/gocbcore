@@ -8,7 +8,8 @@ type OpenStreamFilterOptions struct {
 
 // OpenStreamStreamOptions are the stream options available to the OpenStream operation.
 type OpenStreamStreamOptions struct {
-	StreamID uint16
+	StreamID   uint16
+	PurgeSeqNo uint64
 }
 
 // OpenStreamManifestOptions are the manifest options available to the OpenStream operation.
@@ -80,10 +81,14 @@ type FailoverEntry struct {
 
 // DcpSnapshotMarker represents a single response from the server
 type DcpSnapshotMarker struct {
-	StartSeqNo, EndSeqNo                                   uint64
-	VbID, StreamID                                         uint16
-	SnapshotType                                           SnapshotState
-	MaxVisibleSeqNo, HighCompletedSeqNo, SnapshotTimeStamp uint64
+	StartSeqNo, EndSeqNo uint64
+	VbID, StreamID       uint16
+	SnapshotType         SnapshotState
+	MaxVisibleSeqNo      uint64
+	HighCompletedSeqNo   uint64
+	SnapshotTimeStamp    uint64
+	PurgeSeqNo           uint64
+	HighPreparedSeqNo    uint64
 }
 
 // DcpMutation represents a single DCP mutation from the server
@@ -224,11 +229,12 @@ type StreamObserver interface {
 	SeqNoAdvanced(seqNoAdvanced DcpSeqNoAdvanced)
 }
 
-type streamFilter struct {
+type streamRequestValue struct {
 	ManifestUID string   `json:"uid,omitempty"`
 	Collections []string `json:"collections,omitempty"`
 	Scope       string   `json:"scope,omitempty"`
 	StreamID    uint16   `json:"sid,omitempty"`
+	PurgeSeqNo  string   `json:"purge_seqno,omitempty"`
 }
 
 // OpenStreamCallback is invoked with the results of `OpenStream` operations.
