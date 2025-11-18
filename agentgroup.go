@@ -17,7 +17,8 @@ type AgentGroup struct {
 	// It sets its own internal state by listening to cluster config updates on underlying agents.
 	clusterAgent *clusterAgent
 
-	config *AgentGroupConfig
+	configLock sync.Mutex
+	config     *AgentGroupConfig
 }
 
 // CreateAgentGroup will return a new AgentGroup with a base config of the config provided.
@@ -71,8 +72,10 @@ func (ag *AgentGroup) OpenBucket(bucketName string) error {
 		return nil
 	}
 
+	ag.configLock.Lock()
 	config := ag.config.toAgentConfig()
 	config.BucketName = bucketName
+	ag.configLock.Unlock()
 
 	agent, err := CreateAgent(config)
 	if err != nil {
@@ -226,6 +229,34 @@ func (ag *AgentGroup) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, err
 	}
 
 	return &overallReport, nil
+}
+
+// ReconfigureAuthProvider will update the AuthProvider for all underlying agents allowing for credential rotation.
+// Depending on the AuthProvider implementation this may require connections to be re-established, which the SDK will
+// not do automatically, e.g. for mTLS certificate rotation.
+func (ag *AgentGroup) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
+	logDebugf("Updating auth provider for agent group")
+
+	// First we update the base config so that if any new agents are opened whilst this function is running then
+	// they get created with the new auth provider.
+	ag.configLock.Lock()
+	ag.config.SecurityConfig.Auth = opts.Auth
+	ag.configLock.Unlock()
+
+	// We don't need to hold the lock whilst we reconfigure each agent.
+	// Any new agents will get the new auth provider anyway.
+	ag.agentsLock.Lock()
+	var agents []*Agent
+	for _, agent := range ag.boundAgents {
+		agents = append(agents, agent)
+	}
+	ag.agentsLock.Unlock()
+
+	for _, agent := range agents {
+		agent.ReconfigureAuthProvider(opts)
+	}
+
+	ag.clusterAgent.ReconfigureAuthProvider(opts)
 }
 
 func (ag *AgentGroup) maybeCloseGlobalAgent() {

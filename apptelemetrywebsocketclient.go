@@ -97,6 +97,10 @@ func (e *telemetryEndpoints) getAuthHeader(address string) (http.Header, error) 
 		return nil, errInvalidCredentials
 	}
 
+	if creds[0].Username == "" && creds[0].Password == "" {
+		return http.Header{}, nil
+	}
+
 	return http.Header{
 		"Authorization": []string{
 			"Basic " + base64.StdEncoding.EncodeToString(

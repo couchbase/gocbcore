@@ -9,6 +9,9 @@ import (
 type clusterAgent struct {
 	defaultRetryStrategy RetryStrategy
 
+	tlsLock   sync.Mutex
+	tlsConfig *dynTLSConfig
+
 	httpMux     *httpMux
 	tracer      *tracerComponent
 	telemetry   *telemetryComponent
@@ -40,6 +43,8 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	c.tlsConfig = tlsConfig
 
 	// App telemetry not supported in ns_server mode
 	if !config.SecurityConfig.NoTLSSeedNode {
@@ -259,4 +264,18 @@ func (agent *clusterAgent) Close() error {
 	agent.http.Close()
 
 	return nil
+}
+
+func (agent *clusterAgent) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
+	auth := opts.Auth
+	agent.tlsLock.Lock()
+	var tlsConfig *dynTLSConfig
+	if agent.tlsConfig != nil {
+		tlsConfig = createTLSConfig(auth, nil, agent.tlsConfig.Provider)
+	}
+	agent.tlsConfig = tlsConfig
+	agent.tlsLock.Unlock()
+
+	agent.httpMux.UpdateTLS(tlsConfig, auth)
+	agent.telemetry.UpdateTLS(tlsConfig, auth)
 }

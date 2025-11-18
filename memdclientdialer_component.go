@@ -178,7 +178,7 @@ func (mcc *memdClientDialerComponent) RemoveBootstrapFailHandler(handler memdBoo
 }
 
 func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct{}, address routeEndpoint, tlsConfig *dynTLSConfig,
-	auth AuthProvider, authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler,
+	getAuth func() (AuthProvider, error), authMechanisms []AuthMechanism, postCompleteHandler postCompleteErrorHandler,
 	serverRequestHandler serverRequestHandler) (*memdClient, error) {
 	mcc.serverFailuresLock.Lock()
 	failureTime := mcc.serverFailures[address.Address]
@@ -207,13 +207,7 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		return nil, err
 	}
 
-	bClient := newMemdBootstrapClient(client, cancelSig)
-	if mcc.dcpBootstrapProps == nil {
-		err = mcc.bootstrap(bClient, deadline, authMechanisms, auth)
-	} else {
-		err = mcc.dcpBootstrap(newDCPBootstrapClient(bClient), deadline, authMechanisms, auth)
-	}
-	if err != nil {
+	handleBootstrapError := func(err error) {
 		closeErr := client.Close()
 		if closeErr != nil {
 			logWarnf("Failed to close authentication client (%s)", closeErr)
@@ -231,7 +225,24 @@ func (mcc *memdClientDialerComponent) SlowDialMemdClient(cancelSig <-chan struct
 		for _, handler := range handlers {
 			handler.onBootstrapFail(err)
 		}
+	}
 
+	// We fetch the auth provider up front so that if it changes during bootstrap then we don't end up
+	// in a really weird state to debug if auth retries occur.
+	auth, err := getAuth()
+	if err != nil {
+		handleBootstrapError(err)
+		return nil, err
+	}
+
+	bClient := newMemdBootstrapClient(client, cancelSig)
+	if mcc.dcpBootstrapProps == nil {
+		err = mcc.bootstrap(bClient, deadline, authMechanisms, auth)
+	} else {
+		err = mcc.dcpBootstrap(newDCPBootstrapClient(bClient), deadline, authMechanisms, auth)
+	}
+	if err != nil {
+		handleBootstrapError(err)
 		return nil, err
 	}
 

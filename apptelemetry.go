@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"sync"
 	"time"
 )
 
@@ -107,8 +108,14 @@ type telemetryComponent struct {
 	agent      string
 	bucketName string
 
+	mutableDataLock sync.Mutex
+	mutableData     telemetryComponentMutableData
+}
+
+type telemetryComponentMutableData struct {
 	auth      AuthProvider
 	tlsConfig *dynTLSConfig
+	srcConfig *routeConfig
 }
 
 type telemetryComponentProps struct {
@@ -125,8 +132,12 @@ func newTelemetryComponent(props telemetryComponentProps) *telemetryComponent {
 		cfgMgr:     props.cfgMgr,
 		agent:      props.agent,
 		bucketName: props.bucketName,
-		auth:       props.auth,
-		tlsConfig:  props.tlsConfig,
+
+		mutableData: telemetryComponentMutableData{
+			auth:      props.auth,
+			tlsConfig: props.tlsConfig,
+			srcConfig: nil,
+		},
 	}
 	if props.reporter != nil {
 		tc.reporter = props.reporter
@@ -142,12 +153,46 @@ func (tc *telemetryComponent) TelemetryEnabled() bool {
 	return tc != nil && tc.reporter != nil
 }
 
-func (tc *telemetryComponent) OnNewRouteConfig(cfg *routeConfig) {
-	eps := telemetryEndpoints{
-		tlsConfig: tc.tlsConfig,
-		auth:      tc.auth,
+func (tc *telemetryComponent) UpdateTLS(tlsConfig *dynTLSConfig, auth AuthProvider) {
+	tc.mutableDataLock.Lock()
+	defer tc.mutableDataLock.Unlock()
+
+	// In theory it's possible that we could get here before a route config has been seen,
+	// in which case there are no endpoints to update.
+	if tc.mutableData.srcConfig != nil {
+		tc.updateEndpoints(tlsConfig, auth, tc.mutableData.srcConfig)
 	}
-	if tc.tlsConfig != nil {
+
+	tc.mutableData = telemetryComponentMutableData{
+		auth:      auth,
+		tlsConfig: tlsConfig,
+		srcConfig: tc.mutableData.srcConfig,
+	}
+}
+
+func (tc *telemetryComponent) updateEndpoints(tlsConfig *dynTLSConfig, auth AuthProvider, cfg *routeConfig) {
+	eps := telemetryEndpoints{
+		tlsConfig: tlsConfig,
+		auth:      auth,
+	}
+	if tlsConfig != nil {
+		eps.epList = cfg.appTelemetryEpList.SSLEndpoints
+	} else {
+		eps.epList = cfg.appTelemetryEpList.NonSSLEndpoints
+	}
+
+	tc.reporter.updateEndpoints(eps)
+}
+
+func (tc *telemetryComponent) OnNewRouteConfig(cfg *routeConfig) {
+	tc.mutableDataLock.Lock()
+	defer tc.mutableDataLock.Unlock()
+
+	eps := telemetryEndpoints{
+		tlsConfig: tc.mutableData.tlsConfig,
+		auth:      tc.mutableData.auth,
+	}
+	if tc.mutableData.tlsConfig != nil {
 		eps.epList = cfg.appTelemetryEpList.SSLEndpoints
 	} else {
 		eps.epList = cfg.appTelemetryEpList.NonSSLEndpoints
@@ -159,6 +204,12 @@ func (tc *telemetryComponent) OnNewRouteConfig(cfg *routeConfig) {
 		// This calls telemetryClient.connectIfNotStarted which does the connection asynchronously.
 		// Connecting must not block this goroutine.
 		tc.reporter.maybeStart()
+	}
+
+	tc.mutableData = telemetryComponentMutableData{
+		auth:      tc.mutableData.auth,
+		tlsConfig: tc.mutableData.tlsConfig,
+		srcConfig: cfg,
 	}
 }
 

@@ -559,6 +559,21 @@ func (mux *kvMux) ForceReconnect(tlsConfig *dynTLSConfig, authMechanisms []AuthM
 	mux.muxStateWriteLock.Unlock()
 }
 
+func (mux *kvMux) UpdateTLS(tls *dynTLSConfig, auth AuthProvider) {
+	mux.muxStateWriteLock.Lock()
+	defer mux.muxStateWriteLock.Unlock()
+
+	muxState := mux.getState()
+	newState := mux.newKVMuxState(muxState.RouteConfig(), tls, muxState.authMechanisms, auth)
+
+	if !mux.updateState(muxState, newState) {
+		mux.UpdateTLS(tls, auth)
+		return
+	}
+
+	mux.pipelineTakeover(muxState, newState)
+}
+
 func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -914,7 +929,7 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedEndpoint, tlsConfig, auth, authMechanisms,
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedEndpoint, tlsConfig, mux.getAuth, authMechanisms,
 				mux.handleOpRoutingResp, mux.handleServerRequest)
 		}
 		pipeline := newPipeline(&newMemdPipelineOptions{
@@ -931,6 +946,15 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 
 	return newKVMuxState(cfg, kvServerList, tlsConfig, authMechanisms, auth, mux.bucketName, pipelines,
 		newDeadPipeline(mux.queueSize))
+}
+
+func (mux *kvMux) getAuth() (AuthProvider, error) {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return nil, errShutdown
+	}
+
+	return clientMux.auth, nil
 }
 
 func (mux *kvMux) reconnectPipelines(oldMuxState *kvMuxState, newMuxState *kvMuxState, reconnectSeed bool) {

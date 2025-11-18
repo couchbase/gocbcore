@@ -660,7 +660,31 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	agent.cfgManager.UseTLS(tlsConfig != nil)
 	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided)
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
+	agent.telemetry.UpdateTLS(tlsConfig, auth)
 	return nil
+}
+
+type ReconfigureAuthProviderOptions struct {
+	Auth AuthProvider
+}
+
+// ReconfigureAuthProvider will update the AuthProvider for all underlying agents allowing for credential rotation.
+// Depending on the AuthProvider implementation this may require connections to be re-established, which the SDK will
+// not do automatically, e.g. for mTLS certificate rotation.
+func (agent *Agent) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
+	auth := opts.Auth
+	agent.connectionSettingsLock.Lock()
+	agent.auth = auth
+	var tlsConfig *dynTLSConfig
+	if agent.tlsConfig != nil {
+		tlsConfig = createTLSConfig(auth, nil, agent.tlsConfig.Provider)
+	}
+	agent.tlsConfig = tlsConfig
+	agent.connectionSettingsLock.Unlock()
+
+	agent.httpMux.UpdateTLS(tlsConfig, auth)
+	agent.kvMux.UpdateTLS(tlsConfig, auth)
+	agent.telemetry.UpdateTLS(tlsConfig, auth)
 }
 
 func (agent *Agent) onCCCPUnsupported(err error) {
