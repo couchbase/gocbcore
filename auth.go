@@ -61,7 +61,7 @@ func (k *authCreds) IsUserPass() bool {
 }
 
 func getKvAuthCreds(auth AuthProvider, endpoint string) (*authCreds, error) {
-	if a, ok := auth.(JWTAuthProvider); ok {
+	if a, ok := auth.(AuthProviderJWT); ok {
 		jwt, err := a.JWT(AuthCredsRequest{
 			Service:  MemdService,
 			Endpoint: endpoint,
