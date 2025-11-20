@@ -102,6 +102,9 @@ var (
 		context.DeadlineExceeded,
 		"operation not sent to server, as Timeout would be exceeded",
 	)
+
+	// ErrAuthStale occurs when the server indicates the client's authentication is stale.
+	ErrAuthStale = errors.New("authentication stale")
 )
 
 // Shared Error Definitions RFC#58@15

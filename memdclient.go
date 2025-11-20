@@ -458,6 +458,16 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	req.processingLock.Unlock()
 
 	if err != nil {
+		if errors.Is(err, ErrMemdAuthStale) {
+			logDebugf("Routing callback intercepted auth stale error, closing client %s", client.loggerID())
+			go func() {
+				err := client.Close()
+				if err != nil {
+					logDebugf("Failed to shutdown memdclient (%s) on auth stale: %s", client.loggerID(), err)
+				}
+			}()
+		}
+
 		shortCircuited, routeErr := client.postErrHandler(resp, req, err)
 		if shortCircuited {
 			logSchedf("Routing callback intercepted response")

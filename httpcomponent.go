@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"io"
 	"math/rand"
@@ -246,7 +245,7 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 			return nil, false, err
 		}
 	}
-	var creds []UserPassPair
+	var creds authCreds
 	if req.Username == "" && req.Password == "" {
 		auth := hc.muxer.Auth()
 		if auth == nil {
@@ -254,11 +253,39 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 			return nil, false, errCliInternalError
 		}
 
-		var err error
-		creds, err = auth.Credentials(AuthCredsRequest{
+		credsReq := AuthCredsRequest{
 			Service:  req.Service,
 			Endpoint: state.endpoint.Address,
-		})
+		}
+
+		getCreds := func() (authCreds, error) {
+			if a, ok := auth.(AuthProviderJWT); ok {
+				token, err := a.JWT(credsReq)
+				if err != nil {
+					return authCreds{}, err
+				}
+
+				return authCreds{
+					JWT: token,
+				}, nil
+			} else {
+				creds, err := auth.Credentials(credsReq)
+				if err != nil {
+					return authCreds{}, err
+				}
+
+				if len(creds) != 1 {
+					return authCreds{}, errInvalidCredentials
+				}
+
+				return authCreds{
+					UserPass: creds[0],
+				}, nil
+			}
+		}
+
+		var err error
+		creds, err = getCreds()
 		if err != nil {
 			if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, state.start, state.endpoint.Address, true); err != nil {
 				return nil, false, err
@@ -693,29 +720,6 @@ func inDenyList(ep routeEndpoint, denylist []string) bool {
 	return false
 }
 
-func injectJSONCreds(body []byte, creds []UserPassPair) []byte {
-	var props map[string]json.RawMessage
-	err := json.Unmarshal(body, &props)
-	if err == nil {
-		if _, ok := props["creds"]; ok {
-			// Early out if the user has already passed a set of credentials.
-			return body
-		}
-
-		jsonCreds, err := json.Marshal(creds)
-		if err == nil {
-			props["creds"] = json.RawMessage(jsonCreds)
-
-			newBody, err := json.Marshal(props)
-			if err == nil {
-				return newBody
-			}
-		}
-	}
-
-	return body
-}
-
 type httpRequestGenerator struct {
 	ctx     context.Context
 	request *httpRequest
@@ -751,7 +755,7 @@ func newHTTPRequestGenerator(ctx context.Context, req *httpRequest, userAgent st
 	}
 }
 
-func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPair) (*http.Request, error) {
+func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds authCreds) (*http.Request, error) {
 	// Generate a request URI
 	reqURI := endpoint + hrg.request.Path
 
@@ -767,21 +771,13 @@ func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPai
 	if hrg.request.Username != "" || hrg.request.Password != "" {
 		hreq.SetBasicAuth(hrg.request.Username, hrg.request.Password)
 	} else {
-		if hrg.request.Service == N1qlService || hrg.request.Service == CbasService ||
-			hrg.request.Service == FtsService {
-			// Handle service which support multi-bucket authentication using
-			// injection into the body of the request.
-			if len(creds) == 1 {
-				hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
-			} else {
-				body = injectJSONCreds(body, creds)
-			}
+		if creds.IsJWT() {
+			hreq.Header.Set("Authorization", "Bearer "+creds.JWT)
 		} else {
-			if len(creds) != 1 {
-				return nil, errInvalidCredentials
-			}
-
-			hreq.SetBasicAuth(creds[0].Username, creds[0].Password)
+			// We seem to have always set basic auth even when using client cert auth so we continue that behaviour.
+			username := creds.UserPass.Username
+			password := creds.UserPass.Password
+			hreq.SetBasicAuth(username, password)
 		}
 	}
 

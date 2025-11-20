@@ -651,12 +651,12 @@ func (mcc *memdClientDialerComponent) buildAuthHandler(client bootstrapClient, a
 		return nil
 	}
 
-	if creds.Username != "" || creds.Password != "" {
+	if creds.ContainsCreds() {
 		return func() (chan error, chan bool, error) {
 			continueCh := make(chan bool, 1)
 			completedCh := make(chan error, 1)
 			hasContinued := int32(0)
-			callErr := saslMethod(mechanism, creds.Username, creds.Password, client, deadline, func() {
+			callErr := saslMethod(mechanism, creds, client, deadline, func() {
 				// hasContinued should never be 1 here but let's guard against it.
 				if atomic.CompareAndSwapInt32(&hasContinued, 0, 1) {
 					continueCh <- true

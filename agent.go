@@ -182,7 +182,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.defaultRetryStrategy = newFailFastRetryStrategy()
 	}
 
-	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, tlsConfig != nil)
+	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.Auth, config.SecurityConfig.AuthMechanisms, tlsConfig != nil)
 
 	httpEpList := routeEndpoints{}
 	var srcHTTPAddrs []routeEndpoint
@@ -843,12 +843,16 @@ func attemptSRVRefresh(agent srvAgent, srvDetails *srvDetails) {
 	agent.setSRVAddrs(kvServerList)
 }
 
-func authMechanismsFromConfig(authMechanisms []AuthMechanism, useTLS bool) []AuthMechanism {
+func authMechanismsFromConfig(authProvider AuthProvider, authMechanisms []AuthMechanism, useTLS bool) []AuthMechanism {
+	// If the user specifies auth mechanisms then we will always use those.
 	if len(authMechanisms) == 0 {
+		if p, ok := authProvider.(AuthMechanismProvider); ok {
+			return p.DefaultAuthMechanisms(useTLS)
+		}
+
 		if useTLS {
 			authMechanisms = []AuthMechanism{PlainAuthMechanism}
 		} else {
-			// No user specified auth mechanisms so set our defaults.
 			authMechanisms = []AuthMechanism{
 				ScramSha512AuthMechanism,
 				ScramSha256AuthMechanism,

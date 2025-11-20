@@ -741,6 +741,7 @@ var (
 	errDMLFailure               = ncError{ErrDMLFailure}
 	errMemdClientClosed         = ncError{ErrMemdClientClosed}
 	errRequestAlreadyDispatched = ncError{ErrRequestAlreadyDispatched}
+	errAuthStale                = ncError{ErrAuthStale}
 
 	errDocumentNotFound                  = ncError{ErrDocumentNotFound}
 	errDocumentUnretrievable             = ncError{ErrDocumentUnretrievable}

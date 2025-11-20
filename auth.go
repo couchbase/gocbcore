@@ -32,24 +32,68 @@ type AuthProvider interface {
 	Credentials(req AuthCredsRequest) ([]UserPassPair, error)
 }
 
-func getSingleAuthCreds(auth AuthProvider, req AuthCredsRequest) (UserPassPair, error) {
-	creds, err := auth.Credentials(req)
-	if err != nil {
-		return UserPassPair{}, err
-	}
+type JWT = string
 
-	if len(creds) != 1 {
-		return UserPassPair{}, errInvalidCredentials
-	}
-
-	return creds[0], nil
+type AuthProviderJWT interface {
+	AuthMechanismProvider
+	JWT(req AuthCredsRequest) (JWT, error)
 }
 
-func getKvAuthCreds(auth AuthProvider, endpoint string) (UserPassPair, error) {
-	return getSingleAuthCreds(auth, AuthCredsRequest{
+type AuthMechanismProvider interface {
+	DefaultAuthMechanisms(tlsEnabled bool) []AuthMechanism
+}
+
+type authCreds struct {
+	UserPass UserPassPair
+	JWT      JWT
+}
+
+func (k *authCreds) ContainsCreds() bool {
+	return k.IsJWT() || k.IsUserPass()
+}
+
+func (k *authCreds) IsJWT() bool {
+	return len(k.JWT) > 0
+}
+
+func (k *authCreds) IsUserPass() bool {
+	return len(k.UserPass.Username) > 0 && len(k.UserPass.Password) > 0
+}
+
+func getKvAuthCreds(auth AuthProvider, endpoint string) (*authCreds, error) {
+	if a, ok := auth.(JWTAuthProvider); ok {
+		jwt, err := a.JWT(AuthCredsRequest{
+			Service:  MemdService,
+			Endpoint: endpoint,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if len(jwt) > 0 {
+			return &authCreds{
+				JWT: jwt,
+			}, nil
+		}
+
+		// If there is no JWT, fallthrough to basic creds.
+	}
+
+	creds, err := auth.Credentials(AuthCredsRequest{
 		Service:  MemdService,
 		Endpoint: endpoint,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(creds) != 1 {
+		return nil, errInvalidCredentials
+	}
+
+	return &authCreds{
+		UserPass: creds[0],
+	}, nil
 }
 
 // PasswordAuthProvider provides a standard AuthProvider implementation
@@ -84,4 +128,40 @@ func (auth PasswordAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPa
 
 func (auth PasswordAuthProvider) String() string {
 	return fmt.Sprintf("%p", &auth)
+}
+
+func (auth PasswordAuthProvider) DefaultAuthMechanisms(tlsEnabled bool) []AuthMechanism {
+	if tlsEnabled {
+		return []AuthMechanism{ScramSha512AuthMechanism, ScramSha256AuthMechanism, ScramSha1AuthMechanism}
+	}
+
+	return []AuthMechanism{PlainAuthMechanism}
+}
+
+type JWTAuthProvider struct {
+	Token string
+}
+
+func (j JWTAuthProvider) SupportsTLS() bool {
+	return true
+}
+
+func (j JWTAuthProvider) SupportsNonTLS() bool {
+	return false
+}
+
+func (j JWTAuthProvider) Certificate(req AuthCertRequest) (*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (j JWTAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPair, error) {
+	return nil, nil
+}
+
+func (j JWTAuthProvider) JWT(req AuthCredsRequest) (string, error) {
+	return j.Token, nil
+}
+
+func (j JWTAuthProvider) DefaultAuthMechanisms(_tlsEnabled bool) []AuthMechanism {
+	return []AuthMechanism{OAuthBearerAuthMechanism}
 }

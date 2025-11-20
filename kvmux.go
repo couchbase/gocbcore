@@ -731,7 +731,7 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 				}
 			}
 		}
-	} else {
+	} else if !isBootstrapCommand(req.Command) {
 		// Handle potentially retrying the operation
 		if errors.Is(err, ErrNotMyVBucket) {
 			if mux.handleNotMyVbucket(resp, req) {
@@ -753,6 +753,10 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 			if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
 				return true, nil
 			}
+		} else if errors.Is(err, ErrAuthStale) {
+			if mux.waitAndRetryOperation(req, KVAuthStaleRetryReason) {
+				return true, nil
+			}
 		}
 		// If an error isn't in this list then we know what this error is but we don't support retries for it.
 	}
@@ -764,6 +768,16 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 	}
 
 	return mux.postCompleteErrHandler(resp, req, err)
+}
+
+func isBootstrapCommand(cmd memd.CmdCode) bool {
+	switch cmd {
+	case memd.CmdGetClusterConfig, memd.CmdSelectBucket, memd.CmdSASLAuth, memd.CmdSASLStep, memd.CmdHello,
+		memd.CmdGetErrorMap, memd.CmdSASLListMechs:
+		return true
+	default:
+		return false
+	}
 }
 
 func (mux *kvMux) closed() bool {

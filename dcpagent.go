@@ -164,7 +164,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 	}
 	c.tlsConfig = tlsConfig
 
-	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
+	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.Auth, config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
 
 	circuitBreakerConfig := CircuitBreakerConfig{
 		Enabled: false,

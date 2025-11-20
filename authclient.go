@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"bytes"
 	"crypto/sha1" // nolint: gosec
 	"crypto/sha256"
 	"crypto/sha512"
@@ -18,6 +19,10 @@ type AuthMechanism string
 const (
 	// PlainAuthMechanism represents that PLAIN auth should be performed.
 	PlainAuthMechanism = AuthMechanism("PLAIN")
+
+	// OAuthBearerAuthMechanism represents that OAUTHBEARER auth should be performed.
+	// Usage of a AuthProviderJWT is required to use this mechanism.
+	OAuthBearerAuthMechanism = AuthMechanism("OAUTHBEARER")
 
 	// ScramSha1AuthMechanism represents that SCRAM SHA1 auth should be performed.
 	ScramSha1AuthMechanism = AuthMechanism("SCRAM-SHA1")
@@ -59,6 +64,30 @@ func SaslAuthPlain(username, password string, client AuthClient, deadline time.T
 
 	// Execute PLAIN authentication
 	err := client.SaslAuth([]byte(PlainAuthMechanism), authData, deadline, func(b []byte, err error) {
+		if err != nil {
+			cb(err)
+			return
+		}
+		cb(nil)
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// SaslAuthBearer performs OAuthBearer SASL authentication against an AuthClient.
+func SaslAuthBearer(token string, client AuthClient, deadline time.Time, cb func(err error)) error {
+	bearerBuf := bytes.NewBuffer(make([]byte, 0, len(token)+18))
+	bearerBuf.WriteString("n,,")
+	bearerBuf.WriteByte(1)
+	bearerBuf.WriteString("auth=Bearer ")
+	bearerBuf.WriteString(token)
+	bearerBuf.WriteByte(1)
+	bearerBuf.WriteByte(1)
+
+	err := client.SaslAuth([]byte(OAuthBearerAuthMechanism), bearerBuf.Bytes(), deadline, func(b []byte, err error) {
 		if err != nil {
 			cb(err)
 			return
@@ -126,16 +155,18 @@ func SaslAuthScramSha512(username, password string, client AuthClient, deadline 
 	return saslAuthScram([]byte("SCRAM-SHA512"), sha512.New, username, password, client, deadline, continueCb, completedCb)
 }
 
-func saslMethod(method AuthMechanism, username, password string, client AuthClient, deadline time.Time, continueCb func(), completedCb func(err error)) error {
+func saslMethod(method AuthMechanism, creds *authCreds, client AuthClient, deadline time.Time, continueCb func(), completedCb func(err error)) error {
 	switch method {
 	case PlainAuthMechanism:
-		return SaslAuthPlain(username, password, client, deadline, completedCb)
+		return SaslAuthPlain(creds.UserPass.Username, creds.UserPass.Password, client, deadline, completedCb)
 	case ScramSha1AuthMechanism:
-		return SaslAuthScramSha1(username, password, client, deadline, continueCb, completedCb)
+		return SaslAuthScramSha1(creds.UserPass.Username, creds.UserPass.Password, client, deadline, continueCb, completedCb)
 	case ScramSha256AuthMechanism:
-		return SaslAuthScramSha256(username, password, client, deadline, continueCb, completedCb)
+		return SaslAuthScramSha256(creds.UserPass.Username, creds.UserPass.Password, client, deadline, continueCb, completedCb)
 	case ScramSha512AuthMechanism:
-		return SaslAuthScramSha512(username, password, client, deadline, continueCb, completedCb)
+		return SaslAuthScramSha512(creds.UserPass.Username, creds.UserPass.Password, client, deadline, continueCb, completedCb)
+	case OAuthBearerAuthMechanism:
+		return SaslAuthBearer(creds.JWT, client, deadline, completedCb)
 	default:
 		return errNoSupportedMechanisms
 	}
