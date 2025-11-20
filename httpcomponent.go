@@ -265,23 +265,26 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 					return authCreds{}, err
 				}
 
-				return authCreds{
-					JWT: token,
-				}, nil
-			} else {
-				creds, err := auth.Credentials(credsReq)
-				if err != nil {
-					return authCreds{}, err
+				if len(token) > 0 {
+					return authCreds{
+						JWT: token,
+					}, nil
 				}
 
-				if len(creds) != 1 {
-					return authCreds{}, errInvalidCredentials
-				}
-
-				return authCreds{
-					UserPass: creds[0],
-				}, nil
+				// fallthrough to basic creds
 			}
+			creds, err := auth.Credentials(credsReq)
+			if err != nil {
+				return authCreds{}, err
+			}
+
+			if len(creds) != 1 {
+				return authCreds{}, errInvalidCredentials
+			}
+
+			return authCreds{
+				UserPass: creds[0],
+			}, nil
 		}
 
 		var err error
