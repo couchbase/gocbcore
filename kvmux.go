@@ -561,17 +561,18 @@ func (mux *kvMux) ForceReconnect(tlsConfig *dynTLSConfig, authMechanisms []AuthM
 
 func (mux *kvMux) UpdateTLS(tls *dynTLSConfig, auth AuthProvider) {
 	mux.muxStateWriteLock.Lock()
-	defer mux.muxStateWriteLock.Unlock()
 
 	muxState := mux.getState()
 	newState := mux.newKVMuxState(muxState.RouteConfig(), tls, muxState.authMechanisms, auth)
 
 	if !mux.updateState(muxState, newState) {
+		mux.muxStateWriteLock.Unlock()
 		mux.UpdateTLS(tls, auth)
 		return
 	}
 
 	mux.pipelineTakeover(muxState, newState)
+	mux.muxStateWriteLock.Unlock()
 }
 
 func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
