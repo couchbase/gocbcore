@@ -220,7 +220,8 @@ func (agent *Agent) SearchQuery(opts SearchQueryOptions, cb SearchQueryCallback)
 // ViewQueryCallback is invoked upon completion of a ViewQuery operation.
 type ViewQueryCallback func(*ViewQueryRowReader, error)
 
-// ViewQuery executes a view query
+// ViewQuery executes a view query.
+// Deprecated: Views are deprecated in Couchbase Server 7.0+, and will be removed from a future server version.
 func (agent *Agent) ViewQuery(opts ViewQueryOptions, cb ViewQueryCallback) (PendingOp, error) {
 	return agent.views.ViewQuery(opts, cb)
 }

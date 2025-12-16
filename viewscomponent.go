@@ -37,6 +37,7 @@ func (q *ViewQueryRowReader) Close() error {
 }
 
 // ViewQueryOptions represents the various options available for a view query.
+// Deprecated: Views are deprecated in Couchbase Server 7.0+, and will be removed from a future server version.
 type ViewQueryOptions struct {
 	DesignDocumentName string
 	ViewType           string
