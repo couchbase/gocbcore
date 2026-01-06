@@ -754,10 +754,6 @@ func (mux *kvMux) handleOpRoutingResp(resp *memdQResponse, req *memdQRequest, or
 			if mux.waitAndRetryOperation(req, KVSyncWriteRecommitInProgressRetryReason) {
 				return true, nil
 			}
-		} else if errors.Is(err, ErrAuthStale) {
-			if mux.waitAndRetryOperation(req, KVAuthStaleRetryReason) {
-				return true, nil
-			}
 		}
 		// If an error isn't in this list then we know what this error is but we don't support retries for it.
 	}

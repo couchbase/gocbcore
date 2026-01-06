@@ -137,9 +137,6 @@ var (
 	// CredentialsFetchFailedRetryReason indicates that the operation failed because the AuthProvider return an error for credentials.
 	// Uncommitted: This API may change in the future.
 	CredentialsFetchFailedRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "CREDENTIALS_FETCH_FAILED"}
-
-	// KVAuthStaleRetryReason indicates that the operation failed because the client's authentication is stale.
-	KVAuthStaleRetryReason = retryReason{allowsNonIdempotentRetry: true, alwaysRetry: true, description: "KV_AUTH_STALE"}
 )
 
 // MaybeRetryRequest will possibly retry a request according to the strategy belonging to the request.
