@@ -9,8 +9,9 @@ import (
 type clusterAgent struct {
 	defaultRetryStrategy RetryStrategy
 
-	tlsLock   sync.Mutex
-	tlsConfig *dynTLSConfig
+	connectionSettingsLock sync.Mutex
+	auth                   AuthProvider
+	tlsConfig              *dynTLSConfig
 
 	httpMux     *httpMux
 	tracer      *tracerComponent
@@ -266,16 +267,26 @@ func (agent *clusterAgent) Close() error {
 	return nil
 }
 
-func (agent *clusterAgent) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
+func (agent *clusterAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	auth := opts.Auth
-	agent.tlsLock.Lock()
-	var tlsConfig *dynTLSConfig
-	if agent.tlsConfig != nil {
-		tlsConfig = createTLSConfig(auth, nil, agent.tlsConfig.Provider)
+	agent.connectionSettingsLock.Lock()
+	if auth == nil {
+		auth = agent.auth
 	}
+
+	var tlsConfig *dynTLSConfig
+	if opts.UseTLS {
+		if opts.TLSRootCAProvider == nil {
+			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
+		}
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
+	}
+
+	agent.auth = auth
 	agent.tlsConfig = tlsConfig
-	agent.tlsLock.Unlock()
+	agent.connectionSettingsLock.Unlock()
 
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
 	agent.telemetry.UpdateTLS(tlsConfig, auth)
+	return nil
 }

@@ -230,15 +230,6 @@ func (suite *StandardTestSuite) TestReconfigureSecurityChangeAuthProvider() {
 	suite.VerifyConnectedToBucketHTTP(agent, globalTestConfig.BucketName, s, "TestReconfigureSecurityChangeAuthProvider")
 }
 
-func (suite *StandardTestSuite) TestReconfigureSecurityNotNSServer() {
-	agent := suite.DefaultAgent()
-
-	err := agent.ReconfigureSecurity(ReconfigureSecurityOptions{
-		UseTLS: false,
-	})
-	suite.Require().NotNil(err, err)
-}
-
 func (suite *StandardTestSuite) TestReconfigureSecurityTLSNoProvider() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
 

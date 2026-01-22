@@ -231,16 +231,33 @@ func (ag *AgentGroup) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, err
 	return &overallReport, nil
 }
 
-// ReconfigureAuthProvider will update the AuthProvider for all underlying agents allowing for credential rotation.
-// Depending on the AuthProvider implementation this may require connections to be re-established, which the SDK will
-// not do automatically, e.g. for mTLS certificate rotation.
-func (ag *AgentGroup) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
+// ReconfigureSecurity will update the security settings for all underlying agents allowing for credential rotation.
+//
+// Calling this function will cause all underlying connections to be reconnected. The exception to this is the
+// connection to the seed node (usually localhost) when in ns_server mode, which will only be reconnected if the AuthProvider is provided
+// on the options.
+//
+// Internal: This should never be used and is not supported.
+func (ag *AgentGroup) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	logDebugf("Updating auth provider for agent group")
 
 	// First we update the base config so that if any new agents are opened whilst this function is running then
 	// they get created with the new auth provider.
 	ag.configLock.Lock()
-	ag.config.SecurityConfig.Auth = opts.Auth
+	if opts.Auth != nil {
+		ag.config.SecurityConfig.Auth = opts.Auth
+	}
+	if len(opts.AuthMechanisms) > 0 {
+		ag.config.SecurityConfig.AuthMechanisms = opts.AuthMechanisms
+	}
+	if opts.UseTLS {
+		if opts.TLSRootCAProvider == nil {
+			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
+		}
+	}
+
+	ag.config.SecurityConfig.UseTLS = opts.UseTLS
+	ag.config.SecurityConfig.TLSRootCAProvider = opts.TLSRootCAProvider
 	ag.configLock.Unlock()
 
 	// We don't need to hold the lock whilst we reconfigure each agent.
@@ -252,11 +269,24 @@ func (ag *AgentGroup) ReconfigureAuthProvider(opts ReconfigureAuthProviderOption
 	}
 	ag.agentsLock.Unlock()
 
+	var allErrs []error
 	for _, agent := range agents {
-		agent.ReconfigureAuthProvider(opts)
+		err := agent.ReconfigureSecurity(opts)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		}
 	}
 
-	ag.clusterAgent.ReconfigureAuthProvider(opts)
+	err := ag.clusterAgent.ReconfigureSecurity(opts)
+	if err != nil {
+		allErrs = append(allErrs, err)
+	}
+
+	if len(allErrs) > 0 {
+		return errors.Join(allErrs...)
+	}
+
+	return nil
 }
 
 func (ag *AgentGroup) maybeCloseGlobalAgent() {

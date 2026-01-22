@@ -548,7 +548,7 @@ func (mux *kvMux) Close() error {
 
 func (mux *kvMux) ForceReconnect(tlsConfig *dynTLSConfig, authMechanisms []AuthMechanism, auth AuthProvider,
 	reconnectLocal bool) {
-	logDebugf("Forcing reconnect of all connections")
+	logInfof("Forcing reconnect of all kv connections")
 	mux.muxStateWriteLock.Lock()
 	muxState := mux.getState()
 	newMuxState := mux.newKVMuxState(muxState.RouteConfig(), tlsConfig, authMechanisms, auth)

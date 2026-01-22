@@ -4,7 +4,6 @@ package gocbcore
 
 import (
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -620,17 +619,11 @@ type ReconfigureSecurityOptions struct {
 // toggle TLS on and off.
 //
 // Calling this function will cause all underlying connections to be reconnected. The exception to this is the
-// connection to the seed node (usually localhost), which will only be reconnected if the AuthProvider is provided
+// connection to the seed node (usually localhost) when in ns_server mode, which will only be reconnected if the AuthProvider is provided
 // on the options.
 //
-// This function can only be called when the seed poller is in use i.e. when the ns_server scheme is used.
 // Internal: This should never be used and is not supported.
 func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
-	_, ok := agent.pollerController.(*seedConfigController)
-	if !ok {
-		return errors.New("reconfigure tls is only supported when the agent is in ns server mode")
-	}
-
 	var authProvided bool
 	auth := opts.Auth
 	mechs := opts.AuthMechanisms
@@ -657,34 +650,13 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	agent.tlsConfig = tlsConfig
 	agent.connectionSettingsLock.Unlock()
 
+	_, isNsMode := agent.pollerController.(*seedConfigController)
+
 	agent.cfgManager.UseTLS(tlsConfig != nil)
-	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided)
+	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided || !isNsMode)
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
 	agent.telemetry.UpdateTLS(tlsConfig, auth)
 	return nil
-}
-
-type ReconfigureAuthProviderOptions struct {
-	Auth AuthProvider
-}
-
-// ReconfigureAuthProvider will update the AuthProvider for all underlying agents allowing for credential rotation.
-// Depending on the AuthProvider implementation this may require connections to be re-established, which the SDK will
-// not do automatically, e.g. for mTLS certificate rotation.
-func (agent *Agent) ReconfigureAuthProvider(opts ReconfigureAuthProviderOptions) {
-	auth := opts.Auth
-	agent.connectionSettingsLock.Lock()
-	agent.auth = auth
-	var tlsConfig *dynTLSConfig
-	if agent.tlsConfig != nil {
-		tlsConfig = createTLSConfig(auth, nil, agent.tlsConfig.Provider)
-	}
-	agent.tlsConfig = tlsConfig
-	agent.connectionSettingsLock.Unlock()
-
-	agent.httpMux.UpdateTLS(tlsConfig, auth)
-	agent.kvMux.UpdateTLS(tlsConfig, auth)
-	agent.telemetry.UpdateTLS(tlsConfig, auth)
 }
 
 func (agent *Agent) onCCCPUnsupported(err error) {
