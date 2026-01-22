@@ -32,8 +32,10 @@ type AuthProvider interface {
 	Credentials(req AuthCredsRequest) ([]UserPassPair, error)
 }
 
+// UNCOMMITTED: This API may change in the future.
 type JWT = string
 
+// UNCOMMITTED: This API may change in the future.
 type AuthProviderJWT interface {
 	AuthMechanismProvider
 	JWT(req AuthCredsRequest) (JWT, error)
@@ -138,6 +140,7 @@ func (auth PasswordAuthProvider) DefaultAuthMechanisms(tlsEnabled bool) []AuthMe
 	return []AuthMechanism{PlainAuthMechanism}
 }
 
+// UNCOMMITTED: This API may change in the future.
 type JWTAuthProvider struct {
 	Token string
 }
