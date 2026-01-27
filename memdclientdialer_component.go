@@ -397,7 +397,11 @@ func (mcc *memdClientDialerComponent) bootstrap(client bootstrapClient, deadline
 	var completedAuthCh chan error
 	var continueAuthCh chan bool
 
-	firstAuthMethod := mcc.buildAuthHandler(client, authProvider, deadline, authMechanisms[0])
+	// For mTLS (CertificateAuthenticator), authMechanisms may be empty
+	var firstAuthMethod authFunc
+	if len(authMechanisms) > 0 {
+		firstAuthMethod = mcc.buildAuthHandler(client, authProvider, deadline, authMechanisms[0])
+	}
 
 	if firstAuthMethod != nil {
 		// If the auth method is nil then we don't actually need to do any auth so no need to Get the mechanisms.
