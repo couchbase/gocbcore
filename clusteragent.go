@@ -38,7 +38,13 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 
 	userAgent := config.UserAgent
 
-	c.tracer = newTracerComponent(config.TracerConfig.Tracer, "", config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c)
+	c.tracer = newTracerComponent(
+		config.TracerConfig.Tracer,
+		config.ObservabilityConfig.SemanticConventionOptIn,
+		"",
+		config.TracerConfig.NoRootTraceSpans,
+		config.MeterConfig.Meter,
+		c)
 
 	tlsConfig, err := setupTLSConfig(config.SeedConfig.MemdAddrs, config.SecurityConfig)
 	if err != nil {

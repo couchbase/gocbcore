@@ -169,7 +169,7 @@ func (createRes *rangeScanCreateResult) RangeScanContinue(opts RangeScanContinue
 			// nil on the request - meaning that the internal cancel below will not cause issues when it calls
 			// cancelReqTraceLocked.
 			req.processingLock.Lock()
-			stopNetTraceLocked(req, resp, resp.remoteAddr, resp.sourceAddr)
+			stopNetTraceLocked(req, resp, resp.remoteAddr, resp.sourceAddr, resp.canonicalRemoteAddr)
 			stopCmdTraceLocked(req)
 			req.processingLock.Unlock()
 

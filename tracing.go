@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -56,7 +55,7 @@ func (span noopSpan) AddEvent(key string, timestamp time.Time) {
 
 type opTracer struct {
 	parentContext RequestSpanContext
-	opSpan        RequestSpan
+	opSpan        *spanWrapper
 }
 
 func (tracer *opTracer) Finish() {
@@ -80,30 +79,27 @@ type ClusterLabels struct {
 }
 
 type tracerComponent struct {
-	tracer                    RequestTracer
-	bucket                    string
-	noRootTraceSpans          bool
-	metrics                   Meter
-	valueRecorderAttribsCache sync.Map
-	cfgMgr                    configManager
-	clusterLabels             atomic.Value
+	tracer           *tracerWrapper
+	bucket           string
+	noRootTraceSpans bool
+	meter            *meterWrapper
+	cfgMgr           configManager
+	clusterLabels    atomic.Value
 }
 
-func newTracerComponent(tracer RequestTracer, bucket string, noRootTraceSpans bool, metrics Meter, cfgMgr configManager) *tracerComponent {
-	reqTracer := tracer
-	if reqTracer == nil {
-		reqTracer = noopTracer{}
-	}
-
+func newTracerComponent(tracer RequestTracer, conventions []ObservabilitySemanticConvention, bucket string, noRootTraceSpans bool, meter Meter, cfgMgr configManager) *tracerComponent {
 	tc := &tracerComponent{
-		tracer:           reqTracer,
+		tracer:           newTracerWrapper(tracer, conventions),
 		bucket:           bucket,
 		noRootTraceSpans: noRootTraceSpans,
-		metrics:          metrics,
+		meter:            newMeterWrapper(meter, conventions),
 		cfgMgr:           cfgMgr,
 	}
+	tc.meter.getClusterLabelsFn = func() ClusterLabels {
+		return tc.ClusterLabels()
+	}
 
-	if cfgMgr != nil && (tracer != nil || metrics != nil) {
+	if cfgMgr != nil && (tracer != nil || meter != nil) {
 		cfgMgr.AddConfigWatcher(tc)
 	}
 
@@ -118,14 +114,14 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 		}
 	}
 
-	opSpan := tc.tracer.RequestSpan(parentContext, operationName)
-	opSpan.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+	opSpan := tc.tracer.StartSpan(parentContext, operationName)
+	opSpan.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
-		opSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+		opSpan.SetClusterName(labels.ClusterName)
 	}
 	if labels.ClusterUUID != "" {
-		opSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+		opSpan.SetClusterUUID(labels.ClusterUUID)
 	}
 
 	return &opTracer{
@@ -134,32 +130,31 @@ func (tc *tracerComponent) CreateOpTrace(operationName string, parentContext Req
 	}
 }
 
-func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) RequestSpan {
-	span := tc.tracer.RequestSpan(req.RootTraceContext, name)
+func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) *spanWrapper {
+	span := tc.tracer.StartSpan(req.RootTraceContext, name)
 	return span
 }
 
-func (tc *tracerComponent) StopHTTPDispatchSpan(span RequestSpan, req *http.Request, id string, retries uint32) {
-	span.SetAttribute(spanAttribDBSystemKey, spanAttribDBSystemValue)
+func (tc *tracerComponent) StopHTTPDispatchSpan(span *spanWrapper, req *http.Request, id string, retries uint32) {
+	span.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
-		span.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+		span.SetClusterName(labels.ClusterName)
 	}
 	if labels.ClusterUUID != "" {
-		span.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+		span.SetClusterUUID(labels.ClusterUUID)
 	}
-	span.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
+	span.SetNetworkTransportTCP()
 	if id != "" {
-		span.SetAttribute(spanAttribOperationIDKey, id)
+		span.SetOperationID(id)
 	}
 	remoteName, remotePort, err := net.SplitHostPort(req.Host)
 	if err != nil {
 		logDebugf("Failed to split host port: %s", err)
 	}
 
-	span.SetAttribute(spanAttribNetPeerNameKey, remoteName)
-	span.SetAttribute(spanAttribNetPeerPortKey, remotePort)
-	span.SetAttribute(spanAttribNumRetries, retries)
+	span.SetPeerAddress(remoteName, remotePort)
+	span.SetNumRetries(retries)
 	span.End()
 }
 
@@ -176,14 +171,14 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 		return
 	}
 
-	req.cmdTraceSpan = tc.tracer.RequestSpan(req.RootTraceContext, req.Packet.Command.Name())
-	req.cmdTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+	req.cmdTraceSpan = tc.tracer.StartSpan(req.RootTraceContext, req.Packet.Command.Name())
+	req.cmdTraceSpan.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
-		req.cmdTraceSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+		req.cmdTraceSpan.SetClusterName(labels.ClusterName)
 	}
 	if labels.ClusterUUID != "" {
-		req.cmdTraceSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+		req.cmdTraceSpan.SetClusterUUID(labels.ClusterUUID)
 	}
 	req.processingLock.Unlock()
 }
@@ -201,55 +196,25 @@ func (tc *tracerComponent) StartNetTrace(req *memdQRequest) {
 		return
 	}
 
-	req.netTraceSpan = tc.tracer.RequestSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
-	req.netTraceSpan.SetAttribute(spanAttribDBSystemKey, "couchbase")
+	req.netTraceSpan = tc.tracer.StartSpan(req.cmdTraceSpan.Context(), spanNameDispatchToServer)
+	req.netTraceSpan.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
-		req.netTraceSpan.SetAttribute(spanAttribClusterNameKey, labels.ClusterName)
+		req.netTraceSpan.SetClusterName(labels.ClusterName)
 	}
 	if labels.ClusterUUID != "" {
-		req.netTraceSpan.SetAttribute(spanAttribClusterUUIDKey, labels.ClusterUUID)
+		req.netTraceSpan.SetClusterUUID(labels.ClusterUUID)
 	}
 	req.processingLock.Unlock()
 }
 
 func (tc *tracerComponent) ResponseValueRecord(service, operation string, start time.Time) {
-	if tc.metrics == nil {
-		return
-	}
-	key := service + "." + operation
-	attribs, ok := tc.valueRecorderAttribsCache.Load(key)
-	if !ok {
-		// It doesn't really matter if we end up storing the attribs against the same key multiple times. We just need
-		// to have a read efficient cache that doesn't cause actual data races.
-		attribs = map[string]string{
-			metricAttribServiceKey: service,
-		}
-		if operation != "" {
-			attribs.(map[string]string)[metricAttribOperationKey] = operation
-		}
-		clusterLabels := tc.ClusterLabels()
-		if clusterLabels.ClusterUUID != "" {
-			attribs.(map[string]string)[metricAttribClusterUUIDKey] = clusterLabels.ClusterUUID
-		}
-		if clusterLabels.ClusterName != "" {
-			attribs.(map[string]string)[metricAttribClusterNameKey] = clusterLabels.ClusterName
-		}
-		tc.valueRecorderAttribsCache.Store(key, attribs)
-	}
-
-	recorder, err := tc.metrics.ValueRecorder(meterNameCBOperations, attribs.(map[string]string))
-	if err != nil {
-		logDebugf("Failed to get value recorder: %v", err)
-		return
-	}
-
 	duration := uint64(time.Since(start).Microseconds())
 	if duration == 0 {
 		duration = uint64(1 * time.Microsecond)
 	}
 
-	recorder.RecordValue(duration)
+	tc.meter.RecordOperation(service, operation, duration)
 }
 
 func (tc *tracerComponent) OnNewRouteConfig(cfg *routeConfig) {
@@ -277,23 +242,23 @@ func stopCmdTraceLocked(req *memdQRequest) {
 		return
 	}
 
-	req.cmdTraceSpan.SetAttribute(spanAttribNumRetries, req.RetryAttempts())
+	req.cmdTraceSpan.SetNumRetries(req.RetryAttempts())
 
 	req.cmdTraceSpan.End()
 	req.cmdTraceSpan = nil
 }
 
-func cancelReqTraceLocked(req *memdQRequest, local, remote string) {
+func cancelReqTraceLocked(req *memdQRequest, local, remote, canonicalRemote string) {
 	if req.cmdTraceSpan != nil {
 		if req.netTraceSpan != nil {
-			stopNetTraceLocked(req, nil, local, remote)
+			stopNetTraceLocked(req, nil, local, remote, canonicalRemote)
 		}
 
 		stopCmdTraceLocked(req)
 	}
 }
 
-func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress string) {
+func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, remoteAddress, canonicalRemoteAddress string) {
 	if req.cmdTraceSpan == nil {
 		return
 	}
@@ -303,10 +268,10 @@ func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, re
 		return
 	}
 
-	req.netTraceSpan.SetAttribute(spanAttribNetTransportKey, spanAttribNetTransportValue)
+	req.netTraceSpan.SetNetworkTransportTCP()
 	if resp != nil {
-		req.netTraceSpan.SetAttribute(spanAttribOperationIDKey, strconv.Itoa(int(resp.Opaque)))
-		req.netTraceSpan.SetAttribute(spanAttribLocalIDKey, resp.sourceConnID)
+		req.netTraceSpan.SetOperationID(strconv.Itoa(int(resp.Opaque)))
+		req.netTraceSpan.SetLocalID(resp.sourceConnID)
 	}
 	localName, localPort, err := net.SplitHostPort(localAddress)
 	if err != nil {
@@ -318,12 +283,16 @@ func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, re
 		logDebugf("Failed to split host port: %s", err)
 	}
 
-	req.netTraceSpan.SetAttribute(spanAttribNetHostNameKey, localName)
-	req.netTraceSpan.SetAttribute(spanAttribNetHostPortKey, localPort)
-	req.netTraceSpan.SetAttribute(spanAttribNetPeerNameKey, remoteName)
-	req.netTraceSpan.SetAttribute(spanAttribNetPeerPortKey, remotePort)
+	canonicalRemoteName, canonicalRemotePort, err := net.SplitHostPort(canonicalRemoteAddress)
+	if err != nil {
+		logDebugf("Failed to split host port: %s", err)
+	}
+
+	req.netTraceSpan.SetHostAddress(localName, localPort)
+	req.netTraceSpan.SetPeerAddress(remoteName, remotePort)
+	req.netTraceSpan.SetServerAddress(canonicalRemoteName, canonicalRemotePort)
 	if resp != nil && resp.Packet.ServerDurationFrame != nil {
-		req.netTraceSpan.SetAttribute(spanAttribServerDurationKey, resp.Packet.ServerDurationFrame.ServerDuration)
+		req.netTraceSpan.SetServerDuration(resp.Packet.ServerDurationFrame.ServerDuration)
 	}
 
 	req.netTraceSpan.End()

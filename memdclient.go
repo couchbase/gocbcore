@@ -71,7 +71,8 @@ type memdClient struct {
 	compressionMinRatio  float64
 	disableDecompression bool
 
-	telemetryAttrs atomic.Pointer[memdClientTelemetryAttrs]
+	telemetryAttrs   atomic.Pointer[memdClientTelemetryAttrs] // Attributes for App Telemetry
+	canonicalAddress atomic.Value                             // Used for server.endpoint & server.port dispatch span atts
 
 	gracefulCloseTriggered uint32
 }
@@ -121,6 +122,7 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 	}
 
 	client.UpdateTelemetryAttributes(props.NodeUUID, props.CanonicalAddress)
+	client.canonicalAddress.Store(props.CanonicalAddress)
 
 	if client.zombieLogger != nil {
 		client.opTombstones = newMemdOpTombstoneStore()
@@ -178,6 +180,10 @@ func (client *memdClient) maybeSendDcpBufferAck(packetLen int) {
 
 func (client *memdClient) Address() string {
 	return client.conn.RemoteAddr()
+}
+
+func (client *memdClient) CanonicalAddress() string {
+	return client.canonicalAddress.Load().(string)
 }
 
 func (client *memdClient) ConnID() string {
@@ -415,7 +421,7 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	req.AddResourceUnits(resp.ReadUnitsFrame, resp.WriteUnitsFrame)
 
 	if !req.Persistent {
-		stopNetTraceLocked(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr())
+		stopNetTraceLocked(req, resp, client.conn.LocalAddr(), client.conn.RemoteAddr(), client.CanonicalAddress())
 
 		if resp.ServerDurationFrame != nil {
 			req.recordServerDurationLocked(resp.ServerDurationFrame.ServerDuration)
@@ -528,10 +534,11 @@ func (client *memdClient) run() {
 			}
 
 			resp := &memdQResponse{
-				remoteAddr:   client.conn.LocalAddr(),
-				sourceAddr:   client.conn.RemoteAddr(),
-				sourceConnID: client.connID,
-				Packet:       packet,
+				remoteAddr:          client.conn.LocalAddr(),
+				canonicalRemoteAddr: client.CanonicalAddress(),
+				sourceAddr:          client.conn.RemoteAddr(),
+				sourceConnID:        client.connID,
+				Packet:              packet,
 			}
 
 			atomic.StoreInt64(&client.lastActivity, time.Now().UnixNano())

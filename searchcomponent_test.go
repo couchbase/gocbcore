@@ -75,7 +75,7 @@ func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 	configC := new(mockConfigManager)
 	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, nil, "", true, &noopMeter{}, configC))
 	sqc.caps[SearchCapabilityVectorSearch] = CapabilityStatusUnsupported
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusSupported
 
@@ -95,7 +95,7 @@ func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 	configC := new(mockConfigManager)
 	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, configC))
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, nil, "", true, &noopMeter{}, configC))
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusUnsupported
 
 	opts := SearchQueryOptions{

@@ -297,7 +297,7 @@ func (suite *StandardTestSuite) TestTracerComponentTracksClusterLabels() {
 	cfgMgr := new(mockConfigManager)
 	cfgMgr.On("AddConfigWatcher", mock.AnythingOfType("*gocbcore.tracerComponent"))
 
-	tc := newTracerComponent(&noopTracer{}, "", true, &noopMeter{}, cfgMgr)
+	tc := newTracerComponent(&noopTracer{}, nil, "", true, &noopMeter{}, cfgMgr)
 
 	suite.Assert().Empty(tc.ClusterLabels().ClusterName)
 	suite.Assert().Empty(tc.ClusterLabels().ClusterUUID)

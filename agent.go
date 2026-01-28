@@ -261,7 +261,13 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		},
 	)
 
-	c.tracer = newTracerComponent(config.TracerConfig.Tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c.cfgManager)
+	c.tracer = newTracerComponent(
+		config.TracerConfig.Tracer,
+		config.ObservabilityConfig.SemanticConventionOptIn,
+		config.BucketName,
+		config.TracerConfig.NoRootTraceSpans,
+		config.MeterConfig.Meter,
+		c.cfgManager)
 
 	if !config.SecurityConfig.NoTLSSeedNode {
 		c.telemetry = newTelemetryComponent(telemetryComponentProps{

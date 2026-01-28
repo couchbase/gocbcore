@@ -54,6 +54,8 @@ type AgentConfig struct {
 
 	MeterConfig MeterConfig
 
+	ObservabilityConfig ObservabilityConfig
+
 	TelemetryConfig TelemetryConfig
 
 	InternalConfig InternalConfig
@@ -313,6 +315,27 @@ type TracerConfig struct {
 // MeterConfig specifies meter related configuration options.
 type MeterConfig struct {
 	Meter Meter
+}
+
+type ObservabilitySemanticConvention uint8
+
+const (
+	// ObservabilitySemanticConventionDatabase specifies that the client should only emit the stable database
+	// semantic conventions, and stop emitting the legacy ones.
+	ObservabilitySemanticConventionDatabase ObservabilitySemanticConvention = iota + 1
+
+	// ObservabilitySemanticConventionDatabaseDup specifies that the client should emit both the stable database
+	// semantic conventions. This is intended to allow a phased transition to the stable conventions.
+	// This option has higher precedence than ObservabilitySemanticConventionDatabase if both are specified.
+	ObservabilitySemanticConventionDatabaseDup
+)
+
+// ObservabilityConfig specifies observability related configuration options, relating to both tracing and metrics.
+type ObservabilityConfig struct {
+	// SemanticConventionOptIn allows controlling which semantic conventions (span attribute names, metric names, etc.)
+	// the client should emit. By default, the legacy conventions are emitted for backwards compatibility. This option
+	// can be used to opt in to stable conventions and/or opt out of legacy ones.
+	SemanticConventionOptIn []ObservabilitySemanticConvention
 }
 
 // TelemetryConfig specifies ns_server telemetry related configuration options.

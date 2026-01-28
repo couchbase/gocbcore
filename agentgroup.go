@@ -45,6 +45,7 @@ func CreateAgentGroup(config *AgentGroupConfig) (*AgentGroup, error) {
 		HTTPConfig:           config.HTTPConfig,
 		TracerConfig:         config.TracerConfig,
 		MeterConfig:          config.MeterConfig,
+		ObservabilityConfig:  config.ObservabilityConfig,
 		DefaultRetryStrategy: config.DefaultRetryStrategy,
 		CircuitBreakerConfig: config.CircuitBreakerConfig,
 		TelemetryConfig:      config.TelemetryConfig,

@@ -109,29 +109,10 @@ const (
 )
 
 const (
-	spanNameDispatchToServer    = "dispatch_to_server"
-	spanAttribDBSystemKey       = "db.system"
-	spanAttribClusterUUIDKey    = "db.couchbase.cluster_uuid"
-	spanAttribClusterNameKey    = "db.couchbase.cluster_name"
-	spanAttribDBSystemValue     = "couchbase"
-	spanAttribNetTransportKey   = "net.transport"
-	spanAttribNetTransportValue = "IP.TCP"
-	spanAttribOperationIDKey    = "db.couchbase.operation_id"
-	spanAttribLocalIDKey        = "db.couchbase.local_id"
-	spanAttribNetHostNameKey    = "net.host.name"
-	spanAttribNetHostPortKey    = "net.host.port"
-	spanAttribNetPeerNameKey    = "net.peer.name"
-	spanAttribNetPeerPortKey    = "net.peer.port"
-	spanAttribServerDurationKey = "db.couchbase.server_duration"
-	spanAttribNumRetries        = "db.couchbase.retries"
+	spanNameDispatchToServer = "dispatch_to_server"
 )
 
 const (
-	metricAttribServiceKey           = "db.couchbase.service"
-	metricAttribOperationKey         = "db.operation"
-	metricAttribClusterUUIDKey       = "db.couchbase.cluster_uuid"
-	metricAttribClusterNameKey       = "db.couchbase.cluster_name"
-	meterNameCBOperations            = "db.couchbase.operations"
 	metricValueServiceKeyValue       = "kv"
 	metricValueServiceQueryValue     = "n1ql"
 	metricValueServiceSearchValue    = "fts"

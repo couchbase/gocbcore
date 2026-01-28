@@ -113,7 +113,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 	)
 
 	c.tracer = &tracerComponent{
-		tracer: noopTracer{},
+		tracer: newTracerWrapper(noopTracer{}, nil),
 	}
 
 	c.dialer = newMemdClientDialerComponent(

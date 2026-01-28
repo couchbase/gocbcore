@@ -13,6 +13,8 @@ type clusterAgentConfig struct {
 
 	MeterConfig MeterConfig
 
+	ObservabilityConfig ObservabilityConfig
+
 	TelemetryConfig TelemetryConfig
 
 	DefaultRetryStrategy RetryStrategy

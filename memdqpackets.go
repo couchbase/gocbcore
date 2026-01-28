@@ -17,9 +17,10 @@ type memdQResponse struct {
 	*memd.Packet
 
 	// remoteAddr and sourceAddr are opposite to what may be expected here, to reflect that this is the response.
-	remoteAddr   string
-	sourceAddr   string
-	sourceConnID string
+	remoteAddr          string
+	canonicalRemoteAddr string
+	sourceAddr          string
+	sourceConnID        string
 }
 
 type callback func(*memdQResponse, *memdQRequest, error)
@@ -85,8 +86,8 @@ type memdQRequest struct {
 	connInfo atomic.Value
 
 	RootTraceContext RequestSpanContext
-	cmdTraceSpan     RequestSpan
-	netTraceSpan     RequestSpan
+	cmdTraceSpan     *spanWrapper
+	netTraceSpan     *spanWrapper
 
 	CollectionName string
 	ScopeName      string
@@ -275,14 +276,16 @@ func (req *memdQRequest) internalCancel(err error) bool {
 
 	var localAddr string
 	var remoteAddr string
+	var canonicalAddr string
 	waitingIn := (*memdClient)(atomic.LoadPointer(&req.waitingIn))
 	if waitingIn != nil {
 		waitingIn.CancelRequest(req, err)
 		localAddr = waitingIn.LocalAddress()
 		remoteAddr = waitingIn.Address()
+		canonicalAddr = waitingIn.CanonicalAddress()
 	}
 
-	cancelReqTraceLocked(req, localAddr, remoteAddr)
+	cancelReqTraceLocked(req, localAddr, remoteAddr, canonicalAddr)
 	req.processingLock.Unlock()
 
 	return true
