@@ -486,7 +486,7 @@ func (agent *DCPAgent) ForceReconnect() {
 	mechs := agent.authMechanisms
 	tlsConfig := agent.tlsConfig
 	agent.connectionSettingsLock.Unlock()
-	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, true)
+	agent.kvMux.ReconfigureSecurity(tlsConfig, mechs, auth, true, true)
 }
 
 // ReconfigureSecurity updates the security configuration being used by the agent. This includes the ability to
@@ -531,7 +531,7 @@ func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) erro
 	agent.connectionSettingsLock.Unlock()
 
 	agent.cfgManager.UseTLS(tlsConfig != nil)
-	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided)
+	agent.kvMux.ReconfigureSecurity(tlsConfig, mechs, auth, !opts.NoReconnect, authProvided)
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
 	return nil
 }

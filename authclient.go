@@ -77,8 +77,7 @@ func SaslAuthPlain(username, password string, client AuthClient, deadline time.T
 	return nil
 }
 
-// SaslAuthBearer performs OAuthBearer SASL authentication against an AuthClient.
-func SaslAuthBearer(token string, client AuthClient, deadline time.Time, cb func(err error)) error {
+func buildOAuthBearerToken(token string) []byte {
 	bearerBuf := bytes.NewBuffer(make([]byte, 0, len(token)+18))
 	bearerBuf.WriteString("n,,")
 	bearerBuf.WriteByte(1)
@@ -87,7 +86,14 @@ func SaslAuthBearer(token string, client AuthClient, deadline time.Time, cb func
 	bearerBuf.WriteByte(1)
 	bearerBuf.WriteByte(1)
 
-	err := client.SaslAuth([]byte(OAuthBearerAuthMechanism), bearerBuf.Bytes(), deadline, func(b []byte, err error) {
+	return bearerBuf.Bytes()
+}
+
+// SaslAuthBearer performs OAuthBearer SASL authentication against an AuthClient.
+func SaslAuthBearer(token string, client AuthClient, deadline time.Time, cb func(err error)) error {
+	bearer := buildOAuthBearerToken(token)
+
+	err := client.SaslAuth([]byte(OAuthBearerAuthMechanism), bearer, deadline, func(b []byte, err error) {
 		if err != nil {
 			cb(err)
 			return

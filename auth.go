@@ -39,6 +39,11 @@ type JWT = string
 type AuthProviderJWT interface {
 	AuthMechanismProvider
 	JWT(req AuthCredsRequest) (JWT, error)
+
+	// ContainsJWT allows Authenticator implementations to implement AuthProviderJWT whilst not actually
+	// providing JWTs. This is primarily useful for composite authenticators that are used for multiple auth
+	// methods.
+	ContainsJWT() bool
 }
 
 type AuthMechanismProvider interface {
@@ -64,21 +69,23 @@ func (k *authCreds) IsUserPass() bool {
 
 func getKvAuthCreds(auth AuthProvider, endpoint string) (*authCreds, error) {
 	if a, ok := auth.(AuthProviderJWT); ok {
-		jwt, err := a.JWT(AuthCredsRequest{
-			Service:  MemdService,
-			Endpoint: endpoint,
-		})
-		if err != nil {
-			return nil, err
-		}
+		if a.ContainsJWT() {
+			jwt, err := a.JWT(AuthCredsRequest{
+				Service:  MemdService,
+				Endpoint: endpoint,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		if len(jwt) > 0 {
+			if len(jwt) == 0 {
+				return nil, errInvalidCredentials
+			}
+
 			return &authCreds{
 				JWT: jwt,
 			}, nil
 		}
-
-		// If there is no JWT, fallthrough to basic creds.
 	}
 
 	creds, err := auth.Credentials(AuthCredsRequest{
@@ -163,6 +170,10 @@ func (j JWTAuthProvider) Credentials(req AuthCredsRequest) ([]UserPassPair, erro
 
 func (j JWTAuthProvider) JWT(req AuthCredsRequest) (string, error) {
 	return j.Token, nil
+}
+
+func (j JWTAuthProvider) ContainsJWT() bool {
+	return true
 }
 
 func (j JWTAuthProvider) DefaultAuthMechanisms(_tlsEnabled bool) []AuthMechanism {

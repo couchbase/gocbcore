@@ -49,11 +49,11 @@ type kvMux struct {
 
 	postCompleteErrHandler postCompleteErrorHandler
 
-	// muxStateWriteLock is necessary for functions which update the muxPtr, due to the scenario where ForceReconnect and
-	// OnNewRouteConfig could race. ForceReconnect must succeed and cannot fail because OnNewRouteConfig has updated
+	// muxStateWriteLock is necessary for functions which update the muxPtr, due to the scenario where ReconfigureSecurity and
+	// OnNewRouteConfig could race. ReconfigureSecurity must succeed and cannot fail because OnNewRouteConfig has updated
 	// the mux state whilst force is attempting to update it. We could also end up in a situation where a full reconnect
 	// is occurring at the same time as a pipeline takeover and scenarios like that, including missing a config update because
-	// ForceReconnect has won the race.
+	// ReconfigureSecurity has won the race.
 	// There is no need for read side locks as we are locking around an atomic and it is only the write sides that present
 	// a potential issue.
 	muxStateWriteLock sync.Mutex
@@ -546,17 +546,85 @@ func (mux *kvMux) Close() error {
 	return muxErr
 }
 
-func (mux *kvMux) ForceReconnect(tlsConfig *dynTLSConfig, authMechanisms []AuthMechanism, auth AuthProvider,
-	reconnectLocal bool) {
-	logInfof("Forcing reconnect of all kv connections")
+// ReconfigureSecurity updates the mux state with the tls and auth information provided.
+// includeReconnectLocal only matters if reconnectConnections is true.
+func (mux *kvMux) ReconfigureSecurity(tlsConfig *dynTLSConfig, authMechanisms []AuthMechanism, auth AuthProvider,
+	reconnectConnections, includeReconnectLocal bool) {
+	if reconnectConnections {
+		// Doing this outside the lock for performance reasons as it can be slow to log.
+		logInfof("Forcing reconnect of all kv connections")
+	}
 	mux.muxStateWriteLock.Lock()
 	muxState := mux.getState()
 	newMuxState := mux.newKVMuxState(muxState.RouteConfig(), tlsConfig, authMechanisms, auth)
 
 	atomic.SwapPointer(&mux.muxPtr, unsafe.Pointer(newMuxState))
 
-	mux.reconnectPipelines(muxState, newMuxState, reconnectLocal)
+	if reconnectConnections {
+		mux.reconnectPipelines(muxState, newMuxState, includeReconnectLocal)
+	}
 	mux.muxStateWriteLock.Unlock()
+}
+
+func (mux *kvMux) ReauthenticateAuthBearer(auth AuthProviderJWT, deadline time.Time) error {
+	clientMux := mux.getState()
+	if clientMux == nil {
+		return errShutdown
+	}
+
+	for _, p := range clientMux.pipelines {
+		p.clientsLock.Lock()
+		for _, pipeCli := range p.clients {
+			pipeCli.lock.Lock()
+			go func(client *memdClient) {
+				jwt, err := auth.JWT(AuthCredsRequest{
+					Service:  MemdService,
+					Endpoint: client.Address(),
+				})
+				if err != nil {
+					logWarnf("Failed to fetch JWT for memdclient for reauthentication: %s", err)
+					return
+				}
+
+				req := &memdQRequest{
+					Packet: memd.Packet{
+						Magic:   memd.CmdMagicReq,
+						Command: memd.CmdSASLAuth,
+						Key:     []byte(OAuthBearerAuthMechanism),
+						Value:   buildOAuthBearerToken(jwt),
+					},
+					Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
+						if err != nil {
+							logDebugf("Closing memdclient on reauth failure: %s", err)
+							if err := client.Close(); err != nil {
+								logDebugf("failed to shut down memdclient on reauth failure: %s", err)
+							}
+						}
+					},
+					RetryStrategy: newFailFastRetryStrategy(),
+				}
+
+				err = client.SendRequest(req)
+				if err != nil {
+					logDebugf("Closing memdclient on reauth dispatch failure: %s", err)
+					if err := client.Close(); err != nil {
+						logDebugf("failed to shut down memdclient on reauth dispatch failure: %s", err)
+					}
+				}
+
+				if !deadline.IsZero() {
+					start := time.Now()
+					req.SetTimer(time.AfterFunc(deadline.Sub(start), func() {
+						req.Cancel()
+					}))
+				}
+			}(pipeCli.client)
+			pipeCli.lock.Unlock()
+		}
+		p.clientsLock.Unlock()
+	}
+
+	return nil
 }
 
 func (mux *kvMux) UpdateTLS(tls *dynTLSConfig, auth AuthProvider) {

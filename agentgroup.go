@@ -236,8 +236,6 @@ func (ag *AgentGroup) Diagnostics(opts DiagnosticsOptions) (*DiagnosticInfo, err
 // Calling this function will cause all underlying connections to be reconnected. The exception to this is the
 // connection to the seed node (usually localhost) when in ns_server mode, which will only be reconnected if the AuthProvider is provided
 // on the options.
-//
-// Internal: This should never be used and is not supported.
 func (ag *AgentGroup) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	logDebugf("Updating auth provider for agent group")
 
@@ -280,6 +278,35 @@ func (ag *AgentGroup) ReconfigureSecurity(opts ReconfigureSecurityOptions) error
 	err := ag.clusterAgent.ReconfigureSecurity(opts)
 	if err != nil {
 		allErrs = append(allErrs, err)
+	}
+
+	if len(allErrs) > 0 {
+		return errors.Join(allErrs...)
+	}
+
+	return nil
+}
+
+// Reauthenticate is a no-op for any Authenticator in use which does not fulfill the JWTAuthProvider interface *and*
+// return true from ContainsJWT. For JWT authenticators, this will send the current JWT to the server as a part of an
+// auth request, allowing for token rotation without a full reconnect. The authentication attempts will occur out of
+// band and any errors will shutdown the connection on which they occur.
+//
+// This will typically be called after ReconfigureSecurity.
+func (ag *AgentGroup) Reauthenticate(opts ReauthenticateOptions) error {
+	ag.agentsLock.Lock()
+	var agents []*Agent
+	for _, agent := range ag.boundAgents {
+		agents = append(agents, agent)
+	}
+	ag.agentsLock.Unlock()
+
+	var allErrs []error
+	for _, agent := range agents {
+		err := agent.Reauthenticate(opts)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		}
 	}
 
 	if len(allErrs) > 0 {

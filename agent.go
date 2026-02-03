@@ -596,7 +596,7 @@ func (agent *Agent) ForceReconnect() {
 	mechs := agent.authMechanisms
 	tlsConfig := agent.tlsConfig
 	agent.connectionSettingsLock.Unlock()
-	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, true)
+	agent.kvMux.ReconfigureSecurity(tlsConfig, mechs, auth, true, true)
 }
 
 // ReconfigureSecurityOptions are the options available to the ReconfigureSecurity function.
@@ -613,6 +613,9 @@ type ReconfigureSecurityOptions struct {
 	// recommend using a TLS connection if using PLAIN.
 	// If is nil will default to the AuthMechanisms already in use by the Agent.
 	AuthMechanisms []AuthMechanism
+
+	// NoReconnect signals that the underlying connections should not be reconnected.
+	NoReconnect bool
 }
 
 // ReconfigureSecurity updates the security configuration being used by the agent. This includes the ability to
@@ -650,12 +653,34 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	agent.tlsConfig = tlsConfig
 	agent.connectionSettingsLock.Unlock()
 
-	_, isNsMode := agent.pollerController.(*seedConfigController)
-
 	agent.cfgManager.UseTLS(tlsConfig != nil)
-	agent.kvMux.ForceReconnect(tlsConfig, mechs, auth, authProvided || !isNsMode)
+	agent.kvMux.ReconfigureSecurity(tlsConfig, mechs, auth, !opts.NoReconnect, authProvided)
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
 	agent.telemetry.UpdateTLS(tlsConfig, auth)
+	return nil
+}
+
+type ReauthenticateOptions struct {
+	Deadline time.Time
+}
+
+// Reauthenticate is a no-op for any Authenticator in use which does not fulfill the JWTAuthProvider interface *and*
+// return true from ContainsJWT. For JWT authenticators, this will send the current JWT to the server as a part of an
+// auth request, allowing for token rotation without a full reconnect. The authentication attempts will occur out of
+// band and any errors will shutdown the connection on which they occur.
+//
+// This will typically be called after ReconfigureSecurity.
+func (agent *Agent) Reauthenticate(opts ReauthenticateOptions) error {
+	agent.connectionSettingsLock.Lock()
+	auth := agent.auth
+	agent.connectionSettingsLock.Unlock()
+
+	if a, ok := auth.(AuthProviderJWT); ok {
+		if a.ContainsJWT() {
+			return agent.kvMux.ReauthenticateAuthBearer(a, opts.Deadline)
+		}
+	}
+
 	return nil
 }
 
