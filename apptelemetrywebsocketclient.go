@@ -57,9 +57,6 @@ func (e *telemetryEndpoints) selectEndpoint(excludeAddress string) (string, bool
 	if len(e.epList) == 0 {
 		return "", false
 	}
-	if len(e.epList) == 1 {
-		return e.epList[0].Address, true
-	}
 
 	var candidates []string
 	for _, ep := range e.epList {
@@ -67,6 +64,13 @@ func (e *telemetryEndpoints) selectEndpoint(excludeAddress string) (string, bool
 			candidates = append(candidates, ep.Address)
 		}
 	}
+
+	if len(candidates) == 0 {
+		// This means that we only have a single endpoint or multiple endpoints exist but have the same address.
+		// Multiple endpoints with the same address is possible in load balanced environments.
+		return e.epList[0].Address, true
+	}
+
 	return candidates[rand.Intn(len(candidates))], true // #nosec G404
 }
 
