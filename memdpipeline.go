@@ -73,7 +73,7 @@ func newDeadPipeline(maxItems int) *memdPipeline {
 	})
 }
 
-// nolint: unused
+//nolint:unused
 func (pipeline *memdPipeline) debugString() string {
 	var outStr string
 

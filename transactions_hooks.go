@@ -344,7 +344,7 @@ func (dh *TransactionDefaultClientRecordHooks) BeforeUpdateRecord(cb func(error)
 	cb(nil)
 }
 
-// nolint: deadcode,varcheck
+//nolint:deadcode,varcheck
 const (
 	hookRollback                   = "rollback"
 	hookGet                        = "get"

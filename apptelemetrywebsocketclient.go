@@ -322,7 +322,7 @@ func (w *telemetryWebsocketClient) dialConn(props telemetryWebsocketClientConnec
 
 	defer close(stopCh)
 
-	conn, _, err := props.dialer.DialContext(ctx, props.address, props.header) // nolint: bodyclose
+	conn, _, err := props.dialer.DialContext(ctx, props.address, props.header) //nolint:bodyclose
 	if err != nil {
 		return nil, err
 	}

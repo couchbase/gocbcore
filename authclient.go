@@ -2,7 +2,7 @@ package gocbcore
 
 import (
 	"bytes"
-	"crypto/sha1" // nolint: gosec
+	"crypto/sha1" //nolint:gosec
 	"crypto/sha256"
 	"crypto/sha512"
 	"hash"

@@ -60,7 +60,7 @@ func TransactionsProtocolExtensions() []string {
 
 type forwardCompatBehaviour string
 
-// nolint: deadcode,varcheck
+//nolint:deadcode,varcheck
 const (
 	forwardCompatBehaviourRetry forwardCompatBehaviour = "r"
 	forwardCompatBehaviourFail  forwardCompatBehaviour = "f"
@@ -68,7 +68,7 @@ const (
 
 type forwardCompatExtension string
 
-// nolint: deadcode,varcheck
+//nolint:deadcode,varcheck
 const (
 	forwardCompatExtensionTransactionID                   forwardCompatExtension = "TI"
 	forwardCompatExtensionDeferredCommit                  forwardCompatExtension = "DC"
@@ -101,7 +101,7 @@ const (
 
 type forwardCompatStage string
 
-// nolint: deadcode,varcheck
+//nolint:deadcode,varcheck
 const (
 	forwardCompatStageWWCReadingATR    forwardCompatStage = "WW_R"
 	forwardCompatStageWWCReplacing     forwardCompatStage = "WW_RP"

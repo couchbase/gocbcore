@@ -48,7 +48,7 @@ func newMemdOpQueue() *memdOpQueue {
 	return &q
 }
 
-// nolint: unused
+//nolint:unused
 func (q *memdOpQueue) debugString() string {
 	var outStr string
 	q.lock.Lock()

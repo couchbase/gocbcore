@@ -171,7 +171,7 @@ func (mux *kvMuxState) BucketCapabilityStatus(cap BucketCapability) CapabilitySt
 	return st
 }
 
-// nolint: unused
+//nolint:unused
 func (mux *kvMuxState) debugString() string {
 	var outStr string
 

@@ -216,7 +216,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 
 		// we can't close the body of this response as it's long-lived beyond the function
 		logSchedf("Writing HTTP request to %s ID=%s", req.URL, uniqueID)
-		resp, err := cc.cli.Do(req) // nolint: bodyclose
+		resp, err := cc.cli.Do(req) //nolint:bodyclose
 		if err != nil {
 			logDebugf("Received HTTP Response for ID=%s, errored: %v", uniqueID, err)
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -235,7 +235,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 		}
 		logDebugf("Received HTTP Response for ID=%s, status code: %v", uniqueID, resp.StatusCode)
 
-		resp = wrapHttpResponse(resp) // nolint: bodyclose
+		resp = wrapHttpResponse(resp) //nolint:bodyclose
 
 		if resp.StatusCode != 200 {
 			respBody, readErr := io.ReadAll(resp.Body)

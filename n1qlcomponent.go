@@ -146,7 +146,7 @@ func extractN1QL12009Error(err N1QLErrorDesc) error {
 	if len(err.Reason) > 0 {
 		if code, ok := err.Reason["code"]; ok {
 			// sad panda
-			code = int(code.(float64)) // nolint: errcheck
+			code = int(code.(float64)) //nolint:errcheck
 			if code == 12033 {
 				return errCasMismatch
 			} else if code == 17014 {
@@ -315,7 +315,7 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 }
 
 const (
-	// nolint: unused,deadcode,varcheck
+	//nolint:unused,deadcode,varcheck
 	useReplicaSupportLevelUnknown = uint32(iota)
 	useReplicaSupportLevelUnsupported
 	useReplicaSupportLevelSupported

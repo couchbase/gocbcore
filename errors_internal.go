@@ -713,7 +713,8 @@ var (
 
 // This list contains protected versions of all the errors we throw
 // to ensure no users inadvertently rely on direct comparisons.
-// nolint: deadcode,varcheck,unused
+//
+//nolint:deadcode,varcheck,unused
 var (
 	errTimeout                  = ncError{ErrTimeout}
 	errRequestCanceled          = ncError{ErrRequestCanceled}
