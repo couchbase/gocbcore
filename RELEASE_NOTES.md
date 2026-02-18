@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 10.8.2 (18 February 2026)
+
+### Fixed Issues
+
+* [GOCBC-1788](https://jira.issues.couchbase.com/browse/GOCBC-1788):
+  * Fixed issue where app telemetry could panic when multiple nodes share an address (e.g. a load balanced environment).
+
 ## Version 10.8.1 (18 September 2025)
 
 ### New Features and Behavioral Changes
