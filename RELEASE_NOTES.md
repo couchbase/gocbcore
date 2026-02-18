@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 10.9.0 (18 February 2025)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1768](https://jira.issues.couchbase.com/browse/GOCBC-1768):
+  * Added support for snapshot marker v2.2.
+* [GOCBC-1769](https://jira.issues.couchbase.com/browse/GOCBC-1769):
+* [GOCBC-1781](https://jira.issues.couchbase.com/browse/GOCBC-1781):
+  * Added support for reauthentication (JWT rotation).
+* [GOCBC-1771](https://jira.issues.couchbase.com/browse/GOCBC-1771):
+  * Added support for JWT authentication.
+* [GOCBC-1775](https://jira.issues.couchbase.com/browse/GOCBC-1775):
+  * Deprecated support for views.
+* [GOCBC-1776](https://jira.issues.couchbase.com/browse/GOCBC-1776):
+  * Added support for stable OpenTelemetry conventions.
+
+### Fixed Issues
+
+* [GOCBC-1788](https://jira.issues.couchbase.com/browse/GOCBC-1788):
+  * Fixed issue where app telemetry could panic when multiple nodes share an address (e.g. a load balanced environment).
+
 ## Version 10.8.1 (18 September 2025)
 
 ### New Features and Behavioral Changes
