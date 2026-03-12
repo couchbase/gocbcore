@@ -304,6 +304,7 @@ func (crud *crudComponent) LookupInAnyReplica(serverGroup *string, opts LookupIn
 				}
 			})
 			if err != nil {
+				opCompleted()
 				continue
 			}
 			op.AddOp(curOp)

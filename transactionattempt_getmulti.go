@@ -386,11 +386,11 @@ func (mgr *transactionGetMultiManager) fetchMultipleDocs(cb func(transactionGetM
 			var spec TransactionGetMultiSpec
 			spec, mgr.toFetch = mgr.toFetch[0], mgr.toFetch[1:]
 
-			parallelismGuard <- struct{}{}
 			wg.Add(1)
+			parallelismGuard <- struct{}{}
 			mgr.fetchIndividualDoc(spec, func(signal transactionGetMultiSignal, specRes *transactionGetMultiSpecResult, err error) {
 				if err != nil || signal == transactionGetMultiSignalBoundExceeded {
-					stop.Store(false)
+					stop.Store(true)
 				}
 				resCh <- fetchResult{
 					signal:  signal,
