@@ -433,11 +433,13 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	isCompressed := (resp.Datatype & uint8(memd.DatatypeFlagCompressed)) != 0
 	// We always want to decompress cluster configs if they've been compressed.
 	alwaysDecompress := req.Command == memd.CmdGetClusterConfig || resp.Status == memd.StatusNotMyVBucket
-	if isCompressed && (!client.disableDecompression || alwaysDecompress) {
+	// We also check that len(value) > 0. When DCP is used with NoValueWithUnderlyingDatatype the server can indicate that
+	// the value is compressed without actually sending a value.
+	if isCompressed && len(resp.Value) > 0 && (!client.disableDecompression || alwaysDecompress) {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
 			req.processingLock.Unlock()
-			logDebugf("%s memdclient failed to decompress value from the server for key `%s`.", client.loggerID(), req.Key)
+			logWarnf("%s memdclient failed to decompress value from the server for key `%s`.", client.loggerID(), req.Key)
 			return
 		}
 

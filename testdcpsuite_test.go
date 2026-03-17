@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/golang/snappy"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -1027,4 +1029,225 @@ func (suite *DCPTestSuite) TestOpenStreamRetry() {
 	suite.Run("Best effort retry strategy non-retriable error", func() {
 		suite.runOpenStreamRetryTest(3, NewBestEffortRetryStrategy(nil), ErrMemdDCPStreamIDInvalid, ErrDCPStreamIDInvalid)
 	})
+}
+
+func (suite *DCPTestSuite) createTestBucket(name string) {
+	data := url.Values{}
+	data.Set("name", name)
+	data.Set("ramQuota", "100")
+	data.Set("bucketType", "couchbase")
+	data.Set("compressionMode", "active")
+	data.Set("flushEnabled", "1")
+
+	ch := make(chan error, 1)
+	_, err := suite.opAgent.DoHTTPRequest(&HTTPRequest{
+		Service:  MgmtService,
+		Path:     "/pools/default/buckets",
+		Method:   "POST",
+		Body:     []byte(data.Encode()),
+		Headers:  map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+		Deadline: time.Now().Add(10 * time.Second),
+	}, func(res *HTTPResponse, err error) {
+		if err != nil {
+			ch <- err
+			return
+		}
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		if res.StatusCode != 202 {
+			ch <- fmt.Errorf("unexpected status code creating bucket: %d", res.StatusCode)
+			return
+		}
+		ch <- nil
+	})
+	suite.Require().NoError(err)
+	suite.Require().NoError(<-ch)
+}
+
+func (suite *DCPTestSuite) deleteTestBucket(name string) {
+	ch := make(chan error, 1)
+	_, err := suite.opAgent.DoHTTPRequest(&HTTPRequest{
+		Service:  MgmtService,
+		Path:     fmt.Sprintf("/pools/default/buckets/%s", name),
+		Method:   "DELETE",
+		Headers:  make(map[string]string),
+		Deadline: time.Now().Add(10 * time.Second),
+	}, func(res *HTTPResponse, err error) {
+		if err != nil {
+			ch <- err
+			return
+		}
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		ch <- nil
+	})
+	if err != nil {
+		suite.T().Logf("Failed to send delete bucket request: %v", err)
+		return
+	}
+	if err := <-ch; err != nil {
+		suite.T().Logf("Failed to delete bucket: %v", err)
+	}
+}
+
+// TestNoValueCompressedDCP verifies that DCP mutations are not silently dropped
+// when the DcpOpenFlagNoValue flag is used and the server sets the compressed
+// datatype flag on a document with an omitted body. This reproduces a production
+// issue where resolveRequest failed to decompress the empty value and dropped the event.
+func (suite *DCPTestSuite) TestNoValueCompressedDCP() {
+	bucketName := "dcp_novalue_compress"
+
+	suite.createTestBucket(bucketName)
+	defer suite.deleteTestBucket(bucketName)
+
+	opCfg := suite.makeOpAgentConfig(suite.DCPTestConfig)
+	opCfg.BucketName = bucketName
+	opCfg.CompressionConfig.Enabled = true
+
+	// We're connecting to a bucket that probably isn't ready yet so we're probably going to end up logging some
+	// warning when connections fail to be established.
+	globalTestLogger.SuppressWarnings(true)
+	opAgent, err := CreateAgent(&opCfg)
+	suite.Require().NoError(err)
+
+	ch := make(chan error)
+	_, err = opAgent.WaitUntilReady(
+		time.Now().Add(10*time.Second),
+		WaitUntilReadyOptions{
+			RetryStrategy: NewBestEffortRetryStrategy(nil),
+		},
+		func(result *WaitUntilReadyResult, err error) {
+			ch <- err
+		},
+	)
+	suite.Require().NoError(err)
+
+	err = <-ch
+	suite.Require().NoError(err)
+	defer opAgent.Close()
+	globalTestLogger.SuppressWarnings(false)
+
+	// Store JSON documents pre-compressed with snappy. By sending the data with the
+	// compressed datatype flag already set, we guarantee the server stores the document
+	// as compressed regardless of whether the memdClient negotiated snappy.
+	numDocs := 10
+	docKeys := make([]string, numDocs)
+	rawValue := []byte(`{"field":"` + strings.Repeat("x", 200) + `","another":"` + strings.Repeat("y", 200) + `"}`)
+	compressedValue := snappy.Encode(nil, rawValue)
+
+	for i := 0; i < numDocs; i++ {
+		docKeys[i] = fmt.Sprintf("compressed-novalue-test-%d", i)
+		setCh := make(chan error, 1)
+		_, err = opAgent.Set(SetOptions{
+			Key:      []byte(docKeys[i]),
+			Value:    compressedValue,
+			Datatype: uint8(memd.DatatypeFlagJSON) | uint8(memd.DatatypeFlagCompressed),
+			Deadline: time.Now().Add(10 * time.Second),
+		}, func(result *StoreResult, err error) {
+			setCh <- err
+		})
+		suite.Require().NoError(err)
+		suite.Require().NoError(<-setCh)
+	}
+
+	// Create a DCP agent with NoValue + IncludeXattrs flags. When both are set and a
+	// document has no xattrs, the server omits the body but preserves the underlying
+	// datatype (including the compressed flag), producing the empty-value-with-compressed-
+	// datatype scenario that triggers the bug.
+	dcpCfg := suite.makeDCPAgentConfig(suite.DCPTestConfig, false, false)
+	dcpCfg.BucketName = bucketName
+	flags := memd.DcpOpenFlagProducer | memd.DcpOpenFlag(0x64) | memd.DcpOpenFlagIncludeXattrs
+	dcpAgent, err := suite.initDCPAgent(dcpCfg, "novalue-compress-test", flags)
+	suite.Require().NoError(err)
+	defer dcpAgent.Close()
+
+	// Set up a fresh stream observer.
+	so := &TestStreamObserver{
+		lock:      sync.Mutex{},
+		lastSeqno: make(map[uint16]uint64),
+		snapshots: make(map[uint16]DcpSnapshotMarker),
+		endWg:     sync.WaitGroup{},
+	}
+	so.newCounter()
+
+	seqnos, err := suite.getCurrentSeqNos(dcpAgent)
+	suite.Require().NoError(err)
+
+	so.endWg.Add(len(seqnos))
+
+	fo, err := suite.getFailoverLogs(len(seqnos), dcpAgent)
+	suite.Require().NoError(err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var openWg sync.WaitGroup
+	openWg.Add(len(seqnos))
+
+	for _, entry := range seqnos {
+		go func(en VbSeqNoEntry) {
+			ch := make(chan error, 1)
+			op, err := dcpAgent.OpenStream(en.VbID, memd.DcpStreamAddFlagActiveOnly, fo[int(en.VbID)].VbUUID, 0, en.SeqNo,
+				0, 0, so, OpenStreamOptions{}, func(entries []FailoverEntry, err error) {
+					ch <- err
+				},
+			)
+			if err != nil {
+				cancel()
+				return
+			}
+
+			select {
+			case err := <-ch:
+				if err != nil {
+					suite.T().Logf("Error received from open stream: %v", err)
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				op.Cancel()
+				return
+			}
+
+			openWg.Done()
+		}(entry)
+	}
+
+	wgCh := make(chan struct{}, 1)
+	go func() {
+		openWg.Wait()
+		wgCh <- struct{}{}
+	}()
+
+	select {
+	case <-ctx.Done():
+		suite.T().Fatal("Failed to open streams")
+	case <-wgCh:
+	}
+
+	suite.T().Logf("All streams open, waiting for streams to complete")
+
+	waitCh := make(chan struct{})
+	go func() {
+		so.endWg.Wait()
+		close(waitCh)
+	}()
+
+	select {
+	case <-time.After(60 * time.Second):
+		suite.T().Fatal("Timed out waiting for streams to complete")
+	case <-waitCh:
+	}
+
+	// The key assertion: every mutation must have been received, not silently dropped
+	// due to a snappy decompression failure on the empty value.
+	for _, key := range docKeys {
+		suite.Require().Contains(so.counter.mutations, key,
+			"DCP mutation for %s was dropped - likely due to snappy decompression failure on empty value with compressed datatype flag", key)
+
+		mutation := so.counter.mutations[key]
+		suite.Assert().Empty(mutation.Value, "expected empty value with DcpOpenFlagNoValue for key %s", key)
+	}
 }
