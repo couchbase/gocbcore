@@ -78,17 +78,24 @@ func (ag *AgentGroup) OpenBucket(bucketName string) error {
 	config.BucketName = bucketName
 	ag.configLock.Unlock()
 
+	ag.agentsLock.Lock()
+	// Check again that the agent doesn't exist now that we have the lock. If it does then we can just return.
+	existingAgent := ag.boundAgents[bucketName]
+	if existingAgent != nil {
+		ag.agentsLock.Unlock()
+		return nil
+	}
+
 	agent, err := CreateAgent(config)
 	if err != nil {
 		return err
 	}
 
-	ag.clusterAgent.RegisterWith(agent.cfgManager, agent.dialer)
-
-	ag.agentsLock.Lock()
 	ag.boundAgents[bucketName] = agent
 	ag.maybeCloseGlobalAgent()
 	ag.agentsLock.Unlock()
+
+	ag.clusterAgent.RegisterWith(agent.cfgManager, agent.dialer)
 
 	return nil
 }
