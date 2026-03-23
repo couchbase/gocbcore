@@ -1,6 +1,15 @@
 # Release Notes
 
-## Version 10.9.0 (18 February 2025)
+## Version 10.9.1 (23 March 2026)
+
+* [GOCBC-1796](https://jira.issues.couchbase.com/browse/GOCBC-1796):
+  * Fixed a rare "send on closed channel" panic that could occur during a transactions `GetMulti` operation when documents were being fetched concurrently.
+* [GOCBC-1797](https://jira.issues.couchbase.com/browse/GOCBC-1797):
+  * Fixed an issue with DCP streams, where events were silently dropped if the `NoValue` and `IncludeXattrs` open flags were used and the server sent mutations with the compressed datatype flag set but an empty value. The SDK attempted to snappy-decompress these, failed and dropped the events.
+* [GOCBC-1799](https://jira.issues.couchbase.com/browse/GOCBC-1799):
+  * Fixed issue where concurrent calls to `AgentGroup.OpenBucket` could race and resulted in multiple agents being opened. These agents would leak on `AgentGroup.Close`.
+
+## Version 10.9.0 (18 February 2026)
 
 ### New Features and Behavioral Changes
 
