@@ -206,6 +206,7 @@ func (t *transactionAttempt) GetMutations() []TransactionStagedMutation {
 			Staged:          mutation.Staged,
 			OperationID:     mutation.OperationID,
 			StagedUserFlags: mutation.StagedUserFlags,
+			Expiry:          mutation.Expiry,
 		}
 	}
 

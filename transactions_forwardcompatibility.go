@@ -55,6 +55,7 @@ func TransactionsProtocolExtensions() []string {
 		"EXT_GET_MULTI",
 		"EXT_BINARY_SUPPORT",
 		"EXT_REPLICA_FROM_PREFERRED_GROUP_PATCH1",
+		"EXT_TTL",
 	}
 }
 
@@ -97,6 +98,7 @@ const (
 	forwardCompatExtensionGetMulti                        forwardCompatExtension = "GM"
 	forwardCompatExtensionBinarySupport                   forwardCompatExtension = "BS"
 	forwardCompatExtensionReplicaFromPreferredGroupPatch1 forwardCompatExtension = "RPP1"
+	forwardCompatExtensionTTL                             forwardCompatExtension = "TTL"
 )
 
 type forwardCompatStage string
@@ -154,6 +156,7 @@ var supportedforwardCompatExtensions = []forwardCompatExtension{
 	forwardCompatExtensionGetMulti,
 	forwardCompatExtensionBinarySupport,
 	forwardCompatExtensionReplicaFromPreferredGroupPatch1,
+	forwardCompatExtensionTTL,
 }
 
 func jsonForwardCompatToForwardCompat(fc map[string][]jsonForwardCompatibilityEntry) map[string][]TransactionForwardCompatibilityEntry {

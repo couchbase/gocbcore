@@ -1135,3 +1135,104 @@ func (suite *StandardTestSuite) TestTransactionsInsertRollbacktUnits() {
 	suite.Assert().Equal(uint32(3), readUnits)
 	suite.Assert().Equal(uint32(5), numOps)
 }
+
+func (suite *StandardTestSuite) TestTransactionsInsertWithExpiry() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, opHarness := suite.GetAgentAndHarness()
+	documentExpiry := time.Now().Add(10 * time.Minute)
+	val := []byte(`{"name":"mike"}`)
+	key := uuid.NewString()
+	_, txn := suite.initTransactionAndAttempt(agent)
+
+	_, err := testBlkInsert(txn, TransactionInsertOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+		Value:          val,
+		Expiry:         documentExpiry,
+	})
+	suite.Require().NoError(err)
+
+	err = testBlkCommit(txn)
+	suite.Require().NoError(err)
+
+	opHarness.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte(key),
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+	}, func(result *GetMetaResult, err error) {
+		opHarness.Wrap(func() {
+			if err != nil {
+				opHarness.Fatalf("GetMeta command failed: %v", err)
+			}
+			if uint32(documentExpiry.Unix()) != result.Expiry {
+				opHarness.Fatalf("Document expiry did not match expected value. Got %d, expected %d", result.Expiry, uint32(documentExpiry.Unix()))
+			}
+		})
+	}))
+}
+
+func (suite *StandardTestSuite) TestTransactionsReplaceWithExpiry() {
+	suite.EnsureSupportsFeature(TestFeatureTransactions)
+	suite.EnsureSupportsFeature(TestFeaturePreserveExpiry)
+
+	agent, opHarness := suite.GetAgentAndHarness()
+	documentExpiry := time.Now().Add(10 * time.Minute)
+	val := []byte(`{"name":"mike"}`)
+	newVal := []byte(`{"name":"dave"}`)
+	key := uuid.NewString()
+
+	opHarness.PushOp(agent.Set(SetOptions{
+		Key:            []byte(key),
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Value:          val,
+	}, func(result *StoreResult, err error) {
+		opHarness.Wrap(func() {
+			if err != nil {
+				opHarness.Fatalf("Set command failed: %v", err)
+			}
+		})
+	}))
+	opHarness.Wait(0)
+
+	_, txn := suite.initTransactionAndAttempt(agent)
+
+	getRes, err := testBlkGet(txn, TransactionGetOptions{
+		Agent:          agent,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+		Key:            []byte(key),
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equal(val, getRes.Value)
+
+	_, err = testBlkReplace(txn, TransactionReplaceOptions{
+		Document: getRes,
+		Value:    newVal,
+		Expiry:   documentExpiry,
+	})
+	suite.Require().NoError(err)
+
+	err = testBlkCommit(txn)
+	suite.Require().NoError(err)
+
+	opHarness.PushOp(agent.GetMeta(GetMetaOptions{
+		Key:            []byte(key),
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
+	}, func(result *GetMetaResult, err error) {
+		opHarness.Wrap(func() {
+			if err != nil {
+				opHarness.Fatalf("GetMeta command failed: %v", err)
+			}
+			if uint32(documentExpiry.Unix()) != result.Expiry {
+				opHarness.Fatalf("Document expiry did not match expected value. Got %d, expected %d", result.Expiry, uint32(documentExpiry.Unix()))
+			}
+		})
+	}))
+	opHarness.Wait(0)
+}

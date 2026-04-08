@@ -375,48 +375,60 @@ func (t *transactionAttempt) removeStagedRemoveReplace(
 				return
 			}
 
-			_, err = mutation.Agent.MutateIn(MutateInOptions{
-				ScopeName:      mutation.ScopeName,
-				CollectionName: mutation.CollectionName,
-				Key:            mutation.Key,
-				Cas:            mutation.Cas,
-				Ops: []SubDocOp{
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-						Value: []byte{110, 117, 108, 108}, // null
-					},
-					{
-						Op:    memd.SubDocOpDelete,
-						Path:  "txn",
-						Flags: memd.SubdocFlagXattrPath,
-					},
-				},
-				User: mutation.OboUser,
-			}, func(result *MutateInResult, err error) {
+			err = t.setPreserveExpiryForExtTTL(mutation.Agent, false, "rollback", func(setPreserveExpiry bool, err error) {
 				if err != nil {
 					ecCb(classifyError(err))
 					return
 				}
 
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
-
-				for _, op := range result.Ops {
-					if op.Err != nil {
-						ecCb(classifyError(op.Err))
-						return
-					}
-				}
-
-				t.hooks.AfterRollbackReplaceOrRemove(mutation.Key, func(err error) {
+				_, err = mutation.Agent.MutateIn(MutateInOptions{
+					ScopeName:      mutation.ScopeName,
+					CollectionName: mutation.CollectionName,
+					Key:            mutation.Key,
+					Cas:            mutation.Cas,
+					Ops: []SubDocOp{
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn",
+							Flags: memd.SubdocFlagXattrPath,
+							Value: []byte{110, 117, 108, 108}, // null
+						},
+						{
+							Op:    memd.SubDocOpDelete,
+							Path:  "txn",
+							Flags: memd.SubdocFlagXattrPath,
+						},
+					},
+					User:           mutation.OboUser,
+					PreserveExpiry: setPreserveExpiry,
+				}, func(result *MutateInResult, err error) {
 					if err != nil {
-						ecCb(classifyHookError(err))
+						ecCb(classifyError(err))
 						return
 					}
 
-					ecCb(nil)
+					t.ReportResourceUnits(result.Internal.ResourceUnits)
+
+					for _, op := range result.Ops {
+						if op.Err != nil {
+							ecCb(classifyError(op.Err))
+							return
+						}
+					}
+
+					t.hooks.AfterRollbackReplaceOrRemove(mutation.Key, func(err error) {
+						if err != nil {
+							ecCb(classifyHookError(err))
+							return
+						}
+
+						ecCb(nil)
+					})
 				})
+				if err != nil {
+					ecCb(classifyError(err))
+					return
+				}
 			})
 			if err != nil {
 				ecCb(classifyError(err))

@@ -71,6 +71,10 @@ func (t *transactionAttempt) insert(
 		collectionName := opts.CollectionName
 		key := opts.Key
 		value := opts.Value
+		var expiry uint32
+		if !opts.Expiry.IsZero() {
+			expiry = uint32(opts.Expiry.Unix())
+		}
 		operationID := uuid.New().String()
 
 		t.checkExpiredAtomic(hookInsert, key, false, func(cerr *classifiedError) {
@@ -94,7 +98,7 @@ func (t *transactionAttempt) insert(
 					t.logger.logInfof(t.id, "Staged remove exists on doc, performing replace")
 					t.stageReplace(
 						agent, oboUser, scopeName, collectionName, key,
-						value, existingMutation.Cas, operationID, opts.Flags, existingMutation.StagedUserFlags,
+						value, expiry, existingMutation.Cas, operationID, opts.Flags, existingMutation.StagedUserFlags,
 						func(result *TransactionGetResult, err error) {
 							endAndCb(result, err)
 						})
@@ -125,7 +129,7 @@ func (t *transactionAttempt) insert(
 
 				t.stageInsert(
 					agent, oboUser, scopeName, collectionName, key,
-					value, 0, operationID, opts.Flags,
+					value, expiry, 0, operationID, opts.Flags,
 					func(result *TransactionGetResult, err error) {
 						endAndCb(result, err)
 					})
@@ -143,6 +147,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 	collectionName string,
 	key []byte,
 	value json.RawMessage,
+	expiry uint32,
 	operationID string,
 	userFlags uint32,
 	cb func(*TransactionGetResult, error),
@@ -169,7 +174,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 				}
 
 				// There wasn't actually a staged mutation there.
-				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, userFlags, cb)
+				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, expiry, cas, operationID, userFlags, cb)
 				return
 			}
 
@@ -202,9 +207,9 @@ func (t *transactionAttempt) resolveConflictedInsert(
 						return
 					}
 
-					// We have guards in place within the write write conflict polling to prevent miss-use when
+					// We have guards in place within the write-write conflict polling to prevent misuse when
 					// an existing mutation must have been discovered before it's safe to overwrite.  This logic
-					// is unnecessary, as is the forwards compatibility check when resolving conflicted inserts
+					// is unnecessary, as is the forwards compatibility check when resolving conflicted inserts,
 					// so we can safely just ignore it.
 					if meta.TransactionID == t.transactionID && meta.AttemptID == t.id {
 						if meta.OperationID == operationID {
@@ -219,6 +224,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 								OperationID:     operationID,
 								Cas:             cas,
 								StagedUserFlags: userFlags,
+								Expiry:          expiry,
 							}
 							t.recordStagedMutation(stagedInfo, func() {
 								cb(&TransactionGetResult{
@@ -259,7 +265,7 @@ func (t *transactionAttempt) resolveConflictedInsert(
 								return
 							}
 
-							t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, userFlags, cb)
+							t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, expiry, cas, operationID, userFlags, cb)
 						})
 					})
 				})
@@ -273,6 +279,7 @@ func (t *transactionAttempt) stageInsert(
 	collectionName string,
 	key []byte,
 	value json.RawMessage,
+	expiry uint32,
 	cas Cas,
 	operationID string,
 	userFlags uint32,
@@ -289,7 +296,7 @@ func (t *transactionAttempt) stageInsert(
 		switch cerr.Class {
 		case TransactionErrorClassFailAmbiguous:
 			time.AfterFunc(3*time.Millisecond, func() {
-				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, cas, operationID, userFlags, cb)
+				t.stageInsert(agent, oboUser, scopeName, collectionName, key, value, expiry, cas, operationID, userFlags, cb)
 			})
 		case TransactionErrorClassFailExpiry:
 			t.setExpiryOvertimeAtomic()
@@ -316,7 +323,7 @@ func (t *transactionAttempt) stageInsert(
 		case TransactionErrorClassFailDocAlreadyExists:
 			fallthrough
 		case TransactionErrorClassFailCasMismatch:
-			t.resolveConflictedInsert(agent, oboUser, scopeName, collectionName, key, value, operationID, userFlags, cb)
+			t.resolveConflictedInsert(agent, oboUser, scopeName, collectionName, key, value, expiry, operationID, userFlags, cb)
 		default:
 			cb(nil, t.operationFailed(operationFailedDef{
 				Cerr:              cerr,
@@ -333,159 +340,172 @@ func (t *transactionAttempt) stageInsert(
 			return
 		}
 
-		t.hooks.BeforeStagedInsert(key, func(err error) {
+		err := t.checkTTLSupported(agent, expiry, operationID, func(err error) {
 			if err != nil {
-				ecCb(nil, classifyHookError(err))
+				ecCb(nil, classifyError(err))
 				return
 			}
 
-			stageInsert := func(isBinaryFlags, isBinarySupported bool) {
-				var stagedUserFlags uint32
-				if isBinarySupported {
-					stagedUserFlags = userFlags
-				}
-				stagedInfo := &transactionStagedMutation{
-					OpType:          TransactionStagedMutationInsert,
-					Agent:           agent,
-					OboUser:         oboUser,
-					ScopeName:       scopeName,
-					CollectionName:  collectionName,
-					Key:             key,
-					Staged:          value,
-					OperationID:     operationID,
-					StagedUserFlags: stagedUserFlags,
-				}
-
-				var txnMeta jsonTxnXattr
-				txnMeta.ID.Transaction = t.transactionID
-				txnMeta.ID.Attempt = t.id
-				txnMeta.ID.Operation = operationID
-				txnMeta.ATR.CollectionName = t.atrCollectionName
-				txnMeta.ATR.ScopeName = t.atrScopeName
-				txnMeta.ATR.BucketName = t.atrAgent.BucketName()
-				txnMeta.ATR.DocID = string(t.atrKey)
-				txnMeta.Operation.Type = jsonMutationInsert
-				txnMeta.Operation.Staged = value
-				txnMeta.Aux.UserFlags = userFlags
-
-				if isBinarySupported && isBinaryFlags {
-					txnMeta.Operation.Staged = nil
-					t.addBinarySupportForwardCompat(&txnMeta)
-				}
-
-				txnMetaBytes, err := json.Marshal(txnMeta)
+			t.hooks.BeforeStagedInsert(key, func(err error) {
 				if err != nil {
-					ecCb(nil, classifyError(err))
+					ecCb(nil, classifyHookError(err))
 					return
 				}
 
-				deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
+				stageInsert := func(isBinaryFlags, isBinarySupported bool) {
+					var stagedUserFlags uint32
+					if isBinarySupported {
+						stagedUserFlags = userFlags
+					}
+					stagedInfo := &transactionStagedMutation{
+						OpType:          TransactionStagedMutationInsert,
+						Agent:           agent,
+						OboUser:         oboUser,
+						ScopeName:       scopeName,
+						CollectionName:  collectionName,
+						Key:             key,
+						Staged:          value,
+						OperationID:     operationID,
+						StagedUserFlags: stagedUserFlags,
+						Expiry:          expiry,
+					}
 
-				flags := memd.SubdocDocFlagCreateAsDeleted | memd.SubdocDocFlagAccessDeleted
-				var txnOp memd.SubDocOpType
-				if cas == 0 {
-					flags |= memd.SubdocDocFlagAddDoc
-					txnOp = memd.SubDocOpDictAdd
-				} else {
-					txnOp = memd.SubDocOpDictSet
-				}
+					var txnMeta jsonTxnXattr
+					txnMeta.ID.Transaction = t.transactionID
+					txnMeta.ID.Attempt = t.id
+					txnMeta.ID.Operation = operationID
+					txnMeta.ATR.CollectionName = t.atrCollectionName
+					txnMeta.ATR.ScopeName = t.atrScopeName
+					txnMeta.ATR.BucketName = t.atrAgent.BucketName()
+					txnMeta.ATR.DocID = string(t.atrKey)
+					txnMeta.Operation.Type = jsonMutationInsert
+					txnMeta.Operation.Staged = value
+					txnMeta.Aux.UserFlags = userFlags
+					txnMeta.Aux.DocExpiry = expiry
 
-				ops := []SubDocOp{
-					{
-						Op:    txnOp,
-						Path:  "txn",
-						Flags: memd.SubdocFlagMkDirP | memd.SubdocFlagXattrPath,
-						Value: txnMetaBytes,
-					},
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.op.crc32",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
-						Value: crc32cMacro,
-					},
-				}
+					if isBinarySupported && isBinaryFlags {
+						txnMeta.Operation.Staged = nil
+						t.addBinarySupportForwardCompat(&txnMeta)
+					}
 
-				if isBinaryFlags {
-					ops = append(ops, SubDocOp{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.op.bin",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagBinaryXattr,
-						Value: value,
-					})
-				}
-
-				_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
-					ScopeName:              stagedInfo.ScopeName,
-					CollectionName:         stagedInfo.CollectionName,
-					Key:                    stagedInfo.Key,
-					Cas:                    cas,
-					Ops:                    ops,
-					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-					DurabilityLevelTimeout: duraTimeout,
-					Deadline:               deadline,
-					Flags:                  flags,
-					User:                   stagedInfo.OboUser,
-					userFlags:              stagedInfo.StagedUserFlags,
-				}, func(result *MutateInResult, err error) {
+					txnMetaBytes, err := json.Marshal(txnMeta)
 					if err != nil {
 						ecCb(nil, classifyError(err))
 						return
 					}
 
-					t.ReportResourceUnits(result.Internal.ResourceUnits)
+					deadline, duraTimeout := transactionsMutationTimeouts(t.keyValueTimeout, t.durabilityLevel)
 
-					stagedInfo.Cas = result.Cas
+					flags := memd.SubdocDocFlagCreateAsDeleted | memd.SubdocDocFlagAccessDeleted
+					var txnOp memd.SubDocOpType
+					if cas == 0 {
+						flags |= memd.SubdocDocFlagAddDoc
+						txnOp = memd.SubDocOpDictAdd
+					} else {
+						txnOp = memd.SubDocOpDictSet
+					}
 
-					t.hooks.AfterStagedInsertComplete(key, func(err error) {
+					ops := []SubDocOp{
+						{
+							Op:    txnOp,
+							Path:  "txn",
+							Flags: memd.SubdocFlagMkDirP | memd.SubdocFlagXattrPath,
+							Value: txnMetaBytes,
+						},
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.op.crc32",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+							Value: crc32cMacro,
+						},
+					}
+
+					if isBinaryFlags {
+						ops = append(ops, SubDocOp{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.op.bin",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagBinaryXattr,
+							Value: value,
+						})
+					}
+
+					_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
+						ScopeName:              stagedInfo.ScopeName,
+						CollectionName:         stagedInfo.CollectionName,
+						Key:                    stagedInfo.Key,
+						Cas:                    cas,
+						Ops:                    ops,
+						DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+						DurabilityLevelTimeout: duraTimeout,
+						Deadline:               deadline,
+						Flags:                  flags,
+						User:                   stagedInfo.OboUser,
+						userFlags:              stagedInfo.StagedUserFlags,
+					}, func(result *MutateInResult, err error) {
 						if err != nil {
-							ecCb(nil, classifyHookError(err))
+							ecCb(nil, classifyError(err))
 							return
 						}
 
-						t.recordStagedMutation(stagedInfo, func() {
+						t.ReportResourceUnits(result.Internal.ResourceUnits)
 
-							ecCb(&TransactionGetResult{
-								agent:          stagedInfo.Agent,
-								oboUser:        stagedInfo.OboUser,
-								scopeName:      stagedInfo.ScopeName,
-								collectionName: stagedInfo.CollectionName,
-								key:            stagedInfo.Key,
-								Value:          stagedInfo.Staged,
-								Cas:            stagedInfo.Cas,
-								Meta:           nil,
-								Flags:          stagedInfo.StagedUserFlags,
-							}, nil)
+						stagedInfo.Cas = result.Cas
+
+						t.hooks.AfterStagedInsertComplete(key, func(err error) {
+							if err != nil {
+								ecCb(nil, classifyHookError(err))
+								return
+							}
+
+							t.recordStagedMutation(stagedInfo, func() {
+
+								ecCb(&TransactionGetResult{
+									agent:          stagedInfo.Agent,
+									oboUser:        stagedInfo.OboUser,
+									scopeName:      stagedInfo.ScopeName,
+									collectionName: stagedInfo.CollectionName,
+									key:            stagedInfo.Key,
+									Value:          stagedInfo.Staged,
+									Cas:            stagedInfo.Cas,
+									Meta:           nil,
+									Flags:          stagedInfo.StagedUserFlags,
+								}, nil)
+							})
 						})
 					})
+					if err != nil {
+						ecCb(nil, classifyError(err))
+					}
+				}
+
+				userFlagsAreBinary, err := t.isBinary(userFlags)
+				if err != nil {
+					ecCb(nil, classifyError(err))
+					return
+				}
+
+				err = t.supportsBinaryXattr(agent, "insert", func(supported bool, failedError error) {
+					if err != nil {
+						ecCb(nil, classifyError(err))
+						return
+					}
+
+					if userFlagsAreBinary && !supported {
+						ecCb(nil, classifyError(wrapError(errFeatureNotAvailable, "binary documents in transactions are only supported in Go from server v8.0.0 onward")))
+						return
+					}
+
+					stageInsert(userFlagsAreBinary, supported)
 				})
 				if err != nil {
 					ecCb(nil, classifyError(err))
 				}
-			}
-
-			userFlagsAreBinary, err := t.isBinary(userFlags)
-			if err != nil {
-				ecCb(nil, classifyError(err))
-				return
-			}
-
-			err = t.supportsBinaryXattr(agent, "insert", func(supported bool, failedError error) {
-				if err != nil {
-					ecCb(nil, classifyError(err))
-					return
-				}
-
-				if userFlagsAreBinary && !supported {
-					ecCb(nil, classifyError(wrapError(errFeatureNotAvailable, "binary documents in transactions are only supported in Go from server v8.0.0 onward")))
-					return
-				}
-
-				stageInsert(userFlagsAreBinary, supported)
 			})
-			if err != nil {
-				ecCb(nil, classifyError(err))
-			}
 		})
+		if err != nil {
+			ecCb(nil, classifyError(err))
+			return
+		}
 	})
 }
 

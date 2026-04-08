@@ -73,6 +73,7 @@ type TransactionStagedMutation struct {
 	Staged          json.RawMessage
 	OperationID     string
 	StagedUserFlags uint32
+	Expiry          uint32
 }
 
 type transactionStagedMutation struct {
@@ -86,4 +87,5 @@ type transactionStagedMutation struct {
 	Staged          json.RawMessage
 	OperationID     string
 	StagedUserFlags uint32
+	Expiry          uint32
 }

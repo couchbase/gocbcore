@@ -338,6 +338,7 @@ func (t *transactionAttempt) fetchBeforeUnstage(
 
 			mutation.Cas = result.Cas
 			mutation.Staged = jsonTxn.Operation.Staged
+			mutation.Expiry = jsonTxn.Aux.DocExpiry
 			ecCb(nil)
 		})
 		if err != nil {
@@ -497,49 +498,61 @@ func (t *transactionAttempt) commitStagedReplace(
 					}
 				}
 
-				_, err = mutation.Agent.MutateIn(MutateInOptions{
-					ScopeName:              mutation.ScopeName,
-					CollectionName:         mutation.CollectionName,
-					Key:                    mutation.Key,
-					Cas:                    cas,
-					Ops:                    specs,
-					Deadline:               deadline,
-					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-					DurabilityLevelTimeout: duraTimeout,
-					User:                   mutation.OboUser,
-					userFlags:              userFlags,
-				}, func(result *MutateInResult, err error) {
+				err = t.setPreserveExpiryForExtTTL(mutation.Agent, mutation.Expiry > 0, "commit", func(setPreserveExpiry bool, err error) {
 					if err != nil {
 						ecCb(classifyError(err))
 						return
 					}
-
-					t.ReportResourceUnits(result.Internal.ResourceUnits)
-
-					for _, op := range result.Ops {
-						if op.Err != nil {
-							ecCb(classifyError(op.Err))
-							return
-						}
-					}
-
-					t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
+					_, err = mutation.Agent.MutateIn(MutateInOptions{
+						ScopeName:              mutation.ScopeName,
+						CollectionName:         mutation.CollectionName,
+						Key:                    mutation.Key,
+						Cas:                    cas,
+						Ops:                    specs,
+						Deadline:               deadline,
+						DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+						DurabilityLevelTimeout: duraTimeout,
+						User:                   mutation.OboUser,
+						Expiry:                 mutation.Expiry,
+						PreserveExpiry:         setPreserveExpiry,
+						userFlags:              userFlags,
+					}, func(result *MutateInResult, err error) {
 						if err != nil {
-							ecCb(classifyHookError(err))
+							ecCb(classifyError(err))
 							return
 						}
 
-						mutation.Cas = result.Cas
+						t.ReportResourceUnits(result.Internal.ResourceUnits)
 
-						t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+						for _, op := range result.Ops {
+							if op.Err != nil {
+								ecCb(classifyError(op.Err))
+								return
+							}
+						}
+
+						t.hooks.AfterDocCommittedBeforeSavingCAS(mutation.Key, func(err error) {
 							if err != nil {
 								ecCb(classifyHookError(err))
 								return
 							}
 
-							ecCb(nil)
+							mutation.Cas = result.Cas
+
+							t.hooks.AfterDocCommitted(mutation.Key, func(err error) {
+								if err != nil {
+									ecCb(classifyHookError(err))
+									return
+								}
+
+								ecCb(nil)
+							})
 						})
 					})
+					if err != nil {
+						ecCb(classifyError(err))
+						return
+					}
 				})
 				if err != nil {
 					ecCb(classifyError(err))
@@ -667,6 +680,7 @@ func (t *transactionAttempt) commitStagedInsert(
 						Cas:                    mutation.Cas,
 						Flags:                  memd.SubdocDocFlagReviveDocument | memd.SubdocDocFlagAccessDeleted,
 						userFlags:              userFlags,
+						Expiry:                 mutation.Expiry,
 						Ops: []SubDocOp{
 							{
 								Op:    memd.SubDocOpReplaceBodyWithXattr,
@@ -723,6 +737,7 @@ func (t *transactionAttempt) commitStagedInsert(
 					DurabilityLevelTimeout: duraTimeout,
 					User:                   mutation.OboUser,
 					Flags:                  userFlags,
+					Expiry:                 mutation.Expiry,
 				}, func(result *StoreResult, err error) {
 					if err != nil {
 						ecCb(classifyError(err))

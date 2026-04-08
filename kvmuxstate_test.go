@@ -17,6 +17,7 @@ func (suite *UnitTestSuite) TestKvMuxState_BucketCapabilities_InitialConfigNoBuc
 		BucketCapabilityReviveDocument:       CapabilityStatusUnknown,
 		BucketCapabilityBinaryXattr:          CapabilityStatusUnknown,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnknown,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusUnknown,
 	}, muxState.bucketCapabilities)
 }
 
@@ -37,6 +38,7 @@ func (suite *UnitTestSuite) TestKvMuxState_BucketCapabilities_InitialConfigBucke
 		BucketCapabilityReviveDocument:       CapabilityStatusUnknown,
 		BucketCapabilityBinaryXattr:          CapabilityStatusUnknown,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnknown,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusUnknown,
 	}, muxState.bucketCapabilities)
 }
 
@@ -57,6 +59,7 @@ func (suite *UnitTestSuite) TestNewKvMuxState_BucketCapabilitiesNoBucket() {
 		BucketCapabilityReviveDocument:       CapabilityStatusUnsupported,
 		BucketCapabilityBinaryXattr:          CapabilityStatusUnsupported,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnsupported,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusUnsupported,
 	}, muxState.bucketCapabilities)
 }
 
@@ -79,6 +82,7 @@ func (suite *UnitTestSuite) TestNewKvMuxState_BucketCapabilitiesBucket() {
 		BucketCapabilityReviveDocument:       CapabilityStatusUnsupported,
 		BucketCapabilityBinaryXattr:          CapabilityStatusUnsupported,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnsupported,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusUnsupported,
 	}, muxState.bucketCapabilities)
 }
 
@@ -101,6 +105,7 @@ func (suite *UnitTestSuite) TestKvMuxState_BucketCapabilitiesUnsupported() {
 		BucketCapabilityReviveDocument:       CapabilityStatusUnsupported,
 		BucketCapabilityBinaryXattr:          CapabilityStatusUnsupported,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusUnsupported,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusUnsupported,
 	}, muxState.bucketCapabilities)
 }
 
@@ -109,7 +114,8 @@ func (suite *UnitTestSuite) TestKvMuxState_BucketCapabilitiesSupported() {
 		revID: 1,
 		name:  "default",
 		bucketCapabilities: []string{"durableWrite", "tombstonedUserXAttrs", "rangeScan", "subdoc.ReplicaRead",
-			"subdoc.ReplaceBodyWithXattr", "subdoc.ReviveDocument", "nonDedupedHistory", "subdoc.BinaryXattr", "subdoc.AccessDeleted"},
+			"subdoc.ReplaceBodyWithXattr", "subdoc.ReviveDocument", "nonDedupedHistory", "subdoc.BinaryXattr",
+			"subdoc.AccessDeleted", "preserveExpiry"},
 	}
 
 	muxState := newKVMuxState(cfg, nil, nil, nil, nil, "default", nil, nil)
@@ -124,5 +130,6 @@ func (suite *UnitTestSuite) TestKvMuxState_BucketCapabilitiesSupported() {
 		BucketCapabilityReviveDocument:       CapabilityStatusSupported,
 		BucketCapabilityBinaryXattr:          CapabilityStatusSupported,
 		BucketCapabilitySubdocAccessDeleted:  CapabilityStatusSupported,
+		BucketCapabilityPreserveExpiry:       CapabilityStatusSupported,
 	}, muxState.bucketCapabilities)
 }

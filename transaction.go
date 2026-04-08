@@ -361,6 +361,9 @@ type TransactionInsertOptions struct {
 	Key            []byte
 	Value          json.RawMessage
 	Flags          uint32
+
+	// Expiry is the expiry the new document should have. If unset, the document will not expire.
+	Expiry time.Time
 }
 
 // TransactionStoreCallback describes a callback for a completed Replace operation.
@@ -380,6 +383,9 @@ type TransactionReplaceOptions struct {
 	Document *TransactionGetResult
 	Value    json.RawMessage
 	Flags    uint32
+
+	// Expiry is the new expiry for the document. If unset, the existing expiry is preserved.
+	Expiry time.Time
 }
 
 // Replace will attempt to replace an existing document.

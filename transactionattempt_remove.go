@@ -275,79 +275,91 @@ func (t *transactionAttempt) stageRemove(
 
 			flags := memd.SubdocDocFlagAccessDeleted
 
-			_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
-				ScopeName:      stagedInfo.ScopeName,
-				CollectionName: stagedInfo.CollectionName,
-				Key:            stagedInfo.Key,
-				Cas:            cas,
-				Ops: []SubDocOp{
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn",
-						Flags: memd.SubdocFlagMkDirP | memd.SubdocFlagXattrPath,
-						Value: txnMetaBytes,
-					},
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.op.crc32",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
-						Value: crc32cMacro,
-					},
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.restore.CAS",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
-						Value: casMacro,
-					},
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.restore.exptime",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
-						Value: exptimeMacro,
-					},
-					{
-						Op:    memd.SubDocOpDictSet,
-						Path:  "txn.restore.revid",
-						Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
-						Value: revidMacro,
-					},
-				},
-				Flags:                  flags,
-				DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
-				DurabilityLevelTimeout: duraTimeout,
-				Deadline:               deadline,
-				User:                   stagedInfo.OboUser,
-			}, func(result *MutateInResult, err error) {
+			err = t.setPreserveExpiryForExtTTL(agent, false, operationID, func(setPreserveExpiry bool, err error) {
 				if err != nil {
 					ecCb(nil, classifyError(err))
 					return
 				}
 
-				t.ReportResourceUnits(result.Internal.ResourceUnits)
-
-				stagedInfo.Cas = result.Cas
-
-				t.hooks.AfterStagedRemoveComplete(key, func(err error) {
+				_, err = stagedInfo.Agent.MutateIn(MutateInOptions{
+					ScopeName:      stagedInfo.ScopeName,
+					CollectionName: stagedInfo.CollectionName,
+					Key:            stagedInfo.Key,
+					Cas:            cas,
+					Ops: []SubDocOp{
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn",
+							Flags: memd.SubdocFlagMkDirP | memd.SubdocFlagXattrPath,
+							Value: txnMetaBytes,
+						},
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.op.crc32",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+							Value: crc32cMacro,
+						},
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.restore.CAS",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+							Value: casMacro,
+						},
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.restore.exptime",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+							Value: exptimeMacro,
+						},
+						{
+							Op:    memd.SubDocOpDictSet,
+							Path:  "txn.restore.revid",
+							Flags: memd.SubdocFlagXattrPath | memd.SubdocFlagExpandMacros,
+							Value: revidMacro,
+						},
+					},
+					Flags:                  flags,
+					DurabilityLevel:        transactionsDurabilityLevelToMemd(t.durabilityLevel),
+					DurabilityLevelTimeout: duraTimeout,
+					PreserveExpiry:         setPreserveExpiry,
+					Deadline:               deadline,
+					User:                   stagedInfo.OboUser,
+				}, func(result *MutateInResult, err error) {
 					if err != nil {
-						ecCb(nil, classifyHookError(err))
+						ecCb(nil, classifyError(err))
 						return
 					}
 
-					t.recordStagedMutation(stagedInfo, func() {
+					t.ReportResourceUnits(result.Internal.ResourceUnits)
 
-						ecCb(&TransactionGetResult{
-							agent:          stagedInfo.Agent,
-							oboUser:        stagedInfo.OboUser,
-							scopeName:      stagedInfo.ScopeName,
-							collectionName: stagedInfo.CollectionName,
-							key:            stagedInfo.Key,
-							Value:          stagedInfo.Staged,
-							Cas:            stagedInfo.Cas,
-							Meta:           nil,
-							Flags:          stagedInfo.StagedUserFlags,
-						}, nil)
+					stagedInfo.Cas = result.Cas
+
+					t.hooks.AfterStagedRemoveComplete(key, func(err error) {
+						if err != nil {
+							ecCb(nil, classifyHookError(err))
+							return
+						}
+
+						t.recordStagedMutation(stagedInfo, func() {
+
+							ecCb(&TransactionGetResult{
+								agent:          stagedInfo.Agent,
+								oboUser:        stagedInfo.OboUser,
+								scopeName:      stagedInfo.ScopeName,
+								collectionName: stagedInfo.CollectionName,
+								key:            stagedInfo.Key,
+								Value:          stagedInfo.Staged,
+								Cas:            stagedInfo.Cas,
+								Meta:           nil,
+								Flags:          stagedInfo.StagedUserFlags,
+							}, nil)
+						})
 					})
 				})
+				if err != nil {
+					ecCb(nil, classifyError(err))
+					return
+				}
 			})
 			if err != nil {
 				ecCb(nil, classifyError(err))

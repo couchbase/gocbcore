@@ -610,6 +610,13 @@ func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []Tra
 					return
 				}
 
+				preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "rollbackRepRemDocs", deadline)
+				if err != nil {
+					c.updateResourceUnitsError(err)
+					waitCh <- err
+					return
+				}
+
 				_, err = agent.MutateIn(MutateInOptions{
 					Key:            doc.ID,
 					ScopeName:      doc.ScopeName,
@@ -627,6 +634,7 @@ func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []Tra
 					DurabilityLevel:        durability,
 					DurabilityLevelTimeout: duraTimeout,
 					User:                   oboUser,
+					PreserveExpiry:         preserveExpirySupported,
 				}, func(result *MutateInResult, err error) {
 					if err != nil {
 						c.updateResourceUnitsError(err)
@@ -688,7 +696,14 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 				}
 
 				if getRes.Deleted {
-					_, err := agent.MutateIn(MutateInOptions{
+					preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "rollbackInsDocs", deadline)
+					if err != nil {
+						c.updateResourceUnitsError(err)
+						waitCh <- err
+						return
+					}
+
+					_, err = agent.MutateIn(MutateInOptions{
 						Key:            doc.ID,
 						ScopeName:      doc.ScopeName,
 						CollectionName: doc.CollectionName,
@@ -705,6 +720,7 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 						DurabilityLevel:        durability,
 						DurabilityLevelTimeout: duraTimeout,
 						User:                   oboUser,
+						PreserveExpiry:         preserveExpirySupported,
 					}, func(result *MutateInResult, err error) {
 						if err != nil {
 							c.updateResourceUnitsError(err)
@@ -888,6 +904,7 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						DurabilityLevelTimeout: duraTimeout,
 						User:                   oboUser,
 						Flags:                  userFlags,
+						Expiry:                 getRes.TxnMeta.Aux.DocExpiry,
 					}, func(result *StoreResult, err error) {
 						if err != nil {
 							c.updateResourceUnitsError(err)
@@ -905,7 +922,14 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						return
 					}
 				} else {
-					_, err := agent.MutateIn(MutateInOptions{
+					preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "commitInsRepDocs", deadline)
+					if err != nil {
+						c.updateResourceUnitsError(err)
+						waitCh <- err
+						return
+					}
+
+					_, err = agent.MutateIn(MutateInOptions{
 						Key:            doc.ID,
 						ScopeName:      doc.ScopeName,
 						CollectionName: doc.CollectionName,
@@ -927,6 +951,8 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						DurabilityLevelTimeout: duraTimeout,
 						User:                   oboUser,
 						userFlags:              userFlags,
+						PreserveExpiry:         preserveExpirySupported && getRes.TxnMeta.Aux.DocExpiry <= 0,
+						Expiry:                 getRes.TxnMeta.Aux.DocExpiry,
 					}, func(result *MutateInResult, err error) {
 						if err != nil {
 							c.updateResourceUnitsError(err)

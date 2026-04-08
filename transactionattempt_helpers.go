@@ -792,6 +792,10 @@ func (t *transactionAttempt) supportsSubdocAccessDeleted(agent *Agent, operation
 	return t.supportsBucketCap(agent, BucketCapabilitySubdocAccessDeleted, operationID, cb)
 }
 
+func (t *transactionAttempt) supportsPreserveExpiry(agent *Agent, operationID string, cb func(bool, error)) error {
+	return t.supportsBucketCap(agent, BucketCapabilityPreserveExpiry, operationID, cb)
+}
+
 func (t *transactionAttempt) supportsBucketCap(agent *Agent, bucketCap BucketCapability, operationID string, cb func(bool, error)) error {
 	_, err := agent.kvMux.BlockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
 		if err != nil {
@@ -857,4 +861,40 @@ func (t *transactionAttempt) addBinarySupportForwardCompat(txnMeta *jsonTxnXattr
 			},
 		},
 	}
+}
+
+func (t *transactionAttempt) checkTTLSupported(agent *Agent, expiry uint32, operationID string, cb func(err error)) error {
+	if expiry == 0 {
+		cb(nil)
+		return nil
+	}
+	err := t.supportsPreserveExpiry(agent, "checkIfExpirySupported", func(supported bool, err error) {
+		if err != nil {
+			cb(err)
+			return
+		}
+		if !supported {
+			cb(wrapError(ErrFeatureNotAvailable, "preserve expiry is not supported by the bucket, which is required to use expiry with transactions"))
+			return
+		}
+		cb(nil)
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *transactionAttempt) setPreserveExpiryForExtTTL(agent *Agent, settingUserProvidedExpiry bool, operationID string, cb func(bool, error)) error {
+	err := t.supportsPreserveExpiry(agent, operationID, func(supportsPreserveExpiry bool, err error) {
+		if err != nil {
+			cb(false, err)
+			return
+		}
+		cb(supportsPreserveExpiry && !settingUserProvidedExpiry, nil)
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }

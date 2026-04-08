@@ -86,6 +86,7 @@ type jsonTxnXattrOp struct {
 
 type jsonTxnXattrAux struct {
 	UserFlags uint32 `json:"uf,omitempty"`
+	DocExpiry uint32 `json:"docexpiry,omitempty"`
 }
 
 type jsonTxnXattrRestore struct {
