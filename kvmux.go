@@ -562,6 +562,11 @@ func (mux *kvMux) ReconfigureSecurity(tlsConfig *dynTLSConfig, authMechanisms []
 
 	if reconnectConnections {
 		mux.reconnectPipelines(muxState, newMuxState, includeReconnectLocal)
+	} else {
+		// When not reconnecting, preserve existing pipeline clients so that
+		// current KV connections remain active while updating the security
+		// config for any future connections.
+		mux.pipelineTakeover(muxState, newMuxState)
 	}
 	mux.muxStateWriteLock.Unlock()
 }
