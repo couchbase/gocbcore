@@ -581,6 +581,11 @@ func (mux *kvMux) ReauthenticateAuthBearer(auth AuthProviderJWT, deadline time.T
 		p.clientsLock.Lock()
 		for _, pipeCli := range p.clients {
 			pipeCli.lock.Lock()
+			client := pipeCli.client
+			pipeCli.lock.Unlock()
+			if client == nil {
+				continue
+			}
 			go func(client *memdClient) {
 				jwt, err := auth.JWT(AuthCredsRequest{
 					Service:  MemdService,
@@ -601,9 +606,11 @@ func (mux *kvMux) ReauthenticateAuthBearer(auth AuthProviderJWT, deadline time.T
 					Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 						if err != nil {
 							logDebugf("Closing memdclient on reauth failure: %s", err)
-							if err := client.Close(); err != nil {
-								logDebugf("failed to shut down memdclient on reauth failure: %s", err)
-							}
+							go func() {
+								if err := client.Close(); err != nil {
+									logDebugf("failed to shut down memdclient on reauth failure: %s", err)
+								}
+							}()
 						}
 					},
 					RetryStrategy: newFailFastRetryStrategy(),
@@ -623,8 +630,7 @@ func (mux *kvMux) ReauthenticateAuthBearer(auth AuthProviderJWT, deadline time.T
 						req.Cancel()
 					}))
 				}
-			}(pipeCli.client)
-			pipeCli.lock.Unlock()
+			}(client)
 		}
 		p.clientsLock.Unlock()
 	}
