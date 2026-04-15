@@ -64,7 +64,7 @@ func (k *authCreds) IsJWT() bool {
 }
 
 func (k *authCreds) IsUserPass() bool {
-	return len(k.UserPass.Username) > 0 && len(k.UserPass.Password) > 0
+	return len(k.UserPass.Username) > 0 || len(k.UserPass.Password) > 0
 }
 
 func getKvAuthCreds(auth AuthProvider, endpoint string) (*authCreds, error) {

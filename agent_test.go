@@ -2148,6 +2148,88 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyBucket() {
 	suite.VerifyConnectedToBucket(agent, s, "TestAgentWaitUntilReadyBucket", suite.CollectionName, suite.ScopeName)
 }
 
+// This test was added as part of GOCBC-1803 to ensure that we don't change our behavior in various invalid credential scenarios.
+// It's not behavior that's explicitly specced for all test cases, but we should ensure we don't introduce untintentional changes.
+func (suite *StandardTestSuite) TestAgentWaitUntilReadyInvalidCredentials() {
+	type testCase struct {
+		name          string
+		username      string
+		password      string
+		expectedError error
+	}
+
+	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
+
+	// This test purposefully triggers error cases.
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	var validUsername string
+	{
+		userPass, err := globalTestConfig.Authenticator.Credentials(AuthCredsRequest{})
+		suite.Require().NoError(err)
+		suite.Require().Len(userPass, 1)
+		validUsername = userPass[0].Username
+	}
+
+	testCases := []testCase{
+		{
+			name:          "InvalidUser",
+			username:      "i_dont_exist",
+			password:      "this_is_a_password",
+			expectedError: ErrAuthenticationFailure,
+		},
+		{
+			name:          "EmptyCredentials",
+			username:      "",
+			password:      "",
+			expectedError: ErrAuthenticationFailure,
+		},
+		{
+			name:          "IncorrectPassword",
+			username:      validUsername,
+			password:      "this_is_a_wrong_password",
+			expectedError: ErrAuthenticationFailure,
+		},
+		{
+			name:          "ValidUserEmptyPassword",
+			username:      validUsername,
+			password:      "",
+			expectedError: ErrAuthenticationFailure,
+		},
+		{
+			name:          "InvalidUserEmptyPassword",
+			username:      "i_dont_exist",
+			password:      "",
+			expectedError: ErrAuthenticationFailure,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			cfg := makeAgentConfig(globalTestConfig)
+			cfg.BucketName = globalTestConfig.BucketName
+			cfg.SecurityConfig.Auth = PasswordAuthProvider{
+				Username: tc.username,
+				Password: tc.password,
+			}
+			agent, err := CreateAgent(&cfg)
+			suite.Require().NoError(err)
+			defer agent.Close()
+			s := suite.GetHarness()
+
+			s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+				s.Wrap(func() {
+					if !errors.Is(err, tc.expectedError) {
+						s.Fatalf("WaitUntilReady failed with unexpected error: %v", err)
+					}
+				})
+			}))
+			s.Wait(6)
+		})
+	}
+}
+
 func (suite *StandardTestSuite) TestAgentGroupWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)
