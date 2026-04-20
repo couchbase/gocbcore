@@ -150,7 +150,7 @@ func (suite *StandardTestSuite) SupportsFeature(feature TestFeatureCode) bool {
 	case TestFeaturePreserveExpiry:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700)
 	case TestFeatureTransactions:
-		return !suite.ClusterVersion.Lower(srvVer700)
+		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer700) // No preserveExpiry in mock
 	case TestFeatureN1qlReasons:
 		return !suite.IsMockServer() && !suite.ClusterVersion.Lower(srvVer710)
 	case TestFeatureResourceUnits:

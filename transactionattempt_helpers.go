@@ -793,7 +793,9 @@ func (t *transactionAttempt) supportsSubdocAccessDeleted(agent *Agent, operation
 }
 
 func (t *transactionAttempt) supportsPreserveExpiry(agent *Agent, operationID string, cb func(bool, error)) error {
-	return t.supportsBucketCap(agent, BucketCapabilityPreserveExpiry, operationID, cb)
+	// We are not using the preserveExpiry bucket cap, as that was added in later server versions, after the preserve
+	// expiry feature had already been added (MB-50642)
+	return t.supportsCollections(agent, operationID, cb)
 }
 
 func (t *transactionAttempt) supportsBucketCap(agent *Agent, bucketCap BucketCapability, operationID string, cb func(bool, error)) error {
@@ -805,6 +807,19 @@ func (t *transactionAttempt) supportsBucketCap(agent *Agent, bucketCap BucketCap
 
 		isSupported := clientMux.HasBucketCapabilityStatus(bucketCap, CapabilityStatusSupported)
 		cb(isSupported, nil)
+	})
+
+	return err
+}
+
+func (t *transactionAttempt) supportsCollections(agent *Agent, operationID string, cb func(bool, error)) error {
+	_, err := agent.kvMux.BlockUntilFirstConfig(t.expiryTime, operationID, func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			cb(false, err)
+			return
+		}
+
+		cb(clientMux.collectionsSupported, nil)
 	})
 
 	return err

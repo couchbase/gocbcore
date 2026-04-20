@@ -610,7 +610,7 @@ func (c *stdTransactionsCleaner) rollbackRepRemDocs(attemptID string, docs []Tra
 					return
 				}
 
-				preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "rollbackRepRemDocs", deadline)
+				preserveExpirySupported, err := agentSupportsCollectionsBlocking(agent, "rollbackRepRemDocs", deadline)
 				if err != nil {
 					c.updateResourceUnitsError(err)
 					waitCh <- err
@@ -696,7 +696,7 @@ func (c *stdTransactionsCleaner) rollbackInsDocs(attemptID string, docs []Transa
 				}
 
 				if getRes.Deleted {
-					preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "rollbackInsDocs", deadline)
+					preserveExpirySupported, err := agentSupportsCollectionsBlocking(agent, "rollbackInsDocs", deadline)
 					if err != nil {
 						c.updateResourceUnitsError(err)
 						waitCh <- err
@@ -922,7 +922,7 @@ func (c *stdTransactionsCleaner) commitInsRepDocs(attemptID string, docs []Trans
 						return
 					}
 				} else {
-					preserveExpirySupported, err := agentSupportsBucketCapBlocking(agent, BucketCapabilityPreserveExpiry, "commitInsRepDocs", deadline)
+					preserveExpirySupported, err := agentSupportsCollectionsBlocking(agent, "commitInsRepDocs", deadline)
 					if err != nil {
 						c.updateResourceUnitsError(err)
 						waitCh <- err
@@ -1130,6 +1130,38 @@ func agentSupportsBucketCapBlocking(agent *Agent, bucketCap BucketCapability, op
 			isSupported bool
 			err         error
 		}{isSupported: isSupported, err: nil}
+	})
+	if err != nil {
+		return false, err
+	}
+
+	waited := <-waitCh
+	if waited.err != nil {
+		return false, waited.err
+	}
+
+	return waited.isSupported, nil
+}
+
+func agentSupportsCollectionsBlocking(agent *Agent, operationID string, deadline time.Time) (bool, error) {
+	waitCh := make(chan struct {
+		isSupported bool
+		err         error
+	}, 1)
+
+	_, err := agent.kvMux.BlockUntilFirstConfig(deadline, operationID, func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			waitCh <- struct {
+				isSupported bool
+				err         error
+			}{isSupported: false, err: err}
+			return
+		}
+
+		waitCh <- struct {
+			isSupported bool
+			err         error
+		}{isSupported: clientMux.collectionsSupported, err: nil}
 	})
 	if err != nil {
 		return false, err
