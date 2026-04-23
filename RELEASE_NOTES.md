@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 10.9.2 (23 April 2026)
+
+### Fixed Issues
+
+* [GOCBC-1803](https://jira.issues.couchbase.com/browse/GOCBC-1803):
+  Reverted a behavioral change, where a non-empty username, but an empty password, result in a timeout instead of a `ErrAuthenticationFailure` (for example, in `WaitUntilReady`).
+* [GOCBC-1808](https://jira.issues.couchbase.com/browse/GOCBC-1808):
+  Resolved an issue when `ReconfigureSecurity` is called with `NoConnect` set, where the references to existing KV pipeline clients are being lost, leaving existing connections still active, but orphaned. This resulted in failing operations until new connections were established.
+* [GOCBC-1809](https://jira.issues.couchbase.com/browse/GOCBC-1809): Fixed a deadlock that happens when `ReathenticateAuthBearer` is called and authentication with the new JWT credentials fails. Resolved a panic that could occur when `ReathenticateAuthBearer` is called and a KV pipeline client is in the process of dialing a connection.
+
 ## Version 10.9.1 (23 March 2026)
 
 * [GOCBC-1796](https://jira.issues.couchbase.com/browse/GOCBC-1796):
