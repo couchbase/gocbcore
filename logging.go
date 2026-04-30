@@ -26,6 +26,13 @@ func redactUserData(v interface{}) string {
 	return fmt.Sprintf("<ud>%v</ud>", v)
 }
 
+func maybeRedactUserData(v interface{}) string {
+	if isLogRedactionLevelFull() || isLogRedactionLevelPartial() {
+		return redactUserData(v)
+	}
+	return fmt.Sprintf("%v", v)
+}
+
 func redactMetaData(v interface{}) string {
 	return fmt.Sprintf("<md>%v</md>", v)
 }
@@ -122,7 +129,8 @@ var (
 )
 
 // DefaultStdioLogger gets the default standard I/O logger.
-//  gocbcore.SetLogger(gocbcore.DefaultStdioLogger())
+//
+//	gocbcore.SetLogger(gocbcore.DefaultStdioLogger())
 func DefaultStdioLogger() Logger {
 	return &globalDefaultLogger
 }
@@ -130,7 +138,8 @@ func DefaultStdioLogger() Logger {
 // VerboseStdioLogger is a more verbose level of DefaultStdioLogger(). Messages
 // pertaining to the scheduling of ordinary commands (and their responses) will
 // also be emitted.
-//  gocbcore.SetLogger(gocbcore.VerboseStdioLogger())
+//
+//	gocbcore.SetLogger(gocbcore.VerboseStdioLogger())
 func VerboseStdioLogger() Logger {
 	return &globalVerboseLogger
 }
