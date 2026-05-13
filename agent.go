@@ -662,7 +662,9 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 	agent.cfgManager.UseTLS(tlsConfig != nil)
 	agent.kvMux.ReconfigureSecurity(tlsConfig, mechs, auth, !opts.NoReconnect, authProvided)
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
-	agent.telemetry.UpdateTLS(tlsConfig, auth)
+	if agent.telemetry != nil { // We don't create a telemetry component when NoTLSSeedNode is set.
+		agent.telemetry.UpdateTLS(tlsConfig, auth)
+	}
 	return nil
 }
 
