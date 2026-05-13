@@ -293,6 +293,8 @@ func (agent *clusterAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) 
 	agent.connectionSettingsLock.Unlock()
 
 	agent.httpMux.UpdateTLS(tlsConfig, auth)
-	agent.telemetry.UpdateTLS(tlsConfig, auth)
+	if agent.telemetry != nil { // We don't create a telemetry component when NoTLSSeedNode is set.
+		agent.telemetry.UpdateTLS(tlsConfig, auth)
+	}
 	return nil
 }
