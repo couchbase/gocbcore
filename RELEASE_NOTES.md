@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 10.9.3 (19 May 2026)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1815](https://jira.issues.couchbase.com/browse/GOCBC-1815):
+  Include more information in the warning-level log message when `snappy.Decode` fails for a KV response.
+
+### Fixed Issues
+* [GOCBC-1812](https://jira.issues.couchbase.com/browse/GOCBC-1812):
+  Fixed an issue where `WaitUntilReady` can fail with `ErrRequestCanceled` during the initial network resolution when the seed endpoints don't match either the 'default' or 'external' network's endpoints. In that case, existing connections are dropped, cancelling the in-progress bootstrap, but this does not indicate an error.
+* [GOCBC-1820](https://jira.issues.couchbase.com/browse/GOCBC-1820):
+  Resolved a panic that occurred when `Agent.ReconfigureSecurity` is called on an agent has been created with `NoTLSSeedNode` set.
+
 ## Version 10.9.2 (23 April 2026)
 
 ### Fixed Issues
