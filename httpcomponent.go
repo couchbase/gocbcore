@@ -142,6 +142,10 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 		return nil, errInvalidService
 	}
 
+	if req.UniqueID == "" {
+		req.UniqueID = uuid.NewString()
+	}
+
 	state := &httpRequestState{
 		start: time.Now(),
 	}
