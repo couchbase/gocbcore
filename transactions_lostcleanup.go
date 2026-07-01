@@ -121,7 +121,6 @@ type stdLostTransactionCleaner struct {
 	locationsLock       sync.Mutex
 	newLocationCh       chan lostATRLocationWithShutdown
 	stop                chan struct{}
-	atrLocationFinder   TransactionsLostCleanupATRLocationProviderFn
 	processWaitGroup    sync.WaitGroup
 
 	numResourceUnitOps uint32
@@ -141,8 +140,10 @@ func NewLostTransactionCleaner(config *TransactionsConfig) LostTransactionCleane
 }
 
 func newStdLostTransactionCleaner(config *TransactionsConfig) *stdLostTransactionCleaner {
+	lostCleanerUUID := uuid.New().String()
+
 	return &stdLostTransactionCleaner{
-		uuid:                uuid.New().String(),
+		uuid:                lostCleanerUUID,
 		numAtrs:             config.Internal.NumATRs,
 		cleanupWindow:       config.CleanupWindow,
 		cleanupHooks:        config.Internal.CleanUpHooks,
@@ -150,43 +151,90 @@ func newStdLostTransactionCleaner(config *TransactionsConfig) *stdLostTransactio
 		cleaner:             NewTransactionsCleaner(config),
 		keyValueTimeout:     config.KeyValueTimeout,
 		bucketAgentProvider: config.BucketAgentProvider,
-		locations:           make(map[TransactionLostATRLocation]chan struct{}),
+		locations:           createInitialLostATRLocations(config, lostCleanerUUID),
 		newLocationCh:       make(chan lostATRLocationWithShutdown, 20), // Buffer of 20 should be plenty
 		stop:                make(chan struct{}),
-		atrLocationFinder:   config.LostCleanupATRLocationProvider,
 	}
+}
+
+func createInitialLostATRLocations(config *TransactionsConfig, lostCleanerUUID string) map[TransactionLostATRLocation]chan struct{} {
+	locations := make(map[TransactionLostATRLocation]chan struct{})
+
+	// We add the custom metadata location to the cleanup locations so that lost cleanup starts watching it
+	// immediately. Note that we don't do the same for the custom metadata location on the (per-transaction)
+	// TransactionOptions, this is because we know that location will be used in a transaction.
+	if config.CustomATRLocation.Agent != nil {
+		locations[TransactionLostATRLocation{
+			BucketName:     config.CustomATRLocation.Agent.BucketName(),
+			ScopeName:      config.CustomATRLocation.ScopeName,
+			CollectionName: config.CustomATRLocation.CollectionName,
+		}] = make(chan struct{})
+	}
+
+	if config.LostCleanupATRLocationProvider != nil {
+		extraLocations, err := config.LostCleanupATRLocationProvider()
+		if err != nil {
+			logDebugf("%s failed to fetch extra cleanup locations: %v", lostCleanerUUID, err)
+			return locations
+		}
+
+		for _, loc := range extraLocations {
+			if _, ok := locations[loc]; ok {
+				continue
+			}
+
+			locations[loc] = make(chan struct{})
+		}
+	}
+
+	return locations
 }
 
 func startLostTransactionCleaner(config *TransactionsConfig) *stdLostTransactionCleaner {
 	t := newStdLostTransactionCleaner(config)
 
 	if config.BucketAgentProvider != nil {
-		go t.start()
+		var initialLocations []lostATRLocationWithShutdown
+		for loc, ch := range t.locations {
+			initialLocations = append(initialLocations, lostATRLocationWithShutdown{
+				location: loc,
+				shutdown: ch,
+			})
+		}
+
+		go t.start(initialLocations)
 	}
 
 	return t
 }
 
-func (ltc *stdLostTransactionCleaner) start() {
+func (ltc *stdLostTransactionCleaner) start(initialLocations []lostATRLocationWithShutdown) {
 	logDebugf("Lost transactions %s starting", ltc.uuid)
-	ltc.fetchExtraCleanupLocations()
+
+	for _, location := range initialLocations {
+		ltc.processCleanupLocation(location)
+	}
 
 	for {
 		select {
 		case <-ltc.stop:
 			return
 		case location := <-ltc.newLocationCh:
-			logDebugf("Starting new location handler for %s, location %s", ltc.uuid, location.location)
-			agent, oboUser, err := ltc.bucketAgentProvider(location.location.BucketName)
-			if err != nil {
-				logDebugf("Failed to fetch agent for %s, location: %s:, err: %v",
-					ltc.uuid, location.location, err)
-				// We should probably do something here...
-				continue
-			}
-			go ltc.perLocation(agent, oboUser, location)
+			ltc.processCleanupLocation(location)
 		}
 	}
+}
+
+func (ltc *stdLostTransactionCleaner) processCleanupLocation(location lostATRLocationWithShutdown) {
+	logDebugf("Starting new location handler for %s, location %s", ltc.uuid, location.location)
+	agent, oboUser, err := ltc.bucketAgentProvider(location.location.BucketName)
+	if err != nil {
+		logDebugf("Failed to fetch agent for %s, location: %s:, err: %v",
+			ltc.uuid, location.location, err)
+		// We should probably do something here...
+		return
+	}
+	go ltc.perLocation(agent, oboUser, location)
 }
 
 func (ltc *stdLostTransactionCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
@@ -267,19 +315,6 @@ func (ltc *stdLostTransactionCleaner) RemoveClientFromAllLocations(uuid string) 
 	ltc.locations = nil
 	ltc.locationsLock.Unlock()
 	logDebugf("Removing %s from all locations", ltc.uuid)
-	if ltc.atrLocationFinder != nil {
-		bs, err := ltc.atrLocationFinder()
-		if err != nil {
-			logDebugf("Failed to get atr locations for %s: %v", ltc.uuid, err)
-			return err
-		}
-
-		for _, b := range bs {
-			if _, ok := locations[b]; !ok {
-				locations[b] = make(chan struct{})
-			}
-		}
-	}
 
 	return ltc.removeClient(uuid, locations)
 }
@@ -1129,23 +1164,6 @@ func (ltc *stdLostTransactionCleaner) createClientRecord(agent *Agent, oboUser s
 			return
 		}
 	})
-}
-
-func (ltc *stdLostTransactionCleaner) fetchExtraCleanupLocations() {
-	if ltc.atrLocationFinder != nil {
-		locations, err := ltc.atrLocationFinder()
-		if err != nil {
-			logDebugf("%s failed to fetch extra cleanup locations: %v", ltc.uuid, err)
-			return
-		}
-
-		locationMap := make(map[TransactionLostATRLocation]struct{})
-		for _, location := range locations {
-			ltc.AddATRLocation(location)
-			locationMap[location] = struct{}{}
-		}
-	}
-
 }
 
 func atrsToHandle(index int, numActive int, numAtrs int) []string {

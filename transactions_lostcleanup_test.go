@@ -425,15 +425,30 @@ func (suite *StandardTestSuite) TestCustomATRLocationAutomaticallyAddedToCleanup
 	}
 	defer transactions.Close()
 
-	suite.Require().Eventually(func() bool {
-		locs := transactions.Internal().CleanupLocations()
-		if len(locs) == 0 {
-			return false
-		}
+	locs := transactions.Internal().CleanupLocations()
+	suite.Require().Len(locs, 1)
 
-		cLoc := locs[0]
-		return cLoc.BucketName == loc.Agent.BucketName() && cLoc.ScopeName == loc.ScopeName &&
-			cLoc.CollectionName == loc.CollectionName
-	}, 5*time.Second, 100*time.Millisecond)
+	cLoc := locs[0]
+	suite.Assert().Equal(loc.Agent.BucketName(), cLoc.BucketName)
+	suite.Assert().Equal(loc.ScopeName, cLoc.ScopeName)
+	suite.Assert().Equal(loc.CollectionName, cLoc.CollectionName)
+}
 
+func (suite *UnitTestSuite) TestLostCleanupCustomLocationsAddedSynchronously() {
+	expected := []TransactionLostATRLocation{
+		{BucketName: "default", ScopeName: "scope-1", CollectionName: "collection-1"},
+		{BucketName: "default", ScopeName: "scope-2", CollectionName: "collection-2"},
+	}
+
+	config := &TransactionsConfig{
+		CleanupWindow: 1 * time.Second,
+		LostCleanupATRLocationProvider: func() ([]TransactionLostATRLocation, error) {
+			return expected, nil
+		},
+	}
+
+	// Note that this won't actually start it, since the BucketAgentProvider is not set.
+	cleaner := startLostTransactionCleaner(config)
+
+	suite.Require().ElementsMatch(expected, cleaner.ATRLocations())
 }
