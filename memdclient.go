@@ -601,6 +601,8 @@ func (client *memdClient) run() {
 			}
 		}
 
+		opDrainErr := io.EOF
+
 		client.lock.Lock()
 		if !client.closed {
 			client.closed = true
@@ -613,6 +615,11 @@ func (client *memdClient) run() {
 			}
 		} else {
 			client.lock.Unlock()
+
+			// If close was already set, this means that the client is the one that closed the socket via GracefulClose
+			// or Close.
+			// This also wraps io.EOF
+			opDrainErr = errSocketClosedByClient
 		}
 
 		// We close the buffer channel to wake the processor if its asleep (queue was empty).
@@ -628,7 +635,7 @@ func (client *memdClient) run() {
 				logWarnf("Encountered an unowned request in a client (%p) opMap", client)
 			}
 
-			shortCircuited, routeErr := client.postErrHandler(nil, req, io.EOF)
+			shortCircuited, routeErr := client.postErrHandler(nil, req, opDrainErr)
 			if shortCircuited {
 				return
 			}
@@ -657,7 +664,7 @@ func (client *memdClient) GracefulClose(err error) {
 		client.lock.Unlock()
 
 		if err == nil {
-			err = io.EOF
+			err = errSocketClosedByClient
 		}
 
 		for _, req := range persistentReqs {

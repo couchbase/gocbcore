@@ -73,7 +73,13 @@ var (
 	// ErrSocketClosed occurs when a socket closes while an operation is in flight.
 	ErrSocketClosed = io.EOF
 
-	// ErrGCCCPInUse occurs when an operation dis performed whilst the client is connect via GCCCP.
+	// ErrSocketClosedByClient occurs when a socket closes while an operation is in flight, and the socket was closed by the client.
+	ErrSocketClosedByClient = wrapError(
+		ErrSocketClosed,
+		"socket closed by client",
+	)
+
+	// ErrGCCCPInUse occurs when an operation is performed whilst the client is connected via GCCCP.
 	ErrGCCCPInUse = errors.New("connected via gcccp, kv operations are not supported, open a bucket first")
 
 	// ErrNotMyVBucket occurs when an operation is sent to a node which does not own the vbucket.

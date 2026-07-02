@@ -810,6 +810,7 @@ var (
 	errStreamIDNotEnabled     = ncError{ErrStreamIDNotEnabled}
 	errDCPStreamIDInvalid     = ncError{ErrDCPStreamIDInvalid}
 	errForcedReconnect        = ncError{ErrForcedReconnect}
+	errSocketClosedByClient   = ncError{ErrSocketClosedByClient}
 
 	errRateLimitedFailure  = ncError{ErrRateLimitedFailure}
 	errQuotaLimitedFailure = ncError{ErrQuotaLimitedFailure}

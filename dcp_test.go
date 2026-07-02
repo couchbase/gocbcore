@@ -5,49 +5,6 @@ import (
 	"github.com/golang/snappy"
 )
 
-// fakeMemdConn is a minimal implementation of memdConn for unit testing.
-type fakeMemdConn struct {
-	features map[memd.HelloFeature]bool
-}
-
-func (c *fakeMemdConn) LocalAddr() string                      { return "127.0.0.1:0" }
-func (c *fakeMemdConn) RemoteAddr() string                     { return "127.0.0.1:11210" }
-func (c *fakeMemdConn) WritePacket(*memd.Packet) error         { return nil }
-func (c *fakeMemdConn) ReadPacket() (*memd.Packet, int, error) { return nil, 0, nil }
-func (c *fakeMemdConn) Close() error                           { return nil }
-func (c *fakeMemdConn) Release()                               {}
-
-func (c *fakeMemdConn) EnableFeature(feature memd.HelloFeature) {
-	if c.features == nil {
-		c.features = make(map[memd.HelloFeature]bool)
-	}
-	c.features[feature] = true
-}
-func (c *fakeMemdConn) IsFeatureEnabled(feature memd.HelloFeature) bool {
-	if c.features == nil {
-		return false
-	}
-	return c.features[feature]
-}
-
-// newTestMemdClient creates a memdClient with the minimal setup needed for resolveRequest tests.
-// It does not call run() so no background goroutines are started.
-func newTestMemdClient(disableDecompression bool) *memdClient {
-	client := &memdClient{
-		conn:                 &fakeMemdConn{},
-		opList:               newMemdOpMap(),
-		breaker:              newNoopCircuitBreaker(),
-		closeNotify:          make(chan bool),
-		connReleaseNotify:    make(chan struct{}),
-		connReleasedNotify:   make(chan struct{}),
-		disableDecompression: disableDecompression,
-		postErrHandler: func(resp *memdQResponse, req *memdQRequest, err error) (bool, error) {
-			return false, err
-		},
-	}
-	return client
-}
-
 // callbackResult captures the fields we need to inspect from the callback,
 // since the underlying memd.Packet is released (zeroed) after resolveRequest returns.
 type callbackResult struct {
