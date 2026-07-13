@@ -1,0 +1,137 @@
+name: Test
+permissions: {}
+
+on:
+  push:
+    branches:
+      - master
+      - v10.*
+
+  pull_request:
+    branches:
+      - master
+      - v10.*
+
+  workflow_dispatch:
+    inputs:
+      go-version:
+        description: 'Go version to use for testing.'
+        required: false
+
+      minimum-go-version:
+        description: 'Minimum Go version supported by the SDK.'
+        required: false
+
+      ref:
+        description: 'The branch, tag or SHA to checkout.'
+        required: false
+
+jobs:
+  mock-test:
+    name: Mock Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - windows-2025-vs2026
+          - windows-11-arm
+          - macos-26-intel
+          - macos-26
+
+        go-version:
+          - &go-version ${{ inputs.go-version || '1.26' }}
+
+        include:
+          - runner: ubuntu-24.04
+            go-version: ${{ inputs.minimum-go-version || '1.21' }}
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
+
+      - name: Run tests
+        id: run-tests
+        shell: bash
+        run: |
+          # gotestsum v1.13.0 requires Go 1.24+
+          GOTESTSUM_VERSION=v1.13.0
+          GO_VERSION="$(go version | awk '{print $3}')"
+          if [[ "$(printf '%s\n' "$GO_VERSION" go1.24 | sort -V | head -n1)" != "go1.24" ]]; then
+            GOTESTSUM_VERSION=v1.12.2
+          fi
+          go install gotest.tools/gotestsum@$GOTESTSUM_VERSION
+          # The race detector is not supported on windows/arm64
+          RACE="-race"
+          if [[ "$RUNNER_OS" == "Windows" && "$RUNNER_ARCH" == "ARM64" ]]; then
+            RACE=""
+          fi
+          gotestsum --format standard-verbose --junitfile TEST-report.xml -- -v $RACE ./
+
+      - name: Publish test results
+        shell: bash
+        if: ${{ !cancelled() }}
+        run: |
+          curl https://raw.githubusercontent.com/couchbaselabs/junit-markdown/refs/heads/main/JunitMarkdown.java --output "$RUNNER_TEMP/JunitMarkdown.java"
+          java "$RUNNER_TEMP/JunitMarkdown.java" --format=passthrough . >> $GITHUB_STEP_SUMMARY
+
+  integration-test:
+    name: Integration Tests
+
+    strategy:
+      fail-fast: false
+      matrix:
+        server:
+          - 8.0.2
+          - 7.6.11
+          - 7.2.9
+
+        suite:
+          - standard
+          - dcp
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: *go-version
+          cache: false
+
+      - name: Create cluster
+        uses: ./.github/actions/create-cluster
+        id: create-cluster
+        with:
+          version: ${{ matrix.server }}
+
+      - name: Run tests
+        id: run-tests
+        shell: bash
+        run: |
+          go install gotest.tools/gotestsum@v1.13.0
+          gotestsum --format standard-verbose --junitfile TEST-report.xml -- -v -race ./
+        env:
+          GCBCONNSTR: ${{ steps.create-cluster.outputs.connstr }}
+          GCBUSER: Administrator
+          GCBPASS: password
+          GCBCVER: ${{ matrix.server }}
+          GCBCTESTSUITE: ${{ matrix.suite == 'dcp' && 2 || 1 }}
+
+      - name: Publish test results
+        shell: bash
+        if: ${{ !cancelled() }}
+        run: |
+          curl https://raw.githubusercontent.com/couchbaselabs/junit-markdown/refs/heads/main/JunitMarkdown.java --output "$RUNNER_TEMP/JunitMarkdown.java"
+          java "$RUNNER_TEMP/JunitMarkdown.java" --format=passthrough . >> $GITHUB_STEP_SUMMARY
