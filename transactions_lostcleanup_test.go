@@ -214,6 +214,7 @@ func (suite *StandardTestSuite) TestLostCleanupCleansUpExpiredClients() {
 	h.Wait(0)
 
 	cleaner := suite.buildCleaner(agent, 1024, nil)
+	defer cleaner.Close()
 
 	cleaner.ProcessClient(agent, "", "", "", cleaner.uuid, func(details *TransactionClientRecordDetails, err error) {
 		s.Wrap(func() {
