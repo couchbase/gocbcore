@@ -67,7 +67,6 @@ func (pipecli *memdPipelineClient) ReassignTo(parent *memdPipeline) {
 	pipecli.consumer = nil
 	if pipecli.client != nil {
 		pipecli.client.UpdateTelemetryAttributes(parent.nodeUUID, parent.canonicalAddress)
-		pipecli.client.canonicalAddress.Store(parent.canonicalAddress)
 	}
 	pipecli.lock.Unlock()
 
@@ -91,6 +90,7 @@ func (pipecli *memdPipelineClient) ioLoop(client *memdClient) {
 	}
 
 	pipecli.client = client
+	pipecli.client.UpdateTelemetryAttributes(pipecli.parent.nodeUUID, pipecli.parent.canonicalAddress)
 	pipecli.lock.Unlock()
 
 	killSig := make(chan struct{})

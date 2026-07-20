@@ -293,8 +293,6 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 	client := newMemdClient(
 		memdClientProps{
 			ClientID:             mcc.clientID,
-			CanonicalAddress:     address.CanonicalAddress,
-			NodeUUID:             address.NodeUUID,
 			DCPQueueSize:         mcc.dcpQueueSize,
 			DisableDecompression: mcc.disableDecompression,
 			CompressionMinRatio:  mcc.compressionMinRatio,
