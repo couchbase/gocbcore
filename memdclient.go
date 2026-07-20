@@ -90,9 +90,7 @@ type dcpBuffer struct {
 }
 
 type memdClientProps struct {
-	ClientID         string
-	CanonicalAddress string
-	NodeUUID         string
+	ClientID string
 
 	DCPQueueSize         int
 	CompressionMinSize   int
@@ -120,9 +118,6 @@ func newMemdClient(props memdClientProps, conn memdConn, breakerCfg CircuitBreak
 		compressionMinSize:   props.CompressionMinSize,
 		disableDecompression: props.DisableDecompression,
 	}
-
-	client.UpdateTelemetryAttributes(props.NodeUUID, props.CanonicalAddress)
-	client.canonicalAddress.Store(props.CanonicalAddress)
 
 	if client.zombieLogger != nil {
 		client.opTombstones = newMemdOpTombstoneStore()
@@ -183,7 +178,11 @@ func (client *memdClient) Address() string {
 }
 
 func (client *memdClient) CanonicalAddress() string {
-	return client.canonicalAddress.Load().(string)
+	addr := client.canonicalAddress.Load()
+	if addr == nil {
+		return ""
+	}
+	return addr.(string)
 }
 
 func (client *memdClient) ConnID() string {
@@ -218,6 +217,7 @@ func (client *memdClient) UpdateTelemetryAttributes(nodeUUID, canonicalAddress s
 		node:     node,
 		altNode:  altNode,
 	})
+	client.canonicalAddress.Store(canonicalAddress)
 }
 
 func (client *memdClient) takeRequestOwnership(req *memdQRequest) error {
@@ -807,18 +807,20 @@ func (client *memdClient) recordTelemetry(req *memdQRequest, err error) {
 		}
 	}
 
-	clientAttrs := client.telemetryAttrs.Load()
-	connInfo := req.ConnectionInfo()
+	telemetryAttrs := client.telemetryAttrs.Load()
+	if telemetryAttrs != nil {
+		connInfo := req.ConnectionInfo()
 
-	client.telemetry.RecordOp(outcome, telemetryOperationAttributes{
-		duration: time.Since(connInfo.lastDispatchedAt),
-		nodeUUID: clientAttrs.nodeUUID,
-		node:     clientAttrs.node,
-		altNode:  clientAttrs.altNode,
-		service:  MemdService,
-		durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != memd.DurabilityLevel(0),
-		mutation: category == memd.CmdCategoryMutation,
-	})
+		client.telemetry.RecordOp(outcome, telemetryOperationAttributes{
+			duration: time.Since(connInfo.lastDispatchedAt),
+			nodeUUID: telemetryAttrs.nodeUUID,
+			node:     telemetryAttrs.node,
+			altNode:  telemetryAttrs.altNode,
+			service:  MemdService,
+			durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != memd.DurabilityLevel(0),
+			mutation: category == memd.CmdCategoryMutation,
+		})
+	}
 }
 
 func (client *memdClient) recordTelemetryForOrphan(tombstone *memdOpTombstone) {
@@ -831,17 +833,18 @@ func (client *memdClient) recordTelemetryForOrphan(tombstone *memdOpTombstone) {
 		return
 	}
 
-	clientAttrs := client.telemetryAttrs.Load()
-
-	client.telemetry.RecordOrphanedResponse(telemetryOperationAttributes{
-		duration: time.Since(tombstone.lastAttemptTime),
-		nodeUUID: clientAttrs.nodeUUID,
-		node:     clientAttrs.node,
-		altNode:  clientAttrs.altNode,
-		service:  MemdService,
-		durable:  tombstone.isDurable,
-		mutation: category == memd.CmdCategoryMutation,
-	})
+	telemetryAttrs := client.telemetryAttrs.Load()
+	if telemetryAttrs != nil {
+		client.telemetry.RecordOrphanedResponse(telemetryOperationAttributes{
+			duration: time.Since(tombstone.lastAttemptTime),
+			nodeUUID: telemetryAttrs.nodeUUID,
+			node:     telemetryAttrs.node,
+			altNode:  telemetryAttrs.altNode,
+			service:  MemdService,
+			durable:  tombstone.isDurable,
+			mutation: category == memd.CmdCategoryMutation,
+		})
+	}
 }
 
 func (client *memdClient) loggerID() string {
