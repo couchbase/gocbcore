@@ -146,7 +146,7 @@ func TestMain(m *testing.M) {
 	if len(*certsDir) > 0 {
 		ca, cert, err := ParseCerts(*certsDir)
 		if err != nil {
-			panic("failed to parse certificates")
+			panic(fmt.Sprintf("failed to parse certificates: %+v", err))
 		}
 
 		// Just because we have a root cert doesn't mean that we have client certs.

@@ -42,7 +42,7 @@ func CreateColumnarAgent(config *ColumnarAgentConfig) (*ColumnarAgent, error) {
 		return nil, wrapError(ErrInvalidArgument, "tlsRootCAProvider cannot be nil")
 	}
 
-	tlsConfig := createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.CipherSuite, config.SecurityConfig.TLSRootCAProvider)
+	tlsConfig := createTLSConfig(config.SecurityConfig.Auth, config.SecurityConfig.CipherSuite, config.SecurityConfig.TLSRootCAProvider, nil)
 
 	c := &ColumnarAgent{
 		clientID: formatCbUID(randomCbUID()),

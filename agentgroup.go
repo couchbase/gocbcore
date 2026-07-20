@@ -264,6 +264,10 @@ func (ag *AgentGroup) ReconfigureSecurity(opts ReconfigureSecurityOptions) error
 
 	ag.config.SecurityConfig.UseTLS = opts.UseTLS
 	ag.config.SecurityConfig.TLSRootCAProvider = opts.TLSRootCAProvider
+
+	if opts.VerifyPeerCertificateFn != nil {
+		ag.config.SecurityConfig.VerifyPeerCertificateFn = opts.VerifyPeerCertificateFn
+	}
 	ag.configLock.Unlock()
 
 	// We don't need to hold the lock whilst we reconfigure each agent.

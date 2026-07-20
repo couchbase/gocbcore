@@ -2761,6 +2761,188 @@ func (suite *StandardTestSuite) TestOpsAfterClose() {
 	})
 }
 
+func (suite *StandardTestSuite) TestAgentVerifyPeerCertificateRejectsCertificate() {
+	suite.EnsureUsesTLS()
+
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	errCertRejected := errors.New("certificate rejected by VerifyPeerCertificateFn")
+
+	cfg := makeAgentConfig(globalTestConfig)
+	cfg.SecurityConfig.VerifyPeerCertificateFn = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		return errCertRejected
+	}
+
+	agent, err := CreateAgent(&cfg)
+	suite.Require().NoError(err)
+
+	defer agent.Close()
+
+	errCh := make(chan error)
+
+	_, err = agent.WaitUntilReady(time.Now().Add(2*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+		errCh <- err
+	})
+	suite.Require().NoError(err)
+
+	err = <-errCh
+	suite.Assert().ErrorIs(err, ErrUnambiguousTimeout)
+
+	var timeoutErr *TimeoutError
+	suite.Require().ErrorAs(err, &timeoutErr)
+	suite.Assert().Equal([]RetryReason{NotReadyRetryReason}, timeoutErr.RetryReasons)
+
+	pipelines, err := agent.kvMux.PipelineSnapshot()
+	suite.Require().NoError(err)
+	pipelines.Iterate(0, func(pipeline *memdPipeline) bool {
+		pipeline.clientsLock.Lock()
+		defer pipeline.clientsLock.Unlock()
+
+		for _, cli := range pipeline.clients {
+			suite.Assert().ErrorIs(cli.Error(), errCertRejected)
+		}
+
+		return false
+	})
+}
+
+func (suite *StandardTestSuite) TestReconfigureSecurityKeepsVerifyPeerCertificate() {
+	suite.EnsureUsesTLS()
+
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	errCertRejected := errors.New("certificate rejected by VerifyPeerCertificateFn")
+
+	cfg := makeAgentConfig(globalTestConfig)
+	cfg.SecurityConfig.VerifyPeerCertificateFn = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		return errCertRejected
+	}
+
+	agent, err := CreateAgent(&cfg)
+	suite.Require().NoError(err)
+
+	defer agent.Close()
+
+	rootCAProvider := cfg.SecurityConfig.TLSRootCAProvider
+	if rootCAProvider == nil {
+		rootCAProvider = func() *x509.CertPool {
+			return nil
+		}
+	}
+
+	// Reconfigure without providing a VerifyPeerCertificateFn. The existing one, set at
+	// agent creation time, must be kept.
+	err = agent.ReconfigureSecurity(ReconfigureSecurityOptions{
+		UseTLS:            true,
+		TLSRootCAProvider: rootCAProvider,
+	})
+	suite.Require().NoError(err)
+
+	agent.connectionSettingsLock.Lock()
+	verifyPeerCertificate := agent.tlsConfig.BaseConfig.VerifyPeerCertificate
+	agent.connectionSettingsLock.Unlock()
+
+	suite.Require().NotNil(verifyPeerCertificate, "VerifyPeerCertificate should have been preserved")
+	suite.Assert().ErrorIs(verifyPeerCertificate(nil, nil), errCertRejected)
+}
+
+func (suite *StandardTestSuite) TestReconfigureSecurityKeepsVerifyPeerCertificateAcrossTLSToggle() {
+	suite.EnsureUsesTLS()
+
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	errCertRejected := errors.New("certificate rejected by VerifyPeerCertificateFn")
+
+	cfg := makeAgentConfig(globalTestConfig)
+	cfg.SecurityConfig.VerifyPeerCertificateFn = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		return errCertRejected
+	}
+
+	agent, err := CreateAgent(&cfg)
+	suite.Require().NoError(err)
+
+	defer agent.Close()
+
+	rootCAProvider := cfg.SecurityConfig.TLSRootCAProvider
+	if rootCAProvider == nil {
+		rootCAProvider = func() *x509.CertPool {
+			return nil
+		}
+	}
+
+	// Disable TLS. The VerifyPeerCertificateFn set at creation time must be retained internally
+	// even though there is no active tlsConfig to hold it.
+	err = agent.ReconfigureSecurity(ReconfigureSecurityOptions{
+		UseTLS: false,
+	})
+	suite.Require().NoError(err)
+
+	// Re-enable TLS without providing a VerifyPeerCertificateFn. The one from creation
+	// time must be restored.
+	err = agent.ReconfigureSecurity(ReconfigureSecurityOptions{
+		UseTLS:            true,
+		TLSRootCAProvider: rootCAProvider,
+	})
+	suite.Require().NoError(err)
+
+	agent.connectionSettingsLock.Lock()
+	verifyPeerCertificate := agent.tlsConfig.BaseConfig.VerifyPeerCertificate
+	agent.connectionSettingsLock.Unlock()
+
+	suite.Require().NotNil(verifyPeerCertificate, "VerifyPeerCertificate should have survived the TLS disable/enable cycle")
+	suite.Assert().ErrorIs(verifyPeerCertificate(nil, nil), errCertRejected)
+}
+
+func (suite *UnitTestSuite) TestSetupTLSConfigPassesThroughVerifyPeerCertificateFn() {
+	errCertRejected := errors.New("certificate rejected by VerifyPeerCertificateFn")
+
+	rootCAProvider := func() *x509.CertPool {
+		return nil
+	}
+
+	secConfig := SecurityConfig{
+		UseTLS:            true,
+		TLSRootCAProvider: rootCAProvider,
+		Auth: &PasswordAuthProvider{
+			Username: "user",
+			Password: "pass",
+		},
+		VerifyPeerCertificateFn: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			return errCertRejected
+		},
+	}
+
+	tlsConfig, err := setupTLSConfig([]string{"localhost:11210"}, secConfig)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(tlsConfig)
+
+	verifyPeerCertificate := tlsConfig.BaseConfig.VerifyPeerCertificate
+	suite.Require().NotNil(verifyPeerCertificate, "VerifyPeerCertificate should have been set from the SecurityConfig")
+	suite.Assert().ErrorIs(verifyPeerCertificate(nil, nil), errCertRejected)
+}
+
+func (suite *UnitTestSuite) TestSetupTLSConfigNilVerifyPeerCertificateFn() {
+	secConfig := SecurityConfig{
+		UseTLS: true,
+		TLSRootCAProvider: func() *x509.CertPool {
+			return nil
+		},
+		Auth: &PasswordAuthProvider{
+			Username: "user",
+			Password: "pass",
+		},
+	}
+
+	tlsConfig, err := setupTLSConfig([]string{"localhost:11210"}, secConfig)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(tlsConfig)
+
+	suite.Assert().Nil(tlsConfig.BaseConfig.VerifyPeerCertificate)
+}
+
 // These functions are likely temporary.
 
 type testManifestWithError struct {

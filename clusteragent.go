@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"fmt"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ type clusterAgent struct {
 	connectionSettingsLock sync.Mutex
 	auth                   AuthProvider
 	tlsConfig              *dynTLSConfig
+	verifyPeerCertificate  func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
 	httpMux     *httpMux
 	tracer      *tracerComponent
@@ -52,6 +54,7 @@ func createClusterAgent(config *clusterAgentConfig) (*clusterAgent, error) {
 	}
 
 	c.tlsConfig = tlsConfig
+	c.verifyPeerCertificate = config.SecurityConfig.VerifyPeerCertificateFn
 
 	// App telemetry not supported in ns_server mode
 	if !config.SecurityConfig.NoTLSSeedNode {
@@ -280,16 +283,23 @@ func (agent *clusterAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) 
 		auth = agent.auth
 	}
 
+	// If VerifyPeerCertificateFn is not provided, keep the existing one. This is
+	// tracked independently of tlsConfig so that it survives a TLS disable/enable cycle.
+	if opts.VerifyPeerCertificateFn == nil {
+		opts.VerifyPeerCertificateFn = agent.verifyPeerCertificate
+	}
+
 	var tlsConfig *dynTLSConfig
 	if opts.UseTLS {
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider, opts.VerifyPeerCertificateFn)
 	}
 
 	agent.auth = auth
 	agent.tlsConfig = tlsConfig
+	agent.verifyPeerCertificate = opts.VerifyPeerCertificateFn
 	agent.connectionSettingsLock.Unlock()
 
 	agent.httpMux.UpdateTLS(tlsConfig, auth)

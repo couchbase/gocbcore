@@ -3,8 +3,8 @@ package gocbcore
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -100,7 +100,7 @@ func ParseFeatureFlags(featuresToTest string) []TestFeatureFlag {
 }
 
 func ParseCerts(path string) (*x509.CertPool, *tls.Certificate, error) {
-	ca, err := ioutil.ReadFile(path + "/ca.pem")
+	ca, err := os.ReadFile(path + "/ca.pem")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -108,14 +108,14 @@ func ParseCerts(path string) (*x509.CertPool, *tls.Certificate, error) {
 	roots := x509.NewCertPool()
 	roots.AppendCertsFromPEM(ca)
 
-	clientCert, err := ioutil.ReadFile(path + "/client.pem")
-	if err == os.ErrNotExist {
+	clientCert, err := os.ReadFile(path + "/client.pem")
+	if errors.Is(err, os.ErrNotExist) {
 		return roots, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
 
-	clientKey, err := ioutil.ReadFile(path + "/client.key")
+	clientKey, err := os.ReadFile(path + "/client.key")
 	if err != nil {
 		return nil, nil, err
 	}

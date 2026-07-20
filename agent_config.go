@@ -121,6 +121,11 @@ type SecurityConfig struct {
 	// Any AuthMechanisms specified here must also be supported by the provided AuthProvider and will override any
 	// mechanisms that the provider specifies via AuthMechanismProvider.
 	AuthMechanisms []AuthMechanism
+
+	// VerifyPeerCertificateFn is called after certificate verification. Corresponds to tls.Config.VerifyPeerCertificate
+	//
+	// Volatile: This API is subject to change at any time.
+	VerifyPeerCertificateFn func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 }
 
 func (config SecurityConfig) fromSpec(spec connstr.ResolvedConnSpec) (SecurityConfig, error) {

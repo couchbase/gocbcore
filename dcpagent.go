@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"sync"
@@ -33,6 +34,7 @@ type DCPAgent struct {
 	auth                   AuthProvider
 	authMechanisms         []AuthMechanism
 	tlsConfig              *dynTLSConfig
+	verifyPeerCertificate  func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
 	srvDetails *srvDetails
 
@@ -163,6 +165,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 		return nil, err
 	}
 	c.tlsConfig = tlsConfig
+	c.verifyPeerCertificate = config.SecurityConfig.VerifyPeerCertificateFn
 
 	c.authMechanisms = authMechanismsFromConfig(config.SecurityConfig.Auth, config.SecurityConfig.AuthMechanisms, config.SecurityConfig.UseTLS)
 
@@ -517,17 +520,24 @@ func (agent *DCPAgent) ReconfigureSecurity(opts ReconfigureSecurityOptions) erro
 		mechs = agent.authMechanisms
 	}
 
+	// If VerifyPeerCertificateFn is not provided, keep the existing one. This is
+	// tracked independently of tlsConfig so that it survives a TLS disable/enable cycle.
+	if opts.VerifyPeerCertificateFn == nil {
+		opts.VerifyPeerCertificateFn = agent.verifyPeerCertificate
+	}
+
 	var tlsConfig *dynTLSConfig
 	if opts.UseTLS {
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider, opts.VerifyPeerCertificateFn)
 	}
 
 	agent.auth = auth
 	agent.authMechanisms = mechs
 	agent.tlsConfig = tlsConfig
+	agent.verifyPeerCertificate = opts.VerifyPeerCertificateFn
 	agent.connectionSettingsLock.Unlock()
 
 	agent.cfgManager.UseTLS(tlsConfig != nil)

@@ -47,6 +47,7 @@ type Agent struct {
 	auth                   AuthProvider
 	authMechanisms         []AuthMechanism
 	tlsConfig              *dynTLSConfig
+	verifyPeerCertificate  func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
 	srvDetails  *srvDetails
 	shutdownSig chan struct{}
@@ -91,6 +92,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 	c.tlsConfig = tlsConfig
+	c.verifyPeerCertificate = config.SecurityConfig.VerifyPeerCertificateFn
 
 	httpIdleConnTimeout := 1000 * time.Millisecond
 	if config.HTTPConfig.IdleConnectionTimeout > 0 {
@@ -622,6 +624,12 @@ type ReconfigureSecurityOptions struct {
 
 	// NoReconnect signals that the underlying connections should not be reconnected.
 	NoReconnect bool
+
+	// VerifyPeerCertificateFn is called after certificate verification. Corresponds to tls.Config.VerifyPeerCertificate.
+	// If this is nil, it will default to the VerifyPeerCertificateFn already in use by the Agent.
+	//
+	// Volatile: This API is subject to change at any time.
+	VerifyPeerCertificateFn func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 }
 
 // ReconfigureSecurity updates the security configuration being used by the agent. This includes the ability to
@@ -646,17 +654,24 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 		mechs = agent.authMechanisms
 	}
 
+	// If VerifyPeerCertificateFn is not provided, keep the existing one. This is
+	// tracked independently of tlsConfig so that it survives a TLS disable/enable cycle.
+	if opts.VerifyPeerCertificateFn == nil {
+		opts.VerifyPeerCertificateFn = agent.verifyPeerCertificate
+	}
+
 	var tlsConfig *dynTLSConfig
 	if opts.UseTLS {
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider, opts.VerifyPeerCertificateFn)
 	}
 
 	agent.auth = auth
 	agent.authMechanisms = mechs
 	agent.tlsConfig = tlsConfig
+	agent.verifyPeerCertificate = opts.VerifyPeerCertificateFn
 	agent.connectionSettingsLock.Unlock()
 
 	agent.cfgManager.UseTLS(tlsConfig != nil)
@@ -890,7 +905,7 @@ func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error
 				return pool
 			}
 		}
-		tlsConfig = createTLSConfig(config.Auth, nil, config.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(config.Auth, nil, config.TLSRootCAProvider, config.VerifyPeerCertificateFn)
 	} else {
 		var endsInCloud bool
 		for _, host := range addrs {

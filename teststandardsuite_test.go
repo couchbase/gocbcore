@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/couchbase/gocbcore/v10/memd"
+
 	cavescli "github.com/couchbaselabs/gocaves/client"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
@@ -201,6 +203,18 @@ func (suite *StandardTestSuite) GetAgentAndTxnHarness() (*Agent, *TestTxnsSubHar
 func (suite *StandardTestSuite) EnsureSupportsFeature(feature TestFeatureCode) {
 	if !suite.SupportsFeature(feature) {
 		suite.T().Skipf("Skipping test due to disabled feature code: %s", feature)
+	}
+}
+
+func (suite *StandardTestSuite) EnsureUsesTLS() {
+	spec, err := connstr.Parse(globalTestConfig.ConnStr)
+	suite.Require().NoError(err)
+
+	resolvedSpec, err := connstr.Resolve(spec)
+	suite.Require().NoError(err)
+
+	if !resolvedSpec.UseSsl {
+		suite.T().Skip("Skipping test due to TLS not being enabled")
 	}
 }
 

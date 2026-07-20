@@ -1,7 +1,7 @@
 package gocbcore
 
 import (
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -20,15 +20,15 @@ func TestUnitSuite(t *testing.T) {
 }
 
 func (suite *UnitTestSuite) LoadRawTestDataset(dataset string) ([]byte, error) {
-	return ioutil.ReadFile("testdata/" + dataset + ".json")
+	return os.ReadFile("testdata/" + dataset + ".json")
 }
 
 func loadRawTestDataset(dataset string) ([]byte, error) {
-	return ioutil.ReadFile("testdata/" + dataset + ".json")
+	return os.ReadFile("testdata/" + dataset + ".json")
 }
 
 func (suite *UnitTestSuite) loadConfigFromFile(filename string) *cfgBucket {
-	s, err := ioutil.ReadFile(filename)
+	s, err := os.ReadFile(filename)
 	if err != nil {
 		suite.T().Fatal(err.Error())
 	}
