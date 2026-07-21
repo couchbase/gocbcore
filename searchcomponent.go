@@ -122,6 +122,7 @@ type SearchCapability uint32
 const (
 	SearchCapabilityScopedIndexes SearchCapability = iota
 	SearchCapabilityVectorSearch
+	SearchCapabilityScoreFusion
 )
 
 type searchQueryComponent struct {
@@ -142,6 +143,7 @@ func newSearchQueryComponent(httpComponent *httpComponent, cfgMgr configManager,
 		caps: map[SearchCapability]CapabilityStatus{
 			SearchCapabilityVectorSearch:  CapabilityStatusUnknown,
 			SearchCapabilityScopedIndexes: CapabilityStatusUnknown,
+			SearchCapabilityScoreFusion:   CapabilityStatusUnknown,
 		},
 	}
 	cfgMgr.AddConfigWatcher(sqc)
@@ -163,6 +165,12 @@ func (sqc *searchQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 		sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusSupported
 	} else {
 		sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusUnsupported
+	}
+
+	if cfg.ContainsClusterCapability(1, "search", "scoreFusion") {
+		sqc.caps[SearchCapabilityScoreFusion] = CapabilityStatusSupported
+	} else {
+		sqc.caps[SearchCapabilityScoreFusion] = CapabilityStatusUnsupported
 	}
 }
 

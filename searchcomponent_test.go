@@ -50,6 +50,7 @@ func (suite *UnitTestSuite) TestSearchComponentRouteConfigHandling() {
 
 	suite.Assert().Equal(CapabilityStatusUnknown, sqc.capabilityStatus(SearchCapabilityVectorSearch))
 	suite.Assert().Equal(CapabilityStatusUnknown, sqc.capabilityStatus(SearchCapabilityScopedIndexes))
+	suite.Assert().Equal(CapabilityStatusUnknown, sqc.capabilityStatus(SearchCapabilityScoreFusion))
 
 	cfg := &routeConfig{
 		clusterCapabilitiesVer: []int{1},
@@ -59,17 +60,19 @@ func (suite *UnitTestSuite) TestSearchComponentRouteConfigHandling() {
 
 	suite.Assert().Equal(CapabilityStatusUnsupported, sqc.capabilityStatus(SearchCapabilityVectorSearch))
 	suite.Assert().Equal(CapabilityStatusUnsupported, sqc.capabilityStatus(SearchCapabilityScopedIndexes))
+	suite.Assert().Equal(CapabilityStatusUnsupported, sqc.capabilityStatus(SearchCapabilityScoreFusion))
 
 	cfg = &routeConfig{
 		clusterCapabilitiesVer: []int{1},
 		clusterCapabilities: map[string][]string{
-			"search": {"vectorSearch", "scopedSearchIndex"},
+			"search": {"vectorSearch", "scopedSearchIndex", "scoreFusion"},
 		},
 	}
 	sqc.OnNewRouteConfig(cfg)
 
 	suite.Assert().Equal(CapabilityStatusSupported, sqc.capabilityStatus(SearchCapabilityVectorSearch))
 	suite.Assert().Equal(CapabilityStatusSupported, sqc.capabilityStatus(SearchCapabilityScopedIndexes))
+	suite.Assert().Equal(CapabilityStatusSupported, sqc.capabilityStatus(SearchCapabilityScoreFusion))
 }
 
 func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
