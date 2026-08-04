@@ -3,8 +3,9 @@ package gocbcore
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/stretchr/testify/mock"
 	"io/ioutil"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // TestSearchComponentNilRows tests the case where the server returns a rows field but it's set to a null value.
@@ -75,7 +76,10 @@ func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 	configC := new(mockConfigManager)
 	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, nil, "", true, &noopMeter{}, configC))
+	tracer := newTestTracer()
+	meter := newTestMeter()
+
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(tracer, nil, "", false, meter, configC))
 	sqc.caps[SearchCapabilityVectorSearch] = CapabilityStatusUnsupported
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusSupported
 
@@ -89,13 +93,27 @@ func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 
 	suite.Assert().ErrorIs(err, ErrFeatureNotAvailable)
 	suite.Assert().Contains(err.Error(), "vector search is not supported by this cluster version")
+
+	spans := tracer.Spans[nil]
+	if suite.Assert().Len(spans, 1) {
+		suite.Assert().Equal("SearchQuery", spans[0].Name)
+		suite.Assert().True(spans[0].Finished)
+	}
+
+	recorder := meter.recorders[makeMetricsKey(metricValueServiceSearchValue, "SearchQuery")]
+	if suite.Assert().NotNil(recorder) {
+		suite.Assert().Len(recorder.values, 1)
+	}
 }
 
 func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 	configC := new(mockConfigManager)
 	configC.On("AddConfigWatcher", mock.Anything)
 
-	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(&noopTracer{}, nil, "", true, &noopMeter{}, configC))
+	tracer := newTestTracer()
+	meter := newTestMeter()
+
+	sqc := newSearchQueryComponent(nil, configC, newTracerComponent(tracer, nil, "", false, meter, configC))
 	sqc.caps[SearchCapabilityScopedIndexes] = CapabilityStatusUnsupported
 
 	opts := SearchQueryOptions{
@@ -108,4 +126,15 @@ func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 
 	suite.Assert().ErrorIs(err, ErrFeatureNotAvailable)
 	suite.Assert().Contains(err.Error(), "scoped search indexes are not supported by this cluster version")
+
+	spans := tracer.Spans[nil]
+	if suite.Assert().Len(spans, 1) {
+		suite.Assert().Equal("SearchQuery", spans[0].Name)
+		suite.Assert().True(spans[0].Finished)
+	}
+
+	recorder := meter.recorders[makeMetricsKey(metricValueServiceSearchValue, "SearchQuery")]
+	if suite.Assert().NotNil(recorder) {
+		suite.Assert().Len(recorder.values, 1)
+	}
 }

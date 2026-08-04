@@ -204,6 +204,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 
 	if opts.BucketName != "" && opts.ScopeName != "" {
 		if sqc.capabilityStatus(SearchCapabilityScopedIndexes) == CapabilityStatusUnsupported {
+			tracer.Finish()
 			return nil, wrapSearchError(nil, "", nil,
 				wrapError(errFeatureNotAvailable, "scoped search indexes are not supported by this cluster version"), 0)
 		}
@@ -211,6 +212,7 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 
 	if _, ok := payloadMap["knn"]; ok {
 		if sqc.capabilityStatus(SearchCapabilityVectorSearch) == CapabilityStatusUnsupported {
+			tracer.Finish()
 			return nil, wrapSearchError(nil, "", nil,
 				wrapError(errFeatureNotAvailable, "vector search is not supported by this cluster version"), 0)
 		}
