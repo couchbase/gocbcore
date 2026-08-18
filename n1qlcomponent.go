@@ -235,6 +235,11 @@ func parseN1QLError(respBody []byte) (string, []N1QLErrorDesc, error) {
 			case 1197:
 				err = wrapError(errFeatureNotAvailable, "this server requires that a query context be used for queries")
 			}
+		case 2:
+			switch errCode {
+			case 2120:
+				err = errAuthenticationFailure
+			}
 		case 3:
 			switch errCode {
 			case 3000:

@@ -1376,6 +1376,10 @@ func (suite *UnitTestSuite) TestN1QLErrorCodes() {
 			expectedErr: errFeatureNotAvailable,
 		},
 		{
+			code:        2120,
+			expectedErr: errAuthenticationFailure,
+		},
+		{
 			code:        3230,
 			expectedErr: errFeatureNotAvailable,
 			msg:         "advisor",
