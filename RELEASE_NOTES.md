@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 10.9.4 (2 September 2026)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1831](https://jira.issues.couchbase.com/browse/GOCBC-1831): If an `HTTPRequest` does not have a `UniqueID`, the SDK now generates one, so logs can be correlated with the request.
+
+### Fixed Issues
+
+* [GOCBC-1842](https://jira.issues.couchbase.com/browse/GOCBC-1842): Fixed an issue where the application telemetry attributes (Node UUID, canonical address) might not be propagated to a `memdClient` if a client is still dialing when the first config is seen. This could result in the attributes missing from the application telemetry entries or dispatch spans, and in "failed to split host port" debug-level log lines.
+
+* [GOCBC-1857](https://jira.issues.couchbase.com/browse/GOCBC-1857): Fixed an issue where the `SearchQuery` operation span was not closed when the operation fails due to a missing cluster capability.
+
 ## Version 10.9.3 (19 May 2026)
 
 ### New Features and Behavioral Changes
