@@ -326,6 +326,7 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 			retryReason = SocketCloseInFlightRetryReason
 		} else {
 			var netErr *net.OpError
+			var dnsErr *net.DNSError
 			if errors.As(err, &netErr) {
 				// We need to be care about what we consider not available, if the request has been written to the
 				// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
@@ -335,11 +336,12 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 				} else {
 					retryReason = SocketCloseInFlightRetryReason
 				}
-			} else {
-				var dnsErr *net.DNSError
-				if errors.As(err, &dnsErr) {
-					retryReason = SocketNotAvailableRetryReason
-				}
+			} else if errors.As(err, &dnsErr) {
+				retryReason = SocketNotAvailableRetryReason
+			} else if errors.Is(err, net.ErrClosed) {
+				// An ErrClosed that is not wrapped in net.OpError can be returned by tls.Conn.Write
+				// See https://jira.issues.couchbase.com/browse/GOCBC-1870
+				retryReason = SocketCloseInFlightRetryReason
 			}
 		}
 
