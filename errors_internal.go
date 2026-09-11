@@ -820,6 +820,8 @@ var (
 	errRangeScanComplete       = ncError{ErrRangeScanComplete}
 	errRangeScanVbUUIDNotEqual = ncError{ErrRangeScanVbUUIDNotEqual}
 
+	errReplicaCurrentlyUnavailable = ncError{ErrReplicaCurrentlyUnavailable}
+
 	errConnectionIDInvalid = ncError{ErrConnectionIDInvalid}
 
 	errCircuitBreakerOpen = ncError{ErrCircuitBreakerOpen}

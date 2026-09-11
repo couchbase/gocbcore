@@ -279,9 +279,14 @@ func (crud *crudComponent) GetAndLock(opts GetAndLockOptions, cb GetAndLockCallb
 func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplicaCallback) (PendingOp, error) {
 	tracer := crud.tracer.StartTelemeteryHandler(metricValueServiceKeyValue, "GetOneReplica", opts.TraceContext)
 
-	if opts.ReplicaIdx <= 0 {
+	if opts.ReplicaIdx <= 0 && opts.ReplicaSelector == nil {
 		tracer.Finish()
 		return nil, errInvalidReplica
+	}
+
+	if opts.ReplicaIdx > 0 && opts.ReplicaSelector != nil {
+		tracer.Finish()
+		return nil, wrapError(errInvalidArgument, "ReplicaIdx and ReplicaSelector cannot both be set")
 	}
 
 	handler := func(resp *memdQResponse, req *memdQRequest, err error) {
@@ -340,6 +345,7 @@ func (crud *crudComponent) GetOneReplica(opts GetOneReplicaOptions, cb GetReplic
 		ScopeName:        opts.ScopeName,
 		RetryStrategy:    opts.RetryStrategy,
 		ServerGroup:      opts.ServerGroup,
+		ReplicaSelector:  opts.ReplicaSelector,
 	}
 
 	op, err := crud.cidMgr.Dispatch(req)

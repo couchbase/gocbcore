@@ -516,6 +516,177 @@ func (suite *StandardTestSuite) TestGetReplica() {
 	suite.VerifyKVMetrics(suite.meter, "GetOneReplica", 1, true, false)
 }
 
+type testReplicaSelector struct {
+	replicaIdx    int
+	failWithError error
+
+	// Used for validation
+	suite *StandardTestSuite
+	agent *Agent
+	key   []byte
+}
+
+func (s testReplicaSelector) selectReplica(numReplicas int, serverIdxChain []int) (int, error) {
+	s.validateReplicaInfo(numReplicas, serverIdxChain)
+
+	if s.failWithError != nil {
+		return 0, s.failWithError
+	}
+	return s.replicaIdx, nil
+}
+
+func (s testReplicaSelector) validateReplicaInfo(numReplicas int, serverIdxChain []int) {
+	// This does not affect the execution of the test, since we don't use the
+	// provided info in testReplicaStrategy, but validates that they are as expected
+	s.suite.Assert().Equal(s.agent.kvMux.NumReplicas(), numReplicas)
+	for copyIdx, serverIdx := range serverIdxChain {
+		expectedServerIdx, err := s.agent.kvMux.getState().VBMap().NodeByKey(s.key, uint32(copyIdx))
+		s.suite.Assert().NoError(err)
+		if err != nil {
+			s.suite.Assert().Equal(expectedServerIdx, serverIdx)
+		}
+	}
+}
+
+func (suite *StandardTestSuite) createTestReplicaSelector(replicaIdx int, failWithError error, key []byte) ReplicaSelector {
+	return testReplicaSelector{
+		replicaIdx:    replicaIdx,
+		failWithError: failWithError,
+		suite:         suite,
+		agent:         suite.DefaultAgent(),
+		key:           key,
+	}
+}
+
+func (suite *StandardTestSuite) TestGetReplicaWithReplicaSelector() {
+	suite.EnsureSupportsFeature(TestFeatureReplicas)
+
+	key := []byte("testReplica")
+
+	type testCase struct {
+		name            string
+		replicaSelector ReplicaSelector
+		expectedErr     error
+	}
+
+	errCouldNotSelectReplica := errors.New("could not select replica")
+
+	testCases := []testCase{
+		{
+			name:            "MockReplicaSelectorReturnsActive",
+			replicaSelector: suite.createTestReplicaSelector(0, nil, key),
+			expectedErr:     ErrInvalidReplica,
+		},
+		{
+			name:            "MockReplicaSelectorReturnsValidReplicaIdx",
+			replicaSelector: suite.createTestReplicaSelector(1, nil, key),
+			expectedErr:     nil,
+		},
+		{
+			name:            "MockReplicaSelectorReturnsInvalidReplicaIdx",
+			replicaSelector: suite.createTestReplicaSelector(20, nil, key),
+			expectedErr:     ErrInvalidReplica,
+		},
+		{
+			name:            "MockReplicaSelectorReturnsError",
+			replicaSelector: suite.createTestReplicaSelector(0, errCouldNotSelectReplica, key),
+			expectedErr:     errCouldNotSelectReplica,
+		},
+		{
+			name:            "SelectReplicaByIndexActive",
+			replicaSelector: IndexReplicaSelector{ReplicaIdx: 0},
+			expectedErr:     ErrInvalidReplica,
+		},
+		{
+			name:            "SelectReplicaByIndexWithinBoundsNoWrap",
+			replicaSelector: IndexReplicaSelector{ReplicaIdx: 1},
+			expectedErr:     nil,
+		},
+		{
+			name:            "SelectReplicaByIndexWithinBoundsWrap",
+			replicaSelector: IndexReplicaSelector{ReplicaIdx: 1, Wrap: true},
+			expectedErr:     nil,
+		},
+		{
+			name:            "SelectReplicaByIndexOutOfBoundsNoWrap",
+			replicaSelector: IndexReplicaSelector{ReplicaIdx: 5},
+			expectedErr:     ErrInvalidReplica,
+		},
+		{
+			name:            "SelectReplicaByIndexOutOfBoundsWrap",
+			replicaSelector: IndexReplicaSelector{ReplicaIdx: 5, Wrap: true},
+			expectedErr:     nil,
+		},
+	}
+
+	agent, s := suite.GetAgentAndHarness()
+
+	// Set
+	s.PushOp(agent.Set(SetOptions{
+		Key:            []byte("testReplica"),
+		Value:          []byte("{}"),
+		CollectionName: suite.CollectionName,
+		ScopeName:      suite.ScopeName,
+	}, func(res *StoreResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("Set operation failed: %v", err)
+			}
+			if res.Cas == Cas(0) {
+				s.Fatalf("Invalid cas received")
+			}
+		})
+	}))
+	s.Wait(0)
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			retries := 0
+			keyExists := false
+			for {
+				op, err := agent.GetOneReplica(GetOneReplicaOptions{
+					Key:             []byte("testReplica"),
+					CollectionName:  suite.CollectionName,
+					ScopeName:       suite.ScopeName,
+					ReplicaSelector: tc.replicaSelector,
+				}, func(res *GetReplicaResult, err error) {
+					s.Wrap(func() {
+						keyNotFound := errors.Is(err, ErrDocumentNotFound)
+						if err == nil {
+							keyExists = true
+						} else if err != nil && !keyNotFound {
+							s.Fatalf("GetReplica specific returned error that was not document not found: %v", err)
+						}
+						if !keyNotFound && res.Cas == Cas(0) {
+							s.Fatalf("Invalid cas received")
+						}
+					})
+				})
+				if tc.expectedErr != nil {
+					suite.Assert().ErrorIs(err, tc.expectedErr)
+				} else {
+					suite.Assert().NoError(err)
+				}
+
+				if err != nil {
+					break
+				}
+
+				s.PushOp(op, nil)
+				s.Wait(0)
+				if keyExists {
+					break
+				}
+				retries++
+				if retries >= 5 {
+					suite.Fail("GetReplica could not locate key")
+					break
+				}
+			}
+		})
+	}
+}
+
 func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
 	suite.EnsureSupportsFeature(TestFeatureReplicas)
 	suite.EnsureSupportsFeature(TestFeatureEnhancedDurability)

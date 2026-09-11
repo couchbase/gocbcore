@@ -285,6 +285,22 @@ func (mux *kvMux) BucketCapabilityStatus(cap BucketCapability) CapabilityStatus 
 	return clientMux.BucketCapabilityStatus(cap)
 }
 
+func selectReplicaIdx(replicaSelector ReplicaSelector, vbMap *vbucketMap, vbucket uint16) (int, error) {
+	serverIdxChain, err := vbMap.NodesByVbucket(vbucket)
+	if err != nil {
+		return 0, err
+	}
+	repIdx, err := replicaSelector.selectReplica(vbMap.NumReplicas(), serverIdxChain)
+	if err != nil {
+		return 0, wrapError(err, "failed to select replica")
+	}
+	if repIdx <= 0 {
+		// Shouldn't happen at this point, but worth having an additional check
+		return 0, errInvalidReplica
+	}
+	return repIdx, nil
+}
+
 func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 	clientMux := mux.getState()
 	if clientMux == nil {
@@ -312,13 +328,25 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 				req.Vbucket = clientMux.VBMap().VbucketByKey(req.Key)
 			}
 
+			if repIdx != 0 && req.ReplicaSelector != nil {
+				// This should have been rejected further up, but also checking here just in case.
+				return nil, wrapError(errInvalidArgument, "ReplicaIdx and ReplicaSelector cannot both be set")
+			}
+
+			if repIdx == 0 && req.ReplicaSelector != nil {
+				repIdx, err = selectReplicaIdx(req.ReplicaSelector, clientMux.VBMap(), req.Vbucket)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			srvIdx, err = clientMux.VBMap().NodeByVbucket(req.Vbucket, uint32(repIdx))
 			if err != nil {
 				return nil, err
 			}
 
 		} else if bktType == bktTypeMemcached {
-			if repIdx > 0 {
+			if repIdx > 0 || req.ReplicaSelector != nil {
 				// Error. Memcached buckets don't understand replicas!
 				return nil, errInvalidReplica
 			}
@@ -454,7 +482,7 @@ func (mux *kvMux) DispatchDirectToAddress(req *memdQRequest, address string) (Pe
 
 	// We set the ReplicaIdx to a negative number to ensure it is not redispatched
 	// and we check that it was 0 to begin with to ensure it wasn't miss-used.
-	if req.ReplicaIdx != 0 {
+	if req.ReplicaIdx != 0 || req.ReplicaSelector != nil {
 		return nil, errInvalidReplica
 	}
 	req.ReplicaIdx = -999999999

@@ -81,6 +81,9 @@ type GetOneReplicaOptions struct {
 	// Uncommitted: This API may change in the future.
 	ServerGroup string
 
+	// Uncommitted: This API may change in the future.
+	ReplicaSelector ReplicaSelector
+
 	// Internal: This should never be used and is not supported.
 	User string
 

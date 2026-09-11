@@ -41,6 +41,14 @@ func (vbMap vbucketMap) NodeByVbucket(vbID uint16, replicaID uint32) (int, error
 	return vbMap.entries[vbID][replicaID], nil
 }
 
+func (vbMap vbucketMap) NodesByVbucket(vbID uint16) ([]int, error) {
+	if vbID >= uint16(len(vbMap.entries)) {
+		return nil, errInvalidVBucket
+	}
+
+	return vbMap.entries[vbID], nil
+}
+
 func (vbMap vbucketMap) VbucketsOnServer(index int) ([]uint16, error) {
 	vbList, err := vbMap.VbucketsByServer(0)
 	if err != nil {

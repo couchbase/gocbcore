@@ -195,9 +195,16 @@ var (
 	// Uncommitted: This API may change in the future.
 	ErrConnectionIDInvalid = errors.New("connection id unknown")
 
-	// Uncommitted: This API may change in the future
-	// Signals that an operation was cancelled due to the circuit breaker being open
+	// ErrCircuitBreakerOpen Signals that an operation was canceled due to the circuit breaker being open
+	//
+	// Uncommitted: This API may change in the future.
 	ErrCircuitBreakerOpen = errors.New("circuit breaker open")
+
+	// ErrReplicaCurrentlyUnavailable indicates that the replica is a valid replica, but it is not currently
+	// available on the server
+	//
+	// Uncommitted: This API may change in the future.
+	ErrReplicaCurrentlyUnavailable = errors.New("replica currently unavailable")
 )
 
 // Query Error Definitions RFC#58@15
