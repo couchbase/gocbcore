@@ -37,31 +37,28 @@ func (s IndexReplicaSelector) selectReplica(numReplicas int, serverIdxChain []in
 		return s.ReplicaIdx, nil
 	}
 
-	// Any replicas that are not available (-1 entry on the vBucket map) are ignored.
-	availableReplicaIdxs := availableReplicaIndexes(numReplicas, serverIdxChain)
-	if len(availableReplicaIdxs) == 0 {
+	maxReplicaIdx := min(len(serverIdxChain), numReplicas+1)
+	if maxReplicaIdx <= 1 {
+		// This vBucket map entry contains no replicas, only the active (or nothing at all).
 		return 0, errReplicaCurrentlyUnavailable
 	}
 
-	// We pick the Nth (N=s.ReplicaIdx-1) *available* replica modulo the number of available replicas.
-	return availableReplicaIdxs[(s.ReplicaIdx-1)%len(availableReplicaIdxs)], nil
-}
-
-func availableReplicaIndexes(numReplicas int, serverIdxChain []int) []int {
-	if len(serverIdxChain) <= 1 {
-		// No replicas, only active
-		return nil
-	}
-	var out []int
-	// If there are more replicas in the server chain that configured on the bucket (i.e. numReplicas), we ignore them
-	for idx, serverIdx := range serverIdxChain[1:min(numReplicas+1, len(serverIdxChain))] {
-		replicaIdx := idx + 1
-		if serverIdx < 0 {
-			// Replica currently unavailable
-			continue
+	// We iterate through the _replicas_, ignoring the active, hence the '1 +' and the -1 in both operands of the
+	// modulo operation.
+	startReplicaIdx := 1 + (s.ReplicaIdx-1)%(maxReplicaIdx-1)
+	candidateReplicaIdx := startReplicaIdx
+	for {
+		if serverIdxChain[candidateReplicaIdx] >= 0 {
+			return candidateReplicaIdx, nil
 		}
 
-		out = append(out, replicaIdx)
+		candidateReplicaIdx = 1 + candidateReplicaIdx%(maxReplicaIdx-1)
+
+		// If we've come back to the replica index we started from, no replica is available.
+		if candidateReplicaIdx == startReplicaIdx {
+			break
+		}
 	}
-	return out
+
+	return 0, errReplicaCurrentlyUnavailable
 }
