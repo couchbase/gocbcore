@@ -210,8 +210,8 @@ func (suite *StandardTestSuite) TestAnalytics() {
 		suite.tracer.Reset()
 		suite.T().Run("Basic", helper.testBasic)
 
-		if suite.Assert().Contains(suite.tracer.Spans, nil) {
-			nilParents := suite.tracer.Spans[nil]
+		nilParents := suite.tracer.Spans(nil)
+		if suite.Assert().NotEmpty(nilParents) {
 			if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 				for i := 0; i < len(nilParents); i++ {
 					suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
@@ -274,8 +274,8 @@ func (suite *StandardTestSuite) TestAnalyticsCancel() {
 		suite.T().Fatalf("Error should have been request canceled but was %s", resErr)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			for i := 0; i < len(nilParents); i++ {
 				suite.AssertHTTPSpan(nilParents[i], "AnalyticsQuery")
@@ -325,8 +325,8 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 		suite.T().Fatalf("Error should have been timeout but was %s", resErr)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 1) {
 			if suite.Assert().Equal(len(nilParents), 1) {
 				suite.AssertHTTPSpanNoDispatch(nilParents[0], "AnalyticsQuery")

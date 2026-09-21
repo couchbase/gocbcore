@@ -104,8 +104,8 @@ func (suite *StandardTestSuite) TestRangeScanRangeLargeValues() {
 		}
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
 			suite.AssertOpSpan(nilParents[0], "RangeScanCreate", agent.BucketName(), memd.CmdRangeScanCreate.Name(), 1, false, "")
 			suite.AssertOpSpan(nilParents[1], "RangeScanContinue", agent.BucketName(), memd.CmdRangeScanContinue.Name(), 1, false, "")
@@ -444,8 +444,8 @@ func (suite *StandardTestSuite) TestRangeScanConnectionInvalid() {
 }
 
 func (suite *StandardTestSuite) verifyRangeScanTelemetry(agent *Agent) {
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "RangeScanCreate", agent.BucketName(), memd.CmdRangeScanCreate.Name(), 1, false, "")
 			suite.AssertOpSpan(nilParents[1], "RangeScanContinue", agent.BucketName(), memd.CmdRangeScanContinue.Name(), 1, false, "")

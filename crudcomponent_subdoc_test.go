@@ -1414,8 +1414,8 @@ func (suite *StandardTestSuite) TestPreserveExpiryMutateIn() {
 
 	suite.verifyExpiryUsingHLC("testmutateinpreserveExpiry", agent, s, expiry)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testmutateinpreserveExpiry")
 			suite.AssertOpSpan(nilParents[1], "MutateIn", agent.BucketName(), memd.CmdSubDocMultiMutation.Name(), 1, false, "testmutateinpreserveExpiry")

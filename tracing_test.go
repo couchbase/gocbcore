@@ -1,9 +1,13 @@
 package gocbcore
 
 import (
+	"maps"
+	"slices"
+	"sync"
+	"time"
+
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/stretchr/testify/mock"
-	"time"
 )
 
 type testSpan struct {
@@ -12,14 +16,19 @@ type testSpan struct {
 	Finished      bool
 	ParentContext RequestSpanContext
 	Spans         map[RequestSpanContext][]*testSpan
+
+	lock sync.Mutex
 }
 
 func (ts *testSpan) End() {
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
+
 	ts.Finished = true
 }
 
 func (ts *testSpan) Context() RequestSpanContext {
-	return ts.Spans
+	return ts
 }
 
 func newTestSpan(operationName string, parentContext RequestSpanContext) *testSpan {
@@ -32,19 +41,53 @@ func newTestSpan(operationName string, parentContext RequestSpanContext) *testSp
 }
 
 func (ts *testSpan) SetAttribute(key string, value interface{}) {
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
+
 	ts.Tags[key] = value
+}
+
+func (ts *testSpan) addChild(operationName string, child *testSpan) {
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
+
+	ts.Spans[operationName] = append(ts.Spans[operationName], child)
+}
+
+func (ts *testSpan) clone() *testSpan {
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
+
+	cloned := &testSpan{
+		Name:          ts.Name,
+		Tags:          maps.Clone(ts.Tags),
+		Finished:      ts.Finished,
+		ParentContext: ts.ParentContext,
+		Spans:         make(map[RequestSpanContext][]*testSpan, len(ts.Spans)),
+	}
+
+	for parentContext, spans := range ts.Spans {
+		clonedSpans := make([]*testSpan, 0, len(spans))
+		for _, span := range spans {
+			clonedSpans = append(clonedSpans, span.clone())
+		}
+		cloned.Spans[parentContext] = clonedSpans
+	}
+
+	return cloned
 }
 
 func (ts *testSpan) AddEvent(key string, timestamp time.Time) {
 }
 
 type testTracer struct {
-	Spans map[RequestSpanContext][]*testSpan
+	lock  sync.Mutex
+	spans map[RequestSpanContext][]*testSpan
 }
 
 func newTestTracer() *testTracer {
 	return &testTracer{
-		Spans: make(map[RequestSpanContext][]*testSpan),
+		spans: make(map[RequestSpanContext][]*testSpan),
 	}
 }
 
@@ -56,22 +99,35 @@ func (tt *testTracer) RequestSpan(parentContext RequestSpanContext, operationNam
 
 	span := newTestSpan(operationName, parentContext)
 
-	if parentContext == nil {
-		tt.Spans[parentContext] = append(tt.Spans[parentContext], span)
-	} else {
-		ctx, ok := parentContext.(map[RequestSpanContext][]*testSpan)
-		if ok {
-			ctx[operationName] = append(ctx[operationName], span)
-		} else {
-			tt.Spans[parentContext] = append(tt.Spans[parentContext], span)
-		}
+	if parent, ok := parentContext.(*testSpan); ok {
+		parent.addChild(operationName, span)
+		return span
 	}
+
+	tt.lock.Lock()
+	tt.spans[parentContext] = append(tt.spans[parentContext], span)
+	tt.lock.Unlock()
 
 	return span
 }
 
+func (tt *testTracer) Spans(parentContext RequestSpanContext) []*testSpan {
+	tt.lock.Lock()
+	spans := slices.Clone(tt.spans[parentContext])
+	tt.lock.Unlock()
+
+	cloned := make([]*testSpan, 0, len(spans))
+	for _, span := range spans {
+		cloned = append(cloned, span.clone())
+	}
+	return cloned
+}
+
 func (tt *testTracer) Reset() {
-	tt.Spans = make(map[RequestSpanContext][]*testSpan)
+	tt.lock.Lock()
+	defer tt.lock.Unlock()
+
+	tt.spans = make(map[RequestSpanContext][]*testSpan)
 }
 
 func (suite *StandardTestSuite) AssertOpSpan(span *testSpan, expectedName, bucketName, cmdName string, numCmdSpans int,
@@ -246,8 +302,8 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentNoRoot() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(tracer.Spans, "set_parent") {
-		parents := tracer.Spans["set_parent"]
+	parents := tracer.Spans("set_parent")
+	if suite.Assert().NotEmpty(parents) {
 		if suite.Assert().Equal(1, len(parents)) {
 			suite.AssertCmdSpan(parents[0], memd.CmdSet.Name())
 		}
@@ -285,8 +341,8 @@ func (suite *StandardTestSuite) TestBasicOpsTracingParentRoot() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(tracer.Spans, "set_parent") {
-		parents := tracer.Spans["set_parent"]
+	parents := tracer.Spans("set_parent")
+	if suite.Assert().NotEmpty(parents) {
 		if suite.Assert().Equal(1, len(parents)) {
 			suite.AssertOpSpan(parents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
 		}

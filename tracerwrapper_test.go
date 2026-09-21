@@ -17,7 +17,7 @@ func (suite *UnitTestSuite) TestTracerWrapperSemanticConventions() {
 		span.SetClusterName("test-cluster")
 		span.End()
 
-		s := tracer.Spans[nil][0]
+		s := tracer.Spans(nil)[0]
 		suite.Assert().Contains(s.Tags, "db.couchbase.cluster_name")
 		suite.Assert().Equal("test-cluster", s.Tags["db.couchbase.cluster_name"])
 		suite.Assert().NotContains(s.Tags, "couchbase.cluster.name")
@@ -39,7 +39,7 @@ func (suite *UnitTestSuite) TestTracerWrapperSemanticConventions() {
 		span.SetClusterName("test-cluster")
 		span.End()
 
-		s := tracer.Spans[nil][0]
+		s := tracer.Spans(nil)[0]
 		suite.Assert().NotContains(s.Tags, "db.couchbase.cluster_name")
 		suite.Assert().Contains(s.Tags, "couchbase.cluster.name")
 		suite.Assert().Equal("test-cluster", s.Tags["couchbase.cluster.name"])
@@ -61,7 +61,7 @@ func (suite *UnitTestSuite) TestTracerWrapperSemanticConventions() {
 		span.SetClusterName("test-cluster")
 		span.End()
 
-		s := tracer.Spans[nil][0]
+		s := tracer.Spans(nil)[0]
 		suite.Assert().Contains(s.Tags, "db.couchbase.cluster_name")
 		suite.Assert().Equal("test-cluster", s.Tags["db.couchbase.cluster_name"])
 		suite.Assert().Contains(s.Tags, "couchbase.cluster.name")
@@ -85,7 +85,7 @@ func (suite *UnitTestSuite) TestTracerWrapperSemanticConventions() {
 		span.SetClusterName("test-cluster")
 		span.End()
 
-		s := tracer.Spans[nil][0]
+		s := tracer.Spans(nil)[0]
 		suite.Assert().Contains(s.Tags, "db.couchbase.cluster_name")
 		suite.Assert().Equal("test-cluster", s.Tags["db.couchbase.cluster_name"])
 		suite.Assert().Contains(s.Tags, "couchbase.cluster.name")

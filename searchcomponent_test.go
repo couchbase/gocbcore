@@ -97,7 +97,7 @@ func (suite *UnitTestSuite) TestSearchComponentVectorSearchUnsupported() {
 	suite.Assert().ErrorIs(err, ErrFeatureNotAvailable)
 	suite.Assert().Contains(err.Error(), "vector search is not supported by this cluster version")
 
-	spans := tracer.Spans[nil]
+	spans := tracer.Spans(nil)
 	if suite.Assert().Len(spans, 1) {
 		suite.Assert().Equal("SearchQuery", spans[0].Name)
 		suite.Assert().True(spans[0].Finished)
@@ -130,7 +130,7 @@ func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 	suite.Assert().ErrorIs(err, ErrFeatureNotAvailable)
 	suite.Assert().Contains(err.Error(), "scoped search indexes are not supported by this cluster version")
 
-	spans := tracer.Spans[nil]
+	spans := tracer.Spans(nil)
 	if suite.Assert().Len(spans, 1) {
 		suite.Assert().Equal("SearchQuery", spans[0].Name)
 		suite.Assert().True(spans[0].Finished)

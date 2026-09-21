@@ -134,8 +134,8 @@ func (suite *StandardTestSuite) TestPreserveExpirySet() {
 
 	suite.verifyExpiryUsingHLC("testsetpreserveExpiry", agent, s, expiry)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testsetpreserveExpiry")
 			suite.AssertOpSpan(nilParents[1], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testsetpreserveExpiry")
@@ -192,8 +192,8 @@ func (suite *StandardTestSuite) TestPreserveExpiryReplace() {
 
 	suite.verifyExpiryUsingHLC("testreplacepreserveExpiry", agent, s, expiry)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testreplacepreserveExpiry")
 			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testreplacepreserveExpiry")
@@ -251,8 +251,8 @@ func (suite *StandardTestSuite) TestPreserveExpiryAppend() {
 
 	suite.verifyExpiryUsingHLC("testappendpreserveExpiry", agent, s, expiry)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testappendpreserveExpiry")
 			suite.AssertOpSpan(nilParents[1], "Append", agent.BucketName(), memd.CmdAppend.Name(), 1, false, "testappendpreserveExpiry")
@@ -312,8 +312,8 @@ func (suite *StandardTestSuite) TestPreserveExpiryIncrement() {
 
 	suite.verifyExpiryUsingHLC("testincrementpreserveExpiry", agent, s, expiry)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Increment", agent.BucketName(), memd.CmdIncrement.Name(), 1, false, "testincrementpreserveExpiry")
 			suite.AssertOpSpan(nilParents[2], "LookupIn", agent.BucketName(), memd.CmdSubDocMultiLookup.Name(), 1, false, "testincrementpreserveExpiry")
@@ -362,8 +362,8 @@ func (suite *StandardTestSuite) TestBasicOps() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test")
@@ -437,8 +437,8 @@ func (suite *StandardTestSuite) TestCasMismatch() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testCasMismatch")
 			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testCasMismatch")
@@ -504,8 +504,8 @@ func (suite *StandardTestSuite) TestGetReplica() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testReplica")
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testReplica")
@@ -744,8 +744,8 @@ func (suite *StandardTestSuite) TestDurableWriteGetReplica() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testDurableReplica")
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testDurableReplica")
@@ -812,8 +812,8 @@ func (suite *StandardTestSuite) TestAddDurableWriteGetReplica() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 2) {
 			suite.AssertOpSpan(nilParents[0], "Add", agent.BucketName(), memd.CmdAdd.Name(), 1, false, "testAddDurableReplica")
 			suite.AssertOpSpan(nilParents[1], "GetOneReplica", agent.BucketName(), memd.CmdGetReplica.Name(), 1, true, "testAddDurableReplica")
@@ -899,8 +899,8 @@ func (suite *StandardTestSuite) TestReplaceDurableWriteGetReplica() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 3) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testReplaceDurableReplica")
 			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testReplaceDurableReplica")
@@ -986,8 +986,8 @@ func (suite *StandardTestSuite) TestDeleteDurableWriteGetReplica() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().GreaterOrEqual(len(nilParents), 3) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testDeleteDurableReplica")
 			suite.AssertOpSpan(nilParents[1], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testDeleteDurableReplica")
@@ -1033,8 +1033,8 @@ func (suite *StandardTestSuite) TestBasicReplace() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testx")
 			suite.AssertOpSpan(nilParents[1], "Replace", agent.BucketName(), memd.CmdReplace.Name(), 1, false, "testx")
@@ -1071,8 +1071,8 @@ func (suite *StandardTestSuite) TestBasicRemove() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testy")
 			suite.AssertOpSpan(nilParents[1], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testy")
@@ -1112,8 +1112,8 @@ func (suite *StandardTestSuite) TestBasicInsert() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testz")
 			suite.AssertOpSpan(nilParents[1], "Add", agent.BucketName(), memd.CmdAdd.Name(), 1, false, "testz")
@@ -1167,8 +1167,8 @@ func (suite *StandardTestSuite) TestBasicSetGet() {
 
 	suite.EndTest(spec)
 
-	if suite.Assert().Contains(spec.Tracer.Spans, nil) {
-		nilParents := spec.Tracer.Spans[nil]
+	nilParents := spec.Tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test-doc")
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "test-doc")
@@ -1254,8 +1254,8 @@ func (suite *StandardTestSuite) TestBasicCounters() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(4, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Delete", agent.BucketName(), memd.CmdDelete.Name(), 1, false, "testCounters")
 			suite.AssertOpSpan(nilParents[1], "Increment", agent.BucketName(), memd.CmdIncrement.Name(), 1, false, "testCounters")
@@ -1336,8 +1336,8 @@ func (suite *StandardTestSuite) TestBasicAdjoins() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(4, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testAdjoins")
 			suite.AssertOpSpan(nilParents[1], "Append", agent.BucketName(), memd.CmdAppend.Name(), 1, false, "testAdjoins")
@@ -1386,8 +1386,8 @@ func (suite *StandardTestSuite) TestExpiry() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testExpiry")
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "testExpiry")
@@ -1460,8 +1460,8 @@ func (suite *StandardTestSuite) TestTouch() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(4, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testTouch")
 			suite.AssertOpSpan(nilParents[1], "Touch", agent.BucketName(), memd.CmdTouch.Name(), 1, false, "testTouch")
@@ -1537,8 +1537,8 @@ func (suite *StandardTestSuite) TestGetAndTouch() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(4, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testGetAndTouch")
 			suite.AssertOpSpan(nilParents[1], "GetAndTouch", agent.BucketName(), memd.CmdGAT.Name(), 1, false, "testGetAndTouch")
@@ -1600,8 +1600,8 @@ func (suite *StandardTestSuite) TestRetrySet() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testRetrySet")
 			suite.AssertOpSpan(nilParents[1], "GetAndLock", agent.BucketName(), memd.CmdGetLocked.Name(), 1, false, "testRetrySet")
@@ -1645,8 +1645,8 @@ func (suite *StandardTestSuite) TestObserve() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testObserve")
 			suite.AssertOpSpan(nilParents[1], "Observe", agent.BucketName(), memd.CmdObserve.Name(), 1, false, "")
@@ -1742,8 +1742,8 @@ func (suite *StandardTestSuite) TestObserveSeqNo() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(4, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "testObserve")
 			suite.AssertOpSpan(nilParents[1], "ObserveVb", agent.BucketName(), memd.CmdObserveSeqNo.Name(), 1, false, "")
@@ -1836,8 +1836,8 @@ func (suite *StandardTestSuite) TestRandomGet() {
 		}
 	}
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(len(distkeys)+attempts, len(nilParents)) {
 			for i, k := range distkeys {
 				suite.AssertOpSpan(nilParents[i], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, k)
@@ -1882,8 +1882,8 @@ func (suite *StandardTestSuite) TestStats() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(1, len(nilParents)) {
 			p := agent.kvMux.NumPipelines()
 			suite.AssertTopLevelSpan(nilParents[0], "Stats", agent.BucketName())
@@ -2018,8 +2018,8 @@ func (suite *StandardTestSuite) TestMemcachedBucket() {
 		suite.T().Fatalf("Expected observe error for memcached bucket!")
 	}
 
-	if suite.Assert().Contains(spec.Tracer.Spans, nil) {
-		nilParents := spec.Tracer.Spans[nil]
+	nilParents := spec.Tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(3, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "key")
 			suite.AssertOpSpan(nilParents[1], "Get", agent.BucketName(), memd.CmdGet.Name(), 1, false, "key")
@@ -2115,8 +2115,8 @@ func (suite *StandardTestSuite) TestMetaOps() {
 	}))
 	s.Wait(0)
 
-	if suite.Assert().Contains(suite.tracer.Spans, nil) {
-		nilParents := suite.tracer.Spans[nil]
+	nilParents := suite.tracer.Spans(nil)
+	if suite.Assert().NotEmpty(nilParents) {
 		if suite.Assert().Equal(2, len(nilParents)) {
 			suite.AssertOpSpan(nilParents[0], "Set", agent.BucketName(), memd.CmdSet.Name(), 1, false, "test")
 			suite.AssertOpSpan(nilParents[1], "GetMeta", agent.BucketName(), memd.CmdGetMeta.Name(), 1, false, "test")
