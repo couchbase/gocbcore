@@ -258,6 +258,9 @@ type IoConfig struct {
 	// NetworkType defines which network to use from the cluster config.
 	NetworkType string
 
+	// EnableTCPNoDelay controls whether TCP_NODELAY is enabled on KV connections.
+	// It is disabled by default.
+	EnableTCPNoDelay            bool
 	UseMutationTokens           bool
 	UseDurations                bool
 	UseOutOfOrderResponses      bool
