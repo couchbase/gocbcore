@@ -123,6 +123,7 @@ const (
 	SearchCapabilityScopedIndexes SearchCapability = iota
 	SearchCapabilityVectorSearch
 	SearchCapabilityScoreFusion
+	SearchCapabilityUDFQuery
 )
 
 type searchQueryComponent struct {
@@ -144,6 +145,7 @@ func newSearchQueryComponent(httpComponent *httpComponent, cfgMgr configManager,
 			SearchCapabilityVectorSearch:  CapabilityStatusUnknown,
 			SearchCapabilityScopedIndexes: CapabilityStatusUnknown,
 			SearchCapabilityScoreFusion:   CapabilityStatusUnknown,
+			SearchCapabilityUDFQuery:      CapabilityStatusUnknown,
 		},
 	}
 	cfgMgr.AddConfigWatcher(sqc)
@@ -172,6 +174,12 @@ func (sqc *searchQueryComponent) OnNewRouteConfig(cfg *routeConfig) {
 	} else {
 		sqc.caps[SearchCapabilityScoreFusion] = CapabilityStatusUnsupported
 	}
+
+	if cfg.ContainsClusterCapability(1, "search", "udfQuery") {
+		sqc.caps[SearchCapabilityUDFQuery] = CapabilityStatusSupported
+	} else {
+		sqc.caps[SearchCapabilityUDFQuery] = CapabilityStatusUnsupported
+	}
 }
 
 func (sqc *searchQueryComponent) capabilityStatus(cap SearchCapability) CapabilityStatus {
@@ -184,6 +192,54 @@ func (sqc *searchQueryComponent) capabilityStatus(cap SearchCapability) Capabili
 	}
 
 	return status
+}
+
+func searchQueryIncludesCustomScriptQuery(query any) bool {
+	q, ok := query.(map[string]any)
+	if !ok {
+		return false
+	}
+	if _, ok = q["custom_filter"]; ok {
+		return true
+	}
+	if _, ok = q["custom_score"]; ok {
+		return true
+	}
+	if conjuncts, ok := q["conjuncts"]; ok {
+		if innerQueries, ok := conjuncts.([]any); ok {
+			for _, innerQuery := range innerQueries {
+				if searchQueryIncludesCustomScriptQuery(innerQuery) {
+					return true
+				}
+			}
+		}
+	}
+	if disjuncts, ok := q["disjuncts"]; ok {
+		if innerQueries, ok := disjuncts.([]any); ok {
+			for _, innerQuery := range innerQueries {
+				if searchQueryIncludesCustomScriptQuery(innerQuery) {
+					return true
+				}
+			}
+		}
+	}
+	if conjunctionQuery, ok := q["must"]; ok {
+		if searchQueryIncludesCustomScriptQuery(conjunctionQuery) {
+			return true
+		}
+	}
+	if disjunctionQuery, ok := q["should"]; ok {
+		if searchQueryIncludesCustomScriptQuery(disjunctionQuery) {
+			return true
+		}
+	}
+	if disjunctionQuery, ok := q["must_not"]; ok {
+		if searchQueryIncludesCustomScriptQuery(disjunctionQuery) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // SearchQuery executes a Search query
@@ -228,6 +284,14 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 
 	indexName := opts.IndexName
 	query := payloadMap["query"]
+
+	if searchQueryIncludesCustomScriptQuery(query) {
+		if sqc.capabilityStatus(SearchCapabilityUDFQuery) == CapabilityStatusUnsupported {
+			tracer.Finish()
+			return nil, wrapSearchError(nil, "", nil,
+				wrapError(errFeatureNotAvailable, "custom script queries are not supported by this cluster version"), 0)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var reqURI string
