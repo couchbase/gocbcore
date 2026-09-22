@@ -57,6 +57,68 @@ func (suite *UnitTestSuite) TestParseCas() {
 	suite.Require().Equal(int64(1539336197457), cas)
 }
 
+func (suite *UnitTestSuite) TestParseClientRecordsAtrAssignment() {
+	const heartbeat = "0x000058a71dd25c15"
+	heartbeatMS, err := parseCASToMilliseconds(heartbeat)
+	suite.Require().NoError(err)
+
+	// otherClientUUID sorts before thisClientUUID, so it takes index 0 of the sorted active clients.
+	const otherClientUUID = "00000000-0000-0000-0000-000000000000"
+	const thisClientUUID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+	testCases := []struct {
+		name              string
+		numAtrs           int
+		cleanupWindow     time.Duration
+		clients           map[string]jsonClientRecord
+		expectedNumActive int
+		expectedIndex     int
+		expectedNumAtrs   int
+		expectedInterval  int
+	}{
+		{
+			name:          "MoreActiveClientsThanAtrs",
+			numAtrs:       1,
+			cleanupWindow: 1 * time.Second,
+			clients: map[string]jsonClientRecord{
+				otherClientUUID: {HeartbeatMS: heartbeat, ExpiresMS: 80000},
+			},
+			expectedNumActive: 2,
+			expectedIndex:     1,
+			expectedNumAtrs:   0,
+			expectedInterval:  0,
+		},
+		{
+			name:              "SingleClientOwnsAllAtrs",
+			numAtrs:           1024,
+			cleanupWindow:     60 * time.Second,
+			expectedNumActive: 1,
+			expectedIndex:     0,
+			expectedNumAtrs:   1024,
+			expectedInterval:  58,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			config := &TransactionsConfig{}
+			config.CleanupWindow = tc.cleanupWindow
+			config.Internal.NumATRs = tc.numAtrs
+			cleaner := newStdLostTransactionCleaner(config)
+
+			// hlc shortly after the other client's heartbeat, so that it has not expired.
+			details, err := cleaner.parseClientRecords(jsonClientRecords{Clients: tc.clients}, thisClientUUID,
+				heartbeatMS+1000)
+			suite.Require().Nil(err, err)
+
+			suite.Assert().Equal(tc.expectedNumActive, details.NumActiveClients)
+			suite.Assert().Equal(tc.expectedIndex, details.IndexOfThisClient)
+			suite.Assert().Len(details.AtrsHandledByClient, tc.expectedNumAtrs)
+			suite.Assert().Equal(tc.expectedInterval, details.CheckAtrEveryNMillis)
+		})
+	}
+}
+
 func (suite *StandardTestSuite) TestLostCleanupProcessClientSuccessfulTxn() {
 	suite.EnsureSupportsFeature(TestFeatureTransactions)
 
@@ -286,7 +348,9 @@ func (suite *StandardTestSuite) TestLostCleanupProcessRollback() {
 	h := suite.GetHarness()
 
 	h.PushOp(agent.Delete(DeleteOptions{
-		Key: clientRecordKey,
+		Key:            clientRecordKey,
+		ScopeName:      suite.ScopeName,
+		CollectionName: suite.CollectionName,
 	}, func(result *DeleteResult, err error) {
 		h.Wrap(func() {
 			if err != nil && !errors.Is(err, ErrDocumentNotFound) {

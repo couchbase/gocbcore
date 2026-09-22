@@ -557,6 +557,18 @@ func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, coll
 		// LookupIn here so we're blocking the gocbcore read loop for the node, any further requests against that node
 		// will never complete and timeout.
 		go func() {
+			if len(recordDetails.AtrsHandledByClient) == 0 {
+				// This client owns no ATRs, we wait over the cleanup window, we have nothing to do during this window.
+				// If we don't, perLocation would keep immediately re-reading the client record.
+				select {
+				case <-ltc.stop:
+				case <-time.After(ltc.cleanupWindow):
+				}
+
+				cb(nil)
+				return
+			}
+
 			d := time.Duration(recordDetails.CheckAtrEveryNMillis) * time.Millisecond
 			for _, atr := range recordDetails.AtrsHandledByClient {
 				select {
@@ -968,8 +980,11 @@ func (ltc *stdLostTransactionCleaner) parseClientRecords(records jsonClientRecor
 
 	atrsHandled := atrsToHandle(clientIndex, numActive, ltc.numAtrs)
 
-	checkAtrEveryNS := ltc.cleanupWindow.Milliseconds() / int64(len(atrsHandled))
-	checkAtrEveryNMS := int(math.Max(1, float64(checkAtrEveryNS)))
+	var checkAtrEveryNMS int
+	if len(atrsHandled) > 0 {
+		checkAtrEveryNS := ltc.cleanupWindow.Milliseconds() / int64(len(atrsHandled))
+		checkAtrEveryNMS = int(math.Max(1, float64(checkAtrEveryNS)))
+	}
 
 	return TransactionClientRecordDetails{
 		NumActiveClients:     numActive,
