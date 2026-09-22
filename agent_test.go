@@ -2252,14 +2252,7 @@ func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 }
 
 func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSubHarness, test, collection, scope string) {
-	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("WaitUntilReady failed with error: %v", err)
-			}
-		})
-	}))
-	s.Wait(6)
+	suite.waitUntilReady(agent, s)
 
 	s.PushOp(agent.Set(SetOptions{
 		Key:            []byte(test),
@@ -2277,14 +2270,7 @@ func (suite *StandardTestSuite) VerifyConnectedToBucket(agent *Agent, s *TestSub
 }
 
 func (suite *StandardTestSuite) VerifyConnectedToBucketHTTP(agent *Agent, bucket string, s *TestSubHarness, test string) {
-	s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
-		s.Wrap(func() {
-			if err != nil {
-				s.Fatalf("WaitUntilReady failed with error: %v", err)
-			}
-		})
-	}))
-	s.Wait(6)
+	suite.waitUntilReady(agent, s)
 
 	req := &HTTPRequest{
 		Service:  MgmtService,

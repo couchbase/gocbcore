@@ -280,36 +280,7 @@ func (suite *StandardTestSuite) StartTest(name TestName) TestSpec {
 
 	// Prime the agent to ensure that operations are clear to send without messing with tracing spans.
 	s := suite.GetHarness()
-	if suite.SupportsFeature(TestFeatureCavesUnreliable) {
-		s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
-			s.Wrap(func() {
-				if err != nil {
-					s.Fatalf("WaitUntilReady failed with error: %v", err)
-				}
-			})
-		}))
-		s.Wait(6)
-	} else {
-		// Caves has a bug where waituntilready doesn't always succeed so just retry.
-		success := suite.tryUntil(time.Now().Add(60*time.Second), 1*time.Second, func() bool {
-			wait := make(chan error, 1)
-			s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
-				s.Wrap(func() {
-					wait <- err
-				})
-			}))
-			s.Wait(6)
-
-			err := <-wait
-			if err != nil {
-				suite.T().Logf("WaitUntilReady failed: %v", err)
-				return false
-			}
-
-			return true
-		})
-		suite.Require().True(success, "WaitUntilReady did not succeed in time")
-	}
+	suite.waitUntilReady(agent, s)
 
 	return TestSpec{
 		Agent:      agent,
@@ -416,6 +387,42 @@ func (suite *StandardTestSuite) tryAtMost(times int, interval time.Duration, fn 
 		}
 		time.Sleep(interval)
 	}
+}
+
+// waitUntilReady waits for the agent to be ready, retrying against Caves which has a bug where
+// WaitUntilReady doesn't always succeed.
+func (suite *StandardTestSuite) waitUntilReady(agent *Agent, s *TestSubHarness) {
+	if suite.SupportsFeature(TestFeatureCavesUnreliable) {
+		s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+			s.Wrap(func() {
+				if err != nil {
+					s.Fatalf("WaitUntilReady failed with error: %v", err)
+				}
+			})
+		}))
+		s.Wait(6)
+
+		return
+	}
+
+	success := suite.tryUntil(time.Now().Add(60*time.Second), 1*time.Second, func() bool {
+		wait := make(chan error, 1)
+		s.PushOp(agent.WaitUntilReady(time.Now().Add(5*time.Second), WaitUntilReadyOptions{}, func(result *WaitUntilReadyResult, err error) {
+			s.Wrap(func() {
+				wait <- err
+			})
+		}))
+		s.Wait(6)
+
+		err := <-wait
+		if err != nil {
+			suite.T().Logf("WaitUntilReady failed: %v", err)
+			return false
+		}
+
+		return true
+	})
+	suite.Require().True(success, "WaitUntilReady did not succeed in time")
 }
 
 func (suite *StandardTestSuite) tryUntil(deadline time.Time, interval time.Duration, fn func() bool) bool {
