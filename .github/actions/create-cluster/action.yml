@@ -24,7 +24,7 @@ runs:
       shell: bash
       run: |
         mkdir -p "$HOME/bin"
-        wget -nv -O $HOME/bin/cbdinocluster https://github.com/couchbaselabs/cbdinocluster/releases/download/v0.0.113/cbdinocluster-linux-amd64
+        wget -nv -O $HOME/bin/cbdinocluster https://github.com/couchbaselabs/cbdinocluster/releases/download/v0.0.125/cbdinocluster-linux-amd64
         chmod +x $HOME/bin/cbdinocluster
         echo "$HOME/bin" >> $GITHUB_PATH
     - name: Initialize cbdinocluster
@@ -35,6 +35,7 @@ runs:
       id: start-cluster
       shell: bash
       env:
+        SERVER_VERSION: ${{ inputs.version }}
         CLUSTER_CONFIG: |
           nodes:
             - count: 2
@@ -62,7 +63,15 @@ runs:
         echo "tls-connstr=$(cbdinocluster -v connstr --tls $CBDC_ID)" >> "$GITHUB_OUTPUT"
         echo "id=$CBDC_ID" >> "$GITHUB_OUTPUT"
         cbdinocluster certificates get-ca $CBDC_ID >> "$GITHUB_WORKSPACE/cluster.crt"
+
+        # Couchbase Server 8.0 removed support for memcached buckets
+        echo "memcached-buckets-supported=$([[ "${SERVER_VERSION%%.*}" -lt 8 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
     - name: Add default bucket
       shell: bash
       run: |
         cbdinocluster buckets add $CBDC_ID default --ram-quota-mb 100 --flush-enabled true
+    - name: Add memcached bucket
+      if: ${{ steps.start-cluster.outputs.memcached-buckets-supported == 'true' }}
+      shell: bash
+      run: |
+        cbdinocluster buckets add $CBDC_ID memd --bucket-type memcached --ram-quota-mb 100
