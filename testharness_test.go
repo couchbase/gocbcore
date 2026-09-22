@@ -46,7 +46,7 @@ var (
 	TestFeatureDCPExpiry             = TestFeatureCode("dcpexpiry")
 	TestFeatureDCPDeleteTimes        = TestFeatureCode("dcpdeletetimes")
 	TestFeatureDCPSnapshotMarkerV2_2 = TestFeatureCode("dcpsnapshotmarkerv2.2")
-	TestFeatureMemd                  = TestFeatureCode("memd")
+	TestFeatureMemdBuckets           = TestFeatureCode("memd")
 	TestFeatureGetMeta               = TestFeatureCode("getmeta")
 	TestFeatureGCCCP                 = TestFeatureCode("gcccp")
 	TestFeatureEnhancedDurability    = TestFeatureCode("durability")

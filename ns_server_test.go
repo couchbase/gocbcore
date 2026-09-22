@@ -253,7 +253,7 @@ func (suite *StandardTestSuite) TestReconfigureSecurityTLSNoProvider() {
 
 func (suite *StandardTestSuite) TestReconfigureSecurityMemd() {
 	suite.EnsureSupportsFeature(TestFeatureSsl)
-	suite.EnsureSupportsFeature(TestFeatureMemd)
+	suite.EnsureSupportsFeature(TestFeatureMemdBuckets)
 
 	// This will create a config with TLS enabled
 	config, seedAddr := suite.CreateNSAgentConfig()

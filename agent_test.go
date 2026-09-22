@@ -1957,7 +1957,7 @@ func (suite *StandardTestSuite) TestGetHttpEps() {
 }
 
 func (suite *StandardTestSuite) TestMemcachedBucket() {
-	suite.EnsureSupportsFeature(TestFeatureMemd)
+	suite.EnsureSupportsFeature(TestFeatureMemdBuckets)
 
 	spec := suite.StartTest(TestNameMemcachedBasic)
 	defer suite.EndTest(spec)
