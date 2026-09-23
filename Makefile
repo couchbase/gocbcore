@@ -1,6 +1,6 @@
 devsetup:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
-	go install github.com/vektra/mockery/v2@v2.52.2
+	go install github.com/vektra/mockery/v3@v3.8.0
 
 test:
 	go test ./...
@@ -20,9 +20,6 @@ bench:
 	go test -run ^$$ -bench . --disable-logger
 
 updatemocks:
-	mockery --name dispatcher --output . --testonly --inpackage
-	mockery --name configManager --output . --testonly --inpackage
-	mockery --name httpComponentInterface --output . --testonly --inpackage
-	mockery --name telemetryStore --output . --testonly --inpackage
+	mockery # Mocks configured in .mockery.yml.
 
 .PHONY: all test devsetup fasttest lint cover checkerrs checkfmt checkvet checkiea checkspell check bench updatemocks

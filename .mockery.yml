@@ -1,0 +1,10 @@
+filename: '{{.Mock}}_{{.InterfaceName}}_test.go'
+structname: '{{.Mock}}{{.InterfaceName | firstUpper}}'
+template: testify
+packages:
+  github.com/couchbase/gocbcore/v10:
+    interfaces:
+      dispatcher:
+      configManager:
+      httpComponentInterface:
+      telemetryStore:
