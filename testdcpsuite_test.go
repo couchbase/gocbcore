@@ -1158,7 +1158,7 @@ func (suite *DCPTestSuite) TestNoValueCompressedDCP() {
 	// datatype scenario that triggers the bug.
 	dcpCfg := suite.makeDCPAgentConfig(suite.DCPTestConfig, false, false)
 	dcpCfg.BucketName = bucketName
-	flags := memd.DcpOpenFlagProducer | memd.DcpOpenFlag(0x64) | memd.DcpOpenFlagIncludeXattrs
+	flags := memd.DcpOpenFlagProducer | memd.DcpOpenFlagNoValueWithUnderlyingDatatype | memd.DcpOpenFlagIncludeXattrs
 	dcpAgent, err := suite.initDCPAgent(dcpCfg, "novalue-compress-test", flags)
 	suite.Require().NoError(err)
 	defer dcpAgent.Close()

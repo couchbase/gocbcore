@@ -336,6 +336,10 @@ const (
 	// DcpOpenFlagIncludeDeleteTimes indicates the client wishes to receive delete times.
 	DcpOpenFlagIncludeDeleteTimes = DcpOpenFlag(0x20)
 
+	// DcpOpenFlagNoValueWithUnderlyingDatatype indicates that the server should preserve the
+	// original datatype when it strips off the document value.
+	DcpOpenFlagNoValueWithUnderlyingDatatype = DcpOpenFlag(0x40)
+
 	// DcpOpenFlagPiTR indicates the client wishes to receive PITR snapshots
 	DcpOpenFlagPiTR = DcpOpenFlag(0x80)
 )
