@@ -438,9 +438,20 @@ func (client *memdClient) resolveRequest(resp *memdQResponse) {
 	if isCompressed && len(resp.Value) > 0 && (!client.disableDecompression || alwaysDecompress) {
 		newValue, err := snappy.Decode(nil, resp.Value)
 		if err != nil {
-			req.processingLock.Unlock()
-			logWarnf("%s memdclient failed to decompress value from the server for key `%s`. OP=0x%x. Opaque=%d. Status=%d. Datatype=%b. Decode Error=%v", client.loggerID(), maybeRedactUserData(req.Key), req.Command, resp.Opaque, resp.Status, resp.Datatype, err)
-			return
+			if !isDcpXATTROnly(resp) {
+				req.processingLock.Unlock()
+				logWarnf("%s memdclient failed to decompress value from the server for key `%s`. OP=0x%x. Opaque=%d. Status=%d. Datatype=%b. Decode Error=%v",
+					client.loggerID(), maybeRedactUserData(req.Key), req.Command, resp.Opaque, resp.Status, resp.Datatype, err)
+				return
+			}
+			// Workaround for MB-74199. KV can return DCP messages with uncompressed value but the
+			// DatatypeFlagCompressed set when DCP is used with NoValueWithUnderlyingDatatype | IncludeXattrs
+			// (This is fixed in later server versions).
+			// We keep the existing resp.Value which is actually already uncompressed.
+			newValue = resp.Value
+			logInfof("%s memdclient failed to decompress value from the server for key `%s` but it is a decompressed XATTR-only DCP message. OP=0x%x. Opaque=%d. Status=%d. Datatype=%b. Decode Error=%v",
+				client.loggerID(), maybeRedactUserData(req.Key), req.Command, resp.Opaque, resp.Status, resp.Datatype, err)
+
 		}
 
 		resp.Value = newValue
@@ -849,4 +860,28 @@ func (client *memdClient) recordTelemetryForOrphan(tombstone *memdOpTombstone) {
 
 func (client *memdClient) loggerID() string {
 	return fmt.Sprintf("%s/%p", client.Address(), client)
+}
+
+func isDcpXATTROnly(resp *memdQResponse) bool {
+	if resp.Magic != memd.CmdMagicReq {
+		return false
+	}
+
+	switch resp.Command {
+	case memd.CmdDcpMutation, memd.CmdDcpDeletion, memd.CmdDcpExpiration:
+		if (resp.Datatype & uint8(memd.DatatypeFlagXattrs)) == 0 {
+			return false
+		}
+
+		// The first four bytes include the length of the XATTR section.
+		if len(resp.Value) < 4 {
+			return false
+		}
+		xattrLength := binary.BigEndian.Uint32(resp.Value[0:4])
+
+		// This is an XATTR-only value if the rest of the bytes are equal to the size of the XATTR section.
+		return uint32(len(resp.Value)-4) == xattrLength
+	default:
+		return false
+	}
 }

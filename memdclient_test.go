@@ -1,6 +1,7 @@
 package gocbcore
 
 import (
+	"encoding/binary"
 	"io"
 	"time"
 
@@ -154,4 +155,48 @@ func (suite *UnitTestSuite) TestMemdClientSocketCloseRequestError() {
 
 		})
 	}
+}
+
+func (suite *UnitTestSuite) TestResolveRequestCompressedFlagXattrOnlyValue() {
+	client := newTestMemdClient(false)
+
+	var result callbackResult
+	req := &memdQRequest{
+		Packet: memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdDcpMutation,
+			Key:     []byte("testDoc"),
+		},
+		Persistent: true,
+		Callback: func(resp *memdQResponse, req *memdQRequest, err error) {
+			result.called = true
+			result.err = err
+			if resp != nil {
+				result.value = append([]byte(nil), resp.Value...)
+				result.datatype = resp.Datatype
+			}
+		},
+	}
+	client.opList.Add(req)
+
+	// Xattr section only, uncompressed: 4-byte total length, then one
+	// xattr of 4-byte length, key, NUL, value, NUL.
+	pair := append([]byte("_sync\x00"), []byte(`{"rev":"1-a"}`+"\x00")...)
+	entry := binary.BigEndian.AppendUint32(nil, uint32(len(pair)))
+	entry = append(entry, pair...)
+	xattrs := binary.BigEndian.AppendUint32(nil, uint32(len(entry)))
+	xattrs = append(xattrs, entry...)
+
+	pkt := memd.AcquirePacket()
+	pkt.Magic = memd.CmdMagicReq
+	pkt.Command = memd.CmdDcpMutation
+	pkt.Opaque = req.Opaque
+	pkt.Datatype = uint8(memd.DatatypeFlagJSON) | uint8(memd.DatatypeFlagCompressed) | uint8(memd.DatatypeFlagXattrs)
+	pkt.Value = xattrs
+
+	client.resolveRequest(&memdQResponse{Packet: pkt})
+
+	suite.Assert().True(result.called)
+	suite.Assert().NoError(result.err)
+	suite.Assert().Equal(string(xattrs), string(result.value), "expected value to be the uncompressed xattrs")
 }
