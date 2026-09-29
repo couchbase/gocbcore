@@ -1,6 +1,6 @@
 package gocbcore
 
-func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusNoState() {
+func (suite *UnitTestSuite) TestKvMux_HasBucketCapabilityStatusNoState() {
 	// No mux state, shouldn't actually happen in practise.
 	mux := kvMux{}
 
@@ -12,7 +12,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusNoState() {
 	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
-func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() {
+func (suite *UnitTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() {
 	cfg := &routeConfig{
 		revID: -1,
 	}
@@ -30,7 +30,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusBlankState() 
 	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
-func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported() {
+func (suite *UnitTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
 		routeCfg: routeConfig{
@@ -52,7 +52,7 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusUnsupported()
 	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
 }
 
-func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
+func (suite *UnitTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
 	// Mux state as if we have received a config yet.
 	muxState := &kvMuxState{
 		routeCfg: routeConfig{
@@ -72,4 +72,35 @@ func (suite *StandardTestSuite) TestKvMux_HasBucketCapabilityStatusSupported() {
 	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnknown))
 	suite.Assert().False(mux.HasBucketCapabilityStatus(9999, CapabilityStatusSupported))
 	suite.Assert().True(mux.HasBucketCapabilityStatus(9999, CapabilityStatusUnsupported))
+}
+
+func (suite *UnitTestSuite) TestKvMux_GetByConnIDNilClient() {
+	target := &memdClient{connID: "target"}
+	muxState := &kvMuxState{
+		pipelines: []*memdPipeline{
+			{
+				clients: []*memdPipelineClient{
+					{client: nil},
+					{client: &memdClient{connID: "other"}},
+				},
+			},
+			{
+				clients: []*memdPipelineClient{
+					{client: nil},
+					{client: target},
+				},
+			},
+		},
+	}
+
+	mux := kvMux{}
+	mux.updateState(nil, muxState)
+
+	cli, err := mux.GetByConnID("target")
+	suite.Require().NoError(err)
+	suite.Assert().Same(target, cli)
+
+	cli, err = mux.GetByConnID("missing")
+	suite.Assert().ErrorIs(err, errConnectionIDInvalid)
+	suite.Assert().Nil(cli)
 }

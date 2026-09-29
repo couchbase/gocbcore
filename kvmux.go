@@ -462,7 +462,7 @@ func (mux *kvMux) GetByConnID(connID string) (*memdClient, error) {
 		p.clientsLock.Lock()
 		for _, pipeCli := range p.clients {
 			pipeCli.lock.Lock()
-			if pipeCli.client.connID == connID {
+			if pipeCli.client != nil && pipeCli.client.connID == connID {
 				pipeCli.lock.Unlock()
 				p.clientsLock.Unlock()
 				return pipeCli.client, nil
