@@ -1,5 +1,32 @@
 # Release Notes
 
+## Version 10.10.0 (7 October 2026)
+
+### New Features and Behavioral Changes
+* [GOCBC-1804](https://jira.issues.couchbase.com/browse/GOCBC-1804):
+  * Added support for setting expiry in transactions `Insert` and `Replace` operations.
+* [GOCBC-1840](https://jira.issues.couchbase.com/browse/GOCBC-1840):
+  * Improved error handling when in-flight requests fail because the client closed the socket, now returning an `ErrSocketClosedByClient`, which wraps `ErrSocketClosed`, instead of a plain `ErrSocketClosed` that is also returned when the socket is closed by the server.
+* [GOCBC-1844](https://jira.issues.couchbase.com/browse/GOCBC-1844):
+  * Added a `VerifyPeerCertificateFn` to `SecurityConfig` and `ReconfigureSecurityOptions` to allow for custom security verification logic to be applied, e.g. the use of Certificate Revocation Lists (CRLs).
+* [GOCBC-1853](https://jira.issues.couchbase.com/browse/GOCBC-1853):
+  * The query service error 2120 is now mapped to `ErrAuthenticationFailure`.
+* [GOCBC-1867](https://jira.issues.couchbase.com/browse/GOCBC-1867):
+  * Added support for replica selection strategies in the `Agent.GetOneReplica` API. Currently, a `IndexReplicaSelector` strategy is supported.
+* [GOCBC-1883](https://jira.issues.couchbase.com/browse/GOCBC-1883):
+  * Added a workaround for a server issue, where DCP streams opened with `IncludeXattrs` and `NoValueWithUnderlyingDatatype` could receive uncompressed XATTR-only values flagged as snappy. These values are now passed through unchanged instead of failing to decompress. The server issue will be resolved in future server releases.
+* [GOCBC-1884](https://jira.issues.couchbase.com/browse/GOCBC-1884):
+  * Added the `DcpOpenFlagNoValueWithUnderlyingDatatype` DCP open flag, which preserves the original datatype when the server strips the document value.
+
+### Fixed Issues
+
+* [GOCBC-1869](https://jira.issues.couchbase.com/browse/GOCBC-1869):
+  * Fixed a nil pointer dereference panic that could occur when a connection was closed during a range scan under high concurrency. `ErrConnectionIDInvalid` is now returned instead.
+* [GOCBC-1870](https://jira.issues.couchbase.com/browse/GOCBC-1870):
+  * Fixed an issue where an unwrapped `net.ErrClosed` returned by HTTP requests was not retried. It is now mapped to the `SocketCloseInFlightRetryReason` retry reason.
+* [GOCBC-1872](https://jira.issues.couchbase.com/browse/GOCBC-1872):
+  * Fixed a division by zero panic in transactions lost cleanup when the client is not responsible for any ATRs.
+
 ## Version 10.9.1 (23 March 2026)
 
 * [GOCBC-1796](https://jira.issues.couchbase.com/browse/GOCBC-1796):
