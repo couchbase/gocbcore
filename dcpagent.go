@@ -257,6 +257,7 @@ func CreateDcpAgent(config *DCPAgentConfig, dcpStreamName string, openFlags memd
 			DisableDecompression: disableDecompression,
 			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
 			ConnBufSize:          kvBufferSize,
+			EnableTCPNoDelay:     config.IoConfig.EnableTCPNoDelay,
 
 			DCPBootstrapProps: &memdBootstrapDCPProps{
 				openFlags:                    openFlags,
