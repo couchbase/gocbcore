@@ -195,51 +195,59 @@ func (sqc *searchQueryComponent) capabilityStatus(cap SearchCapability) Capabili
 }
 
 func searchQueryIncludesCustomScriptQuery(query any) bool {
-	q, ok := query.(map[string]any)
-	if !ok {
-		return false
-	}
-	if _, ok = q["custom_filter"]; ok {
-		return true
-	}
-	if _, ok = q["custom_score"]; ok {
-		return true
-	}
-	if conjuncts, ok := q["conjuncts"]; ok {
-		if innerQueries, ok := conjuncts.([]any); ok {
-			for _, innerQuery := range innerQueries {
-				if searchQueryIncludesCustomScriptQuery(innerQuery) {
-					return true
-				}
+	switch q := query.(type) {
+	case []any:
+		for _, innerQuery := range q {
+			if searchQueryIncludesCustomScriptQuery(innerQuery) {
+				return true
+			}
+		}
+	case map[string]any:
+		if _, ok := q["custom_filter"]; ok {
+			return true
+		}
+		if _, ok := q["custom_score"]; ok {
+			return true
+		}
+		for _, key := range []string{"conjuncts", "disjuncts", "must", "should", "must_not"} {
+			if searchQueryIncludesCustomScriptQuery(q[key]) {
+				return true
 			}
 		}
 	}
-	if disjuncts, ok := q["disjuncts"]; ok {
-		if innerQueries, ok := disjuncts.([]any); ok {
-			for _, innerQuery := range innerQueries {
-				if searchQueryIncludesCustomScriptQuery(innerQuery) {
-					return true
-				}
-			}
-		}
-	}
-	if conjunctionQuery, ok := q["must"]; ok {
-		if searchQueryIncludesCustomScriptQuery(conjunctionQuery) {
-			return true
-		}
-	}
-	if disjunctionQuery, ok := q["should"]; ok {
-		if searchQueryIncludesCustomScriptQuery(disjunctionQuery) {
-			return true
-		}
-	}
-	if disjunctionQuery, ok := q["must_not"]; ok {
-		if searchQueryIncludesCustomScriptQuery(disjunctionQuery) {
+
+	return false
+}
+
+func searchKnnIncludesCustomScriptQuery(knn any) bool {
+	vectorQueries, _ := knn.([]any)
+	for _, vectorQuery := range vectorQueries {
+		if vq, ok := vectorQuery.(map[string]any); ok && searchQueryIncludesCustomScriptQuery(vq["filter"]) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func (sqc *searchQueryComponent) checkCapabilities(opts SearchQueryOptions, payloadMap map[string]any) error {
+	if opts.BucketName != "" && opts.ScopeName != "" &&
+		sqc.capabilityStatus(SearchCapabilityScopedIndexes) == CapabilityStatusUnsupported {
+		return wrapError(errFeatureNotAvailable, "scoped search indexes are not supported by this cluster version")
+	}
+
+	knn, hasKnn := payloadMap["knn"]
+	if hasKnn && sqc.capabilityStatus(SearchCapabilityVectorSearch) == CapabilityStatusUnsupported {
+		return wrapError(errFeatureNotAvailable, "vector search is not supported by this cluster version")
+	}
+
+	// Intentionally checking the capability first, to avoid unnecessarily walking the payload.
+	if sqc.capabilityStatus(SearchCapabilityUDFQuery) == CapabilityStatusUnsupported &&
+		(searchQueryIncludesCustomScriptQuery(payloadMap["query"]) || searchKnnIncludesCustomScriptQuery(knn)) {
+		return wrapError(errFeatureNotAvailable, "custom script queries are not supported by this cluster version")
+	}
+
+	return nil
 }
 
 // SearchQuery executes a Search query
@@ -266,32 +274,13 @@ func (sqc *searchQueryComponent) SearchQuery(opts SearchQueryOptions, cb SearchQ
 		ctlMap = make(map[string]interface{})
 	}
 
-	if opts.BucketName != "" && opts.ScopeName != "" {
-		if sqc.capabilityStatus(SearchCapabilityScopedIndexes) == CapabilityStatusUnsupported {
-			tracer.Finish()
-			return nil, wrapSearchError(nil, "", nil,
-				wrapError(errFeatureNotAvailable, "scoped search indexes are not supported by this cluster version"), 0)
-		}
-	}
-
-	if _, ok := payloadMap["knn"]; ok {
-		if sqc.capabilityStatus(SearchCapabilityVectorSearch) == CapabilityStatusUnsupported {
-			tracer.Finish()
-			return nil, wrapSearchError(nil, "", nil,
-				wrapError(errFeatureNotAvailable, "vector search is not supported by this cluster version"), 0)
-		}
+	if err := sqc.checkCapabilities(opts, payloadMap); err != nil {
+		tracer.Finish()
+		return nil, wrapSearchError(nil, "", nil, err, 0)
 	}
 
 	indexName := opts.IndexName
 	query := payloadMap["query"]
-
-	if searchQueryIncludesCustomScriptQuery(query) {
-		if sqc.capabilityStatus(SearchCapabilityUDFQuery) == CapabilityStatusUnsupported {
-			tracer.Finish()
-			return nil, wrapSearchError(nil, "", nil,
-				wrapError(errFeatureNotAvailable, "custom script queries are not supported by this cluster version"), 0)
-		}
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var reqURI string
