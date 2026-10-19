@@ -231,6 +231,8 @@ func (h *telemetryHistograms) recordOp(attributes telemetryOperationAttributes) 
 		h.analytics.AddValue(key, attributes.duration)
 	case MgmtService:
 		h.management.AddValue(key, attributes.duration)
+	case EventingService:
+		h.eventing.AddValue(key, attributes.duration)
 	}
 }
 
