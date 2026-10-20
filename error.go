@@ -260,4 +260,5 @@ var (
 	ErrEventingFunctionIdenticalKeyspace  = errors.New("eventing function identical keyspace")
 	ErrEventingFunctionNotBootstrapped    = errors.New("eventing function not bootstrapped")
 	ErrEventingFunctionNotUndeployed      = errors.New("eventing function not undeployed")
+	ErrEventingFunctionPaused             = errors.New("eventing function paused")
 )
