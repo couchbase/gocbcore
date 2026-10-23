@@ -687,6 +687,11 @@ func (client *memdClient) GracefulClose(err error) {
 		atomic.StoreUint32(&client.shutdownDCP, 1)
 
 		client.lock.Lock()
+		if client.closed {
+			client.lock.Unlock()
+			return
+		}
+
 		size := client.opList.Size()
 		if size > 0 {
 			// If there are items in the op list then we need to go into graceful shutdown mode, so don't close anything
@@ -695,12 +700,9 @@ func (client *memdClient) GracefulClose(err error) {
 			return
 		}
 
-		// If there are no items in the oplist then it's safe to close down the client and connection now.
-		if client.closed {
-			client.lock.Unlock()
-			return
-		}
+		// If there are no items in the op list then it's safe to close down the client and connection now.
 		client.closed = true
+
 		client.lock.Unlock()
 
 		err := client.closeConn(false)

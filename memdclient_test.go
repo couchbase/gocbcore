@@ -58,13 +58,20 @@ type blockingMemdConn struct {
 	fakeMemdConn
 	unblockCh             chan struct{}
 	simulateServerCloseCh chan struct{}
+	serverPacketCh        chan *memd.Packet
 }
 
 func newBlockingMemdConn() *blockingMemdConn {
 	return &blockingMemdConn{
 		unblockCh:             make(chan struct{}),
 		simulateServerCloseCh: make(chan struct{}),
+		serverPacketCh:        make(chan *memd.Packet),
 	}
+}
+
+// simulateServerPacket blocks until ReadPacket hands the packet to the client.
+func (c *blockingMemdConn) simulateServerPacket(pkt *memd.Packet) {
+	c.serverPacketCh <- pkt
 }
 
 func (c *blockingMemdConn) unblock() {
@@ -81,6 +88,8 @@ func (c *blockingMemdConn) ReadPacket() (*memd.Packet, int, error) {
 		return nil, 0, io.EOF
 	case <-c.simulateServerCloseCh:
 		return nil, 0, io.EOF
+	case pkt := <-c.serverPacketCh:
+		return pkt, 0, nil
 	}
 }
 
@@ -199,4 +208,72 @@ func (suite *UnitTestSuite) TestResolveRequestCompressedFlagXattrOnlyValue() {
 	suite.Assert().True(result.called)
 	suite.Assert().NoError(result.err)
 	suite.Assert().Equal(string(xattrs), string(result.value), "expected value to be the uncompressed xattrs")
+}
+
+// TestMemdClientGracefulCloseDuringLastResponse covers the last in-flight response closing the client between the two
+// locked sections of GracefulClose. The read goroutine then drains the op list without the lock, so GracefulClose must
+// not touch it. Run with -race.
+func (suite *UnitTestSuite) TestMemdClientGracefulCloseDuringLastResponse() {
+	globalTestLogger.SuppressWarnings(true)
+	defer globalTestLogger.SuppressWarnings(false)
+
+	fakeConn := newBlockingMemdConn()
+	client := newTestMemdClient(true)
+	client.conn = fakeConn
+
+	inflightErrCh := make(chan error, 1)
+	inflightReq := &memdQRequest{
+		Packet: memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdGetClusterConfig,
+		},
+		Callback: func(_ *memdQResponse, _ *memdQRequest, err error) {
+			inflightErrCh <- err
+		},
+	}
+
+	persistentErrCh := make(chan error, 1)
+	persistentReq := &memdQRequest{
+		Packet: memd.Packet{
+			Magic:   memd.CmdMagicReq,
+			Command: memd.CmdDcpStreamReq,
+		},
+		Persistent: true,
+		Callback: func(_ *memdQResponse, _ *memdQRequest, err error) {
+			persistentErrCh <- err
+
+			// Runs between the two locked sections of GracefulClose. Respond to the last in-flight request and wait
+			// for the drain to start.
+			fakeConn.simulateServerPacket(&memd.Packet{
+				Magic:   memd.CmdMagicRes,
+				Command: memd.CmdGetClusterConfig,
+				Opaque:  inflightReq.Opaque,
+			})
+			select {
+			case <-client.connReleaseNotify:
+			case <-time.After(5 * time.Second):
+				suite.Fail("client was not closed")
+			}
+		},
+	}
+
+	client.run()
+	suite.Require().NoError(client.SendRequest(inflightReq))
+	suite.Require().NoError(client.SendRequest(persistentReq))
+
+	client.GracefulClose(nil)
+
+	select {
+	case err := <-persistentErrCh:
+		suite.Assert().ErrorIs(err, ErrSocketClosedByClient)
+	default:
+		suite.Fail("persistent request callback not called")
+	}
+
+	select {
+	case err := <-inflightErrCh:
+		suite.Assert().NoError(err)
+	case <-time.After(5 * time.Second):
+		suite.Fail("in-flight request callback not called")
+	}
 }
