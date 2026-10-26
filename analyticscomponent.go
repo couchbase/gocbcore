@@ -120,6 +120,9 @@ func parseAnalyticsErrorResp(req *httpRequest, statement string, resp *HTTPRespo
 	if readErr == nil {
 		raw, errorDescs, err = parseAnalyticsError(respBody)
 	}
+	if err == nil && resp.StatusCode == 400 {
+		err = errInvalidArgument
+	}
 	errOut := wrapAnalyticsError(req, statement, err, raw, resp.StatusCode)
 	errOut.Errors = errorDescs
 	return errOut

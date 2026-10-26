@@ -174,6 +174,9 @@ func parseN1QLErrorResp(req *httpRequest, statement string, resp *HTTPResponse) 
 	if readErr == nil {
 		raw, errorDescs, err = parseN1QLError(respBody)
 	}
+	if err == nil && resp.StatusCode == 400 {
+		err = errInvalidArgument
+	}
 	errOut := wrapN1QLError(req, statement, err, raw, resp.StatusCode)
 	errOut.Errors = errorDescs
 	return errOut
