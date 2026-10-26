@@ -3,6 +3,7 @@ package gocbcore
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 
 	"github.com/stretchr/testify/mock"
@@ -142,5 +143,55 @@ func (suite *UnitTestSuite) TestSearchComponentScopedIndexUnsupported() {
 	recorder := meter.recorders[makeMetricsKey(metricValueServiceSearchValue, "SearchQuery")]
 	if suite.Assert().NotNil(recorder) {
 		suite.Assert().Len(recorder.values, 1)
+	}
+}
+
+func (suite *UnitTestSuite) TestSearchErrorHTTPCode() {
+	type test struct {
+		name        string
+		statusCode  int
+		body        string
+		expectedErr error
+	}
+
+	tests := []test{
+		{
+			name:        "400 with unmapped message",
+			statusCode:  400,
+			body:        `{"error":"rest_index: Query, indexName: test, err: bleve: QueryBleve parsing searchRequest"}`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with unparseable body",
+			statusCode:  400,
+			body:        `not json`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 index not found",
+			statusCode:  400,
+			body:        `{"error":"rest_auth: preparePerms, err: index not found"}`,
+			expectedErr: ErrIndexNotFound,
+		},
+		{
+			name:        "500",
+			statusCode:  500,
+			body:        `{"error":"something went wrong"}`,
+			expectedErr: ErrInternalServerFailure,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			resp := &HTTPResponse{
+				StatusCode: tt.statusCode,
+				Body:       io.NopCloser(bytes.NewReader([]byte(tt.body))),
+			}
+
+			err := parseSearchError(nil, "test", nil, resp)
+			suite.Require().NotNil(err)
+			suite.Assert().Equal(tt.statusCode, err.HTTPResponseCode)
+			suite.Assert().ErrorIs(err, tt.expectedErr)
+		})
 	}
 }

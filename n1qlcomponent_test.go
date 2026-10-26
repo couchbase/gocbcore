@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -1584,4 +1585,65 @@ func (suite *UnitTestSuite) TestN1QLEnhPreparedDifferentiatesQueryContext() {
 	})
 	suite.Require().NoError(err, err)
 	suite.Require().NoError(<-waitCh)
+}
+
+func (suite *UnitTestSuite) TestN1QLErrorRespHTTPCode() {
+	type test struct {
+		name        string
+		statusCode  int
+		body        string
+		expectedErr error
+	}
+
+	tests := []test{
+		{
+			name:        "400 with unmapped code",
+			statusCode:  400,
+			body:        `{"errors":[{"code":1050,"msg":"No statement or prepared value"}]}`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with no errors",
+			statusCode:  400,
+			body:        `{}`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with unparseable body",
+			statusCode:  400,
+			body:        `not json`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with specific mapping",
+			statusCode:  400,
+			body:        `{"errors":[{"code":3000,"msg":"syntax error"}]}`,
+			expectedErr: ErrParsingFailure,
+		},
+		{
+			name:        "500 with unmapped code",
+			statusCode:  500,
+			body:        `{"errors":[{"code":1050,"msg":"No statement or prepared value"}]}`,
+			expectedErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			resp := &HTTPResponse{
+				StatusCode: tt.statusCode,
+				Body:       io.NopCloser(bytes.NewReader([]byte(tt.body))),
+			}
+
+			err := parseN1QLErrorResp(nil, "SELECT 1=1", resp)
+			suite.Require().NotNil(err)
+			suite.Assert().Equal(tt.statusCode, err.HTTPResponseCode)
+
+			if tt.expectedErr == nil {
+				suite.Assert().False(errors.Is(err, ErrInvalidArgument))
+			} else {
+				suite.Assert().ErrorIs(err, tt.expectedErr)
+			}
+		})
+	}
 }

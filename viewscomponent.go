@@ -119,6 +119,10 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 	var errText string
 	if err == nil {
 		errText = string(respBody)
+
+		if resp.StatusCode == 400 {
+			err = errInvalidArgument
+		}
 	}
 
 	errOut := wrapViewQueryError(req, ddoc, view, err, errText, resp.StatusCode)

@@ -97,8 +97,12 @@ func parseSearchError(req *httpRequest, indexName string, query interface{}, res
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		err = errAuthenticationFailure
 	}
-	if resp.StatusCode == 400 && strings.Contains(errMsg, "index not found") {
-		err = errIndexNotFound
+	if resp.StatusCode == 400 {
+		if strings.Contains(errMsg, "index not found") {
+			err = errIndexNotFound
+		} else {
+			err = errInvalidArgument
+		}
 	}
 	if resp.StatusCode == 429 {
 		if strings.Contains(errMsg, "num_concurrent_requests") {

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -335,4 +337,59 @@ func (suite *StandardTestSuite) TestAnalyticsTimeout() {
 	}
 
 	suite.VerifyMetrics(suite.meter, "cbas:AnalyticsQuery", 1, false, false)
+}
+
+func (suite *UnitTestSuite) TestAnalyticsErrorRespHTTPCode() {
+	type test struct {
+		name        string
+		statusCode  int
+		body        string
+		expectedErr error
+	}
+
+	tests := []test{
+		{
+			name:        "400 with unmapped code",
+			statusCode:  400,
+			body:        `{"errors":[{"code":21002,"msg":"Request timed out"}]}`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with no errors",
+			statusCode:  400,
+			body:        `{}`,
+			expectedErr: ErrInvalidArgument,
+		},
+		{
+			name:        "400 with specific mapping",
+			statusCode:  400,
+			body:        `{"errors":[{"code":24000,"msg":"Syntax error"}]}`,
+			expectedErr: ErrParsingFailure,
+		},
+		{
+			name:        "500 with unmapped code",
+			statusCode:  500,
+			body:        `{"errors":[{"code":21002,"msg":"Request timed out"}]}`,
+			expectedErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			resp := &HTTPResponse{
+				StatusCode: tt.statusCode,
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+
+			err := parseAnalyticsErrorResp(nil, "SELECT 1=1", resp)
+			suite.Require().NotNil(err)
+			suite.Assert().Equal(tt.statusCode, err.HTTPResponseCode)
+
+			if tt.expectedErr == nil {
+				suite.Assert().False(errors.Is(err, ErrInvalidArgument))
+			} else {
+				suite.Assert().ErrorIs(err, tt.expectedErr)
+			}
+		})
+	}
 }
