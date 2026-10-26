@@ -3102,11 +3102,6 @@ func (suite *UnitTestSuite) TestSetupTLSConfigNilVerifyPeerCertificateFn() {
 
 // These functions are likely temporary.
 
-type testManifestWithError struct {
-	Manifest Manifest
-	Err      error
-}
-
 func testCreateScope(name, bucketName string, agent *Agent) (*Manifest, error) {
 	data := url.Values{}
 	data.Set("name", name)
@@ -3175,22 +3170,12 @@ func testCreateScope(name, bucketName string, agent *Agent) (*Manifest, error) {
 		return nil, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
-
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for scope to become available expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
-
-			return &manifest.Manifest, nil
-		}
+	manifest, err := waitForManifest(agent, uint64(uid), 20*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for scope to become available failed: %w", err)
 	}
+
+	return manifest, nil
 }
 
 func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
@@ -3261,23 +3246,12 @@ func testDeleteScope(name, bucketName string, agent *Agent, waitForDeletion bool
 		return nil, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
-
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for scope to become deleted expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
-
-			return &manifest.Manifest, nil
-		}
+	manifest, err := waitForManifest(agent, uint64(uid), 20*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for scope to become deleted failed: %w", err)
 	}
 
+	return manifest, nil
 }
 
 func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Manifest, error) {
@@ -3355,22 +3329,12 @@ func testCreateCollection(name, scopeName, bucketName string, agent *Agent) (*Ma
 		return nil, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
-
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for collection to become available expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
-
-			return &manifest.Manifest, nil
-		}
+	manifest, err := waitForManifest(agent, uint64(uid), 20*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for collection to become available failed: %w", err)
 	}
+
+	return manifest, nil
 }
 
 func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, waitForDeletion bool) (*Manifest, error) {
@@ -3448,53 +3412,67 @@ func testDeleteCollection(name, scopeName, bucketName string, agent *Agent, wait
 		return nil, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
-	waitCh := make(chan testManifestWithError, 1)
-	go waitForManifest(agent, uint64(uid), waitCh)
-
-	for {
-		select {
-		case <-timer.C:
-			return nil, errors.New("wait time for collection to become deleted expired")
-		case manifest := <-waitCh:
-			if manifest.Err != nil {
-				return nil, manifest.Err
-			}
-
-			return &manifest.Manifest, nil
-		}
+	manifest, err := waitForManifest(agent, uint64(uid), 20*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for collection to become deleted failed: %w", err)
 	}
 
+	return manifest, nil
 }
 
-func waitForManifest(agent *Agent, manifestID uint64, manifestCh chan testManifestWithError) {
-	var manifest Manifest
-	for manifest.UID != manifestID {
-		setCh := make(chan struct{})
-		agent.GetCollectionManifest(GetCollectionManifestOptions{}, func(result *GetCollectionManifestResult, err error) {
+func waitForManifest(agent *Agent, manifestID uint64, timeout time.Duration) (*Manifest, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		var manifest Manifest
+		var allApplied bool
+		var finalErr error
+		done := make(chan struct{})
+		_, err := agent.GetAllCollectionManifests(GetAllCollectionManifestsOptions{
+			Deadline: deadline,
+		}, func(result *GetAllCollectionManifestsResult, err error) {
+			defer close(done)
 			if err != nil {
-				log.Println(err.Error())
-				close(setCh)
-				manifestCh <- testManifestWithError{Err: err}
+				log.Printf("GetAllCollectionManifests failed with %v.", err)
+				finalErr = err
 				return
 			}
 
-			err = json.Unmarshal(result.Manifest, &manifest)
-			if err != nil {
-				log.Println(err.Error())
-				close(setCh)
-				manifestCh <- testManifestWithError{Err: err}
-				return
-			}
+			for addr, singleServerResult := range result.Manifests {
+				if singleServerResult.Error != nil {
+					log.Printf("GetAllCollectionManifests against address %s failed with %v.", addr, singleServerResult.Error)
+					finalErr = singleServerResult.Error
+					return
+				}
 
-			if manifest.UID == manifestID {
-				close(setCh)
-				manifestCh <- testManifestWithError{Manifest: manifest}
-				return
+				var m Manifest
+				err = json.Unmarshal(singleServerResult.Manifest, &m)
+				if err != nil {
+					log.Printf("Failed to decode collection manifest from %s: %v", addr, err)
+					finalErr = err
+					return
+				}
+
+				allApplied = m.UID == manifestID
+				if !allApplied {
+					return
+				}
+				manifest = m
 			}
-			setCh <- struct{}{}
 		})
-		<-setCh
+		if err != nil {
+			return nil, err
+		}
+		<-done
+
+		if finalErr != nil {
+			return nil, finalErr
+		}
+		if allApplied {
+			return &manifest, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timed out waiting for all nodes to apply manifest %d", manifestID)
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 }
