@@ -88,6 +88,7 @@ func (ag *AgentGroup) OpenBucket(bucketName string) error {
 
 	agent, err := CreateAgent(config)
 	if err != nil {
+		ag.agentsLock.Unlock()
 		return err
 	}
 
