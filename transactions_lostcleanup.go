@@ -121,6 +121,7 @@ type stdLostTransactionCleaner struct {
 	locationsLock       sync.Mutex
 	newLocationCh       chan lostATRLocationWithShutdown
 	stop                chan struct{}
+	closeOnce           sync.Once
 	processWaitGroup    sync.WaitGroup
 
 	numResourceUnitOps uint32
@@ -234,7 +235,22 @@ func (ltc *stdLostTransactionCleaner) processCleanupLocation(location lostATRLoc
 		// We should probably do something here...
 		return
 	}
-	go ltc.perLocation(agent, oboUser, location)
+
+	ltc.locationsLock.Lock()
+	if ltc.locations == nil {
+		ltc.locationsLock.Unlock()
+		logDebugf("Not starting location handler for %s, location %s, cleaner is closing", ltc.uuid, location.location)
+		return
+	}
+	// The processWaitGroup has to be incremented before we start the goroutine and under the locationsLock.
+	// This guarantees that it happens before ltc.processWaitGroup.Wait() (called from stdLostTransactionCleaner.Close)
+	ltc.processWaitGroup.Add(1)
+	ltc.locationsLock.Unlock()
+
+	go func() {
+		ltc.perLocation(agent, oboUser, location)
+		ltc.processWaitGroup.Done()
+	}()
 }
 
 func (ltc *stdLostTransactionCleaner) GetAndResetResourceUnits() *TransactionResourceUnitResult {
@@ -297,12 +313,14 @@ func (ltc *stdLostTransactionCleaner) AddATRLocation(location TransactionLostATR
 }
 
 func (ltc *stdLostTransactionCleaner) Close() {
-	logDebugf("Lost transactions %s stopping", ltc.uuid)
-	close(ltc.stop)
-	err := ltc.RemoveClientFromAllLocations(ltc.uuid)
-	if err != nil {
-		logDebugf("Failed to remove client from all buckets: %v", err)
-	}
+	ltc.closeOnce.Do(func() {
+		logDebugf("Lost transactions %s stopping", ltc.uuid)
+		close(ltc.stop)
+		err := ltc.RemoveClientFromAllLocations(ltc.uuid)
+		if err != nil {
+			logDebugf("Failed to remove client from all buckets: %v", err)
+		}
+	})
 }
 
 func (ltc *stdLostTransactionCleaner) RemoveClientFromAllLocations(uuid string) error {
@@ -481,43 +499,46 @@ func (ltc *stdLostTransactionCleaner) unregisterClientRecord(location Transactio
 	})
 }
 
+// perLocation runs the cleanup loop for a single location until the cleaner is stopped, the location is shut down, or
+// the location's collection no longer exists.
 func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, location lostATRLocationWithShutdown) {
-	logSchedf("Running cleanup %s on %s", ltc.uuid, location.location)
-	ltc.processWaitGroup.Add(1)
-	ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
-		ltc.processWaitGroup.Done()
+	for {
+		logSchedf("Running cleanup %s on %s", ltc.uuid, location.location)
+
+		// process may invoke its callback from within a KV callback, so the channel is buffered to ensure that we
+		// never block the read loop of the node.
+		errCh := make(chan error, 1)
+		ltc.process(agent, oboUser, location.location.CollectionName, location.location.ScopeName, func(err error) {
+			errCh <- err
+		})
+		err := <-errCh
+
 		if err != nil {
 			logDebugf("Cleanup failed for %s on %s", ltc.uuid, location.location)
-			// See comment in process for explanation of why we have a goroutine here.
-			go func() {
-				if errors.Is(err, ErrCollectionNotFound) || errors.Is(err, ErrScopeNotFound) {
-					logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
-						location.location.BucketName,
-						location.location.ScopeName,
-						location.location.CollectionName,
-						ltc.uuid,
-					)
-					close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
-					ltc.locationsLock.Lock()
-					if ltc.locations == nil {
-						ltc.locationsLock.Unlock()
-						return
-					}
+			if errors.Is(err, ErrCollectionNotFound) || errors.Is(err, ErrScopeNotFound) {
+				logDebugf("Removing %s.%s.%s from lost cleanup %s due to collection no longer existing",
+					location.location.BucketName,
+					location.location.ScopeName,
+					location.location.CollectionName,
+					ltc.uuid,
+				)
+				close(location.shutdown) // This is unlikely to do anything as we're only listening here but best be safe.
+				ltc.locationsLock.Lock()
+				if ltc.locations != nil {
 					delete(ltc.locations, location.location)
-					ltc.locationsLock.Unlock()
-					return
 				}
-				select {
-				case <-ltc.stop:
-					return
-				case <-location.shutdown:
-					return
-				case <-time.After(1 * time.Second):
-					ltc.perLocation(agent, oboUser, location)
-					return
-				}
-			}()
-			return
+				ltc.locationsLock.Unlock()
+				return
+			}
+
+			select {
+			case <-ltc.stop:
+				return
+			case <-location.shutdown:
+				return
+			case <-time.After(1 * time.Second):
+			}
+			continue
 		}
 
 		select {
@@ -527,8 +548,7 @@ func (ltc *stdLostTransactionCleaner) perLocation(agent *Agent, oboUser string, 
 			return
 		default:
 		}
-		ltc.perLocation(agent, oboUser, location)
-	})
+	}
 }
 
 func (ltc *stdLostTransactionCleaner) process(agent *Agent, oboUser string, collection, scope string, cb func(error)) {
@@ -757,6 +777,8 @@ func (ltc *stdLostTransactionCleaner) ProcessATR(agent *Agent, oboUser string, c
 			for key, attempt := range attempts {
 				select {
 				case <-ltc.stop:
+					// We must always invoke the callback, callers may be blocked waiting on it.
+					cb(results, stats, nil)
 					return
 				default:
 				}
