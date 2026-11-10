@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -516,4 +517,142 @@ func (suite *UnitTestSuite) TestLostCleanupCustomLocationsAddedSynchronously() {
 	cleaner := startLostTransactionCleaner(config)
 
 	suite.Require().ElementsMatch(expected, cleaner.ATRLocations())
+}
+
+var errLostCleanupInjected = errors.New("injected error")
+
+// getRecordErrorClientRecordHooks fails every BeforeGetRecord call with err, which makes the lost cleanup process loop
+// fail before it sends any requests to the server.
+type getRecordErrorClientRecordHooks struct {
+	TransactionDefaultClientRecordHooks
+	err   error
+	calls atomic.Uint32
+
+	// closed is set by the test once Close has returned, any BeforeGetRecord calls after that are counted in
+	// callsAfterClose.
+	closed          atomic.Bool
+	callsAfterClose atomic.Uint32
+}
+
+func (h *getRecordErrorClientRecordHooks) BeforeGetRecord(cb func(error)) {
+	h.calls.Add(1)
+	if h.closed.Load() {
+		h.callsAfterClose.Add(1)
+	}
+	cb(h.err)
+}
+
+func newUnitTestLostCleaner(hooks TransactionClientRecordHooks) *stdLostTransactionCleaner {
+	agent := &Agent{bucketName: "default"}
+	config := &TransactionsConfig{
+		BucketAgentProvider: func(bucketName string) (*Agent, string, error) {
+			return agent, "", nil
+		},
+	}
+	config.Internal.CleanUpHooks = &TransactionDefaultCleanupHooks{}
+	config.Internal.ClientRecordHooks = hooks
+
+	return newStdLostTransactionCleaner(config)
+}
+
+func newUnitTestLostLocation() lostATRLocationWithShutdown {
+	return lostATRLocationWithShutdown{
+		location: TransactionLostATRLocation{
+			BucketName:     "default",
+			ScopeName:      "_default",
+			CollectionName: "_default",
+		},
+		shutdown: make(chan struct{}),
+	}
+}
+
+func (suite *UnitTestSuite) TestLostCleanupCloseTwice() {
+	cleaner := newUnitTestLostCleaner(&TransactionDefaultClientRecordHooks{})
+
+	cleaner.Close()
+	suite.Require().NotPanics(cleaner.Close)
+}
+
+func (suite *UnitTestSuite) TestLostCleanupCloseWhileLocationRunning() {
+	hooks := &getRecordErrorClientRecordHooks{err: errLostCleanupInjected}
+	cleaner := newUnitTestLostCleaner(hooks)
+
+	cleaner.processCleanupLocation(newUnitTestLostLocation())
+
+	// Wait for the location loop to be running, it will now be waiting to retry after the injected error.
+	suite.Require().Eventually(func() bool {
+		return hooks.calls.Load() > 0
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// Close waits on processWaitGroup, so when it returns, it means that the location loop has exited.
+	cleaner.Close()
+}
+
+func (suite *UnitTestSuite) TestLostCleanupCloseRacingLocationStart() {
+	// Close must not return while a location loop that it raced with can still run. If processWaitGroup.Add is not
+	// ordered before processWaitGroup.Wait, Wait can return with a zero counter and the location loop then starts
+	// after Close has returned.
+	var allHooks []*getRecordErrorClientRecordHooks
+	for i := 0; i < 50; i++ {
+		hooks := &getRecordErrorClientRecordHooks{err: errLostCleanupInjected}
+		allHooks = append(allHooks, hooks)
+		cleaner := newUnitTestLostCleaner(hooks)
+
+		returned := make(chan struct{})
+		go func() {
+			cleaner.processCleanupLocation(newUnitTestLostLocation())
+			close(returned)
+		}()
+
+		cleaner.Close()
+		hooks.closed.Store(true)
+		<-returned
+	}
+
+	// Give any location loops that were incorrectly started after Close a chance to run.
+	suite.Require().Never(func() bool {
+		for _, h := range allHooks {
+			if h.callsAfterClose.Load() > 0 {
+				return true
+			}
+		}
+		return false
+	}, 100*time.Millisecond, 10*time.Millisecond)
+}
+
+func (suite *UnitTestSuite) TestLostCleanupLocationNotStartedAfterClose() {
+	hooks := &getRecordErrorClientRecordHooks{err: errLostCleanupInjected}
+	cleaner := newUnitTestLostCleaner(hooks)
+
+	cleaner.Close()
+	cleaner.processCleanupLocation(newUnitTestLostLocation())
+
+	suite.Require().Never(func() bool {
+		return hooks.calls.Load() > 0
+	}, 50*time.Millisecond, 10*time.Millisecond)
+}
+
+func (suite *UnitTestSuite) TestLostCleanupRemovesLocationWhenCollectionNotFound() {
+	hooks := &getRecordErrorClientRecordHooks{err: ErrCollectionNotFound}
+	cleaner := newUnitTestLostCleaner(hooks)
+
+	location := newUnitTestLostLocation()
+	cleaner.locationsLock.Lock()
+	cleaner.locations[location.location] = location.shutdown
+	cleaner.locationsLock.Unlock()
+
+	cleaner.processCleanupLocation(location)
+
+	suite.Require().Eventually(func() bool {
+		return len(cleaner.ATRLocations()) == 0
+	}, 5*time.Second, 10*time.Millisecond)
+
+	select {
+	case <-location.shutdown:
+	default:
+		suite.T().Fatalf("Expected location shutdown channel to be closed")
+	}
+
+	cleaner.Close()
+	suite.Assert().Equal(uint32(1), hooks.calls.Load())
 }
