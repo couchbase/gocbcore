@@ -133,6 +133,14 @@ func (mux *kvMuxState) UUID() string {
 	return mux.routeCfg.uuid
 }
 
+func (mux *kvMuxState) CollectionsManifestUID() (uint64, bool) {
+	if mux.routeCfg.collectionsManifestUID == nil {
+		return 0, false
+	}
+
+	return *mux.routeCfg.collectionsManifestUID, true
+}
+
 func (mux *kvMuxState) KetamaMap() *ketamaContinuum {
 	return mux.routeCfg.ketamaMap
 }
