@@ -652,7 +652,7 @@ func (suite *StandardTestSuite) setClusterName() {
 
 func setupMock(quiet bool) (*cavescli.Client, string) {
 	m, err := cavescli.NewClient(cavescli.NewClientOptions{
-		Version: "v0.0.1-79",
+		Version: "v0.0.1-104",
 		Quiet:   quiet,
 	})
 	if err != nil {
