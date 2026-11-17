@@ -2219,6 +2219,28 @@ func (suite *StandardTestSuite) TestAgentWaitForConfigSnapshotSteadyState() {
 	suite.Assert().True(snapshot.RevID() > -1)
 }
 
+func (suite *StandardTestSuite) TestAgentWaitForConfigSnapshotCollectionsManifestUID() {
+	suite.EnsureSupportsFeature(TestFeatureCollections)
+
+	agent, s := suite.GetAgentAndHarness()
+
+	var snapshot *ConfigSnapshot
+	s.PushOp(agent.WaitForConfigSnapshot(time.Now().Add(5*time.Second), WaitForConfigSnapshotOptions{}, func(result *WaitForConfigSnapshotResult, err error) {
+		s.Wrap(func() {
+			if err != nil {
+				s.Fatalf("WaitForConfigSnapshot failed with error: %v", err)
+			}
+
+			snapshot = result.Snapshot
+		})
+	}))
+	s.Wait(6)
+
+	manifestUID, err := snapshot.CollectionsManifestUID()
+	suite.Require().NoError(err)
+	suite.Require().True(manifestUID >= 0, "CollectionsManifestUID expected to be non-negative")
+}
+
 func (suite *StandardTestSuite) TestAgentWaitUntilReadyGCCCP() {
 	suite.EnsureSupportsFeature(TestFeatureGCCCP)
 	suite.EnsureSupportsFeature(TestFeatureCavesUnreliable)

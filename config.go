@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -96,6 +97,7 @@ type cfgBucket struct {
 	ClusterUUID            string              `json:"clusterUUID,omitempty"`
 	ClusterName            string              `json:"clusterName,omitempty"`
 	Prod                   string              `json:"prod,omitempty"`
+	CollectionsManifestUID string              `json:"collectionsManifestUid,omitempty"`
 }
 
 type localLoopbackAddress struct {
@@ -298,6 +300,16 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		}
 	}
 
+	var collectionsManifestUID *uint64
+	if cfg.CollectionsManifestUID != "" {
+		uid, err := strconv.ParseUint(cfg.CollectionsManifestUID, 16, 64)
+		if err != nil {
+			logDebugf("Failed to parse collections manifest uid %q from config: %v", cfg.CollectionsManifestUID, err)
+		} else {
+			collectionsManifestUID = &uid
+		}
+	}
+
 	rc := &routeConfig{
 		revID:                  cfg.Rev,
 		revEpoch:               cfg.RevEpoch,
@@ -321,6 +333,7 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		clusterUUID:            cfg.ClusterUUID,
 		clusterName:            cfg.ClusterName,
 		prod:                   cfg.Prod,
+		collectionsManifestUID: collectionsManifestUID,
 	}
 
 	if bktType == bktTypeCouchbase {

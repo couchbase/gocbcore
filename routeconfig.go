@@ -52,6 +52,9 @@ type routeConfig struct {
 	clusterName string
 
 	prod string
+
+	// collectionsManifestUID is nil when the config does not contain a collections manifest uid.
+	collectionsManifestUID *uint64
 }
 
 func (config *routeConfig) DebugString() string {
@@ -96,6 +99,10 @@ func (config *routeConfig) DebugString() string {
 		fmt.Fprintf(&buffer, "%+v\n", config.ketamaMap)
 	} else {
 		fmt.Fprintln(&buffer, "KetamaMap: not-used")
+	}
+
+	if config.collectionsManifestUID != nil {
+		fmt.Fprintf(&buffer, "Collections Manifest UID: %x\n", *config.collectionsManifestUID)
 	}
 
 	if config.prod != "" {

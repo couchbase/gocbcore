@@ -94,6 +94,18 @@ func (pi ConfigSnapshot) BucketUUID() string {
 	return pi.state.UUID()
 }
 
+// CollectionsManifestUID returns the UID of the collections manifest for the bucket. Returns ErrUnsupportedOperation
+// if the config does not contain a collections manifest UID, e.g. for memcached buckets, servers that do not support
+// collections, or when not connected to a bucket.
+func (pi ConfigSnapshot) CollectionsManifestUID() (uint64, error) {
+	uid, ok := pi.state.CollectionsManifestUID()
+	if !ok {
+		return 0, errUnsupportedOperation
+	}
+
+	return uid, nil
+}
+
 func (pi ConfigSnapshot) KeyToServersByServerGroup(key []byte) (map[string][]int, error) {
 	vbID, err := pi.KeyToVbucket(key)
 	if err != nil {
