@@ -125,7 +125,8 @@ func (s *memdConnWrap) Release() {
 	s.baseConn = nil
 }
 
-func dialMemdConn(ctx context.Context, ep routeEndpoint, tlsConfig *tls.Config, deadline time.Time, bufSize uint) (memdConn, error) {
+func dialMemdConn(ctx context.Context, ep routeEndpoint, tlsConfig *tls.Config, deadline time.Time, bufSize uint,
+	enableTCPNoDelay bool) (memdConn, error) {
 	d := net.Dialer{
 		Deadline: deadline,
 	}
@@ -146,9 +147,9 @@ func dialMemdConn(ctx context.Context, ep routeEndpoint, tlsConfig *tls.Config, 
 		return nil, errCliInternalError
 	}
 
-	err = tcpConn.SetNoDelay(false)
+	err = tcpConn.SetNoDelay(enableTCPNoDelay)
 	if err != nil {
-		logWarnf("Failed to disable TCP nodelay (%s)", err)
+		logWarnf("Failed to configure TCP nodelay (%s)", err)
 	}
 
 	var conn io.ReadWriteCloser = tcpConn

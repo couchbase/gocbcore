@@ -292,6 +292,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 			DisableDecompression: disableDecompression,
 			NoTLSSeedNode:        config.SecurityConfig.NoTLSSeedNode,
 			ConnBufSize:          kvBufferSize,
+			EnableTCPNoDelay:     config.IoConfig.EnableTCPNoDelay,
 		},
 		bootstrapProps{
 			HelloProps: helloProps{
