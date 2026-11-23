@@ -135,7 +135,7 @@ func (tc *tracerComponent) StartHTTPDispatchSpan(req *httpRequest, name string) 
 	return span
 }
 
-func (tc *tracerComponent) StopHTTPDispatchSpan(span *spanWrapper, req *http.Request, id string, retries uint32) {
+func (tc *tracerComponent) StopHTTPDispatchSpan(span *spanWrapper, req *http.Request, canonicalAddress string, id string, retries uint32) {
 	span.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
@@ -154,6 +154,16 @@ func (tc *tracerComponent) StopHTTPDispatchSpan(span *spanWrapper, req *http.Req
 	}
 
 	span.SetPeerAddress(remoteName, remotePort)
+
+	serverName, serverPort := remoteName, remotePort
+	if canonicalAddress != "" {
+		if host, port, err := net.SplitHostPort(trimSchemePrefix(canonicalAddress)); err != nil {
+			logDebugf("Failed to split canonical host port %s: %s", canonicalAddress, err)
+		} else {
+			serverName, serverPort = host, port
+		}
+	}
+	span.SetServerAddress(serverName, serverPort)
 	span.SetNumRetries(retries)
 	span.End()
 }
