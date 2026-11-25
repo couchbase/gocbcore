@@ -45,7 +45,7 @@ jobs:
 
         include:
           - runner: ubuntu-24.04
-            go-version: ${{ inputs.minimum-go-version || '1.21' }}
+            go-version: ${{ inputs.minimum-go-version || '1.23' }}
 
     runs-on: ${{ matrix.runner }}
     steps:
