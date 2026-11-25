@@ -313,7 +313,7 @@ func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpR
 	logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
 	// we can't close the body of this response as it's long-lived beyond the function
 	hresp, err := hc.cli.Do(hreq) //nolint:bodyclose
-	hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
+	hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, state.endpoint.CanonicalAddress, req.UniqueID, req.RetryAttempts())
 	if err != nil {
 		logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
 
