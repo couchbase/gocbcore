@@ -707,10 +707,7 @@ func checkSupportsFeature(srvFeatures []memd.HelloFeature, feature memd.HelloFea
 }
 
 func findNextAuthMechanism(authMechanisms []AuthMechanism, serverAuthMechanisms []AuthMechanism) (bool, AuthMechanism, []AuthMechanism) {
-	for {
-		if len(authMechanisms) <= 1 {
-			break
-		}
+	for len(authMechanisms) > 1 {
 		authMechanisms = authMechanisms[1:]
 		mech := authMechanisms[0]
 		for _, serverMech := range serverAuthMechanisms {

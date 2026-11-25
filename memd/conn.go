@@ -230,7 +230,7 @@ func (c *Conn) WritePacket(pkt *Packet) error {
 			writeFrameHeader(buffer, frameTypeReqSyncDurability, 1)
 			buffer.WriteByte(byte(pkt.DurabilityLevelFrame.DurabilityLevel))
 		} else {
-			durabilityTimeoutMillis := pkt.DurabilityTimeoutFrame.DurabilityTimeout / time.Millisecond
+			durabilityTimeoutMillis := pkt.DurabilityTimeoutFrame.DurabilityTimeout.Milliseconds()
 			if durabilityTimeoutMillis > 65535 {
 				durabilityTimeoutMillis = 65535
 			}

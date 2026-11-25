@@ -106,7 +106,7 @@ func (bc *memdBootstrapClient) sendRequest(cmd memd.CmdCode, k, v, e []byte, dea
 		},
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {
-				valOut = resp.Packet.Value
+				valOut = resp.Value
 			}
 			errOut = err
 			signal <- struct{}{}

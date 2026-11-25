@@ -179,11 +179,12 @@ func (hcc *baseHTTPConfigController) doLoop() {
 				if err != nil {
 					logErrorf("Socket close failed handling status code != 200 (%s)", err)
 				}
-				if resp.StatusCode == 401 {
+				switch resp.StatusCode {
+				case 401:
 					logWarnf("Failed to connect to host, bad auth.")
 					hcc.setError(errAuthenticationFailure)
 					return -1
-				} else if resp.StatusCode == 404 {
+				case 404:
 					if is2x {
 						logWarnf("Failed to connect to host, bad bucket.")
 						hcc.setError(errAuthenticationFailure)

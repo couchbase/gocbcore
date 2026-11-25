@@ -1,26 +1,35 @@
+version: "2"
 run:
   tests: false
 linters:
   enable:
     - bodyclose
-    - revive
     - gosec
+    - revive
     - unconvert
-linters-settings:
-  revive:
-    ignore-generated-header: true
-    severity: error
-    rules:
-      - name: var-naming
-        arguments: [["HTTP", "ASCII", "IP", "TTL", "URL", "TLS", "JSON"]]
-  errcheck:
-    check-type-assertions: false
-    check-blank: true
-  gosec:
-    excludes:
-      - G115
-issues:
-  exclude-files:
-    - logging.go  # Logging has some utility functions that are useful to have around which get flagged up
-    - columnar*
-
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: true
+    gosec:
+      excludes:
+        - G115
+    staticcheck:
+      # The v2 defaults, plus QF1001 (De Morgan's law) disabled.
+      checks: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022", "-QF1001"]
+    revive:
+      severity: error
+      rules:
+        - name: var-naming
+          arguments:
+            - ["HTTP", "ASCII", "IP", "TTL", "URL", "TLS", "JSON"]
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - logging.go # Logging has some utility functions that are useful to have around which get flagged up
+      - columnar*

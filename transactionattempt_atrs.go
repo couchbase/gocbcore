@@ -510,13 +510,14 @@ func (t *transactionAttempt) setATRCommittedLocked(
 			DocID:          string(mutation.Key),
 		}
 
-		if mutation.OpType == TransactionStagedMutationInsert {
+		switch mutation.OpType {
+		case TransactionStagedMutationInsert:
 			insMutations = append(insMutations, jsonMutation)
-		} else if mutation.OpType == TransactionStagedMutationReplace {
+		case TransactionStagedMutationReplace:
 			repMutations = append(repMutations, jsonMutation)
-		} else if mutation.OpType == TransactionStagedMutationRemove {
+		case TransactionStagedMutationRemove:
 			remMutations = append(remMutations, jsonMutation)
-		} else {
+		default:
 			ecCb(classifyError(wrapError(ErrIllegalState, "unexpected staged mutation type")))
 			return
 		}
@@ -774,13 +775,14 @@ func (t *transactionAttempt) setATRAbortedLocked(
 			DocID:          string(mutation.Key),
 		}
 
-		if mutation.OpType == TransactionStagedMutationInsert {
+		switch mutation.OpType {
+		case TransactionStagedMutationInsert:
 			insMutations = append(insMutations, jsonMutation)
-		} else if mutation.OpType == TransactionStagedMutationReplace {
+		case TransactionStagedMutationReplace:
 			repMutations = append(repMutations, jsonMutation)
-		} else if mutation.OpType == TransactionStagedMutationRemove {
+		case TransactionStagedMutationRemove:
 			remMutations = append(remMutations, jsonMutation)
-		} else {
+		default:
 			ecCb(classifyError(wrapError(ErrIllegalState, "unexpected staged mutation type")))
 			return
 		}

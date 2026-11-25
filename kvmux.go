@@ -323,7 +323,8 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 		var err error
 
 		bktType := clientMux.BucketType()
-		if bktType == bktTypeCouchbase {
+		switch bktType {
+		case bktTypeCouchbase:
 			if req.Key != nil {
 				req.Vbucket = clientMux.VBMap().VbucketByKey(req.Key)
 			}
@@ -345,7 +346,7 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 				return nil, err
 			}
 
-		} else if bktType == bktTypeMemcached {
+		case bktTypeMemcached:
 			if repIdx > 0 || req.ReplicaSelector != nil {
 				// Error. Memcached buckets don't understand replicas!
 				return nil, errInvalidReplica
@@ -360,7 +361,7 @@ func (mux *kvMux) RouteRequest(req *memdQRequest) (*memdPipeline, error) {
 			if err != nil {
 				return nil, err
 			}
-		} else if bktType == bktTypeNone {
+		case bktTypeNone:
 			// This means that we're using GCCCP and not connected to a bucket
 			return nil, errGCCCPInUse
 		}
@@ -1028,10 +1029,10 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	}
 
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintln("KV muxer applying endpoints:"))
-	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))
+	buffer.WriteString(fmt.Sprintln("KV muxer applying endpoints:")) //nolint:staticcheck // QF1012
+	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))        //nolint:staticcheck // QF1012
 	for _, ep := range kvServerList {
-		buffer.WriteString(fmt.Sprintf("  - %s\n", ep.Address))
+		buffer.WriteString(fmt.Sprintf("  - %s\n", ep.Address)) //nolint:staticcheck // QF1012
 	}
 
 	logDebugf(buffer.String())

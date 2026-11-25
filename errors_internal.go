@@ -587,7 +587,7 @@ func makeTimeoutError(start time.Time, op string, innerErr error, req *memdQRequ
 }
 
 type timeoutError struct {
-	InnerError         error         `json:"-,omitempty"`
+	InnerError         error         `json:"-"`
 	OperationID        string        `json:"s,omitempty"`
 	Opaque             string        `json:"i,omitempty"`
 	TimeObserved       uint64        `json:"t,omitempty"`

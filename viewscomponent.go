@@ -102,9 +102,10 @@ func parseViewQueryError(req *httpRequest, ddoc, view string, resp *HTTPResponse
 		}
 	}
 
-	if resp.StatusCode == 401 {
+	switch resp.StatusCode {
+	case 401:
 		err = errAuthenticationFailure
-	} else if resp.StatusCode == 404 {
+	case 404:
 		err = errViewNotFound
 	}
 

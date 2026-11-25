@@ -336,11 +336,12 @@ func (cfg *cfgBucket) BuildRouteConfig(useSsl bool, networkType string, firstCon
 		collectionsManifestUID: collectionsManifestUID,
 	}
 
-	if bktType == bktTypeCouchbase {
+	switch bktType {
+	case bktTypeCouchbase:
 		vbMap := cfg.VBucketServerMap.VBucketMap
 		numReplicas := cfg.VBucketServerMap.NumReplicas
 		rc.vbMap = newVbucketMap(vbMap, numReplicas)
-	} else if bktType == bktTypeMemcached {
+	case bktTypeMemcached:
 		var endpoints []routeEndpoint
 		if useSsl {
 			endpoints = kvServerList.SSLEndpoints
@@ -574,7 +575,7 @@ func hostFromHostPort(hostport string) (string, error) {
 }
 
 func parseConfig(config []byte, srcHost string) (*cfgBucket, error) {
-	configStr := strings.Replace(string(config), "$HOST", srcHost, -1)
+	configStr := strings.ReplaceAll(string(config), "$HOST", srcHost)
 
 	bk := new(cfgBucket)
 	err := json.Unmarshal([]byte(configStr), bk)

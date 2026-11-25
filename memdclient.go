@@ -557,7 +557,7 @@ func (client *memdClient) run() {
 			atomic.StoreInt64(&client.lastActivity, time.Now().UnixNano())
 
 			// We handle DCP no-op's directly here so we can reply immediately.
-			if resp.Packet.Command == memd.CmdDcpNoop {
+			if resp.Command == memd.CmdDcpNoop {
 				err := client.conn.WritePacket(&memd.Packet{
 					Magic:   memd.CmdMagicRes,
 					Command: memd.CmdDcpNoop,
@@ -599,7 +599,7 @@ func (client *memdClient) run() {
 				}
 			}
 
-			switch resp.Packet.Command {
+			switch resp.Command {
 			case memd.CmdDcpDeletion, memd.CmdDcpExpiration, memd.CmdDcpMutation, memd.CmdDcpSnapshotMarker,
 				memd.CmdDcpEvent, memd.CmdDcpOsoSnapshot, memd.CmdDcpSeqNoAdvanced, memd.CmdDcpStreamEnd:
 				dcpBufferQ <- &dcpBuffer{
