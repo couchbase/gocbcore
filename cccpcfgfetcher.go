@@ -36,7 +36,7 @@ func (ccc *cccpConfigFetcher) GetClusterConfig(pipeline *memdPipeline, revID, re
 		},
 		Callback: func(resp *memdQResponse, _ *memdQRequest, err error) {
 			if resp != nil {
-				cfgOut = resp.Packet.Value
+				cfgOut = resp.Value
 			}
 			errOut = err
 			signal <- struct{}{}

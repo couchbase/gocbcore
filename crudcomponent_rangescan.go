@@ -360,11 +360,7 @@ func parseRangeScanKeys(data []byte) []RangeScanItem {
 	var keys []RangeScanItem
 	var i uint64
 	dataLen := uint64(len(data))
-	for {
-		if i >= dataLen {
-			break
-		}
-
+	for i < dataLen {
 		key, n := parseRangeScanLebEncoded(data[i:])
 		keys = append(keys, RangeScanItem{
 			Key: key,
@@ -410,11 +406,7 @@ func parseRangeScanDocs(data []byte, disableDecompression bool) ([]RangeScanItem
 	var items []RangeScanItem
 	var i uint64
 	dataLen := uint64(len(data))
-	for {
-		if i >= dataLen {
-			break
-		}
-
+	for i < dataLen {
 		item, n, err := parseRangeScanItem(data[i:], disableDecompression)
 		if err != nil {
 			return nil, err

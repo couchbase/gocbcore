@@ -637,7 +637,7 @@ func createTLSConfig(
 			},
 			MinVersion:            tls.VersionTLS12,
 			CipherSuites:          suites,
-			VerifyPeerCertificate: verifyPeerCertificateFn,
+			VerifyPeerCertificate: verifyPeerCertificateFn, //nolint:gosec // G123: no ClientSessionCache is set, so TLS sessions are never resumed.
 		},
 		Provider: caProvider,
 	}
@@ -700,7 +700,7 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, max
 			oldest := via[0]
 			auth := oldest.Header.Get("Authorization")
 			if auth != "" {
-				req.Header.Set("Authorization", auth)
+				req.Header.Set("Authorization", auth) //nolint:gosec
 			}
 
 			return nil

@@ -95,11 +95,12 @@ func DecodeCommonFlags(flags uint32) (DataType, CompressionType) {
 	valueType := UnknownType
 	compression := UnknownCompression
 
-	if flags&cfFmtMask == cfFmtBinary {
+	switch flags & cfFmtMask {
+	case cfFmtBinary:
 		valueType = BinaryType
-	} else if flags&cfFmtMask == cfFmtString {
+	case cfFmtString:
 		valueType = StringType
-	} else if flags&cfFmtMask == cfFmtJSON {
+	case cfFmtJSON:
 		valueType = JSONType
 	}
 

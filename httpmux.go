@@ -76,8 +76,8 @@ func (mux *httpMux) OnNewRouteConfig(cfg *routeConfig) {
 		}
 	}
 
-	buffer.WriteString(fmt.Sprintln("HTTP muxer applying endpoints:"))
-	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))
+	buffer.WriteString(fmt.Sprintln("HTTP muxer applying endpoints:")) //nolint:staticcheck // QF1012
+	buffer.WriteString(fmt.Sprintf("Bucket: %s\n", cfg.name))          //nolint:staticcheck // QF1012
 	addEps("Capi", endpoints.capiEpList)
 	addEps("Mgmt", endpoints.mgmtEpList)
 	addEps("N1ql", endpoints.n1qlEpList)

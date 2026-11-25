@@ -153,9 +153,9 @@ func (zlc *zombieLoggerComponent) recordZombieResponseInternal(totalDuration, to
 		localSocket:         localAddr,
 	}
 
-	if resp.Packet.ServerDurationFrame != nil {
-		entry.serverDuration = resp.Packet.ServerDurationFrame.ServerDuration
-		entry.totalServerDuration += resp.Packet.ServerDurationFrame.ServerDuration
+	if resp.ServerDurationFrame != nil {
+		entry.serverDuration = resp.ServerDurationFrame.ServerDuration
+		entry.totalServerDuration += resp.ServerDurationFrame.ServerDuration
 	}
 
 	zlc.zombieLock.RLock()

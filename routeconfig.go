@@ -60,8 +60,8 @@ type routeConfig struct {
 func (config *routeConfig) DebugString() string {
 	var buffer bytes.Buffer
 
-	buffer.WriteString(fmt.Sprintf("Revision ID: %d\n", config.revID))
-	buffer.WriteString(fmt.Sprintf("Revision Epoch: %d\n", config.revEpoch))
+	buffer.WriteString(fmt.Sprintf("Revision ID: %d\n", config.revID))       //nolint:staticcheck // QF1012
+	buffer.WriteString(fmt.Sprintf("Revision Epoch: %d\n", config.revEpoch)) //nolint:staticcheck // QF1012
 
 	if config.name != "" {
 		fmt.Fprintf(&buffer, "Bucket: %s\n", config.name)

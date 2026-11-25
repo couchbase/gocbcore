@@ -162,7 +162,8 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 		}
 
 		formatType := resp.Value[0]
-		if formatType == 0 {
+		switch formatType {
+		case 0:
 			// Normal
 			if len(resp.Value) < 27 {
 				tracer.Finish()
@@ -186,7 +187,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 			tracer.Finish()
 			cb(res, nil)
 			return
-		} else if formatType == 1 {
+		case 1:
 			// Hard Failover
 			if len(resp.Value) < 43 {
 				cb(nil, errProtocol)
@@ -213,7 +214,7 @@ func (oc *observeComponent) ObserveVb(opts ObserveVbOptions, cb ObserveVbCallbac
 			tracer.Finish()
 			cb(res, nil)
 			return
-		} else {
+		default:
 			tracer.Finish()
 			cb(nil, errProtocol)
 			return

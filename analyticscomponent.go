@@ -312,11 +312,12 @@ func (aqc *analyticsQueryComponent) analyticsQuery(ireq *httpRequest, payloadMap
 			if len(analyticsErr.Errors) >= 1 {
 				firstErrDesc := analyticsErr.Errors[0]
 
-				if firstErrDesc.Code == 23000 {
+				switch firstErrDesc.Code {
+				case 23000:
 					retryReason = AnalyticsTemporaryFailureRetryReason
-				} else if firstErrDesc.Code == 23003 {
+				case 23003:
 					retryReason = AnalyticsTemporaryFailureRetryReason
-				} else if firstErrDesc.Code == 23007 {
+				case 23007:
 					retryReason = AnalyticsTemporaryFailureRetryReason
 				}
 			}

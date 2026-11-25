@@ -171,7 +171,7 @@ func (tc *tracerComponent) StartCmdTrace(req *memdQRequest) {
 		return
 	}
 
-	req.cmdTraceSpan = tc.tracer.StartSpan(req.RootTraceContext, req.Packet.Command.Name())
+	req.cmdTraceSpan = tc.tracer.StartSpan(req.RootTraceContext, req.Command.Name())
 	req.cmdTraceSpan.SetSystemName()
 	labels := tc.ClusterLabels()
 	if labels.ClusterName != "" {
@@ -291,8 +291,8 @@ func stopNetTraceLocked(req *memdQRequest, resp *memdQResponse, localAddress, re
 	req.netTraceSpan.SetHostAddress(localName, localPort)
 	req.netTraceSpan.SetPeerAddress(remoteName, remotePort)
 	req.netTraceSpan.SetServerAddress(canonicalRemoteName, canonicalRemotePort)
-	if resp != nil && resp.Packet.ServerDurationFrame != nil {
-		req.netTraceSpan.SetServerDuration(resp.Packet.ServerDurationFrame.ServerDuration)
+	if resp != nil && resp.ServerDurationFrame != nil {
+		req.netTraceSpan.SetServerDuration(resp.ServerDurationFrame.ServerDuration)
 	}
 
 	req.netTraceSpan.End()

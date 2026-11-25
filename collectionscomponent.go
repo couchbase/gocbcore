@@ -464,11 +464,12 @@ func (cid *collectionIDCache) queueRequestLocked(req *memdQRequest) error {
 }
 
 func (cid *collectionIDCache) setIDLocked(id uint32) {
-	if id == unknownCid {
+	switch id {
+	case unknownCid:
 		logDebugf("Setting cache ID to unknown for %s.%s", cid.scopeName, cid.collectionName)
-	} else if id == pendingCid {
+	case pendingCid:
 		logDebugf("Setting cache ID to pending for %s.%s", cid.scopeName, cid.collectionName)
-	} else {
+	default:
 		logDebugf("Setting cache ID to %d for %s.%s", id, cid.scopeName, cid.collectionName)
 	}
 	cid.id = id

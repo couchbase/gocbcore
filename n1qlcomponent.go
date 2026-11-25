@@ -147,11 +147,12 @@ func extractN1QL12009Error(err N1QLErrorDesc) error {
 		if code, ok := err.Reason["code"]; ok {
 			// sad panda
 			code = int(code.(float64)) //nolint:errcheck
-			if code == 12033 {
+			switch code {
+			case 12033:
 				return errCasMismatch
-			} else if code == 17014 {
+			case 17014:
 				return errDocumentNotFound
-			} else if code == 17012 {
+			case 17012:
 				return errDocumentExists
 			}
 		}

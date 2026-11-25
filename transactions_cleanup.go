@@ -395,10 +395,7 @@ func (c *stdTransactionsCleaner) CleanupAttempt(atrAgent *Agent, atrOboUser stri
 			}
 
 			c.cleanupATR(atrAgent, atrOboUser, req, func(err error) {
-				success := true
-				if err != nil {
-					success = false
-				}
+				success := err == nil
 
 				beforeCb("cleanup atr", TransactionsCleanupAttempt{
 					Success:           success,

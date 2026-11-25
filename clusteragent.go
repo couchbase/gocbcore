@@ -233,9 +233,10 @@ func (agent *clusterAgent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallb
 // a report regarding the pings that were performed.
 func (agent *clusterAgent) Ping(opts PingOptions, cb PingCallback) (PendingOp, error) {
 	for _, srv := range opts.ServiceTypes {
-		if srv == MemdService {
+		switch srv {
+		case MemdService:
 			return nil, wrapError(errInvalidArgument, "memd service is not valid for use with clusterAgent")
-		} else if srv == CapiService {
+		case CapiService:
 			return nil, wrapError(errInvalidArgument, "capi service is not valid for use with clusterAgent")
 		}
 	}
@@ -251,9 +252,10 @@ func (agent *clusterAgent) Ping(opts PingOptions, cb PingCallback) (PendingOp, e
 // WaitUntilReady returns whether or not the Agent has seen a valid cluster config.
 func (agent *clusterAgent) WaitUntilReady(deadline time.Time, opts WaitUntilReadyOptions, cb WaitUntilReadyCallback) (PendingOp, error) {
 	for _, srv := range opts.ServiceTypes {
-		if srv == MemdService {
+		switch srv {
+		case MemdService:
 			return nil, wrapError(errInvalidArgument, "memd service is not valid for use with clusterAgent")
-		} else if srv == CapiService {
+		case CapiService:
 			return nil, wrapError(errInvalidArgument, "capi service is not valid for use with clusterAgent")
 		}
 	}

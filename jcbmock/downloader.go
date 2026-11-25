@@ -33,17 +33,17 @@ func GetMockPath() (path string, err error) {
 		throwMockError("Couldn't get absolute path (!)", err)
 	}
 
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // Test helper; the path comes from GOCB_MOCK_PATH or the temp dir.
 	if err == nil && info.Size() > 0 {
 		return path, nil
 	} else if err != nil && !os.IsNotExist(err) {
 		throwMockError("Couldn't resolve existing path", err)
 	}
 
-	if err := os.Remove(path); err != nil {
+	if err := os.Remove(path); err != nil { //nolint:gosec // Test helper; the path comes from GOCB_MOCK_PATH or the temp dir.
 		log.Printf("Couldn't remove existing mock: %v", err)
 	}
-	log.Printf("Downloading %s to %s", url, path)
+	log.Printf("Downloading %s to %s", url, path) //nolint:gosec // Test helper; url and path come from env vars or defaults.
 
 	resp, err := http.Get(defaultMockUrl)
 	if err != nil {
@@ -59,7 +59,7 @@ func GetMockPath() (path string, err error) {
 		throwMockError(fmt.Sprintf("Got HTTP %d from URL", resp.StatusCode), errors.New("non-200 response"))
 	}
 
-	out, err := os.Create(path)
+	out, err := os.Create(path) //nolint:gosec // Test helper; the path comes from GOCB_MOCK_PATH or the temp dir.
 	if err != nil {
 		throwMockError("Couldn't open output file", err)
 	}
