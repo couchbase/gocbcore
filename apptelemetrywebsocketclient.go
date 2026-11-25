@@ -18,7 +18,7 @@ const (
 	telemetryWebsocketClientMinBackoff          = 100 * time.Millisecond
 	telemetryWebsocketClientDefaultMaxBackoff   = 1 * time.Hour
 	telemetryWebsocketClientDefaultPingInterval = 30 * time.Second
-	telemetryWebsocketClientDefaultPingTimeout  = 5 * time.Second
+	telemetryWebsocketClientDefaultPingTimeout  = 2 * time.Second
 )
 
 type telemetryCommand uint8
