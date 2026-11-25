@@ -11,8 +11,9 @@ type TelemetryReporterConfig struct {
 	// ExternalEndpoint overrides the reporting endpoint discovered through the cluster config.
 	ExternalEndpoint string
 
-	// Backoff specifies the duration to wait before attempting to reconnect to a telemetry endpoint.
-	// Defaults to 5 seconds.
+	// Backoff specifies the maximum duration to wait before attempting to reconnect to a telemetry endpoint. The
+	// time between reconnection attempts increases exponentially, up to this maximum.
+	// Defaults to 1 hour.
 	Backoff time.Duration
 
 	// PingInterval specifies the time duration to wait between consecutive PING commands to the app telemetry server.
