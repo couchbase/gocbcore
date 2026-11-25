@@ -120,8 +120,8 @@ type telemetryWebsocketClient struct {
 	lastEndpointAddress string
 	connInitiated       atomic.Bool // This is set to true if there is an active connection attempt loop in progress.
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	shutdownSig  chan struct{}
+	shutdownOnce sync.Once
 }
 
 func newTelemetryWebsocketClient(maxBackoff, pingInterval, pingTimeout time.Duration, getMetricsFn func() string) *telemetryWebsocketClient {
@@ -135,15 +135,12 @@ func newTelemetryWebsocketClient(maxBackoff, pingInterval, pingTimeout time.Dura
 		pingTimeout = telemetryWebsocketClientDefaultPingTimeout
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	w := &telemetryWebsocketClient{
 		maxBackoff:   maxBackoff,
 		pingInterval: pingInterval,
 		pingTimeout:  pingTimeout,
 		getMetricsFn: getMetricsFn,
-		ctx:          ctx,
-		ctxCancel:    cancel,
+		shutdownSig:  make(chan struct{}),
 	}
 
 	return w
@@ -229,14 +226,25 @@ func (w *telemetryWebsocketClient) createConnectionAttemptProps(withShouldConnec
 func (w *telemetryWebsocketClient) connectionLoop(props telemetryWebsocketClientConnectionProps) {
 	defer w.connInitiated.Store(false)
 
+	// Cancel the context when the client is closed, so that in-flight dials, reads, writes and pings are aborted.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-w.shutdownSig:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	backoffCalculator := ExponentialBackoff(telemetryWebsocketClientMinBackoff, w.maxBackoff, 2)
 	var retryAttempts uint32 = 0
 
 	for {
-		if w.connectAndServe(props) {
+		if w.connectAndServe(ctx, props) {
 			retryAttempts = 0 // We created a connection successfully, reset exponential backoff
 		}
-		if w.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
 
@@ -245,7 +253,7 @@ func (w *telemetryWebsocketClient) connectionLoop(props telemetryWebsocketClient
 		logInfof("App telemetry connection closed. Retrying in %s", backoff)
 
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			logInfof("App telemetry websocket client shutting down, canceling connection attempt")
 			return
 		case <-time.After(backoff):
@@ -259,10 +267,10 @@ func (w *telemetryWebsocketClient) connectionLoop(props telemetryWebsocketClient
 	}
 }
 
-func (w *telemetryWebsocketClient) connectAndServe(props telemetryWebsocketClientConnectionProps) bool {
-	conn, err := w.dialConn(props)
+func (w *telemetryWebsocketClient) connectAndServe(ctx context.Context, props telemetryWebsocketClientConnectionProps) bool {
+	conn, err := w.dialConn(ctx, props)
 	if err != nil {
-		if w.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			logInfof("App telemetry websocket client shutting down, canceled connection attempt")
 			return false
 		}
@@ -271,21 +279,21 @@ func (w *telemetryWebsocketClient) connectAndServe(props telemetryWebsocketClien
 	}
 
 	logDebugf("Starting app telemetry listener. Address=%s", props.address)
-	pumpErr := w.readWritePump(conn) // The read-write pump always exits with an error.
+	pumpErr := w.readWritePump(ctx, conn) // The read-write pump always exits with an error.
 	logDebugf("Error from app telemetry readWritePump: %s.", pumpErr)
 	closeErr := conn.CloseNow()
 	if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
 		logInfof("Got error when closing app telemetry websocket connection: %v", closeErr)
-	} else if w.ctx.Err() != nil {
+	} else if ctx.Err() != nil {
 		logInfof("Closed app telemetry websocket connection")
 	}
 	return true
 }
 
-func (w *telemetryWebsocketClient) dialConn(props telemetryWebsocketClientConnectionProps) (*websocket.Conn, error) {
+func (w *telemetryWebsocketClient) dialConn(ctx context.Context, props telemetryWebsocketClientConnectionProps) (*websocket.Conn, error) {
 	logDebugf("Connecting to app telemetry endpoint: dialing %s", props.address)
 
-	ctx, cancel := context.WithTimeout(w.ctx, telemetryWebsocketClientHandshakeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, telemetryWebsocketClientHandshakeTimeout)
 	defer cancel()
 
 	transport := &http.Transport{
@@ -315,8 +323,8 @@ func (w *telemetryWebsocketClient) dialConn(props telemetryWebsocketClientConnec
 	return conn, nil
 }
 
-func (w *telemetryWebsocketClient) readWritePump(conn *websocket.Conn) error {
-	pingLoopCtx, cancel := context.WithCancel(w.ctx)
+func (w *telemetryWebsocketClient) readWritePump(ctx context.Context, conn *websocket.Conn) error {
+	pingLoopCtx, cancel := context.WithCancel(ctx)
 	pingLoopDone := w.startPingTicker(pingLoopCtx, conn)
 	defer func() {
 		cancel()
@@ -324,7 +332,7 @@ func (w *telemetryWebsocketClient) readWritePump(conn *websocket.Conn) error {
 	}()
 
 	for {
-		_, message, err := conn.Read(w.ctx)
+		_, message, err := conn.Read(ctx)
 		if err != nil {
 			return wrapError(err, "Error reading from app telemetry websocket")
 		}
@@ -346,7 +354,7 @@ func (w *telemetryWebsocketClient) readWritePump(conn *websocket.Conn) error {
 			resp.status = telemetryStatusUnknownCommand
 		}
 		logSchedf("Sending telemetry response to server telemetry collector. Size=%d bytes", len(resp.data))
-		err = conn.Write(w.ctx, websocket.MessageBinary, resp.encode())
+		err = conn.Write(ctx, websocket.MessageBinary, resp.encode())
 		if err != nil {
 			return wrapError(err, "Error writing to app telemetry websocket")
 		}
@@ -390,5 +398,7 @@ func (w *telemetryWebsocketClient) startPingTicker(ctx context.Context, conn *we
 
 func (w *telemetryWebsocketClient) Close() {
 	logDebugf("Closing app telemetry websocket client")
-	w.ctxCancel()
+	w.shutdownOnce.Do(func() {
+		close(w.shutdownSig)
+	})
 }
