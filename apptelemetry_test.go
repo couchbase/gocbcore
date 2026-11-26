@@ -2,12 +2,13 @@ package gocbcore
 
 import (
 	"fmt"
-	"github.com/couchbase/gocbcore/v10/memd"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/mock"
 	"runtime"
 	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 )
 
 // noopTelemetryClient doesn't do anything, except declare that it initiated a connection, so it can be used when tests
@@ -25,10 +26,6 @@ func (c *noopTelemetryClient) connectionInitiated() bool {
 
 func (c *noopTelemetryClient) Close() {
 	return
-}
-
-func (c *noopTelemetryClient) usesExternalEndpoint() bool {
-	return true
 }
 
 func (c *noopTelemetryClient) updateEndpoints(telemetryEndpoints) {

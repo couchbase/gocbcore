@@ -30,7 +30,6 @@ type telemetryClient interface {
 	connectIfNotStarted()
 	connectionInitiated() bool
 	Close()
-	usesExternalEndpoint() bool
 	updateEndpoints(endpoints telemetryEndpoints)
 }
 
