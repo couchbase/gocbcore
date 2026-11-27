@@ -104,7 +104,7 @@ type columnarHTTPClientProps struct {
 func newColumnarComponent(props columnarComponentProps, clientProps columnarHTTPClientProps, muxer *columnarMux) *columnarComponent {
 	cc := &columnarComponent{
 		muxer:     muxer,
-		userAgent: props.UserAgent,
+		userAgent: rfcUserAgent(props.UserAgent),
 	}
 
 	cc.cli = cc.createHTTPClient(clientProps.MaxIdleConns, clientProps.MaxIdleConnsPerHost, clientProps.MaxConnsPerHost,
@@ -175,6 +175,7 @@ func (cc *columnarComponent) Query(ctx context.Context, opts ColumnarQueryOption
 	} else {
 		uniqueID = uuid.NewString()
 	}
+	header.Set("User-Agent", cc.userAgent)
 
 	var lastCode uint32
 	var lastMessage string
