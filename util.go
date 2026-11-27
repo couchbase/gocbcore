@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -49,6 +50,21 @@ func agentName(userAgent string) string {
 		agentName += " " + userAgent
 	}
 	return agentName
+}
+
+// rfcUserAgent builds a user agent following SDK-RFC 47 (unified user agent):
+// "<sdk-identifier>/<version> (<system-information>)".
+//
+// When a wrapping SDK provides its identifier, it leads and gocbcore is listed in the system information,
+// e.g. "gocb-columnar/1.0.0 (gocbcore/10.10.0; linux/amd64; go1.26.0)".
+func rfcUserAgent(wrapperIdentifier string) string {
+	coreIdentifier := "gocbcore/" + strings.TrimPrefix(goCbCoreVersionStr, "v")
+	systemInfo := runtime.GOOS + "/" + runtime.GOARCH + "; " + runtime.Version()
+	if wrapperIdentifier == "" {
+		return coreIdentifier + " (" + systemInfo + ")"
+	}
+
+	return wrapperIdentifier + " (" + coreIdentifier + "; " + systemInfo + ")"
 }
 
 func clientInfoString(connID, userAgent string) string {

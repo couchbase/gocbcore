@@ -1,12 +1,12 @@
 package gocbcore
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
+	"fmt"
+	"runtime"
+	"strings"
 )
 
-func TestTrimSchemePrefix(t *testing.T) {
+func (suite *UnitTestSuite) TestTrimSchemePrefix() {
 	type test struct {
 		name, address string
 	}
@@ -35,8 +35,26 @@ func TestTrimSchemePrefix(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, "hostname:8091", trimSchemePrefix(test.address))
+		suite.Run(test.name, func() {
+			suite.Require().Equal(trimSchemePrefix(test.address), "hostname:8091")
 		})
 	}
+}
+
+func (suite *UnitTestSuite) TestRFCUserAgent() {
+	coreVersion := strings.TrimPrefix(goCbCoreVersionStr, "v")
+
+	suite.Run("with wrapper", func() {
+		expected := fmt.Sprintf("gocb-columnar/1.0.0 (gocbcore/%s; %s/%s; %s)",
+			coreVersion, runtime.GOOS, runtime.GOARCH, runtime.Version())
+
+		suite.Assert().Equal(expected, rfcUserAgent("gocb-columnar/1.0.0"))
+	})
+
+	suite.Run("without wrapper", func() {
+		expected := fmt.Sprintf("gocbcore/%s (%s/%s; %s)",
+			coreVersion, runtime.GOOS, runtime.GOARCH, runtime.Version())
+
+		suite.Assert().Equal(expected, rfcUserAgent(""))
+	})
 }
